@@ -31,7 +31,7 @@ cd bff && npm install && cd ..
 npm run dev:all
 ```
 
-The frontend runs on http://localhost:9222, BFF on http://localhost:3001.
+The frontend runs on http://localhost:9391, BFF on http://localhost:9390.
 
 Configure the Intellect backend address in `.env.development` (defaults to `localhost:9380`).
 
@@ -57,7 +57,7 @@ Browser
   ↓
 Nginx (port 80)
   ├── / → SPA static files (dist/)
-  ├── /api/bff/* → BFF (Node.js :3001)
+  ├── /api/bff/* → BFF (Node.js :9390)
   ├── /api/v1/admin/* → intellect Python admin (:9381)
   └── /v1/*, /api/* → intellect Python API (:9380)
 ```

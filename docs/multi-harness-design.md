@@ -66,7 +66,7 @@ AgentUI 当前与 Intellect 深度耦合，需支持多种 Agent Harness 后端�
 └──────────────────────────────────────────────────────────────────┘
                               ↓ /api/bff/*
 ┌──────────────────────────────────────────────────────────────────┐
-│  BFF (:3001)                                                     │
+│  BFF (:9390)                                                     │
 │  ├── routes/admin.ts（已有：whitelist/roles/resources）           │
 │  ├── routes/harness-admin.ts（新增：后端配置管理）                │
 │  ├── routes/tenant.ts（新增：租户管理，轻量）                     │

@@ -28,7 +28,7 @@ API communication flows: Browser → Nginx → (intellect Python backend OR BFF)
 ```bash
 # Frontend
 npm install
-npm run dev          # Dev server (port 9222)
+npm run dev          # Dev server (port 9391)
 npm run build        # Production build
 npm run lint         # ESLint
 npm run test         # Jest tests
@@ -36,7 +36,7 @@ npm run type-check   # TypeScript check
 
 # BFF
 cd bff && npm install
-npm run dev:bff      # BFF dev server (port 3001)
+npm run dev:bff      # BFF dev server (port 9390)
 # Or run both together:
 npm run dev:all      # Frontend + BFF concurrently
 

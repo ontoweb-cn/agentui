@@ -28,7 +28,7 @@ app.route('/api/session', sessionRoutes);
 // (users, services, sandbox, system settings) remain on Intellect Admin :9381.
 app.route('/api/admin', adminRoutes);
 
-const port = Number(process.env.BFF_PORT) || 3001;
+const port = Number(process.env.BFF_PORT) || 9390;
 
 serve(
   { fetch: app.fetch, port },

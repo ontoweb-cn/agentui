@@ -896,7 +896,7 @@ async def test_team_lifecycle(api_client, admin_token):
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  AgentUI BFF (:3001)                            │
+│  AgentUI BFF (:9390)                            │
 │  ├── IntellectEnterpriseAdapter                 │
 │  │   ├── 核心层：调用 /v1/* 和 /api/sessions/*  │
 │  │   └── 多租户层：调用 /api/teams/* 和         │

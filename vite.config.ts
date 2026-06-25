@@ -46,7 +46,7 @@ export default defineConfig(({ mode }) => {
   const apiHost = env.API_HOST || 'localhost';
   const pythonApiPort = env.PYTHON_API_PORT || '9380';
   const pythonAdminPort = env.PYTHON_ADMIN_PORT || '9381';
-  const bffPort = env.BFF_PORT || '3001';
+  const bffPort = env.BFF_PORT || '9390';
 
   console.log(`[vite.config] mode: ${mode}, API_HOST: ${apiHost}`);
 
@@ -129,7 +129,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: Number(env.PORT) || 9222,
+      port: Number(env.PORT) || 9391,
       strictPort: false,
       hmr: {
         overlay: false,

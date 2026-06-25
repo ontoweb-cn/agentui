@@ -89,7 +89,7 @@ const proxy = {
 
 ```
 前端请求
-  ├── /api/bff/*        → BFF (:3001)        [rewrite: 去除 /api/bff 前缀]
+  ├── /api/bff/*        → BFF (:9390)        [rewrite: 去除 /api/bff 前缀]
   ├── /api/v1/admin/*   → Intellect Admin (:9381)  [透传]
   ├── /api/*            → Intellect API (:9380)    [透传]
   └── /v1/*             → Intellect API (:9380)    [透传]
@@ -284,7 +284,7 @@ server: {
 
 ```javascript
 server: {
-  port: Number(env.PORT) || 9222,  // 默认 9222
+  port: Number(env.PORT) || 9391,  // 默认 9222
   strictPort: false,                // 端口被占用则自动+1
   hmr: {
     overlay: false,                 // 关闭 HMR 错误遮罩
@@ -1282,12 +1282,12 @@ Intellect Admin 后端（:9381）的部分功能存在以下问题：
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  AgentUI 前端 (:9222)                                    │
+│  AgentUI 前端 (:9391)                                    │
 │  └── src/pages/admin/*  (前端代码不变)                   │
 └──────────────────────────────────────────────────────────┘
                           ↓
 ┌──────────────────────────────────────────────────────────┐
-│  BFF (:3001)                                             │
+│  BFF (:9390)                                             │
 │  └── /api/admin/*  ← 新增                                │
 │      ├── /whitelist          (CRUD + batch import)       │
 │      ├── /roles              (CRUD)                      │
@@ -1404,7 +1404,7 @@ AgentUI 需要支持不同的 Agent Harness 后端：
 └──────────────────────────────────────────────────────────────────┘
                               ↓ /api/bff/*
 ┌──────────────────────────────────────────────────────────────────┐
-│  BFF (:3001)                                                     │
+│  BFF (:9390)                                                     │
 │  ├── routes/admin.ts（已有：whitelist/roles/resources）           │
 │  ├── routes/harness-admin.ts（新增：后端配置管理）                │
 │  ├── routes/tenant.ts（新增：租户管理，轻量）                     │

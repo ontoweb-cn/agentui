@@ -22,12 +22,12 @@ AgentUI 是一个 **Agent Harness 前端**，最初与 Intellect 强耦合，正
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│  AgentUI SPA  (Vite dev :9222 / 静态产物)                  │
+│  AgentUI SPA  (Vite dev :9391 / 静态产物)                  │
 │  React + React Router 7 + TanStack Query + Zustand         │
 └────────────────────────────────────────────────────────────┘
                           │ /api/bff/*  /api/v1/admin/*  /api/*  /v1/*
 ┌────────────────────────────────────────────────────────────┐
-│  BFF  (Hono on Node :3001)                                 │
+│  BFF  (Hono on Node :9390)                                 │
 │  - admin-store (JSON 持久化)                               │
 │  - 适配器层 (IHarnessAdapter)                              │
 │  - 路由聚合 + 鉴权透传                                     │
@@ -47,7 +47,7 @@ AgentUI 是一个 **Agent Harness 前端**，最初与 Intellect 强耦合，正
 
 | 层面 | 选型 | 说明 |
 |------|------|------|
-| 构建 | Vite 7 + Rollup + Terser | dev :9222，产物 `dist/` |
+| 构建 | Vite 7 + Rollup + Terser | dev :9391，产物 `dist/` |
 | 框架 | React 18 + TypeScript 5 | StrictMode |
 | 路由 | React Router 7 (`createBrowserRouter`) | 文件式 lazy import |
 | 状态 | TanStack Query 5（服务端）+ Zustand（客户端）+ Context | 优先 Query，避免重复 |
@@ -500,8 +500,8 @@ export default {
 
 | 命令 | 用途 |
 |------|------|
-| `npm run dev` | 启动 Vite dev server（:9222） |
-| `npm run dev:bff` | 启动 BFF（tsx watch，:3001） |
+| `npm run dev` | 启动 Vite dev server（:9391） |
+| `npm run dev:bff` | 启动 BFF（tsx watch，:9390） |
 | `npm run dev:all` | 并行启动前端 + BFF |
 | `npm run build` | `vite build --mode production` |
 | `npm run preview` | 预览生产产物 |
@@ -551,9 +551,9 @@ Admin Page
    │     ├── /api/v1/admin/sandbox/*    ──► Intellect Admin :9381  (强耦合)
    │     ├── /api/v1/admin/version      ──► Intellect Admin :9381
    │     │
-   │     ├── /api/bff/admin/whitelist/* ──► BFF :3001            (本次接管)
-   │     ├── /api/bff/admin/roles/*     ──► BFF :3001            (本次接管)
-   │     └── /api/bff/admin/roles/resource ─► BFF :3001          (本次接管)
+   │     ├── /api/bff/admin/whitelist/* ──► BFF :9390            (本次接管)
+   │     ├── /api/bff/admin/roles/*     ──► BFF :9390            (本次接管)
+   │     └── /api/bff/admin/roles/resource ─► BFF :9390          (本次接管)
    │
    └── forms/ + components/
          ├── user-form / change-password-form / email-form / import-excel-form
