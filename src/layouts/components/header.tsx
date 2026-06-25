@@ -85,7 +85,7 @@ export function Header({
         <a
           className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
           target="_blank"
-          href="https://github.com/ontoweb/intellect"
+          href="https://gitee.com/wustbd/intellect-rag"
           rel="noreferrer noopener"
         >
           <IconFontFill name="GitHub" />

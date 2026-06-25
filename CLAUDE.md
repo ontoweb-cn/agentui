@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ## Project Overview
 
-OpenKG AgentUI is the Agent Harness frontend for Intellect, built with Vite:
+OpenKG AgentUI is the Agent Harness frontend for Intellect RAG, built with Vite:
 - **Framework**: React 18 + TypeScript + Vite 7
 - **Routing**: React Router v7 (lazy-loaded)
 - **Components**: shadcn/ui (locked, do not modify `src/components/ui/`)
@@ -16,12 +16,12 @@ OpenKG AgentUI is the Agent Harness frontend for Intellect, built with Vite:
 
 ## Architecture
 
-This project was split from the Intellect monorepo. It consists of:
+This project was split from the Intellect RAG monorepo. It consists of:
 1. **Frontend SPA** (`src/`) - React application
 2. **BFF** (`bff/`) - Node.js/Hono backend-for-frontend layer
-3. **Nginx** (`nginx/`) - Reverse proxy serving SPA + proxying to intellect backend
+3. **Nginx** (`nginx/`) - Reverse proxy serving SPA + proxying to intellect-rag backend
 
-API communication flows: Browser → Nginx → (intellect Python backend OR BFF)
+API communication flows: Browser → Nginx → (intellect-rag Python backend OR BFF)
 
 ## Common Commands
 
@@ -40,7 +40,7 @@ npm run dev:bff      # BFF dev server (port 9390)
 # Or run both together:
 npm run dev:all      # Frontend + BFF concurrently
 
-# API type generation (requires intellect backend running)
+# API type generation (requires intellect-rag backend running)
 npm run gen:api-types
 ```
 

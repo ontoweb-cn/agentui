@@ -15,7 +15,7 @@ export const LocalLlmConfigs: Record<string, ProviderConfig> = {
     undefined,
     false,
     undefined,
-    'https://github.com/ontoweb/intellect/blob/main/docs/guides/models/deploy_local_llm.mdx',
+    'https://gitee.com/wustbd/intellect-rag/blob/main/docs/guides/models/deploy_local_llm.mdx',
   ),
   [LLMFactory.Xinference]: buildLocalConfig(
     LLMFactory.Xinference,

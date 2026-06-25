@@ -45,22 +45,28 @@ export const buildMessageUuidWithRole = (
 // Preprocess LaTeX equations to be rendered by KaTeX
 // ref: https://github.com/remarkjs/react-markdown/issues/785
 //
-// Delimiter matching: we only treat \] and \) as block/inline endings when they
-// are not part of a LaTeX command (e.g. \right], \big), \left)). Use a negative
-// lookbehind (?<![a-zA-Z]) so that \] or \) preceded by a letter (command name)
-// is not considered the closing delimiter. Use greedy matching so we match up to
-// the last valid delimiter and avoid cutting at the first \] or \) inside the
-// equation (e.g. \frac{1}{|y|} or \right]).
+// Delimiter matching: a previous revision used a negative lookbehind
+// `(?<![a-zA-Z])` before `\]`/`\)` to avoid cutting at `\right]` / `\big)`.
+// That lookbehind was wrong: it rejected any equation ending in a single
+// letter variable (e.g. `\(x < y\)` — the `y` immediately precedes `\)` and
+// was treated as a "command name"), so valid inline math was left un-converted.
+// The cases the lookbehind was guarding (`\right]`, `\big)`) do not contain
+// the `\]` / `\)` delimiter sequence at all (the bracket is bare), so a plain
+// non-greedy match against `\]` / `\)` already never stops at them. The
+// lookbehind has been removed.
 
-const BLOCK_MATH_RE = /\\\[([\s\S]*?)(?<![a-zA-Z])\\\]/g;
-const INLINE_MATH_RE = /\\\(([\s\S]*?)(?<![a-zA-Z])\\\)/g;
+const BLOCK_MATH_RE = /\\\[([\s\S]*?)\\\]/g;
+const INLINE_MATH_RE = /\\\(([\s\S]*?)\\\)/g;
 
 export const preprocessLaTeX = (content: string) => {
+  // JSON-encoded payloads arrive with backslashes doubled (e.g. `\\(` for an
+  // inline delimiter, `\\Delta` for a LaTeX command). Collapse any literal
+  // `\\` to a single `\` so both delimiter pairs and command names normalize
+  // consistently. A bare single backslash is untouched, and `\\\\` in source
+  // collapses to `\\` (the same result the previous delimiter-only normalization
+  // produced for `\\[` / `\\(` / `\\]` / `\\)`).
   const normalizedContent = content
-    .replace(/\\\\\[/g, '\\[')
-    .replace(/\\\\\(/g, '\\(')
-    .replace(/\\\\\]/g, '\\]')
-    .replace(/\\\\\)/g, '\\)')
+    .replace(/\\\\/g, '\\')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&');

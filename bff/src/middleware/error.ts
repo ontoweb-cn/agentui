@@ -8,8 +8,8 @@ export async function errorHandler(c: Context, next: Next) {
     const error = err as Error;
     console.error(`[BFF Error] ${error.message}`);
 
-    // Intellect API errors
-    if (error.message.startsWith('Intellect API error')) {
+    // Intellect RAG API errors
+    if (error.message.startsWith('Intellect RAG API error')) {
       const statusMatch = error.message.match(/error (\d+)/);
       const rawStatus = statusMatch ? Number(statusMatch[1]) : 502;
       const status = (rawStatus >= 400 && rawStatus < 600 ? rawStatus : 502) as ContentfulStatusCode;

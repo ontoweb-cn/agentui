@@ -7,6 +7,6 @@ export async function authMiddleware(c: Context, next: Next) {
     return c.json({ code: 401, message: 'Unauthorized: missing Authorization header' }, 401);
   }
 
-  // Token is passed through to intellect backend for validation
+  // Token is passed through to intellect-rag backend for validation
   await next();
 }

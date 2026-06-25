@@ -1,10 +1,10 @@
 # OpenKG AgentUI
 
-A general-purpose application framework for building Agent-based AI applications, powered by the Intellect Agent Harness platform.
+A general-purpose application framework for building Agent-based AI applications, powered by the Intellect RAG engine.
 
 ## Overview
 
-AgentUI is a general-purpose application framework built on top of the Intellect Agent Harness platform. It consists of:
+AgentUI is a general-purpose application framework built on top of the Intellect RAG engine. It consists of:
 
 - **Frontend SPA** (`src/`): React 18 + TypeScript + Vite 7 + shadcn/ui
 - **BFF** (`bff/`): Node.js + Hono backend-for-frontend for Harness-specific logic
@@ -16,7 +16,7 @@ AgentUI is a general-purpose application framework built on top of the Intellect
 
 - Node.js >= 18.20.4
 - npm
-- A running Intellect backend (Python API on port 9380)
+- A running Intellect RAG backend (Python API on port 9380)
 
 ### Development
 
@@ -33,7 +33,7 @@ npm run dev:all
 
 The frontend runs on http://localhost:9391, BFF on http://localhost:9390.
 
-Configure the Intellect backend address in `.env.development` (defaults to `localhost:9380`).
+Configure the Intellect RAG backend address in `.env.development` (defaults to `localhost:9380`).
 
 ### Production Build
 
@@ -48,7 +48,7 @@ cd bff && npm run build  # Build BFF
 docker compose up -d
 ```
 
-This starts agentui + intellect + all dependencies (MySQL, ES, Redis, MinIO).
+This starts agentui + intellect-rag + all dependencies (MySQL, ES, Redis, MinIO).
 
 ## Architecture
 
@@ -58,16 +58,16 @@ Browser
 Nginx (port 80)
   ├── / → SPA static files (dist/)
   ├── /api/bff/* → BFF (Node.js :9390)
-  ├── /api/v1/admin/* → intellect Python admin (:9381)
-  └── /v1/*, /api/* → intellect Python API (:9380)
+  ├── /api/v1/admin/* → intellect-rag Python admin (:9381)
+  └── /v1/*, /api/* → intellect-rag Python API (:9380)
 ```
 
 ## API Type Generation
 
-Types are generated from the Intellect OpenAPI spec (not committed to git):
+Types are generated from the Intellect RAG OpenAPI spec (not committed to git):
 
 ```bash
-# Ensure intellect backend is running with /api/v1/openapi.json endpoint
+# Ensure intellect-rag backend is running with /api/v1/openapi.json endpoint
 npm run gen:api-types
 ```
 
@@ -86,6 +86,6 @@ agentui/
 └── docker-compose.yml
 ```
 
-## Relationship with Intellect
+## Relationship with Intellect RAG
 
-This project was split from the [Intellect](https://github.com/ontoweb/intellect) monorepo. The Intellect backend provides the core RAG capabilities (document parsing, indexing, retrieval, LLM integration). AgentUI provides the frontend UI and Harness-specific BFF logic.
+This project was split from the [Intellect RAG](https://gitee.com/wustbd/intellect-rag) monorepo. The Intellect RAG backend provides the core RAG capabilities (document parsing, indexing, retrieval, LLM integration). AgentUI provides the frontend UI and Harness-specific BFF logic.

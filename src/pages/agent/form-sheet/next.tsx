@@ -32,7 +32,7 @@ interface IProps {
 
 const EmptyContent = () => <div></div>;
 const SandboxQuickstartUrl =
-  'https://github.com/ontoweb/intellect/blob/main/docs/guides/agent/agent_quickstarts/sandbox_quickstart.md';
+  'https://gitee.com/wustbd/intellect-rag/blob/main/docs/guides/agent/agent_quickstarts/sandbox_quickstart.md';
 
 const FormSheet = ({
   visible,

@@ -19,7 +19,7 @@ export const CodeTemplateStrMap = {
   [ProgrammingLanguage.Javascript]: `const axios = require('axios');
 async function main({}) {
   try {
-    const response = await axios.get('https://github.com/ontoweb/intellect');
+    const response = await axios.get('https://gitee.com/wustbd/intellect-rag');
     return 'Body:' + response.data;
   } catch (error) {
     return 'Error:' + error.message;

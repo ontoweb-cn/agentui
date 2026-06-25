@@ -9,7 +9,7 @@ import {
 
 export const adminRoutes = new Hono();
 
-// Standard response envelope matching Intellect Admin format:
+// Standard response envelope matching Intellect RAG Admin format:
 // { code: 0, message: string, data: T }
 function ok<T>(data: T, message = 'success') {
   return { code: 0, message, data };

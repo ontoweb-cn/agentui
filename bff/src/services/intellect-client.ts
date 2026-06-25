@@ -1,6 +1,6 @@
-const INTELLECT_HOST = process.env.INTELLECT_HOST || 'localhost';
+const INTELLECT_RAG_HOST = process.env.INTELLECT_RAG_HOST || 'localhost';
 const INTELLECT_PORT = process.env.PYTHON_API_PORT || '9380';
-const BASE_URL = `http://${INTELLECT_HOST}:${INTELLECT_PORT}`;
+const BASE_URL = `http://${INTELLECT_RAG_HOST}:${INTELLECT_PORT}`;
 
 async function request<T = unknown>(
   method: string,
@@ -31,13 +31,13 @@ async function request<T = unknown>(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Intellect API error ${response.status}: ${text}`);
+    throw new Error(`Intellect RAG API error ${response.status}: ${text}`);
   }
 
   return response.json() as Promise<T>;
 }
 
-export const intellectClient = {
+export const intellectRagClient = {
   get: <T = unknown>(path: string, token: string, query?: Record<string, string>) =>
     request<T>('GET', path, token, undefined, query),
   post: <T = unknown>(path: string, token: string, body: unknown) =>

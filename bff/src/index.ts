@@ -24,8 +24,8 @@ app.use('/api/*', authMiddleware);
 app.route('/api/agent', agentRoutes);
 app.route('/api/session', sessionRoutes);
 // Admin routes (BFF-owned: whitelist, roles, resources — migrated from
-// Intellect Admin stubs/missing routes). Strongly-coupled admin features
-// (users, services, sandbox, system settings) remain on Intellect Admin :9381.
+// Intellect RAG Admin stubs/missing routes). Strongly-coupled admin features
+// (users, services, sandbox, system settings) remain on Intellect RAG Admin :9381.
 app.route('/api/admin', adminRoutes);
 
 const port = Number(process.env.BFF_PORT) || 9390;
