@@ -1861,3 +1861,138 @@ bff/src/
 | `bff/src/services/adapters/intellect/client.ts` | P3 | 新建 |
 | `bff/src/services/adapters/intellect/adapter.ts` | P3 | 新建 |
 | `docs/intellect-admin-api-guide.md` | 已完成 | 新建（Intellect 侧 API 指南） |
+
+## 十六、Feature 模块化包管理机制（A 方案）
+
+### 设计目标
+
+将"横切式"模块组织（一个功能的 7 个部分散落在 8 个顶层文件）改造为"高内聚 Feature 文件夹 + 自动注册"，实现**新增功能 = 新建子目录 + 一个 manifest，零改动主应用文件**。
+
+### 方案对比与选型
+
+| 方案 | 机制 | 独立发布 | 运行时加载 | 当前选择 |
+|------|------|---------|-----------|---------|
+| **A. Feature Folder + import.meta.glob** | 构建期自动扫描 manifest 注册 | 否 | 否 | ✅ 已实现 |
+| **B. npm workspaces 多包** | 每个功能独立 npm 包 | 是 | 否 | 未来迁移目标 |
+| C. Module Federation | 运行时远程加载 | 是 | 是 | 过度工程，不选 |
+| D. 运行时插件 API | `registerPlugin()` 注入 | 部分 | 是 | 需第三方扩展时考虑 |
+
+**选型理由**：A 方案与 Vite 构建链零冲突、保留 Tree-shaking 与代码分割、迁移可渐进、不引入运行时风险。A 方案的 manifest 接口与 B 方案的 `package.json` 导出结构对齐，后续可平滑升级。
+
+### 核心架构
+
+```
+src/features/
+├── _types.ts              ← ModuleDefinition / NavItem / ModuleContext 契约
+├── _registry.ts           ← import.meta.glob 自动扫描 + enabled 过滤 + 聚合
+├── memories/              ← 试点 feature
+│   ├── manifest.ts        ← 模块自描述（路由/nav/i18n/能力开关）
+│   ├── routes.ts          ← 本模块路由常量
+│   └── locales/
+│       ├── zh.ts          ← 本模块 i18n（按语言懒加载）
+│       └── en.ts
+└── _builtin/              ← （预留）不可拆分的全局能力
+```
+
+### 注册流程
+
+```
+启动
+  ├── _registry.ts 用 import.meta.glob('./*/manifest.ts', eager) 扫描
+  ├── 读取 ModuleContext（isEnterprise + capabilities）
+  ├── 按 enabled(ctx) 过滤 + order 排序 → enabledModules
+  ├── 执行各模块 init(ctx)
+  └── 暴露三个聚合器：
+       collectRoutes()      → routes.tsx 拼入 wrapRoutes
+       collectNav()         → global-navbar.tsx 合并 menuItems + PathMap
+       collectI18nLazy()    → locales/config.ts 按语言懒加载合并
+```
+
+### 关键文件
+
+| 文件 | 职责 |
+|------|------|
+| [src/features/_types.ts](../src/features/_types.ts) | `ModuleDefinition` 接口契约，预留 B 方案迁移点 |
+| [src/features/_registry.ts](../src/features/_registry.ts) | 自动扫描 + 过滤 + 聚合收集器 |
+| [src/features/memories/manifest.ts](../src/features/memories/manifest.ts) | 试点模块自描述 |
+| [src/routes.tsx](../src/routes.tsx) | `wrapRoutes([...routeConfigOptions, ...collectRoutes()])` |
+| [src/layouts/components/global-navbar.tsx](../src/layouts/components/global-navbar.tsx) | `menuItems = [...static, ...collectNav()]`，PathMap 动态构建 |
+| [src/locales/config.ts](../src/locales/config.ts) | `loadLanguageAsync` 追加 feature i18n bundle 合并 |
+
+### Manifest 接口定义
+
+```typescript
+interface ModuleDefinition {
+  name: string;                              // 唯一标识
+  enabled?: (ctx: ModuleContext) => boolean; // 能力开关（替代散落的 IS_ENTERPRISE）
+  order?: number;                            // 菜单/路由排序
+  routes: LazyRouteConfig[];                 // 路由（含懒加载 + layout 包裹）
+  nav?: NavItem[];                           // 导航菜单项
+  i18n?: FeatureI18n;                        // 按语言懒加载的 i18n bundle
+  providers?: ComponentType[];               // 模块级 Provider
+  init?: (ctx: ModuleContext) => void;       // 生命周期：初始化
+}
+
+interface ModuleContext {
+  isEnterprise: boolean;
+  capabilities: Set<string>;                 // 来自 BFF /v1/capabilities
+}
+```
+
+### 新增功能流程（A 方案后）
+
+```
+1. 新建 src/features/<name>/
+2. 创建 manifest.ts（声明 routes/nav/i18n/enabled）
+3. 创建 routes.ts（本模块路由常量）
+4. 创建 locales/zh.ts、locales/en.ts（本模块文案）
+5. 完成 —— 无需改动 routes.tsx / global-navbar.tsx / locales/config.ts
+```
+
+对比第十三章的旧 8 步流程，主应用文件零改动。
+
+### 能力开关集中化
+
+将散落在各页面的 `IS_ENTERPRISE` 判断收敛到 manifest：
+
+```typescript
+// 旧：散落在 pages/admin/*.tsx
+import { IS_ENTERPRISE } from './utils';
+if (IS_ENTERPRISE) { ... }
+
+// 新：manifest 声明
+{
+  name: 'enterprise-admin',
+  enabled: ({ isEnterprise }) => isEnterprise,
+  routes: [...],
+}
+```
+
+### 向 B 方案（npm workspaces）迁移路径
+
+A 方案的 manifest 接口已与 B 方案对齐，迁移步骤：
+
+1. **包化**：将 `src/features/<name>/` 提升为 `packages/<name>/`，加独立 `package.json`
+2. **导出 manifest**：`package.json` 的 `exports` 暴露 `./manifest`
+3. **扫描改造**：`_registry.ts` 的 `import.meta.glob` 改为扫描 `packages/*/manifest.ts`
+4. **依赖管理**：feature 包声明对 `@agentui/shared`（_types、_builtin）的依赖
+5. **独立发布**：feature 包可独立版本号、独立 changelog、跨仓共享
+
+迁移期间 A/B 可共存（部分 feature 在 `src/features/`，部分在 `packages/`），`_registry.ts` 同时扫描两个目录。
+
+### 当前实现状态
+
+- ✅ P0 基建：`_types.ts` + `_registry.ts` + 三个主应用入口改造完成
+- ✅ P1 试点：`memories` feature 迁移完成，复用现有页面组件
+- ✅ 验证：`tsc --noEmit` 零错误，`vite build` 成功，memories chunk 正常分割
+- ⏳ P2 批量：待迁移 `agents → datasets → chats → searches → files`
+- ⏳ P3 收敛：删除旧 `pages/hooks/services` 中央总线
+- ⏳ P4 可选：升级到 B 方案 npm workspaces
+
+### 设计要点
+
+- **新旧并行**：P0-P2 期间 `routeConfigOptions`（旧）与 `collectRoutes()`（新）共存，渐进迁移零回归
+- **LazyRouteConfig 复用**：feature manifest 的路由类型与项目自有 `LazyRouteConfig` 一致，直接复用 `wrapRoutes` 懒加载包装
+- **i18n 按语言懒加载**：feature 声明 `lazy: { zh, en }`，`loadLanguageAsync` 按当前语言合并，首屏只加载可见模块文案
+- **PathMap 动态构建**：从 `collectNav()` 的 `pathMap` 字段聚合，取代硬编码对象
+- **capability 驱动**：`ModuleContext.capabilities` 与 BFF `/v1/capabilities` 联动，实现前后端能力同步

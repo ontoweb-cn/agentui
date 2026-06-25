@@ -1,4 +1,5 @@
 import { LanguageAbbreviation } from '@/constants/common';
+import { collectI18nLazy } from '@/features/_registry';
 import storage from '@/utils/authorization-util';
 import dayjs from 'dayjs';
 import i18n from 'i18next';
@@ -92,6 +93,28 @@ export const loadLanguageAsync = async (lng: string): Promise<void> => {
     const module = await importFn();
     const translationData = module.default?.translation || module.default;
     i18n.addResourceBundle(normalizedLng, 'translation', translationData);
+
+    const featureLazy = collectI18nLazy();
+    const featureLoadersForLang = Object.entries(featureLazy).filter(
+      ([key]) => key.endsWith(`:${normalizedLng}`),
+    );
+    await Promise.all(
+      featureLoadersForLang.map(async ([key, loader]) => {
+        try {
+          const featureModule = await loader();
+          const featureData = featureModule.default ?? {};
+          i18n.addResourceBundle(
+            normalizedLng,
+            'translation',
+            featureData,
+            true,
+            true,
+          );
+        } catch (error) {
+          console.error(`Failed to load feature i18n ${key}:`, error);
+        }
+      }),
+    );
   } catch (error) {
     console.error(`Failed to load language ${lng}:`, error);
   }

@@ -4,45 +4,34 @@ import { Link, useLocation } from 'react-router';
 
 import { LucideHouse } from 'lucide-react';
 
+import { collectNav } from '@/features/_registry';
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 import { supportsCssAnchor } from '@/utils/css-support';
-
-const PathMap = {
-  [Routes.Datasets]: [Routes.Datasets, Routes.DatasetBase],
-  [Routes.Chats]: [Routes.Chats, Routes.Chat],
-  [Routes.Searches]: [Routes.Searches, Routes.Search],
-  [Routes.Agents]: [Routes.Agents, Routes.AgentTemplates],
-  [Routes.Memories]: [Routes.Memories, Routes.Memory, Routes.MemoryMessage],
-  [Routes.Files]: [Routes.Files],
-} as const;
 
 // Match on path-segment boundaries, not a loose substring, so e.g.
 // "/user-setting/chat-channel" does not match the "/chat" tab.
 const matchesPath = (pathname: string, candidate: string) =>
   pathname === candidate || pathname.startsWith(`${candidate}/`);
 
-const menuItems = [
+const staticMenuItems = [
   { path: Routes.Root, name: 'header.Root', icon: LucideHouse },
-  { path: Routes.Datasets, name: 'header.dataset' /* icon: Library, */ },
-  {
-    path: Routes.Chats,
-    name: 'header.chat',
-    /* icon: MessageSquareText, */ 'data-testid': 'nav-chat',
-  },
-  {
-    path: Routes.Searches,
-    name: 'header.search',
-    /* icon: Search, */ 'data-testid': 'nav-search',
-  },
-  {
-    path: Routes.Agents,
-    name: 'header.flow',
-    /* icon: Cpu, */ 'data-testid': 'nav-agent',
-  },
-  { path: Routes.Memories, name: 'header.memories' /* icon: Cpu, */ },
-  { path: Routes.Files, name: 'header.fileManager' /* icon: File, */ },
 ];
+
+const featureNavItems = collectNav().map((item) => ({
+  path: item.path,
+  name: item.labelKey,
+  ...(item.icon ? { icon: item.icon } : {}),
+  ...(item.testId ? { 'data-testid': item.testId } : {}),
+}));
+
+const menuItems = [...staticMenuItems, ...featureNavItems];
+
+const PathMap = menuItems.reduce<Record<string, string[]>>((acc, item) => {
+  const featureItem = collectNav().find((f) => f.path === item.path);
+  acc[item.path] = featureItem?.pathMap ?? [item.path];
+  return acc;
+}, {});
 
 const GlobalNavbar = supportsCssAnchor
   ? () => {

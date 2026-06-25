@@ -6,6 +6,7 @@ import {
   type RouteObject,
 } from 'react-router';
 import FallbackComponent from './components/fallback-component';
+import { collectRoutes } from './features/_registry';
 import { IS_ENTERPRISE } from './pages/admin/utils';
 import authorizationUtil from './utils/authorization-util';
 
@@ -118,25 +119,6 @@ const routeConfigOptions = [
     layout: false,
   },
   {
-    path: Routes.ChatShare,
-    Component: () => import('@/pages/next-chats/share'),
-    layout: false,
-  },
-  {
-    path: Routes.AgentShare,
-    Component: () => import('@/pages/agent/share'),
-    layout: false,
-  },
-  {
-    path: Routes.ChatWidget,
-    Component: () => import('@/pages/next-chats/widget'),
-    layout: false,
-  },
-  {
-    path: Routes.AgentList,
-    Component: () => import('@/pages/agents'),
-  },
-  {
     path: '/document/:id',
     Component: () => import('@/pages/document-viewer'),
     layout: false,
@@ -168,91 +150,9 @@ const routeConfigOptions = [
     ],
   },
   {
-    path: Routes.Chat + '/:id',
-    Component: () => import('@/pages/next-chats/chat'),
-  },
-  {
     path: Routes.Root,
     Component: () => import('@/layouts/root-layout'),
     children: [
-      {
-        path: Routes.Datasets,
-        Component: () => import('@/pages/datasets'),
-      },
-      {
-        path: Routes.DatasetBase,
-        Component: () => import('@/pages/dataset'),
-        children: [
-          {
-            path: `${Routes.Dataset}/:id`,
-            Component: () => import('@/pages/dataset/dataset'),
-          },
-          {
-            path: `${Routes.DatasetBase}${Routes.DatasetTesting}/:id`,
-            Component: () => import('@/pages/dataset/testing'),
-          },
-          {
-            path: `${Routes.DatasetBase}${Routes.KnowledgeGraph}/:id`,
-            Component: () => import('@/pages/dataset/knowledge-graph'),
-          },
-          {
-            path: `${Routes.DatasetBase}${Routes.DataSetOverview}/:id`,
-            Component: () => import('@/pages/dataset/dataset-overview'),
-          },
-          {
-            path: `${Routes.DatasetBase}${Routes.DataSetSetting}/:id`,
-            Component: () => import('@/pages/dataset/dataset-setting'),
-          },
-        ],
-      },
-      {
-        path: Routes.Chats,
-        Component: () => import('@/pages/next-chats'),
-      },
-      {
-        path: Routes.Searches,
-        Component: () => import('@/pages/next-searches'),
-      },
-      {
-        path: `${Routes.Search}/:id`,
-        layout: false,
-        Component: () => import('@/pages/next-search'),
-      },
-      {
-        path: Routes.Agents,
-        Component: () => import('@/pages/agents'),
-      },
-      {
-        path: Routes.AgentTemplates,
-        layout: false,
-        Component: () => import('@/pages/agents/agent-templates'),
-      },
-      {
-        path: Routes.Memories,
-        Component: () => import('@/pages/memories'),
-      },
-      {
-        path: `${Routes.Memory}`,
-        Component: () => import('@/pages/memory'),
-        children: [
-          {
-            path: `${Routes.Memory}/${Routes.MemoryMessage}/:id`,
-            Component: () => import('@/pages/memory/memory-message'),
-          },
-          {
-            path: `${Routes.Memory}/${Routes.MemorySetting}/:id`,
-            Component: () => import('@/pages/memory/memory-setting'),
-          },
-        ],
-      },
-      {
-        path: Routes.Files,
-        Component: () => import('@/pages/files'),
-      },
-      {
-        path: Routes.Skills,
-        Component: () => import('@/pages/skills'),
-      },
       {
         path: Routes.UserSetting,
         Component: () => import('@/pages/user-setting'),
@@ -308,28 +208,6 @@ const routeConfigOptions = [
           import('@/pages/user-setting/data-source/data-source-detail-page'),
       },
     ],
-  },
-  {
-    path: `${Routes.SearchShare}`,
-    Component: () => import('@/pages/next-search/share'),
-  },
-  {
-    path: Routes.Agent,
-    children: [
-      {
-        path: `${Routes.Agent}/:id`,
-        Component: () => import('@/pages/agent'),
-      },
-      {
-        path: Routes.AgentExplore,
-        Component: () => import('@/pages/agent/explore'),
-        errorElement: <FallbackComponent />,
-      },
-    ],
-  },
-  {
-    path: `${Routes.AgentLogPage}/:id`,
-    Component: () => import('@/pages/agents/agent-log-page'),
   },
   {
     path: `${Routes.DataflowResult}`,
@@ -425,7 +303,10 @@ const wrapRoutes = (routes: LazyRouteConfig[]): RouteObject[] =>
     return next;
   });
 
-const routeConfig = wrapRoutes(routeConfigOptions);
+const routeConfig = wrapRoutes([
+  ...routeConfigOptions,
+  ...collectRoutes(),
+]);
 
 const routers = createBrowserRouter(routeConfig, {
   basename: import.meta.env.VITE_BASE_URL || '/',
