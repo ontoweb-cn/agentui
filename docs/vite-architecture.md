@@ -1996,3 +1996,143 @@ A 方案的 manifest 接口已与 B 方案对齐，迁移步骤：
 - **i18n 按语言懒加载**：feature 声明 `lazy: { zh, en }`，`loadLanguageAsync` 按当前语言合并，首屏只加载可见模块文案
 - **PathMap 动态构建**：从 `collectNav()` 的 `pathMap` 字段聚合，取代硬编码对象
 - **capability 驱动**：`ModuleContext.capabilities` 与 BFF `/v1/capabilities` 联动，实现前后端能力同步
+
+## 十七、方案 B（npm workspaces 多包）迁移评审
+
+### 现状基线
+
+- A 方案已落地：6 个 feature 在 `src/features/<name>/`，由 `_registry.ts` 用 `import.meta.glob('./*/manifest.ts')` 构建期扫描注册
+- `package.json` 已有 `"workspaces": ["bff"]`，BFF 是独立 workspace 包的先例
+- TS path alias：`@/* → src/*`；Vite alias 同步
+- `_types.ts` 的 `ModuleDefinition` 接口已是纯类型契约，无运行时耦合，天然可跨包共享
+
+### 方案 B 架构目标
+
+```
+agentui/                          (monorepo root)
+├── package.json                  workspaces: ["packages/*", "bff"]
+├── packages/
+│   ├── shared/                   @agentui/shared（_types + _registry + 全局工具）
+│   │   ├── package.json
+│   │   └── src/
+│   │       ├── types.ts          ModuleDefinition 契约
+│   │       └── registry.ts       createRegistry() 工厂
+│   ├── feature-memories/         @agentui/feature-memories
+│   │   ├── package.json          exports: "./manifest"
+│   │   └── src/
+│   │       ├── manifest.ts       import type { ModuleDefinition } from '@agentui/shared'
+│   │       ├── routes.ts
+│   │       └── locales/
+│   ├── feature-agents/
+│   ├── feature-datasets/
+│   ├── feature-chats/
+│   ├── feature-searches/
+│   └── feature-files/
+└── src/                          主壳应用（app）
+    ├── app.tsx
+    ├── routes.tsx                import { collectRoutes } from '@agentui/shared'
+    └── pages/                    仍未包化的页面（login/admin/user-setting 等）
+```
+
+### 优势
+
+- **独立版本与发布**：每个 feature 包有独立 `package.json`、版本号、changelog，可单独发布到内部 npm registry，不同产品线按需组合 `@agentui/feature-agents@^1.2.0`
+- **跨仓复用**：feature 包可被其他基于 Intellect 的前端项目 install 使用，真正实现"一次开发多处复用"，对应项目"AgentUI 是通用应用框架"的定位
+- **强制边界**：包边界天然限制跨模块直接 import，杜绝 `pages/agents` 直接引 `pages/datasets` 内部工具的隐式耦合，依赖关系显式化
+- **独立测试**：每个 feature 包可配独立 jest config、独立 CI job，改 agents 模块只跑 agents 测试，CI 反馈更快
+- **按需装配产品形态**：社区版 `app` 只依赖 `feature-agents + feature-chats`；企业版额外依赖 `feature-memories + feature-admin`，通过 `package.json` dependencies 控制能力集，比 `IS_ENTERPRISE` 环境变量更彻底
+- **构建优化**：未 install 的 feature 包完全不进入构建图，Tree-shaking 更彻底；可对高频变动包单独缓存
+- **迁移契约已就绪**：`_types.ts` 的 `ModuleDefinition` 是纯类型、`manifest.ts` 只依赖 `@/pages/*`（壳应用资产），包化时只需把 `@/` 换成 `@agentui/app` 或保留页面在壳应用
+
+### 不足与风险
+
+- **构建链复杂度上升**：`@/` alias 需扩展为多包路径解析，Vite 的 `resolve.alias` 和 TS `paths` 都要加 `@agentui/*` 映射；Vite 对 workspace 符号链接 + 预打包的处理需调试（可能需要 `optimizeDeps.exclude` 或 `preserveSymlinks`）
+- **`@/pages/*` 反向依赖问题**：当前 feature manifest 里 `Component: () => import('@/pages/memories')` 指向壳应用的页面。包化后页面要么(a)迁进 feature 包（工作量大，页面依赖大量共享组件/service/hook），要么(b)保留在壳应用由 feature 反向引用（破坏包边界，依赖倒置）
+- **i18n key 全局耦合**：feature locales 当前导出空对象占位，真实文案仍在 `src/locales/*.ts` 巨型文件里。包化后要么(a)把文案真正迁进包（需逐 key 拆分，易漏），要么(b)保持全局（feature 包不自洽）
+- **开发体验下降**：改一个 feature 需在对应包目录操作，跨包调试要 `npm run build` 或依赖 Vite 对 workspace 的实时解析；HMR 可能因跨包边界失效需额外配置
+- **CI/发布流程变重**：需引入 changeset 或 lerna 管理多包版本与依赖联动；一次跨包改动可能触发多包重新发布
+- **service/hook/types 仍在 `src/`**：`src/services/`、`src/hooks/`、`src/interfaces/` 没有包化，feature 包仍需从壳应用 `@/services/xxx` 引用，包的"独立性"是部分的
+- **过度工程风险**：当前单团队、单产品，6 个 feature 的体量未必需要多包开销；若短期无跨仓复用需求，包化收益 < 维护成本
+- **BFF 已是 workspace 先例但不完全可比**：BFF 是独立运行时进程（独立 build/start），而 feature 包是构建期被壳应用打包消费，链路更耦合
+
+### 迁移方案（三档供评审）
+
+#### 方案 B-1：完整多包（激进）
+
+将 6 个 feature + shared 全部提升为 `packages/*`，页面/service/hook 一并迁入。
+
+```
+packages/
+├── shared/
+├── feature-memories/   (含 pages/memories + hooks + service + types + locales)
+├── feature-agents/     (含 pages/agents + agent + hooks + service)
+└── ...
+```
+
+- 优点：边界最彻底，真正独立可发布
+- 缺点：工作量最大（需迁移 pages/hooks/services/interfaces 四类资产），一次性回归风险高，i18n 拆分最痛
+- 适用：明确有跨仓复用、多产品线装配需求
+
+#### 方案 B-2：壳应用托管页面（务实，推荐）
+
+feature 包只含 `manifest + routes + locales`，页面组件保留在壳应用 `src/pages/`，feature 通过"路径约定"引用壳应用导出的页面入口。
+
+```
+packages/feature-memories/
+├── package.json        "main": "./src/manifest.ts", dependencies: { "@agentui/shared": "*" }
+└── src/
+    ├── manifest.ts     Component: () => import('@agentui/app/pages/memories')
+    └── locales/
+
+src/app/                壳应用，导出 pages 入口表
+└── pages-registry.ts   export { default as MemoriesPage } from './pages/memories'
+```
+
+- 优点：迁移成本最低（只搬 manifest/routes/locales），页面/service 不动，契约不变
+- 缺点：feature 包仍依赖壳应用的页面入口，不是完全独立可发布，更像"逻辑分包"
+- 适用：希望获得包边界与独立版本管理，但不想大规模搬迁页面资产
+
+#### 方案 B-3：渐进混合（最稳）
+
+`_registry.ts` 同时扫描 `src/features/*/manifest.ts`（A 方案）和 `packages/*/src/manifest.ts`（B 方案），按需逐个包化。
+
+```typescript
+// _registry.ts 同时支持两种来源
+const localFeatures = import.meta.glob('../features/*/manifest.ts', { eager: true });
+const packageFeatures = import.meta.glob('../../packages/*/src/manifest.ts', { eager: true });
+```
+
+- 优点：A/B 共存，可先包化 1-2 个最稳定的 feature（如 files）验证链路，无回归压力
+- 缺点：双轨期 `_registry` 逻辑略复杂，需明确哪些在 `src/features`、哪些在 `packages`
+- 适用：不确定收益、想低风险验证 B 方案可行性的场景
+
+### 评审对比矩阵
+
+| 维度 | B-1 完整多包 | B-2 壳应用托管 | B-3 渐进混合 |
+|------|-------------|---------------|-------------|
+| 独立发布能力 | 完全 | 部分 | 部分 |
+| 迁移工作量 | 大 | 小 | 小 |
+| 回归风险 | 高 | 低 | 低 |
+| 包边界严格度 | 严格 | 中等 | 中等 |
+| 跨仓复用 | 支持 | 不支持 | 不支持 |
+| 适合当前阶段 | 过早 | 合适 | 合适 |
+
+### 评审结论与推荐
+
+**推荐 B-3 渐进混合**作为验证起点，先包化 `files`（结构最简单、依赖最少）跑通 `packages/*/src/manifest.ts` 扫描 + Vite/TS 多包解析链路。验证通过后：
+
+- 若确认有跨仓复用需求 → 按 B-1 逐步把页面/service/hook 迁入包内
+- 若仅为了模块边界清晰 → 停在 B-2 即可
+
+**关键决策点**：
+
+1. 是否有跨项目复用 feature 的硬需求？若否，B-2/B-3 即可，不必上 B-1
+2. i18n 是否接受"包内导出文案、壳应用合并"的拆分模式？这是包化的前置条件
+3. 是否愿意接受 CI 流程引入 changeset/多包发布工具？
+
+### A 方案已为 B 方案预留的迁移点
+
+- `_types.ts` 的 `ModuleDefinition` 是纯类型契约，无运行时依赖，可直接提升为 `@agentui/shared`
+- `_registry.ts` 的 `import.meta.glob` 模式可扩展为双源扫描（`src/features/*` + `packages/*/src`）
+- 每个 feature 的 `manifest.ts` 仅依赖 `@/pages/*`（壳应用资产）和 `../_types`（可替换为 `@agentui/shared`），包化时改动集中在 import 路径
+- `routes.tsx` / `global-navbar.tsx` / `locales/config.ts` 三个入口已统一从 `collectRoutes/collectNav/collectI18nLazy` 读取，B 方案只需让这些聚合器多扫一个目录，入口代码零改动
