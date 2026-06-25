@@ -9,11 +9,11 @@
 
 ### 1.1 背景
 
-AgentUI 当前与 Intellect 深度耦合，需支持多种 Agent Harness 后端：
+AgentUI 当前与 Intellect RAG 深度耦合，需支持多种 Agent Harness 后端：
 
 | 后端 | 协议 | 项目地址 | 说明 |
 |------|------|---------|------|
-| Intellect | OpenAI 兼容 REST + SSE | `~/workspace/intellect` | 画布编排 + 知识库 |
+| Intellect RAG | OpenAI 兼容 REST + SSE | `~/workspace/intellect-rag` | 画布编排 + 知识库 |
 | Intellect 企业版 | OpenAI 兼容 REST + SSE | `~/workspace/intellect-team` | 多租户 Team/Project + 编码 Agent |
 | Intellect 社区版 | ACP（stdio JSON-RPC） | `~/workspace/intellect-agent` | 单用户，未来扩展 OpenAPI |
 | Hermes | ACP | `~/workspace/hermes-agent` | 同 Intellect 同源 |
@@ -39,7 +39,7 @@ AgentUI 当前与 Intellect 深度耦合，需支持多种 Agent Harness 后端�
 |------|------------|-----------|------------|---------|
 | 前端改动 | 极小 | 中（换SDK） | 大 | 大 |
 | BFF 改动 | 大 | 中 | 极小 | 极小 |
-| Intellect 改动 | 无 | 大(建桥) | 无 | 无 |
+| Intellect RAG 改动 | 无 | 大(建桥) | 无 | 无 |
 | 画布编排保留 | ✅ | ❌ | ✅ | ✅ |
 | 多租户扩展性 | ✅ | ✅ | ✅ | ✅ |
 | 新后端接入成本 | 中(写Adapter) | 低(原生ACP) | 高(写前端service) | 高(写子应用) |
@@ -48,10 +48,10 @@ AgentUI 当前与 Intellect 深度耦合，需支持多种 Agent Harness 后端�
 
 ### 2.2 选择方案 A 的理由
 
-1. **保护 Intellect 画布编排**——这是 AgentUI 最有价值的差异化能力，方案 B 会丢失
+1. **保护 Intellect RAG 画布编排**——这是 AgentUI 最有价值的差异化能力，方案 B 会丢失
 2. **前端零业务改动**——符合"BFF 生长"方向，前端只改 API 常量
-3. **ACP 后端共享一个 Adapter**——Intellect/Hermes/OpenClaw 用同一 `AcpAdapter`，边际成本低
-4. **渐进式迁移**——可先做 Intellect Adapter（包装现有逻辑），再加 ACP Adapter
+3. **ACP 后端共享一个 Adapter**——Intellect RAG 画布编排 + 知识库/Hermes/OpenClaw 用同一 `AcpAdapter`，边际成本低
+4. **渐进式迁移**——可先做 Intellect RAG Adapter（包装现有逻辑），再加 ACP Adapter
 5. **能力探测**——前端通过 `/api/bff/capabilities` 一次性获取后端能力，条件渲染页面
 
 ### 2.3 整体架构
@@ -162,9 +162,9 @@ BFF Tenant（BFF 维护，轻量）
 - Team/Project/Member 数据不复制到 BFF，通过 Intellect HTTP API 透传管理
 - 一个 BFF Tenant 可绑定多个后端（Intellect + Intellect），画布走 Intellect，Team/Project 走 Intellect
 
-### 3.4 画布：复用 Intellect 画布引擎
+### 3.4 画布：复用 Intellect RAG 画布引擎
 
-**架构调整**：画布不再是"扩展层可选能力"，而是**Intellect 专属能力，Intellect 企业版通过 BFF 调用 Intellect 画布**。
+**架构调整**：画布不再是"扩展层可选能力"，而是**Intellect RAG 专属能力，Intellect 企业版通过 BFF 调用 Intellect RAG 画布**。
 
 ```
 ┌─────────────────────────────────────────────────────┐
