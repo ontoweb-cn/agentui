@@ -1,0 +1,13 @@
+/node_modules
+/.env.local
+/dist
+.swc
+
+# OpenAPI 生成类型（CI 动态生成）
+/src/interfaces/generated/
+
+# BFF admin 运行时数据（首次启动自动生成）
+/bff/data/
+
+*storybook.log
+storybook-static
