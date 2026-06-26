@@ -13,14 +13,14 @@
 
 ### 1.1 现状
 
-AgentUI 的 Admin 模块当前直连 Intellect Admin（端口 9381），users / services / sandbox / version 四类运维接口与 Intellect 强耦合：
+AgentUI 的 Admin 模块当前直连 Intellect RAG Admin（端口 9381），users / services / sandbox / version 四类运维接口与 Intellect RAG 强耦合：
 
 | 模块 | 当前路径 | 数据源 | 问题 |
 |------|---------|--------|------|
-| users | `/api/v1/admin/users/*` | Intellect Admin | 字段为 Intellect 专有（`activate_status`、`is_superuser`、`access_token`），无法对接 Intellect Member 模型 |
-| services | `/api/v1/admin/services/*` | Intellect Admin | 返回 Intellect 内部 task manager 状态，与 Intellect `/health/detailed` 语义不一致 |
-| sandbox | `/api/v1/admin/sandbox/*` | Intellect Admin | 调用 Intellect `SandboxMgr`，Intellect 用 codex_runtime/tool_executor，无对等 API |
-| version | `/api/v1/admin/version` | Intellect Admin | 返回 `get_intellect_version()`，Intellect 用 `intellect_cli/_version.py` |
+| users | `/api/v1/admin/users/*` | Intellect RAG Admin | 字段为 Intellect RAG 专有（`activate_status`、`is_superuser`、`access_token`），无法对接 Intellect 企业版 Member 模型 |
+| services | `/api/v1/admin/services/*` | Intellect RAG Admin | 返回 Intellect RAG 内部 task manager 状态，与 Intellect 企业版 `/health/detailed` 语义不一致 |
+| sandbox | `/api/v1/admin/sandbox/*` | Intellect RAG Admin | 调用 Intellect RAG `SandboxMgr`，Intellect 企业版用 codex_runtime/tool_executor，无对等 API |
+| version | `/api/v1/admin/version` | Intellect RAG Admin | 返回 `get_intellect_version()`，Intellect 企业版用 `intellect_cli/_version.py` |
 
 ### 1.2 目标
 
@@ -44,7 +44,7 @@ AgentUI 的 Admin 模块当前直连 Intellect Admin（端口 9381），users / 
 ```
 IHarnessAdapter（业务运行时）
   ├─ Agent / Session / Message 流式
-  └─ 多租户 Team/Project（Intellect 扩展层）
+  └─ 多租户 Team/Project（Intellect 企业版扩展层）
 
 IPlatformAdminAdapter（平台运维层）  ← 本文档
   ├─ IUserAdmin        用户管理
@@ -78,13 +78,13 @@ interface IPlatformAdminAdapter {
 
 **理由**：
 - Intellect 企业版当前无 sandbox admin API，可只实现 version + users + services
-- 未来 ACP 后端可只实现 version
-- 避免后端为不实现的方法返回 `not implement` 异常（与 Intellect Admin 当前问题一致）
+- 未来其他后端可只实现 version
+- 避免后端为不实现的方法返回 `not implement` 异常（与 Intellect RAG Admin 当前问题一致）
 
 ### 2.2 能力分级
 
-| 能力 | 必选性 | Intellect | Intellect 企业版 | Intellect 社区版 |
-|------|--------|---------|-----------------|-----------------|
+| 能力 | 必选性 | Intellect RAG | Intellect 企业版 | 其他后端 |
+|------|--------|--------------|-----------------|---------|
 | version | **必选** | ✅ 已有 `/admin/version` | ⚠️ 需新增 `/api/version` | ⚠️ 需新增 |
 | users | 可选 | ✅ 已有 `/admin/users/*` | ✅ 已有 `/api/members/*`（语义不同） | ❌ 单用户，不实现 |
 | services | 可选 | ✅ 已有 `/admin/services/*` | ✅ 已有 `/health/detailed` | ❌ 单进程，不实现 |
@@ -96,12 +96,42 @@ interface IPlatformAdminAdapter {
 - 各 Adapter 负责将后端原生响应映射到统一 Schema
 - 前端 service 与页面**只依赖统一 Schema**，不感知后端差异
 
-### 2.4 鉴权：复用现有 Admin 鉴权
+### 2.4 鉴权：Admin Token 完整传递链
 
-- Admin 模块已有独立登录态（admin token 存 localStorage）
-- BFF `authMiddleware` 校验 admin token
-- BFF 调用后端时，从 `HarnessBackend.adminToken`（环境变量注入）注入 `Authorization: Bearer <token>`
-- 多租户场景下，按 TenantContext 选择对应后端的 admin token
+Admin 鉴权采用**前后端 Token 分离**策略：
+
+| Token 类型 | 用途 | 存储 | 作用域 |
+|-----------|------|------|-------|
+| 前端 Admin Token | 识别前端用户身份 | localStorage | 控制前端页面路由/菜单 |
+| BFF 环境变量 Token | BFF 对后端的操作权限 | 环境变量（不落盘） | 注入到后端请求头 |
+
+**Token 传递流程**：
+
+```
+前端                     BFF                       Intellect 企业版
+  │                       │                              │
+  │  登录（获取 admin token）  │                              │
+  │───────────────────────>│                              │
+  │                       │  校验 token                   │
+  │                       │─────────────────────────────>│
+  │                       │                              │
+  │  请求 /api/bff/admin/*  │                              │
+  │  (Bearer: frontend_token)│                             │
+  │───────────────────────>│                              │
+  │                       │  BFF 用自己的环境变量 token    │
+  │                       │  注入 Authorization 头        │
+  │                       │─────────────────────────────>│
+  │                       │                              │
+  │  返回数据              │                              │
+  │<───────────────────────│                              │
+```
+
+**实现要点**：
+- 前端 admin token 用于识别前端用户身份（"我是谁"），控制前端页面路由/菜单
+- BFF 从 `HarnessBackend.adminToken`（环境变量注入）获取 token，注入到后端请求头
+- BFF `authMiddleware` 校验前端 token，验证用户身份后放行
+- 多租户场景下，按 TenantContext 选择对应后端的 admin token（来自 `HarnessBackend.adminToken`）
+- **两个 Token 完全解耦**，互不泄露
 
 ### 2.5 BFF 持久化策略
 
@@ -112,6 +142,99 @@ interface IPlatformAdminAdapter {
 | whitelist/roles/resources | 已有 JSON 持久化 | BFF 接管，与本文档无关 |
 
 > users / services / sandbox / version 都是**只读或近实时**的运维数据，BFF 不持久化，只做协议转换。
+
+### 2.6 Admin 权限与 RBAC
+
+#### 2.6.1 权限层次
+
+运维管理（Admin）涉及两个**完全独立**的权限层次：
+
+| 层次 | 权限来源 | 控制范围 |
+|------|---------|---------|
+| **BFF Admin 权限** | BFF whitelist/roles/resources | 谁能访问 Admin 页面（用户管理/服务监控/沙箱配置/版本） |
+| **后端 Member 权限** | Intellect 企业版 Member.role | Team/Project 级别的资源访问 |
+
+**BFF Admin 权限（运维管理）**
+
+| BFF 角色 | 可访问模块 |
+|---------|----------|
+| superadmin | users + services + sandbox + version |
+| operator | services + version |
+| user | version（只读） |
+
+- BFF 维护独立的 admin 角色模型（whitelist/roles/resources）
+- Admin token 存 localStorage，BFF authMiddleware 校验
+- 与业务租户（Team/Project）权限完全解耦
+
+**后端 Member 权限（Intellect 企业版）**
+
+Intellect 企业版 Member 的 `role` 字段（owner/admin/member/viewer）控制 Team/Project 级别的资源访问，与 BFF Admin 权限**完全独立**。
+
+#### 2.6.2 前端 Admin 页面权限判断
+
+```
+前端启动
+    │
+    ▼
+GET /api/bff/capabilities
+    │
+    ├─── 后端可达 ──── 返回 adminCapabilities
+    │                      │
+    │                      ▼
+    │              adminCapabilities.users = true/false
+    │                      │
+    │                      ▼
+    │              users 菜单显示/隐藏
+    │
+    └─── 后端不可达 ── 显示"服务降级页"
+```
+
+#### 2.6.3 能力探测后的 UI 降级策略
+
+| 场景 | 策略 | 具体行为 |
+|------|------|---------|
+| `capability = false` | **菜单隐藏** | 该菜单项完全不显示 |
+| `capability = true` 但用户无 BFF 权限 | **按钮禁用 + tooltip** | 菜单显示，操作按钮禁用，提示"请联系管理员" |
+| API 返回 403 | **错误提示** | Toast 弹窗"您没有权限执行此操作"，提供联系管理员入口 |
+| 后端不可达 | **服务降级页** | 页面显示"服务暂时不可用"，提供刷新入口 |
+
+**实现示例**：
+
+```typescript
+// Admin 菜单渲染
+function AdminNavigation({ capabilities, userRole }) {
+  return (
+    <nav>
+      {/* 能力=false，完全隐藏 */}
+      {!capabilities.adminUsers && null}
+
+      {/* 能力=true，检查BFF权限 */}
+      {capabilities.adminUsers && (
+        <NavLink>
+          {userRole === 'superadmin'
+            ? '用户管理'
+            : <DisabledNavLink tooltip="请联系管理员">用户管理</DisabledNavLink>
+          }
+        </NavLink>
+      )}
+
+      {/* 能力=false，完全隐藏 */}
+      {!capabilities.adminSandbox && null}
+      {capabilities.adminSandbox && <NavLink>沙箱配置</NavLink>}
+
+      {/* version 永远显示（只读） */}
+      <NavLink>系统版本</NavLink>
+    </nav>
+  );
+}
+
+// API 403 处理
+.catch(err => {
+  if (err.response?.status === 403) {
+    toast.error('您没有权限执行此操作，请联系管理员');
+  }
+});
+```
 
 ---
 
@@ -152,7 +275,7 @@ export interface AdminCapabilities {
 ### 3.2 各后端能力声明
 
 ```typescript
-// IntellectCommunityAdapter.discoverCapabilities()
+// IntellectRagAdapter.discoverCapabilities()
 async discoverCapabilities(): Promise<HarnessCapabilities> {
   return {
     canvas: true,
@@ -172,7 +295,7 @@ async discoverCapabilities(): Promise<HarnessCapabilities> {
 // IntellectEnterpriseAdapter.discoverCapabilities()
 async discoverCapabilities(): Promise<HarnessCapabilities> {
   return {
-    canvas: false,              // 画布走 Intellect
+    canvas: false,              // 画布走 Intellect RAG
     knowledgeBase: false,
     memory: true,
     mcp: true,
@@ -182,7 +305,7 @@ async discoverCapabilities(): Promise<HarnessCapabilities> {
     adminUsers: true,           // /api/members/*
     adminServices: true,        // /health/detailed
     adminSandbox: false,        // 暂无 admin API
-    adminVersion: true,         // 需 Intellect 侧新增 /api/version
+    adminVersion: true,         // 需 Intellect 企业版侧新增 /api/version
   };
 }
 ```
@@ -250,7 +373,7 @@ export interface PlatformComponent {
 
 ```typescript
 export interface PlatformUser {
-  id: string;                   // 后端原生 ID（Intellect 用 email，Intellect 用 member_id）
+  id: string;                   // 后端原生 ID（Intellect RAG 用 email，Intellect 企业版用 member_id）
   email: string;                // 主邮箱
   displayName: string;          // 显示名
   status: 'active' | 'disabled' | 'pending';  // 统一状态枚举
@@ -315,7 +438,7 @@ export interface PlatformServiceMetrics {
 }
 
 export interface PlatformServiceDetail extends PlatformService {
-  components: PlatformService[];  // 子组件状态（如 Intellect 的 platforms 列表）
+  components: PlatformService[];  // 子组件状态（如 Intellect 企业版的 platforms 列表）
   rawConfig?: Record<string, unknown>;
 }
 ```
@@ -442,15 +565,15 @@ export interface ISandboxAdmin {
 
 ## 六、Adapter 实现要点
 
-### 6.1 IntellectPlatformAdminAdapter
+### 6.1 IntellectRagPlatformAdminAdapter
 
-包装现有 Intellect Admin 调用，做字段映射：
+包装现有 Intellect RAG Admin 调用，做字段映射：
 
 ```typescript
-// bff/src/services/adapters/intellect/admin-adapter.ts
+// bff/src/services/adapters/intellect-rag/admin-adapter.ts
 
-export class IntellectPlatformAdminAdapter implements IPlatformAdminAdapter {
-  readonly backendType = 'intellect-community' as const;
+export class IntellectRagPlatformAdminAdapter implements IPlatformAdminAdapter {
+  readonly backendType = 'intellect-rag' as const;
   readonly adminCapabilities: AdminCapabilities = {
     users: true, services: true, sandbox: true, version: true,
   };
@@ -464,10 +587,10 @@ export class IntellectPlatformAdminAdapter implements IPlatformAdminAdapter {
     return {
       getVersion: async () => {
         const res = await this.client.get('/api/v1/admin/version');
-        // Intellect 返回 { version: "v0.16.0" }
+        // Intellect RAG 返回 { version: "v0.16.0" }
         return {
           version: res.data.version,
-          components: [{ name: 'intellect-community', version: res.data.version, status: 'ok' }],
+          components: [{ name: 'intellect-rag', version: res.data.version, status: 'ok' }],
         };
       },
     };
@@ -477,7 +600,7 @@ export class IntellectPlatformAdminAdapter implements IPlatformAdminAdapter {
     return {
       listUsers: async () => {
         const res = await this.client.get('/api/v1/admin/users');
-        // Intellect 字段 → 统一 Schema
+        // Intellect RAG 字段 → 统一 Schema
         return res.data.map((u: any) => this.mapUser(u));
       },
       getUser: async (email) => {
@@ -595,13 +718,13 @@ export class IntellectPlatformAdminAdapter implements IPlatformAdminAdapter {
 ### 6.2 IntellectEnterprisePlatformAdminAdapter
 
 ```typescript
-// bff/src/services/adapters/intellect/admin-adapter.ts
+// bff/src/services/adapters/intellect-enterprise/admin-adapter.ts
 
 export class IntellectEnterprisePlatformAdminAdapter implements IPlatformAdminAdapter {
   readonly backendType = 'intellect-enterprise' as const;
   readonly adminCapabilities: AdminCapabilities = {
     users: true, services: true,
-    sandbox: false,  // Intellect 暂无 admin API
+    sandbox: false,  // Intellect 企业版暂无 sandbox admin API
     version: true,
   };
 
@@ -613,7 +736,7 @@ export class IntellectEnterprisePlatformAdminAdapter implements IPlatformAdminAd
   version(): IVersionAdmin {
     return {
       getVersion: async () => {
-        // Intellect 需新增 /api/version 端点（见 §8 Intellect 侧待办）
+        // Intellect 企业版需新增 /api/version 端点（见 §8 Intellect 侧待办）
         // 或从 /v1/capabilities 推断
         const res = await this.client.get('/api/version');
         return {
@@ -633,7 +756,7 @@ export class IntellectEnterprisePlatformAdminAdapter implements IPlatformAdminAd
 
   users(): IUserAdmin {
     return {
-      // Intellect Member 模型 → 统一 User Schema
+      // Intellect 企业版 Member 模型 → 统一 User Schema
       listUsers: async () => {
         const res = await this.client.get('/api/members', this.buildHeaders());
         return res.data.members.map((m: any) => this.mapMember(m));
@@ -645,7 +768,7 @@ export class IntellectEnterprisePlatformAdminAdapter implements IPlatformAdminAd
         ]);
         return {
           ...this.mapMember(memberRes.data),
-          // Intellect 用 team/role 维度替代 datasets/agents
+          // Intellect 企业版用 team/role 维度替代 datasets/agents
           datasets: [],
           agents: teamsRes.data.teams.map((t: any) => ({
             id: t.slug, name: t.display_name, type: 'team',
@@ -676,7 +799,7 @@ export class IntellectEnterprisePlatformAdminAdapter implements IPlatformAdminAd
       deleteUser: async (memberId) => {
         await this.client.delete(`/api/members/${memberId}`, this.buildHeaders());
       },
-      // Intellect 无"用户级 datasets/agents"概念，返回空数组
+      // Intellect 企业版无"用户级 datasets/agents"概念，返回空数组
       listUserDatasets: async () => [],
       listUserAgents: async () => [],
       grantSuperuser: async (memberId) => {
@@ -693,7 +816,7 @@ export class IntellectEnterprisePlatformAdminAdapter implements IPlatformAdminAd
       listServices: async () => {
         const res = await this.client.get('/health/detailed');
         const data = res.data;
-        // 聚合 Intellect /health/detailed 为统一服务列表
+        // 聚合 Intellect 企业版 /health/detailed 为统一服务列表
         const services: PlatformService[] = [
           {
             id: 'intellect-gateway',
@@ -785,8 +908,8 @@ class AdapterRegistry {
 
   private createAdminAdapter(backend: HarnessBackend): IPlatformAdminAdapter | null {
     switch (backend.type) {
-      case 'intellect-community':
-        return new IntellectPlatformAdminAdapter(backend, new IntellectAdminClient(backend));
+      case 'intellect-rag':
+        return new IntellectRagPlatformAdminAdapter(backend, new IntellectAdminClient(backend));
       case 'intellect-enterprise':
         return new IntellectEnterprisePlatformAdminAdapter(backend, new IntellectClient(backend));
       default:
@@ -910,10 +1033,10 @@ app.route('/api/bff/platform-admin', platformAdminRoutes);
   ↓
 BFF /api/bff/platform-admin/users  (authMiddleware 校验 admin token)
   │  getTenantContext(c) → tenantId
-  │  registry.getDefaultAdminAdapter(tenantId) → IntellectPlatformAdminAdapter
+  │  registry.getDefaultAdminAdapter(tenantId) → IntellectRagPlatformAdminAdapter
   │  adapter.users().listUsers()
   ↓
-IntellectAdminClient.get('/api/v1/admin/users')  → Intellect Admin :9381
+IntellectRagAdminClient.get('/api/v1/admin/users')  → Intellect RAG Admin :9381
   │
   ↓ 返回 [{email, activate_status, is_superuser, ...}]
 BFF Adapter.mapUser() → 统一 Schema
@@ -924,11 +1047,11 @@ BFF Adapter.mapUser() → 统一 Schema
 
 ---
 
-## 八、Intellect 侧待办（API 新增需求）
+## 八、Intellect 企业版侧待办（API 新增需求）
 
 ### 8.1 必须新增（P1）
 
-**`GET /api/version`**：返回 Intellect 及其组件版本
+**`GET /api/version`**：返回 Intellect 企业版及其组件版本
 
 ```json
 {
@@ -947,8 +1070,8 @@ BFF Adapter.mapUser() → 统一 Schema
 
 ### 8.2 已有能力（直接复用）
 
-| 模块 | Intellect 端点 | 说明 |
-|------|---------------|------|
+| 模块 | Intellect 企业版端点 | 说明 |
+|------|-------------------|------|
 | Users | `/api/members/*` | 已有完整 CRUD（见 `agent/membership.py`） |
 | Services | `/health/detailed` | 已有 gateway 状态 + platforms + PID + uptime |
 
@@ -956,8 +1079,8 @@ BFF Adapter.mapUser() → 统一 Schema
 
 | 模块 | 原因 | 替代方案 |
 |------|------|---------|
-| Sandbox admin API | Intellect 的 codex_runtime 配置散落在 config.yaml，无统一 admin API | capability=false，前端隐藏沙箱配置菜单 |
-| 用户级 datasets/agents 列表 | Intellect 无此概念（资源归属 Team/Project） | 返回空数组，前端兼容显示 |
+| Sandbox admin API | Intellect 企业版 codex_runtime 配置散落在 config.yaml，无统一 admin API | capability=false，前端隐藏沙箱配置菜单 |
+| 用户级 datasets/agents 列表 | Intellect 企业版无此概念（资源归属 Team/Project） | 返回空数组，前端兼容显示 |
 
 ### 8.4 鉴权头
 
@@ -972,7 +1095,7 @@ Intellect `/api/members/*` 已支持 member bearer token（`imt_*`），BFF 直�
 ```typescript
 // src/utils/api.ts
 
-// 旧：直连 Intellect Admin
+// 旧：直连 Intellect RAG Admin
 const restAPIv1 = `/api/v1`;
 adminListUsers: `${restAPIv1}/admin/users`,
 adminListServices: `${restAPIv1}/admin/services`,
@@ -1134,10 +1257,10 @@ export function useHarnessCapabilities() {
 | 阶段 | 模块 | 复杂度 | 依赖 |
 |------|------|--------|------|
 | **P0** | 接口与 Schema 定义 | 低 | 无 |
-| **P1** | version 迁移 | 低 | Intellect 新增 `/api/version` |
-| **P2** | services 迁移 | 中 | Intellect `/health/detailed` 已就绪 |
+| **P1** | version 迁移 | 低 | Intellect 企业版新增 `/api/version` |
+| **P2** | services 迁移 | 中 | Intellect 企业版 `/health/detailed` 已就绪 |
 | **P3** | users 迁移 | 高 | 字段映射 + 角色 + 资源 |
-| **P4** | sandbox 处理 | 低 | Intellect 标 `capability=false`，前端隐藏菜单 |
+| **P4** | sandbox 处理 | 低 | Intellect 企业版标 `capability=false`，前端隐藏菜单 |
 | **P5** | 双字段兼容下线 | 低 | P3 完成后 1-2 个版本 |
 
 ### 10.2 P0：接口与 Schema 定义（先行）
@@ -1153,16 +1276,16 @@ export function useHarnessCapabilities() {
 
 **目标**：最简单的模块先打通，验证端到端流程
 
-- [ ] Intellect 侧：新增 `GET /api/version`（见 §8.1）
-- [ ] BFF：实现 `IntellectPlatformAdminAdapter.version()` + `IntellectEnterprisePlatformAdminAdapter.version()`
+- [ ] Intellect 企业版侧：新增 `GET /api/version`（见 §8.1）
+- [ ] BFF：实现 `IntellectRagPlatformAdminAdapter.version()` + `IntellectEnterprisePlatformAdminAdapter.version()`
 - [ ] BFF：注册 `/api/bff/platform-admin/version` 路由
 - [ ] 前端：`api.ts` 中 `adminGetSystemVersion` 改路径
 - [ ] 前端：新增 `useHarnessCapabilities()` Hook
-- [ ] 验证：Intellect 后端 + Intellect 后端均能返回统一 `PlatformVersion`
+- [ ] 验证：Intellect RAG 后端 + Intellect 企业版后端均能返回统一 `PlatformVersion`
 
 ### 10.4 P2：services 迁移
 
-- [ ] BFF：实现 `IntellectPlatformAdminAdapter.services()`（包装 `/admin/services/*`）
+- [ ] BFF：实现 `IntellectRagPlatformAdminAdapter.services()`（包装 `/admin/services/*`）
 - [ ] BFF：实现 `IntellectEnterprisePlatformAdminAdapter.services()`（聚合 `/health/detailed`）
 - [ ] BFF：注册 `/api/bff/platform-admin/services` 路由
 - [ ] 前端：`api.ts` 中 services 相关路径迁移
@@ -1170,20 +1293,20 @@ export function useHarnessCapabilities() {
 
 ### 10.5 P3：users 迁移
 
-- [ ] BFF：实现 `IntellectPlatformAdminAdapter.users()`（包装 `/admin/users/*`，双字段输出）
+- [ ] BFF：实现 `IntellectRagPlatformAdminAdapter.users()`（包装 `/admin/users/*`，双字段输出）
 - [ ] BFF：实现 `IntellectEnterprisePlatformAdminAdapter.users()`（映射 `/api/members/*`）
 - [ ] BFF：注册 `/api/bff/platform-admin/users/*` 路由
 - [ ] 前端：`api.ts` 中 users 相关路径迁移
 - [ ] 前端：user-detail 页面字段兼容（双字段策略）
-- [ ] 验证：Intellect 后端用户管理可用
+- [ ] 验证：Intellect RAG 后端用户管理可用
 
 ### 10.6 P4：sandbox 处理
 
-- [ ] BFF：实现 `IntellectPlatformAdminAdapter.sandbox()`（包装 `/admin/sandbox/*`）
+- [ ] BFF：实现 `IntellectRagPlatformAdminAdapter.sandbox()`（包装 `/admin/sandbox/*`）
 - [ ] BFF：`IntellectEnterprisePlatformAdminAdapter` 不实现 sandbox，`adminCapabilities.sandbox = false`
 - [ ] 前端：`api.ts` 中 sandbox 相关路径迁移
 - [ ] 前端：sandbox-settings.tsx 根据 `capabilities.sandbox` 条件渲染
-- [ ] Intellect 后端时，菜单中"沙箱配置"项隐藏
+- [ ] Intellect 企业版后端时，菜单中"沙箱配置"项隐藏
 
 ### 10.7 P5：双字段兼容下线
 
@@ -1208,15 +1331,15 @@ export function useHarnessCapabilities() {
 
 - BFF 接管的 whitelist / roles / resources：已在 P0 完成，见 [frontend-architecture.md §15](file:///Users/simon/workspace/agentui/docs/frontend-architecture.md)
 - Team / Project 管理：属于业务运行时（多租户扩展层），见 [multi-harness-design.md §5.2](file:///Users/simon/workspace/agentui/docs/multi-harness-design.md)
-- 画布编排：硬绑定 Intellect，不经过 Adapter
+- 画布编排：硬绑定 Intellect RAG，不经过 Adapter
 - 模型管理（model management）：本方案不涉及，后续单独抽象
 
 ### 11.3 已知风险
 
 | 风险 | 影响 | 缓解措施 |
 |------|------|---------|
-| Intellect 用户模型与 Intellect 差异大 | users 迁移复杂 | 双字段输出，前端零改动；P3 充分测试 |
-| Intellect 无 sandbox admin API | 沙箱配置在 Intellect 后端不可用 | capability=false，前端隐藏菜单；后续推动 Intellect 暴露 API |
+| Intellect RAG 与 Intellect 企业版用户模型差异大 | users 迁移复杂 | 双字段输出，前端零改动；P3 充分测试 |
+| Intellect 企业版无 sandbox admin API | 沙箱配置在 Intellect 企业版后端不可用 | capability=false，前端隐藏菜单；后续推动 Intellect 企业版暴露 API |
 | 服务状态语义不一致 | services 列表显示可能误导用户 | 在 ServiceDetail 中保留 `_raw` 字段，UI 显示后端原生信息 |
 | Admin token 共享 | 同一后端多租户共用 admin token | 多租户阶段需引入 token 池或 scoped token（P4+） |
 
@@ -1230,8 +1353,8 @@ export function useHarnessCapabilities() {
 |------|------|------|
 | `bff/src/services/adapters/admin-types.ts` | 4 个子接口定义 | P0 |
 | `bff/src/services/adapters/admin-schemas.ts` | 统一 Schema | P0 |
-| `bff/src/services/adapters/intellect/admin-adapter.ts` | Intellect 实现 | P1-P4 |
-| `bff/src/services/adapters/intellect/admin-adapter.ts` | Intellect 实现 | P1-P4 |
+| `bff/src/services/adapters/intellect-rag/admin-adapter.ts` | Intellect RAG 实现 | P1-P4 |
+| `bff/src/services/adapters/intellect-enterprise/admin-adapter.ts` | Intellect 企业版实现 | P1-P4 |
 | `bff/src/routes/platform-admin.ts` | BFF 路由 | P1-P4 |
 | `bff/src/services/adapters/registry.ts` | 扩展注册 admin adapter | P0 |
 
@@ -1256,7 +1379,7 @@ export function useHarnessCapabilities() {
 |------|------|------|
 | `src/hooks/use-harness-capabilities.ts` | 能力探测 Hook | P1 |
 
-### Intellect 侧（新增，交付 Intellect 团队）
+### Intellect 企业版侧（新增，交付 Intellect 企业版团队）
 
 | 文件 | 改动 | 阶段 |
 |------|------|------|
@@ -1269,6 +1392,6 @@ export function useHarnessCapabilities() {
 | 文档 | 关系 |
 |------|------|
 | [multi-harness-design.md](file:///Users/simon/workspace/agentui/docs/multi-harness-design.md) | 父方案，本文档是其子方案 |
-| [intellect-admin-api-guide.md](file:///Users/simon/workspace/agentui/docs/intellect-admin-api-guide.md) | Intellect 侧 Team/Project API 规范，本文档 §8 补充 version API 规范 |
+| [intellect-admin-api-guide.md](file:///Users/simon/workspace/agentui/docs/intellect-admin-api-guide.md) | Intellect 企业版侧 Team/Project API 规范，本文档 §8 补充 version API 规范 |
 | [frontend-architecture.md](file:///Users/simon/workspace/agentui/docs/frontend-architecture.md) | 前端框架总体，本文档影响 §7.3 / §15 / §16 |
 | [vite-architecture.md](file:///Users/simon/workspace/agentui/docs/vite-architecture.md) | 代理层架构，本文档新增 `/api/bff/platform-admin/*` 前缀 |

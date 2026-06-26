@@ -1,0 +1,20 @@
+data: {"event":"workflow_started","message_id":"msg-1","session_id":"sess-1","created_at":1700000000,"data":{"inputs":{}}}
+
+data: {"event":"node_started","message_id":"msg-1","session_id":"sess-1","created_at":1700000001,"data":{"component_id":"begin","component_name":"Begin","component_type":"begin","thoughts":""}}
+
+data: {"event":"message","message_id":"msg-1","session_id":"sess-1","created_at":1700000002,"data":{"content":"Hello"}}
+
+data: {"event":"message","message_id":"msg-1","session_id":"sess-1","created_at":1700000003,"data":{"content":", world!"}}
+
+data: {"event":"message","message_id":"msg-1","session_id":"sess-1","created_at":1700000004,"data":{"content":"","start_to_think":true}}
+
+data: {"event":"message","message_id":"msg-1","session_id":"sess-1","created_at":1700000005,"data":{"content":"Let me think..."}}
+
+data: {"event":"message","message_id":"msg-1","session_id":"sess-1","created_at":1700000006,"data":{"content":"","end_to_think":true}}
+
+data: {"event":"node_finished","message_id":"msg-1","session_id":"sess-1","created_at":1700000007,"data":{"component_id":"begin","component_name":"Begin","component_type":"begin","inputs":{},"outputs":{"content":"Hello, world! Let me think..."},"elapsed_time":5,"thoughts":""}}
+
+data: {"event":"message_end","message_id":"msg-1","session_id":"sess-1","created_at":1700000008,"data":{"reference":{"chunks":[{"id":"c1","content":"ref content"}],"doc_aggs":[{"id":"d1","doc_name":"doc1.pdf"}]}}}
+
+data: {"event":"workflow_finished","message_id":"msg-1","session_id":"sess-1","created_at":1700000009,"data":{}}
+

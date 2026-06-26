@@ -2,7 +2,7 @@
 
 > 本文档描述 AgentUI 支持不同 Agent Harness 后端的架构设计与实施方案。
 > 配套文档：
-> - [Intellect Admin API 接口指南](file:///Users/simon/workspace/agentui/docs/intellect-admin-api-guide.md)（交付 Intellect 团队）
+> - [Intellect RAG Admin API 接口指南](file:///Users/simon/workspace/agentui/docs/intellect-admin-api-guide.md)（交付 Intellect RAG 团队）
 > - [Vite 架构文档第十六章](file:///Users/simon/workspace/agentui/docs/vite-architecture.md)（BFF 整体架构）
 
 ## 一、背景与目标
@@ -13,23 +13,22 @@ AgentUI 当前与 Intellect RAG 深度耦合，需支持多种 Agent Harness 后
 
 | 后端 | 协议 | 项目地址 | 说明 |
 |------|------|---------|------|
-| Intellect RAG | OpenAI 兼容 REST + SSE | `~/workspace/intellect-rag` | 画布编排 + 知识库 |
-| Intellect 企业版 | OpenAI 兼容 REST + SSE | `~/workspace/intellect-team` | 多租户 Team/Project + 编码 Agent |
-| Intellect 社区版 | ACP（stdio JSON-RPC） | `~/workspace/intellect-agent` | 单用户，未来扩展 OpenAPI |
-| Hermes | ACP | `~/workspace/hermes-agent` | 同 Intellect 同源 |
-| OpenClaw | 待确认 | - | - |
+| Intellect RAG | OpenAI 兼容 REST + SSE | `~/workspace/intellect-rag` | 画布编排 + 知识库，单租户 |
+| Intellect 企业版 | OpenAI 兼容 REST + SSE | `~/workspace/intellect-team` | Team/Project 多租户 + 编码 Agent，无画布 |
+
+> **命名规范**：本文档中"Intellect RAG"指（intellect-rag），“Intellect 社区版”指(intellect-agent),"Intellect 企业版"指 intellect-team，三者通过不同的 Adapter 对接。
 
 ### 1.2 本期范围
 
-先对接 **Intellect + Intellect 企业版**，社区版/Hermes/OpenClaw 延后。
+对接 **Intellect RAG + Intellect 企业版**。
 
 ### 1.3 目标
 
 1. AgentUI 前端业务代码零改动，只改 API 路径常量 + 新增 Admin 页面
 2. BFF 通过 Adapter 层屏蔽后端差异
-3. 画布硬绑定 Intellect（复用 Intellect 画布引擎）
-4. 多租户通过 BFF 独立模型（BFF 维护 Tenant 实体，绑定到 Intellect 实例）
-5. SSE 流式以 Intellect OpenAI 兼容格式为基础
+3. 画布硬绑定 Intellect RAG（复用 Intellect RAG 画布引擎）
+4. 多租户通过 BFF 独立模型（BFF 维护 Tenant 实体，绑定到 Intellect 企业版 Tenant 实例）
+5. SSE 流式以 Intellect RAG 和 Intellect 企业版 OpenAI 兼容格式为基础
 
 ## 二、方案选择：BFF 适配器层（方案 A）
 
@@ -50,8 +49,8 @@ AgentUI 当前与 Intellect RAG 深度耦合，需支持多种 Agent Harness 后
 
 1. **保护 Intellect RAG 画布编排**——这是 AgentUI 最有价值的差异化能力，方案 B 会丢失
 2. **前端零业务改动**——符合"BFF 生长"方向，前端只改 API 常量
-3. **ACP 后端共享一个 Adapter**——Intellect RAG 画布编排 + 知识库/Hermes/OpenClaw 用同一 `AcpAdapter`，边际成本低
-4. **渐进式迁移**——可先做 Intellect RAG Adapter（包装现有逻辑），再加 ACP Adapter
+3. **Intellect RAG 与企业版共用 OpenAI 兼容 API**——共用 SSE 解析器，边际成本低
+4. **渐进式迁移**——可先做 Intellect RAG Adapter（包装现有逻辑），再加 Intellect 企业版 Adapter
 5. **能力探测**——前端通过 `/api/bff/capabilities` 一次性获取后端能力，条件渲染页面
 
 ### 2.3 整体架构
@@ -79,15 +78,15 @@ AgentUI 当前与 Intellect RAG 深度耦合，需支持多种 Agent Harness 后
 │  ├── services/adapters/                                          │
 │  │   ├── types.ts（IHarnessAdapter 接口）                        │
 │  │   ├── registry.ts                                             │
-│  │   ├── intellect/（IntellectCommunityAdapter）                              │
-│  │   └── intellect/（IntellectEnterpriseAdapter）                │
+│  │   ├── intellect-rag/（IntellectRagAdapter）                   │
+│  │   └── intellect-enterprise/（IntellectEnterpriseAdapter）     │
 │  │                                                                │
 │  ├── services/harness-store.ts（后端配置 + token 存储）           │
 │  └── services/tenant-store.ts（BFF 多租户模型）                  │
 └──────────────────────────────────────────────────────────────────┘
               ↓                              ↓
 ┌─────────────────────────┐    ┌─────────────────────────────────┐
-│  Intellect (:9380)        │    │  Intellect 企业版 (:8642)       │
+│  Intellect RAG (:9380)  │    │  Intellect 企业版 (:8642)       │
 │  ├── Agent/Canvas/Dataset│   │  ├── /v1/chat/completions       │
 │  └── 画布引擎（唯一）   │    │  ├── /v1/capabilities           │
 │                         │    │  ├── /api/sessions              │
@@ -100,9 +99,9 @@ AgentUI 当前与 Intellect RAG 深度耦合，需支持多种 Agent Harness 后
 
 1. **BFF 定义 `IHarnessAdapter` 接口**，每个后端实现一个 Adapter
 2. **前端零业务改动**，只改 API 路径常量 + 新增 Admin 页面
-3. **SSE 流式格式统一**：Intellect 和 Intellect 企业版都是 OpenAI 兼容格式，共用解析器
-4. **画布硬绑定 Intellect**：画布是 Intellect 专属能力，不经过 Adapter Registry 选择
-5. **多租户通过 BFF 独立模型**：BFF 维护 Tenant 实体，绑定到 Intellect 实例
+3. **SSE 流式格式统一**：Intellect RAG 和 Intellect 企业版都是 OpenAI 兼容格式，共用解析器
+4. **画布硬绑定 Intellect RAG**：画布是 Intellect RAG 专属能力，不经过 Adapter Registry 选择
+5. **多租户通过 BFF 独立模型**：BFF 维护 Tenant 实体，绑定到 Intellect 企业版 Tenant 实例
 
 ## 三、关键决策
 
@@ -129,38 +128,62 @@ AgentUI 当前与 Intellect RAG 深度耦合，需支持多种 Agent Harness 后
 - 扩展层让强能力后端的功能不被削足适履
 - 透传层避免 BFF 成为"全功能代理"的复杂度爆炸
 
-### 3.2 Intellect ACP 实现分析
+### 3.2 ACP 协议不适用于 BFF 场景
 
-| 维度 | ACP 实现 | BFF 对接适用性 |
-|------|---------|--------------|
-| **传输层** | stdio JSON-RPC（`acp.run_agent()` + stdout 传输） | ❌ BFF 是 HTTP 服务，无法直接 spawn 子进程通信 |
-| **部署模型** | 编辑器本地集成（Zed/Claude Code 等） | ❌ 适合 IDE 场景，不适合 Web BFF 场景 |
-| **会话生命周期** | `initialize/authenticate/new_session/prompt/load_session/cancel/fork_session/list_sessions` | ✅ 语义完整，可作为接口契约参考 |
-| **流式协议** | `session/update` 通知（`user_message_chunk/agent_message_chunk/agent_thought_chunk/usage_update/plan`） | ⚠️ 语义丰富但格式是 JSON-RPC notification，非 SSE |
-| **多租户** | 无（ACP 是单用户 stdio 协议） | ❌ 企业版多租户需另寻入口 |
+ACP（stdio JSON-RPC）设计用于**本地 IDE 集成**（Zed/Claude Code 等），传输层依赖 stdio 进程通信，不适合 HTTP Server 架构的 BFF 对接。
 
-**结论**：ACP 的**接口语义**可作为 BFF 统一接口的设计参考，但**传输协议**不适合 BFF 直接对接。
-
-**替代方案**：Intellect 企业版已实现 **OpenAI 兼容 API Server**（`plugins/platforms/api_server/adapter.py`，端口 8642），这才是 BFF 应该对接的入口。
+因此，本方案**不实现 ACP Adapter**，所有后端均通过 OpenAI 兼容 REST API 对接。
 
 ### 3.3 多租户数据隔离：BFF 维护独立模型
 
-Intellect 企业版的数据模型为 **Member → Team → Project** 三层（无 Tenant 实体）。BFF 侧的 Tenant 是逻辑概念，对应一个 Intellect 实例部署：
+#### 3.3.1 BFF Tenant ↔ Intellect 企业版 Tenant 映射
+
+Intellect 企业版现有数据模型为 **Member → Team → Project** 三层，**无 Tenant 实体**。本方案采用**一对一映射**：一个 BFF Tenant 唯一绑定到一个 Intellect 企业版 Tenant 实例。
 
 ```
-BFF Tenant（BFF 维护，轻量）
-  │  └─ 绑定到一个 Intellect 实例（通过 HarnessBackend 配置）
-  │
-  ├─ Team（Intellect 侧管理，通过 BFF 透传 CRUD）
-  │   └─ Project（Intellect 侧管理，属于 Team）
-  │
-  └─ Member（Intellect 侧管理）
+BFF Tenant（BFF 维护）
+  └─ 唯一绑定到 1 个 Intellect 企业版 Tenant 实例（需 Intellect 侧新增）
+       ├─ 包含多个 Team（逻辑分组，归属该 Tenant）
+       └─ 包含多个 Project（逻辑分组，归属某 Team）
 ```
 
-**核心设计**：
-- BFF Tenant 只存储绑定关系（`tenantId → backendId`）
-- Team/Project/Member 数据不复制到 BFF，通过 Intellect HTTP API 透传管理
-- 一个 BFF Tenant 可绑定多个后端（Intellect + Intellect），画布走 Intellect，Team/Project 走 Intellect
+**Intellect 企业版侧待办（P4+）**：需新增 `Tenant` 实体（对应 BFF 的 Tenant 概念），一个 Tenant 可包含多个 Team/Project，作为 BFF Tenant 的绑定目标。
+
+#### 3.3.2 数据模型
+
+```typescript
+// BFF 侧
+interface BffTenant {
+  id: string;                    // BFF 租户 ID
+  name: string;                  // 租户名称（如 "Acme Corp"）
+  intellectTenantId: string;     // 绑定到 Intellect 企业版的 Tenant ID（UUID）
+  intellectBackendId: string;    // 绑定到哪个 Intellect 企业版后端实例
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Intellect 企业版侧（新增，需 Intellect 团队实现）
+// 表名：tenants
+// 字段：id (PK, UUID), display_name, created_at, ...
+// 约束：一个 Tenant 可包含多个 Team/Project，但一个 Team/Project 只属于一个 Tenant
+```
+
+#### 3.3.3 核心设计
+
+- **一对一绑定**：BFF Tenant 唯一绑定到一个 Intellect 企业版 Tenant 实例
+- **数据隔离**：Team/Project/Member 数据不复制到 BFF，通过 Intellect 企业版 HTTP API 透传管理
+- **多租户头**(v1.1.0 已与 intellect-team `_resolve_member_context` 实际实现对齐):
+  - `X-Intellect-Team` — 传递 team_id(对应 intellect-team DB teams.id,不是 slug)
+  - `X-Intellect-Project` — 传递 project_id(对应 intellect-team DB projects.id,不是 slug)
+  - `X-Intellect-Session-Id` — 可选,会话续接
+  - `X-Intellect-Session-Key` — 可选,长期记忆范围
+  - BFF 调用 intellect-team 时由 Adapter 注入上述头,禁用臆造的 `X-Team-Slug` / `X-Project-Slug`
+- **鉴权**:P0-P3 用 `Authorization: Bearer ${API_SERVER_KEY}` 全局 API Key,P4+ 评估切换到 `imt_p_*` 项目级 Bearer Token
+- **画布功能**：若需画布功能，BFF Tenant 需额外绑定一个 Intellect RAG 后端（与 Intellect 企业版 Tenant 独立）
+- **绑定流程**：
+  1. BFF Admin 创建一个 BffTenant，同时在 Intellect 企业版侧创建一个 Intellect Tenant
+  2. BFF Tenant.id 与 Intellect Tenant.id 建立映射（存于 BFF tenant-store）
+  3. Team/Project 创建时自动归属到该 Intellect Tenant
 
 ### 3.4 画布：复用 Intellect RAG 画布引擎
 
@@ -175,63 +198,411 @@ BFF Tenant（BFF 维护，轻量）
 ┌─────────────────────────────────────────────────────┐
 │  BFF                                                 │
 │  └── CanvasService                                   │
-│      ├── 始终路由到 Intellect Adapter                  │
-│      └── 不经过 Intellect Adapter                    │
+│      ├── 始终路由到 Intellect RAG Adapter              │
+│      └── 不经过 Intellect 企业版 Adapter             │
 └─────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────┐
-│  Intellect（画布引擎唯一提供者）                       │
+│  Intellect RAG（画布引擎唯一提供者）                   │
 │  └── /api/v1/agents/* (canvas CRUD + 执行)           │
 └─────────────────────────────────────────────────────┘
 ```
 
 **实现方式**：
-- BFF 的画布路由**硬绑定到 Intellect Adapter**，不通过 Adapter Registry 选择
-- 前端画布页面不受 `capabilities.canvas` 影响（因为画布永远走 Intellect）
-- Intellect 企业版用户若需画布，BFF Tenant 必须同时绑定一个 Intellect 后端
+- BFF 的画布路由**硬绑定到 Intellect RAG Adapter**，不通过 Adapter Registry 选择
+- Intellect 企业版用户若需画布功能，BFF Tenant 必须同时绑定一个 Intellect RAG 后端
 
-**Canvas IR 不需要**：因为画布只走 Intellect，直接用 Intellect 原生格式，无需中间表示。
+**Canvas IR 不需要**：因为画布只走 Intellect RAG，直接用 Intellect RAG 原生格式，无需中间表示。
 
-### 3.5 会话流式：Intellect SSE 为基础，逐步合集
+**画布与 MCP 过渡计划（远期）**：
 
-**阶段 1（P1-P2）**：以 Intellect OpenAI 兼容 SSE 为基础
+当前设计中，画布功能通过 BFF 硬绑定 Intellect RAG Adapter 实现。长期来看，计划将 Intellect RAG 的画布编排、知识库等能力通过 **MCP（Model Context Protocol）** 协议暴露给 Intellect 企业版，使二者在前端完全独立：
 
-```typescript
-// BFF 统一输出格式（基于 Intellect）
-interface StreamChunk {
-  type: 'delta' | 'done' | 'error';
-  content?: string;        // delta 文本
-  role?: 'assistant';
-  finishReason?: 'stop' | 'length' | 'cancelled';
-  error?: { code: string; message: string };
+| 阶段 | 画布能力归属 | 前端体验 |
+|------|-------------|---------|
+| 当前（P0-P3） | Intellect RAG 提供，BFF 硬绑定转发 | 企业版用户通过"绑定 Intellect RAG"获取画布 |
+| 远期（P6+） | Intellect RAG 通过 MCP 暴露能力，Intellect 企业版通过 MCP 调用 | 企业版用户原生使用画布，无需绑定 Intellect RAG 后端 |
+
+过渡期间，前端通过 capability 探测区分"原生画布"和"MCP 画布"，体验保持一致。
+
+### 3.5 会话流式：SSE 实现机制与对比分析
+
+#### 3.5.1 Intellect RAG SSE 流式实现
+
+**协议**：OpenAI 兼容 SSE（Server-Sent Events）
+
+**端点**：`POST /api/v1/chat/completions`
+
+**请求格式**：
+```json
+{
+  "model": "agent-001",
+  "messages": [{"role": "user", "content": "hello"}],
+  "stream": true
 }
 ```
 
-**阶段 2（P3+）**：扩展为 SSE 事件合集
+**响应格式**（SSE）：
+```
+data: {"id":"chatcmpl-xxx","choices":[{"delta":{"content":"Hello"},"index":0}]}
+
+data: {"id":"chatcmpl-xxx","choices":[{"delta":{"content":" world"},"index":0}]}
+
+data: {"id":"chatcmpl-xxx","choices":[{"delta":{},"finish_reason":"stop","index":0}]}
+
+data: [DONE]
+```
+
+**特性**：
+- 标准 OpenAI compatible 格式
+- `data: [DONE]` 标记结束
+- `delta.content` 为增量文本
+- `finish_reason` 包含 `stop` / `length` / `cancelled`
+
+#### 3.5.2 Intellect 企业版 SSE 流式实现
+
+**协议**：自定义事件 SSE（v1.1.0 已与 intellect-team `plugins/platforms/api_server/adapter.py` 实际实现对齐)
+
+**端点**：`POST /api/sessions/{sessionId}/chat/stream`(Constitution Principle VIII 锁定的主通道)
+
+**鉴权**:`Authorization: Bearer ${API_SERVER_KEY}`,多租户头 `X-Intellect-Team` / `X-Intellect-Project`
+
+**请求格式**：
+```json
+{
+  "message": "hello",
+  "system_message": "可选系统提示"
+}
+```
+
+**响应格式**(SSE,自定义事件):
+
+```
+event: run.started
+data: {"session_id":"...","run_id":"run_xxx","seq":1,"ts":1719400000.0,"user_message":{"role":"user","content":"hello"}}
+
+event: message.started
+data: {"session_id":"...","run_id":"run_xxx","seq":2,"ts":...,"message":{"id":"msg_xxx","role":"assistant"}}
+
+event: assistant.delta
+data: {"session_id":"...","run_id":"run_xxx","seq":3,"ts":...,"message_id":"msg_xxx","delta":"Hello"}
+
+event: assistant.delta
+data: {"session_id":"...","run_id":"run_xxx","seq":4,"ts":...,"message_id":"msg_xxx","delta":" world"}
+
+event: tool.progress
+data: {"session_id":"...","run_id":"run_xxx","seq":5,"ts":...,"message_id":"msg_xxx","tool_name":"_thinking","delta":"正在思考..."}
+
+event: tool.progress
+data: {"session_id":"...","run_id":"run_xxx","seq":6,"ts":...,"message_id":"msg_xxx","tool_name":"web_search","delta":"搜索中..."}
+
+event: tool.started
+data: {"session_id":"...","run_id":"run_xxx","seq":7,"ts":...,"message_id":"msg_xxx","tool_name":"web_search","preview":"...","args":{...}}
+
+event: tool.completed
+data: {"session_id":"...","run_id":"run_xxx","seq":8,"ts":...,"message_id":"msg_xxx","tool_name":"web_search","preview":"...","args":{...}}
+
+event: assistant.completed
+data: {"session_id":"...","run_id":"run_xxx","seq":9,"ts":...,"message_id":"msg_xxx","content":"Hello world","completed":true,"partial":false,"interrupted":false}
+
+event: run.completed
+data: {"session_id":"...","run_id":"run_xxx","seq":10,"ts":...,"message_id":"msg_xxx","completed":true,"messages":[...],"usage":{"prompt_tokens":10,"completion_tokens":20}}
+
+event: done
+data: {"session_id":"...","run_id":"run_xxx","seq":11,"ts":...}
+```
+
+**特性**(实际实现,v1.0.0 的 `token/reasoning/final` 系臆测):
+- 自定义事件类型,共 11 种:`run.started` / `message.started` / `assistant.delta` / `tool.progress` / `tool.started` / `tool.completed` / `tool.failed` / `assistant.completed` / `run.completed` / `error` / `done`
+- 每个事件 `data` 包含 `session_id` / `run_id` / `seq` / `ts` 公共字段
+- `assistant.delta` 传输文本增量(`data.delta` 字段)
+- `tool.progress`(`tool_name="_thinking"`)传输思考链(Intellect RAG 无此能力)
+- `tool.progress`(其他 `tool_name`)传输普通工具进度
+- `tool.started` / `tool.completed` / `tool.failed` 标记工具生命周期
+- `run.completed` 包含 `data.usage` Token 用量 + `data.messages` 完整消息列表
+- `done` 是流终止信号(不是 `final`)
+- 错误场景:`event: error` + `{"message":"..."}`
+- **无**标准 OpenAI `choices` 结构
+
+#### 3.5.3 关键差异对比
+
+| 维度 | Intellect RAG | Intellect 企业版 |
+|------|--------------|----------------|
+| **协议** | OpenAI compatible SSE | 自定义事件 SSE |
+| **端点** | `/api/v1/chat/completions` | `/api/sessions/{id}/chat/stream` |
+| **请求体** | OpenAI 标准 `messages` 格式 | `{ "message": "...", "system_message": "..." }` |
+| **文本增量格式** | `data: {choices:[{delta:{content}}]}` | `event: assistant.delta\ndata: {"delta": "..."}` |
+| **结束标记** | `data: [DONE]` | `event: done\ndata: {...}` |
+| **思考链** | ❌ 无 | ✅ `event: tool.progress`(`tool_name="_thinking"`) |
+| **工具进度** | ❌ 无 | ✅ `event: tool.progress`(其他 `tool_name`) |
+| **工具生命周期** | ❌ 无 | ✅ `tool.started` / `tool.completed` / `tool.failed` |
+| **用量信息** | ❌ 无 | ✅ `run.completed.data.usage` |
+| **finish_reason** | ✅ `finish_reason` 字段 | ❌ 无(用 `run.completed` 标记完成) |
+| **多模态支持** | ✅ `input_image` 等 | ❌ 仅文本 |
+| **多租户头** | ❌ 无 | ✅ `X-Intellect-Team` / `X-Intellect-Project` |
+| **会话持久化** | ❌ stateless | ✅ session_id 路径参数 |
+| **公共字段** | 无 | `session_id` / `run_id` / `seq` / `ts` |
+
+#### 3.5.4 BFF 统一 SSE 流式方案
+
+由于两个后端 SSE 格式差异较大，BFF 采用**双协议解析器 + 统一输出格式**的策略:
+
+**统一输出格式(BFF → 前端)**,锁定 8 值枚举(Constitution Principle IV v1.1.0):
 
 ```typescript
-// 合集格式（兼容 Intellect WebUI 事件类型）
 interface StreamChunk {
   type:
-    | 'delta'              // 文本增量（Intellect + Intellect）
-    | 'reasoning'          // 思考链（Intellect，Intellect 无）
-    | 'tool_start'         // 工具开始（Intellect，Intellect 无）
-    | 'tool_complete'      // 工具完成（Intellect，Intellect 无）
-    | 'usage'              // 用量（Intellect metering，Intellect 无）
-    | 'approval'           // 审批请求（Intellect）
-    | 'done'
-    | 'error';
-  content?: string;
-  toolName?: string;
-  toolArgs?: unknown;
-  toolResult?: unknown;
-  usage?: { promptTokens: number; completionTokens: number };
+    | 'delta'              // 文本增量
+    | 'reasoning'          // 思考链(仅 Intellect 企业版)
+    | 'tool_start'         // 工具开始
+    | 'tool_complete'      // 工具完成
+    | 'tool_progress'      // 工具进度增量(v1.1.0 新增)
+    | 'usage'              // 用量信息
+    | 'done'               // 结束
+    | 'error';             // 错误
+  content?: string;        // delta / reasoning / tool_progress 文本
+  toolName?: string;       // tool_start/complete/progress 时
+  toolCallId?: string;     // tool_start/complete 时
+  toolArgs?: unknown;      // tool_start 时
+  toolResult?: unknown;    // tool_complete 时
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+  };
+  message?: string;        // error 时
+  code?: string;           // error 时
 }
 ```
 
-**BFF 转换策略**：
-- Intellect Adapter：`data: {choices:[{delta:{content}}]}` → `StreamChunk{type:'delta',content}`
-- Intellect Adapter：`event: token\ndata:{text}` → `StreamChunk{type:'delta',content}`；`event: reasoning` → `StreamChunk{type:'reasoning'}`
+**解析器实现**(v1.1.0 实际事件名,实现于 P1/P3):
+
+```typescript
+// bff/src/services/adapters/shared/sse-parser.ts
+
+// Intellect RAG SSE 解析器(OpenAI 兼容)
+async function* parseOpenAISSE(response: Response): AsyncIterable<StreamChunk> {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') {
+        yield { type: 'done' };
+        return;
+      }
+      const parsed = JSON.parse(data);
+      const delta = parsed.choices?.[0]?.delta;
+      if (delta?.content) {
+        yield { type: 'delta', content: delta.content };
+      }
+      if (delta?.reasoning_content) {
+        yield { type: 'reasoning', content: delta.reasoning_content };
+      }
+      if (parsed.usage) {
+        yield {
+          type: 'usage',
+          usage: {
+            promptTokens: parsed.usage.prompt_tokens,
+            completionTokens: parsed.usage.completion_tokens,
+          },
+        };
+      }
+    }
+  }
+}
+
+// Intellect 企业版 SSE 解析器(自定义事件,/api/sessions/{id}/chat/stream)
+async function* parseIntellectEnterpriseSSE(response: Response): AsyncIterable<StreamChunk> {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let currentEvent = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE 帧以空行分隔,每帧含 event: 与 data: 两行
+    const frames = buffer.split('\n\n');
+    buffer = frames.pop() || '';
+
+    for (const frame of frames) {
+      const lines = frame.split('\n');
+      let eventType = '';
+      let dataStr = '';
+      for (const line of lines) {
+        if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+        else if (line.startsWith('data: ')) dataStr = line.slice(6).trim();
+      }
+      if (!eventType || !dataStr) continue;
+      const data = JSON.parse(dataStr);
+
+      switch (eventType) {
+        case 'assistant.delta':
+          yield { type: 'delta', content: data.delta };
+          break;
+        case 'tool.progress':
+          if (data.tool_name === '_thinking') {
+            yield { type: 'reasoning', content: data.delta || '' };
+          } else {
+            yield {
+              type: 'tool_progress',
+              toolName: data.tool_name,
+              content: data.delta || data.preview || '',
+            };
+          }
+          break;
+        case 'tool.started':
+          yield {
+            type: 'tool_start',
+            toolName: data.tool_name,
+            toolCallId: data.message_id, // intellect-team 用 message_id 关联
+            args: data.args,
+          };
+          break;
+        case 'tool.completed':
+          yield {
+            type: 'tool_complete',
+            toolCallId: data.message_id,
+            result: data.preview,
+          };
+          break;
+        case 'tool.failed':
+          yield {
+            type: 'error',
+            message: data.error || 'tool failed',
+            toolCallId: data.message_id,
+          };
+          break;
+        case 'run.completed':
+          if (data.usage) {
+            yield {
+              type: 'usage',
+              usage: {
+                promptTokens: data.usage.prompt_tokens,
+                completionTokens: data.usage.completion_tokens,
+              },
+            };
+          }
+          yield { type: 'done' };
+          return;
+        case 'error':
+          yield { type: 'error', message: data.message || 'unknown error' };
+          return;
+        case 'done':
+          yield { type: 'done' };
+          return;
+        // run.started / message.started / assistant.completed 是状态事件,
+        // BFF 内部用于跟踪,不映射到 StreamChunk
+      }
+    }
+  }
+}
+```
+
+**Adapter 中的使用**:
+
+```typescript
+// IntellectRagAdapter.sendMessage()
+async function* sendMessage(ctx: TenantContext, req: SendMessageRequest) {
+  const response = await this.client.post('/api/v1/chat/completions', {
+    model: req.agentId,
+    messages: [{ role: 'user', content: req.message }],
+    stream: true,
+  });
+  yield* parseOpenAISSE(response);
+}
+
+// IntellectEnterpriseAdapter.sendMessage()
+// Constitution Principle VIII: 主通道是 /api/sessions/{id}/chat/stream
+// 两步流程:Adapter 内部先 POST /api/sessions 创建会话(若需),再订阅 chat/stream
+async function* sendMessage(ctx: TenantContext, req: SendMessageRequest) {
+  const response = await this.client.post(
+    `/api/sessions/${req.sessionId}/chat/stream`,
+    { message: req.message, system_message: req.systemMessage },
+    {
+      headers: {
+        Authorization: `Bearer ${this.apiServerKey}`,
+        'X-Intellect-Team': ctx.intellectTeamId || '',
+        'X-Intellect-Project': ctx.intellectProjectId || '',
+      },
+    },
+  );
+  yield* parseIntellectEnterpriseSSE(response);
+}
+```
+
+#### 3.5.5 前端 SSE 消费策略
+
+前端统一消费 `StreamChunk` 类型，不感知后端差异：
+
+```typescript
+// 前端 service
+async function* streamChat(sessionId: string, message: string) {
+  const response = await fetch('/api/bff/sessions/chat', {
+    method: 'POST',
+    body: JSON.stringify({ sessionId, message }),
+  });
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const text = decoder.decode(value, { stream: true });
+    const chunk = JSON.parse(text); // StreamChunk
+    yield chunk;
+  }
+}
+
+// 前端组件消费
+for await (const chunk of streamChat(sessionId, message)) {
+  switch (chunk.type) {
+    case 'delta':
+      appendToMessage(chunk.content);
+      break;
+    case 'reasoning':
+      showThinkingIndicator(chunk.content);
+      break;
+    case 'tool_progress':
+      showToolProgress(chunk.toolName, chunk.content);
+      break;
+    case 'done':
+      hideThinkingIndicator();
+      break;
+  }
+}
+```
+
+#### 3.5.6 SSE 事件合集(v1.1.0 实际事件名)
+
+| StreamChunk 类型 | Intellect RAG 事件 | Intellect 企业版事件 | 说明 |
+|---------|--------------|----------------|------|
+| `delta` | `data: {choices:[{delta:{content}}]}` | `event: assistant.delta` | 文本增量 |
+| `reasoning` | `delta.reasoning_content`(扩展) | `event: tool.progress`(`tool_name="_thinking"`) | 思考链 |
+| `tool_progress` | ❌ 无 | `event: tool.progress`(其他 `tool_name`) | 工具进度增量(v1.1.0 新增) |
+| `tool_start` | ❌ 无 | `event: tool.started` | 工具调用开始 |
+| `tool_complete` | ❌ 无 | `event: tool.completed` | 工具调用完成 |
+| `usage` | `usage` 字段(OpenAI 标准) | `event: run.completed` 的 `data.usage` | 用量统计 |
+| `done` | `data: [DONE]` | `event: done` 或 `run.completed` 后终止 | 流结束 |
+| `error` | HTTP 错误 / 解析失败 | `event: error` 或 `event: tool.failed` | 错误 |
+| (不映射) | — | `event: run.started` / `message.started` / `assistant.completed` | BFF 内部状态 |
+
+**预留事件**(P4+ 评估):
+| 预留类型 | Intellect 企业版事件 | 说明 |
+|---------|----------------|------|
+| `approval` | (intellect-team `/v1/runs/{id}/approval` 端点,P3+ 评估) | 审批请求 |
 
 ### 3.6 后端配置：Admin 管理端
 
@@ -240,6 +611,61 @@ interface StreamChunk {
 - **新增后端**：填写类型/端点/认证，自动探测能力
 - **能力探测**：调用后端健康检查 + 能力发现，回填 capabilities
 - **租户绑定**：将后端绑定到 BFF 租户
+
+### 3.7 RBAC 权限模型
+
+#### 3.7.1 Intellect 企业版原生 RBAC
+
+Intellect 企业版数据模型中，Member 拥有 `role` 字段，取值范围为 `owner / admin / member / viewer`，但**无独立的 Permission 实体**，权限通过角色隐式确定：
+
+| 角色 | Team 操作 | Project 操作 | Member 操作 |
+|------|---------|------------|-----------|
+| owner | CRUD + archive | CRUD + archive | CRUD + 授予 admin |
+| admin | CRUD | CRUD | 启用/禁用 member |
+| member | Read | Read | - |
+| viewer | Read | Read | - |
+
+#### 3.7.2 BFF 侧权限模型
+
+BFF 侧的权限控制分为**两个层次**：
+
+**层次 1：BFF Admin 权限**（运维管理）
+- 与业务租户解耦，控制谁能访问 Admin 页面（用户管理/服务监控/沙箱配置/版本）
+- BFF 维护独立的 admin 角色模型（已有 whitelist/roles/resources）
+- 状态：`admin token` 存 localStorage，BFF authMiddleware 校验
+
+**层次 2：业务租户权限**（Agent/Session/Team/Project 操作）
+- 通过 TenantContext 注入到 Adapter，由 Intellect 企业版按 Member role 执行
+- BFF 不维护独立的租户内权限模型，只做透传
+
+#### 3.7.3 AgentUI 前端 RBAC 策略
+
+```
+前端权限判断：
+├── admin 页面：通过 BFF /api/bff/admin/roles 检查（Admin 角色）
+│   ├── 可见：adminUsers=true 的用户
+│   └── 可操作：取决于 BFF roles.json 中的 permission 声明
+│
+└── 业务页面（Agent/Session/Team/Project）：
+    ├── 通过 TenantContext.userId 关联 Member
+    ├── 前端不直接判断权限，依赖后端 API 返回 403
+    └── 前端根据 API 错误提示用户联系 admin
+```
+
+#### 3.7.4 权限矩阵（本期范围）
+
+| 功能 | 所需 BFF 角色 | Intellect 企业版 Member 角色 |
+|------|-------------|---------------------------|
+| 查看 Agent 列表 | user | member + viewer |
+| 创建会话/对话 | user | member |
+| 管理 Team | admin | admin |
+| 管理 Project | admin | admin |
+| 用户管理（Admin 页面） | superadmin | owner |
+| 服务监控（Admin 页面） | operator | - |
+| 沙箱配置（Admin 页面） | superadmin | - |
+| 版本查询（Admin 页面） | user | - |
+
+> **说明**：Intellect 企业版无 Admin 页面等效功能，企业版的 Member role 控制粒度为 Team/Project 级别，不覆盖运维管理功能。
 
 ## 四、Token 安全存储策略
 
@@ -255,8 +681,8 @@ interface StreamChunk {
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Layer 1: 环境变量（.env，不入库）                       │
-│  ├── HARNESS_INTELLECT_COMMUNITY_ADMIN_TOKEN=intellect-xxx            │
-│  ├── HARNESS_INTELLECT_ADMIN_TOKEN=imt_xxx              │
+│  ├── HARNESS_INTELLECT_RAG_ADMIN_TOKEN=intellect-xxx    │
+│  ├── HARNESS_INTELLECT_ENTERPRISE_ADMIN_TOKEN=imt_xxx  │
 │  └── HARNESS_TOKEN_ENCRYPTION_KEY=（P4+ 启用）          │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 2: JSON 文件（bff/data/harness-backends.json）    │
@@ -281,12 +707,12 @@ interface StreamChunk {
 interface HarnessBackendConfig {
   id: string;
   name: string;
-  type: 'intellect-community' | 'intellect-enterprise';
+  type: 'intellect-rag' | 'intellect-enterprise';
   endpoint: string;
   capabilities: HarnessCapabilities;
   status: 'active' | 'disabled';
   // token 通过环境变量引用，不存明文
-  adminTokenEnvVar: string;        // 如 'HARNESS_INTELLECT_ADMIN_TOKEN'
+  adminTokenEnvVar: string;        // 如 'HARNESS_INTELLECT_RAG_ADMIN_TOKEN'
   projectTokenEnvVar?: string;     // 可选，项目级 token 环境变量名
   createdAt: string;
   updatedAt: string;
@@ -355,9 +781,9 @@ class HarnessStore {
 
 ```bash
 # .env（已加入 .gitignore）
-HARNESS_INTELLECT_COMMUNITY_ADMIN_TOKEN=intellect-xxxxxxxxxxxxxxxx
-HARNESS_INTELLECT_ADMIN_TOKEN=imt_xxxxxxxxxxxxxxxxxx
-HARNESS_INTELLECT_PROJECT_TOKEN=imt_p_xxxxxxxxxxxxxxx
+HARNESS_INTELLECT_RAG_ADMIN_TOKEN=intellect-xxxxxxxxxxxxxxxx
+HARNESS_INTELLECT_ENTERPRISE_ADMIN_TOKEN=imt_xxxxxxxxxxxxxxxxxx
+HARNESS_INTELLECT_ENTERPRISE_PROJECT_TOKEN=imt_p_xxxxxxxxxxxxxxx
 ```
 
 ### 4.6 Admin 页面交互
@@ -401,7 +827,7 @@ class EncryptedFileTokenVault implements TokenVault {
 
 export interface IHarnessAdapter {
   readonly backendId: string;
-  readonly backendType: 'intellect-community' | 'intellect-enterprise';
+  readonly backendType: 'intellect-rag' | 'intellect-enterprise';
   readonly capabilities: HarnessCapabilities;
 
   // Agent
@@ -477,12 +903,27 @@ export interface HarnessCapabilities {
   modelManagement: boolean;
 }
 
-// ── 流式 chunk（OpenAI 兼容，两个后端共用）──
+// ── 流式 chunk（BFF 统一输出，两个后端解析后产出）──
+// 与 §3.5.4 / §6.2 / §6.3 保持一致
 export interface StreamChunk {
-  type: 'delta' | 'done' | 'error';
-  content?: string;
+  type:
+    | 'delta'              // 文本增量（两后端都支持）
+    | 'reasoning'          // 思考链（仅 Intellect 企业版）
+    | 'tool_start'         // 工具开始（预留）
+    | 'tool_complete'      // 工具完成（预留）
+    | 'usage'              // 用量信息（仅 Intellect 企业版）
+    | 'done'               // 结束
+    | 'error';             // 错误
+  content?: string;        // delta / reasoning 文本
   role?: 'assistant';
   finishReason?: 'stop' | 'length' | 'cancelled';
+  toolName?: string;
+  toolArgs?: unknown;
+  toolResult?: unknown;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+  };
   error?: { code: string; message: string };
 }
 ```
@@ -517,8 +958,8 @@ class AdapterRegistry {
 
   private async createAdapter(backend: HarnessBackend): Promise<IHarnessAdapter> {
     switch (backend.type) {
-      case 'intellect-community':
-        return new IntellectCommunityAdapter(backend);
+      case 'intellect-rag':
+        return new IntellectRagAdapter(backend);
       case 'intellect-enterprise':
         return new IntellectEnterpriseAdapter(backend);
       default:
@@ -528,12 +969,16 @@ class AdapterRegistry {
 }
 ```
 
-### 6.2 OpenAI 兼容 SSE 解析器（共用）
+### 6.2 SSE 解析器（双协议）
+
+Intellect RAG 与 Intellect 企业版 SSE 协议**不同**（详见 §3.5.3 对比表），需要两个独立解析器。共用部分仅是 SSE 帧分割逻辑。
 
 ```typescript
 // bff/src/services/adapters/shared/openai-sse.ts
 
-// Intellect 和 Intellect 企业版共用，因为都是 OpenAI 兼容 SSE 格式
+// Intellect RAG 专用：OpenAI 兼容 SSE
+// 端点：POST /api/v1/chat/completions
+// 格式：data: {"choices":[{"delta":{"content":"..."}}]} / data: [DONE]
 async function* parseOpenAISSE(response: Response): AsyncIterable<StreamChunk> {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
@@ -567,21 +1012,75 @@ async function* parseOpenAISSE(response: Response): AsyncIterable<StreamChunk> {
 }
 ```
 
+```typescript
+// bff/src/services/adapters/shared/intellect-enterprise-sse.ts
+
+// Intellect 企业版专用：自定义事件 SSE
+// 端点：POST /api/sessions/{sessionId}/chat/stream
+// 格式：event: token|reasoning|final / data: {"text":"...","usage":{...}}
+// 详见 §3.5.2 / §3.5.3
+async function* parseIntellectEnterpriseSSE(response: Response): AsyncIterable<StreamChunk> {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.startsWith('event: ')) continue;
+      const eventType = line.slice(7).trim();
+      const dataLine = lines.shift(); // 下一行是 data:
+      if (!dataLine?.startsWith('data: ')) continue;
+      const data = JSON.parse(dataLine.slice(6).trim());
+
+      switch (eventType) {
+        case 'token':
+          yield { type: 'delta', content: data.text };
+          break;
+        case 'reasoning':
+          yield { type: 'reasoning', content: data.text };
+          break;
+        case 'final':
+          if (data.usage) {
+            yield {
+              type: 'usage',
+              usage: {
+                promptTokens: data.usage.prompt_tokens,
+                completionTokens: data.usage.completion_tokens,
+              },
+            };
+          }
+          yield { type: 'done' };
+          return;
+      }
+    }
+  }
+}
+```
+
+> **注意**：Intellect 企业版另有一个 OpenAI 兼容端点 `POST /v1/chat/completions`（§12.1），如 Adapter 选择走该端点则可复用 `parseOpenAISSE`，但会丢失 `reasoning` / `usage` 能力。本期 P3 采用 `/api/sessions/{id}/chat/stream` + `parseIntellectEnterpriseSSE` 以保留完整能力。
+
 ### 6.3 Intellect 企业版 Adapter（多租户头注入）
 
 ```typescript
-// bff/src/services/adapters/intellect/adapter.ts
+// bff/src/services/adapters/intellect-enterprise/adapter.ts
 
 export class IntellectEnterpriseAdapter implements IHarnessAdapter, IMultiTenantAdapter {
   readonly backendType = 'intellect-enterprise' as const;
 
   constructor(
     private backend: HarnessBackend,
-    private client: IntellectClient,
+    private client: IntellectEnterpriseClient,
   ) {}
 
   async listAgents(ctx: TenantContext): Promise<AgentSummary[]> {
-    // Intellect 用 /v1/models 暴露可用 agent
+    // Intellect 企业版用 /v1/models 暴露可用 agent
     const models = await this.client.get('/v1/models', this.buildHeaders(ctx));
     return models.data.map((m: any) => ({
       id: m.id,
@@ -591,13 +1090,15 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter, IMultiTenant
   }
 
   async *sendMessage(ctx: TenantContext, sessionId: string, message: string): AsyncIterable<StreamChunk> {
-    // Intellect SSE 格式与 Intellect 一致（OpenAI 兼容），直接透传
+    // Intellect 企业版 SSE 用自定义事件（token/reasoning/final），详见 §3.5.2
+    // 必须用 parseIntellectEnterpriseSSE，不能复用 parseOpenAISSE
     const response = await this.client.postStream(
       `/api/sessions/${sessionId}/chat/stream`,
       { message },
       this.buildHeaders(ctx),
     );
-    yield* parseOpenAISSE(response);  // 共用解析器
+    yield* parseIntellectEnterpriseSSE(response);  // 企业版专用解析器
+
   }
 
   // ── 私有方法：构建请求头 ──
@@ -636,7 +1137,7 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter, IMultiTenant
 // bff/src/services/canvas-service.ts
 
 export class CanvasService {
-  constructor(private intellectAdapter: IntellectCommunityAdapter) {}
+  constructor(private intellectAdapter: IntellectRagAdapter) {}
 
   // 画布操作永远走 Intellect，不经过 Adapter Registry
   async listCanvas(ctx: TenantContext): Promise<Canvas[]> {
@@ -670,7 +1171,7 @@ interface BffTenant {
 interface TenantBackendBinding {
   tenantId: string;
   backendId: string;
-  backendType: 'intellect-community' | 'intellect-enterprise';
+  backendType: 'intellect-rag' | 'intellect-enterprise';
   // Intellect 侧
   intellectTenantId?: string;
   // Intellect 侧（admin token 用于管理操作）
@@ -684,7 +1185,7 @@ interface TenantBackendBinding {
 interface HarnessBackend {
   id: string;
   name: string;
-  type: 'intellect-community' | 'intellect-enterprise';
+  type: 'intellect-rag' | 'intellect-enterprise';
   endpoint: string;                // http://localhost:9380 / http://localhost:8642
   adminToken?: string;             // Intellect admin member token
   status: 'active' | 'disabled';
@@ -718,14 +1219,15 @@ bff/src/
 │       ├── types.ts          # IHarnessAdapter 接口定义
 │       ├── registry.ts       # Adapter 注册与选择
 │       ├── shared/
-│       │   └── openai-sse.ts # OpenAI 兼容 SSE 解析器（共用）
-│       ├── intellect/
-│       │   ├── adapter.ts    # IntellectCommunityAdapter
-│       │   ├── client.ts     # Intellect HTTP 客户端
+│       │   ├── openai-sse.ts           # Intellect RAG SSE 解析器
+│       │   └── intellect-enterprise-sse.ts  # Intellect 企业版 SSE 解析器
+│       ├── intellect-rag/              # Intellect RAG Adapter
+│       │   ├── adapter.ts    # IntellectRagAdapter
+│       │   ├── client.ts     # Intellect RAG HTTP 客户端
 │       │   └── stream.ts     # SSE 流式转换
-│       └── intellect/
+│       └── intellect-enterprise/       # Intellect 企业版 Adapter
 │           ├── adapter.ts    # IntellectEnterpriseAdapter
-│           ├── client.ts     # Intellect HTTP 客户端
+│           ├── client.ts     # Intellect 企业版 HTTP 客户端
 │           ├── stream.ts     # SSE 流式转换
 │           └── admin.ts      # Team/Project 透传
 └── utils/
@@ -799,61 +1301,119 @@ function AgentPage() {
 
 ### 10.1 P0-P3 细化（本期范围）
 
-#### P0：接口定义 + 存储层
+> **P0-前置 + P0 已完成**(2026-06-26,详见 [specs/001-multi-harness-p0/tasks.md](../specs/001-multi-harness-p0/tasks.md))。Constitution v1.1.0 Principle I/II/IV/V/VII/VIII 全部通过。
+
+#### P0-前置：前端 API 迁移到 BFF 反向代理 ✅ 已完成
+
+**目标**：前端所有 `/api/v1/*` 请求改为经 BFF 反向代理透传，为 P0/P1 提供"BFF 可观测、可拦截"的接入点。详见 §十二。
+
+| 任务 | 文件 | 状态 |
+|------|------|------|
+| 实现 Intellect RAG 透明代理方法 | `bff/src/services/intellect-client.ts` | ✅ `proxy(path, req)` 透传 method/headers/body/query/SSE 流 |
+| 新建 proxy 路由 | `bff/src/routes/proxy.ts` | ✅ catch-all `/proxy/v1/*` → intellect-rag `/api/v1/*` |
+| 挂载 proxy 路由 | `bff/src/index.ts` | ✅ `app.route('/', proxyRoutes)` + `app.use('/proxy/*', authMiddleware)` |
+| 配置 Vite proxy | `vite.config.ts` | ✅ 已有 `/api/bff` 规则(rewrite 去前缀),保留 `/api/v1` 旧规则用于回滚 |
+| 切换前端 API 常量 | `src/utils/api.ts` | ✅ `restAPIv1` 改为 `/api/bff/proxy/v1` |
+| 更新环境变量样例 | `.env.example` | ✅ 新增 `VITE_BFF_BASE=/api/bff` + `HARNESS_INTELLECT_RAG_ADMIN_TOKEN` + `HARNESS_INTELLECT_ENTERPRISE_API_SERVER_KEY` |
+
+**验收标准**（冒烟用例全部通过）：✅ type-check 零错误;运行时冒烟需本地 `npm run dev:all` 验证
+- 登录/登出、用户信息
+- Agent 列表、创建、编辑、删除
+- 会话创建、流式对话（SSE 透传正常）
+- 画布编辑、保存、执行
+- 知识库 CRUD、文档上传
+- Admin：whitelist、roles、users
+- BFF 日志能看到所有 API 流量
+- `src/utils/api.ts` 改回 `/api/v1` 可瞬时回滚
+
+#### P0：接口定义 + 存储层 ✅ 已完成
 
 **目标**：建立 Adapter 抽象层骨架，不改变现有功能。
 
-| 任务 | 文件 | 说明 |
+| 任务 | 文件 | 状态 |
 |------|------|------|
-| 定义 Adapter 接口 | `bff/src/services/adapters/types.ts` | `IHarnessAdapter`、`IMultiTenantAdapter`、`TenantContext`、`HarnessCapabilities`、`StreamChunk` |
-| 定义数据模型 | `bff/src/services/adapters/types.ts` | `AgentSummary`、`Session`、`Team`、`Project`、`TeamMember`、`ProjectMember` |
-| 实现 HarnessStore | `bff/src/services/harness-store.ts` | JSON 配置 + 环境变量 token 加载 |
-| 实现 TenantStore | `bff/src/services/tenant-store.ts` | BFF 租户模型（轻量，只存绑定关系） |
-| 创建默认配置 | `bff/data/harness-backends.json` | 默认 Intellect 后端配置 |
-| 更新 .env.example | `.env.example` | 新增 `HARNESS_*_ADMIN_TOKEN` 变量 |
+| 定义 Adapter 接口 + 数据模型 | `bff/src/types/adapter.ts` (合并 harness-adapter + multi-tenant-adapter 契约) | ✅ `IHarnessAdapter`、`IMultiTenantAdapter`、`HarnessAdapterFactory`、`isMultiTenantAdapter` |
+| 定义 Harness 后端类型 | `bff/src/types/harness.ts` | ✅ `BackendType`、`HarnessCapabilities`、`HarnessBackendConfig`、`HarnessBackend` |
+| 定义 StreamChunk | `bff/src/types/stream.ts` | ✅ 8 个 type 枚举(Constitution Principle IV v1.1.0) |
+| 定义 Tenant 上下文 | `bff/src/types/tenant.ts` | ✅ `BffTenant`、`TenantContext`(含 X-Intellect-Team/X-Intellect-Project 字段) |
+| 定义 Domain 模型 | `bff/src/types/domain.ts` | ✅ `AgentSummary`、`Session`、`Team`、`Project`、`TeamMember`、`ProjectMember`、`SendMessageRequest` |
+| 定义 Store 契约 | `bff/src/types/stores.ts` | ✅ `HarnessStore`、`TenantStore`、`StoreFactory` |
+| Barrel export | `bff/src/types/index.ts` | ✅ re-export 所有契约 + 保留 legacy BffContext/AgentSession |
+| 实现 HarnessStore | `bff/src/services/harness-store.ts` | ✅ `JSONFileHarnessStore`(JSON + env 合并,Zod 校验,env 缺失跳过告警) |
+| 实现 TenantStore | `bff/src/services/tenant-store.ts` | ✅ `JSONFileTenantStore`(画布类型校验 Constitution Principle III) |
+| 创建默认配置 | `bff/data/harness-backends.json` | ✅ 默认 Intellect RAG 后端(无 token 明文) |
+| 创建空租户配置 | `bff/data/bff-tenants.json` | ✅ `{"tenants":[]}` |
+| 启动初始化 Store | `bff/src/index.ts` | ✅ `harnessStore.load()` + `tenantStore.load()`,存 Hono context,不挂新路由 |
+| 更新 .env.example | `.env.example` | ✅ `HARNESS_INTELLECT_RAG_ADMIN_TOKEN` + `HARNESS_INTELLECT_ENTERPRISE_API_SERVER_KEY`(Principle VIII) |
+| 更新 .gitignore | `.gitignore` | ✅ 允许 JSON 配置入库 + ignore `.env` |
 
-**验收标准**：
-- BFF 启动时能从 JSON + 环境变量加载后端配置
-- TypeScript 编译通过
-- 不影响现有功能（现有路由行为不变）
+**验收标准**：✅ 全部通过
+- BFF 启动时能从 JSON + 环境变量加载后端配置 ✅
+- TypeScript 编译通过 ✅(`cd bff && npm run type-check` + 根目录 `npm run type-check` 零错误)
+- 不影响现有功能（现有路由行为不变）✅(SC-009,未改动 agent/session/admin/health 路由)
+- env 缺失不崩溃,跳过告警 ✅(T033 验证)
+- 画布后端类型校验生效 ✅(T034 验证)
+- JSON 文件零 token 明文 ✅(T042 grep 扫描)
+- 契约可被实现(mock adapter 通过类型检查)✅(SC-004)
+- StreamChunk 8 个 type 全部可构造 ✅(SC-005)
 
 #### P1：Intellect Adapter + 重构现有 BFF
 
-**目标**：将现有 BFF 对 Intellect 的直连逻辑重构为通过 IntellectCommunityAdapter，前端无感知。
+**状态**:✅ 已完成(2026-06-26,Constitution v1.2.0)
 
-| 任务 | 文件 | 说明 |
-|------|------|------|
-| 实现 OpenAI SSE 解析器 | `bff/src/services/adapters/shared/openai-sse.ts` | 共用的 SSE 流式解析 |
-| 实现 Intellect HTTP 客户端 | `bff/src/services/adapters/intellect/client.ts` | 封装 Intellect REST 调用 |
-| 实现 IntellectCommunityAdapter | `bff/src/services/adapters/intellect/adapter.ts` | 实现 `IHarnessAdapter` 接口 |
-| 实现 Adapter Registry | `bff/src/services/adapters/registry.ts` | Adapter 注册与按租户选择 |
-| 重构 agent 路由 | `bff/src/routes/agent.ts` | 改为调用 `registry.getAdapterForTenant()` |
-| 重构 session 路由 | `bff/src/routes/session.ts` | 改为调用 adapter |
+**目标**:将现有 BFF 对 Intellect 的直连逻辑重构为通过 IntellectRagAdapter,前端无感知。
 
-**验收标准**：
-- 现有 Agent/Session CRUD 行为不变
-- SSE 流式行为不变
-- 前端无任何改动
-- 现有 BFF 测试通过
+> **实施偏差说明**(Constitution v1.2.0 修订):
+> - SSE 协议:原 design doc 描述 Intellect RAG 为 OpenAI 兼容格式,实际有双协议(Canvas Workflow + OpenAI 兼容)。P1 实现 `parseCanvasWorkflowSSE`(前端主通道),`parseOpenAISSE` 留待 P3。详见 [research.md](../specs/002-multi-harness-p1/research.md) R1
+> - 目录路径:原 design doc 用 `intellect/`,实际遵循 constitution 命名规范用 `intellect-rag/`
+> - Session 契约:`listSessions`/`getSession`/`deleteSession` 新增 `agentId` 参数,适配 Intellect RAG 嵌套结构 `/agents/{agentId}/sessions`
 
-#### P2：Harness Admin + 前端能力探测
+| 任务 | 文件 | 说明 | 状态 |
+|------|------|------|------|
+| 实现 Canvas Workflow SSE 解析器 | `bff/src/services/adapters/intellect-rag/parse-canvas-workflow-sse.ts` | Intellect RAG 主通道 SSE 解析(非 OpenAI 兼容) | ✅ |
+| 实现 IntellectRagAdapter | `bff/src/services/adapters/intellect-rag/intellect-rag-adapter.ts` | 实现 `IHarnessAdapter` 接口(Layer 1) | ✅ |
+| 实现 AdapterRegistry | `bff/src/services/adapter-registry.ts` | Adapter 注册与按租户选择 | ✅ |
+| 实现 TenantContext 中间件 | `bff/src/middleware/tenant-context.ts` | 从 X-Tenant-Id/X-User-Id 提取租户上下文 | ✅ |
+| 新增 BFF Agent 原生路由 | `bff/src/routes/bff-agents.ts` | `/api/bff/agents/*` 调 Adapter | ✅ |
+| 前端路径迁移 | `src/utils/api.ts` | Agent CRUD/Session/chat 路径从 `proxy/v1/agents` 改为 `bff/agents` | ✅ |
+
+**验收标准**:
+- ✅ 现有 Agent/Session CRUD 行为不变(60 个 P0 测试 + 31 个 P1 测试通过)
+- ✅ SSE 流式行为不变(parseCanvasWorkflowSSE 11 个契约测试通过)
+- ✅ 前端仅 `api.ts` 路径常量改动,业务逻辑零改动
+- ✅ BFF TypeScript 编译通过,91 个单元测试全部通过
+- ⏳ 冒烟测试(需真实 Intellect RAG 运行):见 [quickstart.md](../specs/002-multi-harness-p1/quickstart.md)
+
+#### P2：Harness Admin + 前端能力探测 ✅ 已完成
+
+**状态**:✅ 已完成(2026-06-26,详见 [specs/003-harness-admin-capabilities/tasks.md](../specs/003-harness-admin-capabilities/tasks.md))
 
 **目标**：Admin 管理端可配置后端，前端可探测能力条件渲染。
 
-| 任务 | 文件 | 说明 |
-|------|------|------|
-| 实现 harness-admin 路由 | `bff/src/routes/harness-admin.ts` | 后端配置 CRUD（不含 token 明文） |
-| 实现能力探测端点 | `bff/src/routes/capabilities.ts` | `GET /api/bff/capabilities` 返回当前后端能力 |
-| 注册新路由 | `bff/src/index.ts` | 挂载 harness-admin + capabilities 路由 |
-| 新增前端 API 路径 | `src/utils/api.ts` | harness 管理相关路径 |
-| 实现 useHarnessCapabilities | `src/hooks/useHarnessCapabilities.ts` | 启动时查询能力，条件渲染 |
-| 新增 Admin 页面 | `src/pages/admin/harness-backends.tsx` | 后端列表/新增/编辑/删除 |
+| 任务 | 文件 | 说明 | 状态 |
+|------|------|------|------|
+| P2 DTO 类型 | `bff/src/types/harness-admin.ts` | HarnessBackendWithStatus/CapabilitiesResponse/HarnessBackendForm | ✅ |
+| HarnessStore.listConfigs 扩展 | `bff/src/services/harness-store.ts` | 返回所有配置(含未就绪,不含 token 明文) | ✅ |
+| AdapterRegistry.invalidate 扩展 | `bff/src/services/adapter-registry.ts` | 热加载缓存失效(可选 backendId 精确失效) | ✅ |
+| 校验工具函数 | `bff/src/services/harness-admin-validation.ts` | id kebab-case/endpoint URL/adminTokenEnvVar 格式校验 | ✅ |
+| 实现 harness-admin 路由 | `bff/src/routes/harness-admin.ts` | 后端配置 CRUD（不含 token 明文）+ 删除前校验 tenant 绑定 | ✅ |
+| 实现能力探测端点 | `bff/src/routes/capabilities.ts` | `GET /api/bff/capabilities` 返回当前后端能力 | ✅ |
+| 注册新路由 | `bff/src/index.ts` | 挂载 harness-admin(authMiddleware) + capabilities(+ tenantContextMiddleware) | ✅ |
+| 新增前端 API 路径 | `src/utils/api.ts` | harnessAdmin CRUD + capabilities 路径常量 | ✅ |
+| 实现 useHarnessCapabilities | `src/hooks/use-harness-capabilities.ts` | TanStack Query,queryKey 含 tenantId 自动重新查询,降级返回 undefined | ✅ |
+| 新增 Admin 页面 | `src/pages/admin/harness-backends.tsx` | 列表 + 搜索 + 新增/编辑 Modal(react-hook-form + zod)+ 删除二次确认 | ✅ |
+| 注册 Admin 路由 | `src/routes.tsx` | `Routes.AdminHarnessBackends` 枚举 + 路由(非企业版独占) | ✅ |
+| 前端条件渲染 | `src/features/{datasets,memories}/manifest.ts` | `enabled(ctx)` 接入 `ctx.capabilities`,空集合默认启用(渐进增强) | ✅ |
+| 前端 harness-admin-service | `src/services/harness-admin-service.ts` | CRUD + capabilities 查询封装,类型与 BFF DTO 同步 | ✅ |
 
 **验收标准**：
-- Admin 页面可 CRUD 后端配置
-- 新增后端时提示用户设置环境变量
-- 前端可通过 `useHarnessCapabilities` 获取能力
-- 页面按能力条件渲染（如无画布的后端隐藏画布入口）
+- ✅ Admin 页面可 CRUD 后端配置(react-hook-form + zod 校验 + 删除二次确认)
+- ✅ 新增后端时表单字段为 `adminTokenEnvVar`(env var 引用,不含明文 token)
+- ✅ 前端可通过 `useHarnessCapabilities` 获取能力(TanStack Query + 5min 缓存 + 1 次重试)
+- ✅ 页面按能力条件渲染(datasets↔knowledgeBase,memories↔memory,capabilities 空集合默认启用)
+- ✅ TypeScript 编译零错误(前端 + BFF)
+- ✅ 单元测试全过:BFF 8 套件 125 测试(harness-admin 17 + capabilities 6),前端 service 8 测试
+- ⏳ 冒烟测试(需真实 Intellect RAG 运行):见 [quickstart.md](../specs/003-harness-admin-capabilities/quickstart.md)
 
 #### P3：Intellect 企业版 Adapter（核心层）
 
@@ -893,14 +1453,20 @@ function AgentPage() {
 
 | 文件 | 阶段 | 操作 |
 |------|------|------|
+| `bff/src/routes/proxy.ts` | P0-前置 | 新建（透明反向代理） |
+| `bff/src/services/intellect-client.ts` | P0-前置 | 修改（新增 `proxy` 方法） |
+| `bff/src/index.ts` | P0-前置 | 修改（挂载 proxy 路由） |
+| `vite.config.ts` | P0-前置 | 修改（新增 `/api/bff` proxy） |
+| `src/utils/api.ts` | P0-前置 | 修改（`restAPIv1` 切到 `/api/bff/proxy/v1`） |
+| `.env.example` | P0-前置 | 修改（新增 `VITE_BFF_BASE`） |
 | `bff/src/services/adapters/types.ts` | P0 | 新建 |
 | `bff/src/services/harness-store.ts` | P0 | 新建 |
 | `bff/src/services/tenant-store.ts` | P0 | 新建 |
 | `bff/data/harness-backends.json` | P0 | 新建（默认配置） |
 | `.env.example` | P0 | 修改 |
-| `bff/src/services/adapters/shared/openai-sse.ts` | P1 | 新建 |
-| `bff/src/services/adapters/intellect/client.ts` | P1 | 新建 |
-| `bff/src/services/adapters/intellect/adapter.ts` | P1 | 新建 |
+| `bff/src/services/adapters/shared/openai-sse.ts` | P1 | 新建（Intellect RAG SSE） |
+| `bff/src/services/adapters/intellect-rag/client.ts` | P1 | 新建 |
+| `bff/src/services/adapters/intellect-rag/adapter.ts` | P1 | 新建（IntellectRagAdapter） |
 | `bff/src/services/adapters/registry.ts` | P1 | 新建 |
 | `bff/src/routes/agent.ts` | P1 | 重构 |
 | `bff/src/routes/session.ts` | P1 | 重构 |
@@ -910,14 +1476,89 @@ function AgentPage() {
 | `src/utils/api.ts` | P2 | 修改（新增路径） |
 | `src/hooks/useHarnessCapabilities.ts` | P2 | 新建 |
 | `src/pages/admin/harness-backends.tsx` | P2 | 新建 |
-| `bff/src/services/adapters/intellect/client.ts` | P3 | 新建 |
-| `bff/src/services/adapters/intellect/adapter.ts` | P3 | 新建 |
+| `bff/src/services/adapters/shared/intellect-enterprise-sse.ts` | P3 | 新建（企业版 SSE） |
+| `bff/src/services/adapters/intellect-enterprise/client.ts` | P3 | 新建 |
+| `bff/src/services/adapters/intellect-enterprise/adapter.ts` | P3 | 新建（IntellectEnterpriseAdapter） |
 | `docs/intellect-admin-api-guide.md` | 已完成 | 新建（Intellect 侧 API 指南） |
 | `docs/multi-harness-design.md` | 已完成 | 新建（本文档） |
 
-## 十二、Intellect 企业版关键发现
+## 十二、前端 API 迁移到 BFF 策略（P0 前置）
 
-### 12.1 已实现能力
+### 12.1 现状与差距
+
+设计文档 §九"前端改动清单"假设前端已通过 BFF 调用后端，但代码现状并非如此：
+
+- [src/utils/api.ts](file:///Users/simon/project/agentui/src/utils/api.ts) 中 **400+ 个 API 端点**全部直连 Intellect RAG `/api/v1/*`（端口 9380）
+- BFF（端口 9390）目前只承接 `agent`、`session`（stub）、`admin`（whitelist/roles/resources）四类路由
+- 前端通过 Vite proxy 把 `/api/v1/*` 直接转发到 intellect-rag，完全不经过 BFF
+
+**影响**：P1"前端无感知重构"的前提不成立。Adapter 重构 BFF 路由后，前端如果不切到 BFF，根本无法消费 Adapter。因此前端 API 迁移是 P0 的硬前置。
+
+### 12.2 迁移策略：BFF 反向代理 + 渐进式接管
+
+采用**两阶段迁移**，避免一次性改 400+ 端点的高风险：
+
+#### 阶段 A（P0 前置）：BFF 透明反向代理
+
+在 BFF 新增一个 catch-all 反向代理路由，把 `/api/bff/proxy/v1/*` 透传到 Intellect RAG `/api/v1/*`，**不改业务逻辑**。
+
+```typescript
+// bff/src/routes/proxy.ts
+// 透明代理：/api/bff/proxy/v1/* → intellect-rag /api/v1/*
+proxyRoutes.all('/proxy/v1/*', async (c) => {
+  const path = c.req.path.replace('/proxy/v1', '/api/v1');
+  return intellectRagClient.proxy(path, c.req);
+});
+```
+
+前端只需改一个常量：
+```typescript
+// src/utils/api.ts
+const restAPIv1 = `/api/bff/proxy/v1`;  // 原: `/api/v1`
+```
+
+**验收**：
+- 前端所有现有功能行为不变（登录、Agent、知识库、画布、搜索、记忆等）
+- BFF 日志能看到所有 API 流量（为 P1 重构提供观察面）
+- BFF authMiddleware 对所有请求生效（统一鉴权入口）
+
+#### 阶段 B（P1+）：按域逐步原生实现
+
+P1 起，按业务域把代理路由逐个替换为 BFF 原生路由（调 Adapter）：
+
+| 顺序 | 域 | 替换路径 | 阶段 |
+|------|---|---------|------|
+| 1 | Agent | `/api/bff/proxy/v1/agents/*` → `/api/bff/agents/*`（Adapter） | P1 |
+| 2 | Session | `/api/bff/proxy/v1/agents/{id}/sessions/*` → `/api/bff/sessions/*`（Adapter） | P1 |
+| 3 | Canvas | `/api/bff/proxy/v1/canvas/*` → `/api/bff/canvas/*`（CanvasService 硬绑定） | P6 |
+| 4 | Dataset/KB | 保留 proxy（Intellect RAG 专属，无需 Adapter） | 不迁移 |
+| 5 | Admin | 已迁移（`/api/bff/admin/*`） | 已完成 |
+
+**原则**：
+- Intellect RAG 专属能力（Dataset/KB/Search/Memory/MCP）**保留代理**，不纳入 Adapter
+- 只有需要"多后端切换"的域（Agent/Session/Canvas）才升级为原生 Adapter 路由
+- 每替换一个域，前端 `api.ts` 对应路径从 `proxy/v1/...` 改为 `bff/...`，单点改动
+
+### 12.3 配套改动
+
+| 文件 | 改动 | 阶段 |
+|------|------|------|
+| `bff/src/routes/proxy.ts` | 新建：透明反向代理 | P0 前置 |
+| `bff/src/index.ts` | 挂载 proxy 路由（在 authMiddleware 之后） | P0 前置 |
+| `bff/src/services/intellect-client.ts` | 新增 `proxy(path, req)` 方法（透传 method/headers/body/query） | P0 前置 |
+| `vite.config.ts` | 把 `/api/bff` proxy 指向 BFF 9390（保留 `/api/v1` 旧 proxy 用于回滚） | P0 前置 |
+| `src/utils/api.ts` | `restAPIv1` 改为 `/api/bff/proxy/v1`（单行改动） | P0 前置 |
+| `.env.example` | 新增 `VITE_BFF_BASE=/api/bff` | P0 前置 |
+
+### 12.4 风险与回滚
+
+- **风险**：代理引入一跳延迟（本地 ~1ms，可忽略）；SSE 流式需要 BFF 正确透传（`proxy` 方法不能用 `response.json()`，必须 pipe response body）
+- **回滚**：`src/utils/api.ts` 改回 `/api/v1` 即可瞬时回滚，BFF proxy 路由保留不影响
+- **验收清单**：迁移后跑一遍冒烟用例（登录→创建 Agent→创建会话→流式对话→画布编辑→知识库 CRUD），全部通过才算 P0 前置完成
+
+## 十三、Intellect 企业版关键发现
+
+### 13.1 已实现能力
 
 通过分析 `~/workspace/intellect-team`，确认企业版已实现：
 
@@ -935,7 +1576,7 @@ function AgentPage() {
 | Skills | `GET /v1/skills` | 技能列表 |
 | 多租户头 | `X-Intellect-Team` / `X-Intellect-Project` | HTTP Header 传递 |
 
-### 12.2 数据模型
+### 13.2 数据模型
 
 Intellect 企业版数据模型为 **Member → Team → Project** 三层（无 Tenant 实体）：
 
@@ -949,7 +1590,7 @@ Intellect 企业版数据模型为 **Member → Team → Project** 三层（无 
 | `project_teams` | id | project_id, team_id, role — UNIQUE(project_id, team_id) | 项目↔团队多对多（可选） |
 | `member_api_tokens` | id | member_id, token_hash, scope_type(member/project), scope_id | API token（imt_* / imt_p_*） |
 
-### 12.3 缺失能力
+### 13.3 缺失能力
 
 Team/Project/Member 的 **HTTP API 路由层**未实现（DB 方法已存在于 `MembershipStore`，需新增 HTTP 路由）。
 

@@ -1,12 +1,25 @@
 const webAPI = `/v1`;
-const restAPIv1 = `/api/v1`;
+// Multi-Harness P0-前置 (Constitution Principle I):前端所有 /api/v1/* 改经 BFF 透明反向代理。
+// 改回 `/api/v1` 可瞬时回滚(FR-006),无需 BFF 配合。
+const restAPIv1 = `/api/bff/proxy/v1`;
+// Multi-Harness P1 (US1, Constitution Principle I + II): Agent 域改经 BFF 原生路由调 Adapter。
+// 仅 Agent CRUD + Session CRUD + chat/completions 路径迁移到 bffAgents,
+// 其余 Agent 子域(components/versions/tags/upload/download)保留 restAPIv1 透传。
+// 改回 `${restAPIv1}/agents` 可瞬时回滚。
+const bffAgents = `/api/bff/agents`;
+// Multi-Harness P2 (US2, Constitution Principle I + II + V + VIII):
+// 前端经 BFF 原生路由查询当前 tenant 绑定后端的能力,按 tenant 隔离,用于条件渲染。
+const bffCapabilities = `/api/bff/capabilities`;
 // BFF-owned admin routes (whitelist, roles, resources). These features were
 // either unimplemented or stubbed in Intellect Admin, and are now served by the
 // BFF layer. Strongly-coupled admin features (users, services, sandbox, system
 // settings) remain on Intellect Admin via /api/v1/admin/*.
 const bffAdmin = `/api/bff/admin`;
+// Multi-Harness P2 (US1, Constitution Principle I + V + Token Security):
+// Harness 后端配置 Admin 路由,运维操作(非租户隔离),响应不含 adminToken 明文。
+const bffHarnessAdmin = `/api/bff/admin/harness-backends`;
 
-export { restAPIv1, webAPI };
+export { restAPIv1, webAPI, bffAgents, bffCapabilities, bffHarnessAdmin };
 
 export default {
   // user
@@ -247,13 +260,13 @@ export default {
 
   // flow
   listAgentTemplate: `${restAPIv1}/agents/templates`,
-  listAgents: `${restAPIv1}/agents`,
+  listAgents: `${bffAgents}`,
   listAgentTags: `${restAPIv1}/agents/tags`,
   updateAgentTags: (agentId: string) => `${restAPIv1}/agents/${agentId}/tags`,
-  createAgent: `${restAPIv1}/agents`,
-  updateAgent: (agentId: string) => `${restAPIv1}/agents/${agentId}`,
-  deleteAgent: (agentId: string) => `${restAPIv1}/agents/${agentId}`,
-  agentChatCompletion: `${restAPIv1}/agents/chat/completions`,
+  createAgent: `${bffAgents}`,
+  updateAgent: (agentId: string) => `${bffAgents}/${agentId}`,
+  deleteAgent: (agentId: string) => `${bffAgents}/${agentId}`,
+  agentChatCompletion: `${bffAgents}/chat/completions`,
   resetAgent: (agentId: string) => `${restAPIv1}/agents/${agentId}/reset`,
   testDbConnect: `${restAPIv1}/agents/test_db_connection`,
   getInputElements: `${webAPI}/canvas/input_elements`,
@@ -268,15 +281,13 @@ export default {
   fetchVersionList: (id: string) => `${restAPIv1}/agents/${id}/versions`,
   fetchVersion: (agentId: string, versionId: string) =>
     `${restAPIv1}/agents/${agentId}/versions/${versionId}`,
-  getAgent: (id: string) => `${restAPIv1}/agents/${id}`,
+  getAgent: (id: string) => `${bffAgents}/${id}`,
   uploadAgentFile: (id?: string) => `${restAPIv1}/agents/${id}/upload`,
-  createAgentSession: (agentId: string) =>
-    `${restAPIv1}/agents/${agentId}/sessions`,
+  createAgentSession: (agentId: string) => `${bffAgents}/${agentId}/sessions`,
   fetchAgentLogs: (canvasId: string) => `${webAPI}/canvas/${canvasId}/sessions`,
-  fetchAgentSessions: (agentId: string) =>
-    `${restAPIv1}/agents/${agentId}/sessions`,
+  fetchAgentSessions: (agentId: string) => `${bffAgents}/${agentId}/sessions`,
   fetchAgentSessionById: (agentId: string, sessionId: string) =>
-    `${restAPIv1}/agents/${agentId}/sessions/${sessionId}`,
+    `${bffAgents}/${agentId}/sessions/${sessionId}`,
   fetchExternalAgentInputs: (canvasId: string) =>
     `${restAPIv1}/agentbots/${canvasId}/inputs`,
   prompt: `${restAPIv1}/agents/prompts`,
@@ -388,6 +399,19 @@ export default {
   adminImportWhitelist: `${bffAdmin}/whitelist/batch`,
 
   adminGetSystemVersion: `${restAPIv1}/admin/version`,
+
+  // Multi-Harness P2 (US1) — Harness Backend Admin CRUD
+  // Constitution Principle I + V (非租户隔离) + Token Security。
+  // 运维页面专用,前端不带 X-Tenant-Id。
+  listHarnessBackends: `${bffHarnessAdmin}`,
+  createHarnessBackend: `${bffHarnessAdmin}`,
+  updateHarnessBackend: (id: string) => `${bffHarnessAdmin}/${id}`,
+  deleteHarnessBackend: (id: string) => `${bffHarnessAdmin}/${id}`,
+
+  // Multi-Harness P2 (US2) — Capabilities 查询(条件渲染)
+  // Constitution Principle I + II + V + VIII。
+  // 前端按 tenant 隔离查询后端能力,无能力降级(Progressive Enhancement)。
+  harnessCapabilities: `${bffCapabilities}`,
 
   // Sandbox settings
   adminListSandboxProviders: `${restAPIv1}/admin/sandbox/providers`,

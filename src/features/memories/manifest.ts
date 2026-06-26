@@ -4,7 +4,10 @@ import { MemoriesRoutes } from './routes';
 const definition: ModuleDefinition = {
   name: 'memories',
   order: 50,
-  enabled: () => true,
+  // Multi-Harness P2 (US2):memory=false 时隐藏对话历史/总结入口。
+  // capabilities 为空(加载中/未注入)时默认启用(Progressive Enhancement)。
+  enabled: (ctx) =>
+    ctx.capabilities.size === 0 || ctx.capabilities.has('memory'),
   routes: [
     {
       path: '/',

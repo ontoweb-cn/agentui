@@ -76,6 +76,8 @@ export enum Routes {
   AdminWhitelist = `${Admin}/whitelist`,
   AdminRoles = `${Admin}/roles`,
   AdminMonitoring = `${Admin}/monitoring`,
+  // Multi-Harness P2 (US3):Harness 后端配置 Admin 页面。
+  AdminHarnessBackends = `${Admin}/harness-backends`,
 }
 
 const defaultRouteFallback = (
@@ -265,6 +267,11 @@ const routeConfigOptions = [
               {
                 path: Routes.AdminSandboxSettings,
                 Component: () => import('@/pages/admin/sandbox-settings'),
+              },
+              // Multi-Harness P2 (US3):Harness 后端配置 Admin 页面(非企业版独占,所有部署都可用)。
+              {
+                path: Routes.AdminHarnessBackends,
+                Component: () => import('@/pages/admin/harness-backends'),
               },
               ...(IS_ENTERPRISE
                 ? [

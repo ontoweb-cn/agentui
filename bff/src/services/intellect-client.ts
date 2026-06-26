@@ -47,3 +47,49 @@ export const intellectRagClient = {
   delete: <T = unknown>(path: string, token: string) =>
     request<T>('DELETE', path, token),
 };
+
+// ---------------------------------------------------------------------------
+// Transparent reverse proxy (Multi-Harness P0-前置, Constitution Principle I)
+// ---------------------------------------------------------------------------
+// 透传前端请求到 Intellect RAG /api/v1/*,不缓冲 body,支持 SSE 流式透传。
+// 不重复注入 admin token(透传前端 Authorization 即可,避免双重鉴权)。
+// 返回 fetch Response 原样,路由层用 response.body ReadableStream 构造 BFF Response。
+
+export interface ProxyRequest {
+  /** HTTP method (GET/POST/PUT/DELETE/PATCH...) */
+  method: string;
+  /** 原始请求 headers(含 Authorization) */
+  headers: Headers;
+  /** 请求 body stream(可选,GET 无 body) */
+  body?: ReadableStream<Uint8Array> | null;
+  /** 原始 query string(已含 ?,如 "?page=1&size=10") */
+  query: string;
+}
+
+/**
+ * 透明代理到 Intellect RAG /api/v1/${path}。
+ *
+ * @param path 已剥离 /api/bff/proxy/v1 前缀的相对路径,如 "agents" 或 "agents/123"
+ * @param req 请求组成部分(method/headers/body/query)
+ * @returns 上游 fetch Response(不调用 .json()/.text(),保留 body ReadableStream)
+ */
+export async function proxy(path: string, req: ProxyRequest): Promise<Response> {
+  // 构造上游 URL:BASE_URL + /api/v1/ + path + query
+  const url = `${BASE_URL}/api/v1/${path}${req.query}`;
+
+  // 透传 headers(含 Authorization),不重复注入 admin token
+  const headers = new Headers(req.headers);
+  // 删除 host 头避免上游冲突(fetch 会自动设置)
+  headers.delete('host');
+
+  const response = await fetch(url, {
+    method: req.method,
+    headers,
+    body: req.body ?? undefined,
+    // @ts-expect-error Node fetch 支持 duplex:'half' 用于 stream body
+    duplex: 'half',
+  });
+
+  return response;
+}
+
