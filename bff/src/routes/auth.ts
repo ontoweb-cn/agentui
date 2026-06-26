@@ -637,15 +637,17 @@ authRoutes.get('/api/bff/auth/login/:channel', async (c) => {
   const authMode = getAuthMode(tenantStore, tenantId);
 
   if (authMode === 'intellect-enterprise') {
-    // 企业版:调 intellect-team POST /api/oauth/authorize,302 重定向
+    // 企业版:调 intellect-team GET /api/oauth/login/{provider}(P4a-4,直接 302 重定向)
+    // 比 POST /api/oauth/authorize 更简单:intellect-team 直接返回 302 + Location,
+    // BFF 透传 302 即可,无需先 POST 拿 redirect_uri 再 302。
     const baseUrl = process.env.INTELLECT_ENTERPRISE_BASE_URL || 'http://localhost:9381';
+    const targetUrl = `${baseUrl}/api/oauth/login/${encodeURIComponent(channel)}?usage=login`;
 
     let resp: Response;
     try {
-      resp = await fetch(`${baseUrl}/api/oauth/authorize`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider_id: channel, usage: 'login' }),
+      resp = await fetch(targetUrl, {
+        method: 'GET',
+        redirect: 'manual', // 不自动跟随,获取 302 Location 透传
       });
     } catch (err) {
       return c.json(
@@ -654,21 +656,26 @@ authRoutes.get('/api/bff/auth/login/:channel', async (c) => {
       );
     }
 
+    // intellect-team 返回 302 + Location(BFF 透传)
+    if (resp.status === 302 || resp.status === 301) {
+      const location = resp.headers.get('location');
+      if (!location) {
+        return c.json(fail(502, 'intellect-team login response missing Location header'), 502);
+      }
+      return c.redirect(location, 302);
+    }
+
+    // 非 302 响应(intellect-team 返回错误 JSON)
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
       return c.json(
-        fail(resp.status, `intellect-team /oauth/authorize failed: ${text}`),
+        fail(resp.status, `intellect-team /oauth/login/${channel} failed: ${text}`),
         resp.status as 400 | 404 | 500 | 502,
       );
     }
 
-    const data = (await resp.json()) as { redirect_uri: string; state?: string };
-    if (!data.redirect_uri) {
-      return c.json(fail(502, 'intellect-team authorize response missing redirect_uri'), 502);
-    }
-
-    // 302 重定向到 OAuth 提供商授权页
-    return c.redirect(data.redirect_uri, 302);
+    // 200 但非 302(异常,理论上不应发生)
+    return c.json(fail(502, `intellect-team login returned unexpected status ${resp.status}`), 502);
   }
 
   // 社区版:302 重定向到 intellect-rag /api/v1/auth/login/{channel}

@@ -214,16 +214,16 @@ const server = createServer((req, res) => {
     return;
   }
 
-  // POST /api/oauth/authorize(公开)
-  if (method === 'POST' && path === '/api/oauth/authorize') {
-    let body = '';
-    req.on('data', (c) => (body += c));
-    req.on('end', () => {
-      const { provider_id, usage } = JSON.parse(body || '{}');
-      const state = randomUUID().slice(0, 8);
-      const redirect_uri = `https://oauth.example.com/${provider_id}/authorize?client_id=mock&state=${state}&redirect_uri=http://localhost:3000/api/bff/auth/oauth/callback`;
-      sendJson(res, 200, { redirect_uri, state });
-    });
+  // GET /api/oauth/login/{provider}(公开,P4a-4:直接 302 重定向)
+  const oauthLoginMatch = path.match(/^\/api\/oauth\/login\/([^/]+)$/);
+  if (method === 'GET' && oauthLoginMatch) {
+    const provider = oauthLoginMatch[1];
+    const usage = url.searchParams.get('usage') || 'login';
+    const state = randomUUID().slice(0, 8);
+    const redirectUri = `https://oauth.example.com/${provider}/authorize?client_id=mock&state=${state}&redirect_uri=http://localhost:3000/api/bff/auth/oauth/callback&usage=${usage}`;
+    // 302 + Location(BFF 用 redirect:manual 捕获并透传)
+    res.writeHead(302, { Location: redirectUri });
+    res.end();
     return;
   }
 
@@ -242,6 +242,160 @@ const server = createServer((req, res) => {
       member_id: 'm-alice',
       claims: { sub: 'gh:12345' },
     });
+    return;
+  }
+
+  // -------------------------------------------------------------------------
+  // P5 Team/Project CRUD 端点(对齐 intellect-team 实际契约)
+  // 鉴权:API_SERVER_KEY(profile key)或 member token;写操作仅 profile key
+  // -------------------------------------------------------------------------
+
+  // 内存存储(mock 重启后重置)
+  if (!globalThis.__mockTeams) {
+    globalThis.__mockTeams = new Map([
+      ['team-alpha', { id: 'team-alpha', slug: 'team-alpha', display_name: 'Team Alpha', enabled: 1, created_at: Date.now() / 1000 }],
+    ]);
+  }
+  if (!globalThis.__mockProjects) {
+    globalThis.__mockProjects = new Map([
+      ['proj-demo', { id: 'proj-demo', slug: 'proj-demo', display_name: 'Proj Demo', team_id: 'team-alpha', status: 'active', created_at: Date.now() / 1000 }],
+    ]);
+  }
+  const mockTeams = globalThis.__mockTeams;
+  const mockProjects = globalThis.__mockProjects;
+
+  // GET /api/teams — 列表
+  if (method === 'GET' && path === '/api/teams') {
+    sendJson(res, 200, { data: Array.from(mockTeams.values()) });
+    return;
+  }
+
+  // POST /api/teams — 创建(profile key only)
+  if (method === 'POST' && path === '/api/teams') {
+    if (auth !== `Bearer ${API_SERVER_KEY}`) {
+      sendJson(res, 403, { error: { code: 'profile_key_required' } });
+      return;
+    }
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      const { slug, display_name, created_by } = JSON.parse(body || '{}');
+      if (!slug || !display_name || !created_by) {
+        sendJson(res, 400, { error: 'slug, display_name and created_by are required' });
+        return;
+      }
+      if (mockTeams.has(slug)) {
+        sendJson(res, 409, { error: { code: 'slug_taken' } });
+        return;
+      }
+      const team = { id: slug, slug, display_name, enabled: 1, created_at: Date.now() / 1000 };
+      mockTeams.set(slug, team);
+      sendJson(res, 201, team);
+    });
+    return;
+  }
+
+  // GET /api/teams/{team_ref} — 详情
+  const teamRefMatch = path.match(/^\/api\/teams\/([^/]+)$/);
+  if (method === 'GET' && teamRefMatch) {
+    const team = mockTeams.get(teamRefMatch[1]);
+    if (!team) {
+      sendJson(res, 404, { error: { code: 'team_not_found' } });
+      return;
+    }
+    sendJson(res, 200, team);
+    return;
+  }
+
+  // DELETE /api/teams/{team_ref} — 归档(profile key only,软删除 enabled=0)
+  if (method === 'DELETE' && teamRefMatch) {
+    if (auth !== `Bearer ${API_SERVER_KEY}`) {
+      sendJson(res, 403, { error: { code: 'profile_key_required' } });
+      return;
+    }
+    const team = mockTeams.get(teamRefMatch[1]);
+    if (!team) {
+      sendJson(res, 404, { error: { code: 'team_not_found' } });
+      return;
+    }
+    team.enabled = 0;
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // GET /api/projects — 列表
+  if (method === 'GET' && path === '/api/projects') {
+    sendJson(res, 200, { data: Array.from(mockProjects.values()) });
+    return;
+  }
+
+  // POST /api/projects — 创建(profile key only)
+  if (method === 'POST' && path === '/api/projects') {
+    if (auth !== `Bearer ${API_SERVER_KEY}`) {
+      sendJson(res, 403, { error: { code: 'profile_key_required' } });
+      return;
+    }
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      const { slug, display_name, created_by, team_ref, repo_url } = JSON.parse(body || '{}');
+      if (!slug || !display_name || !created_by) {
+        sendJson(res, 400, { error: 'slug, display_name and created_by are required' });
+        return;
+      }
+      if (mockProjects.has(slug)) {
+        sendJson(res, 409, { error: { code: 'slug_taken' } });
+        return;
+      }
+      let teamId = null;
+      if (team_ref) {
+        const team = mockTeams.get(team_ref);
+        if (!team) {
+          sendJson(res, 404, { error: { code: 'team_not_found' } });
+          return;
+        }
+        teamId = team.id;
+      }
+      const project = {
+        id: slug,
+        slug,
+        display_name,
+        team_id: teamId,
+        repo_url: repo_url || null,
+        status: 'active',
+        created_at: Date.now() / 1000,
+      };
+      mockProjects.set(slug, project);
+      sendJson(res, 201, project);
+    });
+    return;
+  }
+
+  // GET /api/projects/{project_ref} — 详情
+  const projectRefMatch = path.match(/^\/api\/projects\/([^/]+)$/);
+  if (method === 'GET' && projectRefMatch) {
+    const project = mockProjects.get(projectRefMatch[1]);
+    if (!project) {
+      sendJson(res, 404, { error: { code: 'project_not_found' } });
+      return;
+    }
+    sendJson(res, 200, project);
+    return;
+  }
+
+  // DELETE /api/projects/{project_ref} — 归档(profile key only,软删除 archived=1)
+  if (method === 'DELETE' && projectRefMatch) {
+    if (auth !== `Bearer ${API_SERVER_KEY}`) {
+      sendJson(res, 403, { error: { code: 'profile_key_required' } });
+      return;
+    }
+    const project = mockProjects.get(projectRefMatch[1]);
+    if (!project) {
+      sendJson(res, 404, { error: { code: 'project_not_found' } });
+      return;
+    }
+    project.status = 'archived';
+    sendJson(res, 200, { ok: true });
     return;
   }
 

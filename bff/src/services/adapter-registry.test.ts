@@ -65,6 +65,9 @@ function createMockTenantStore(
     ),
     setCanvasBinding: vi.fn(),
     getCanvasBinding: vi.fn(),
+    setIntellectBinding: vi.fn(),
+    getIntellectTeamId: vi.fn(),
+    getIntellectProjectId: vi.fn(),
   };
 }
 

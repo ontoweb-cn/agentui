@@ -124,6 +124,31 @@ export interface TenantStore {
   getHarnessBinding(tenantId: string): string | undefined;
 
   /**
+   * 设置 Tenant 的 Intellect 企业版 Team/Project 绑定(P5 新增)。
+   *
+   * Constitution Principle V (Tenant Isolation):
+   * - intellectTenantId="0" 或 undefined:不注入 X-Intellect-Team 头(缺省,向后兼容)
+   * - intellectTenantId=真实 team_id:注入 X-Intellect-Team 头(启用多租户隔离)
+   * - intellectProjectId 为空:不注入 X-Intellect-Project 头
+   *
+   * @param tenantId BFF Tenant ID
+   * @param intellectTenantId intellect-team team_id,值 "0" 或 undefined 表示缺省
+   * @param intellectProjectId 可选 intellect-team project_id
+   * @throws 若 tenantId 不存在
+   */
+  setIntellectBinding(
+    tenantId: string,
+    intellectTenantId: string | undefined,
+    intellectProjectId?: string,
+  ): Promise<void>;
+
+  /** 获取 Tenant 绑定的 Intellect team_id(未绑定或 "0" 则 undefined)。 */
+  getIntellectTeamId(tenantId: string): string | undefined;
+
+  /** 获取 Tenant 绑定的 Intellect project_id(未绑定则 undefined)。 */
+  getIntellectProjectId(tenantId: string): string | undefined;
+
+  /**
    * 设置 Tenant 的画布后端绑定。
    *
    * Constitution Principle III 强制校验:

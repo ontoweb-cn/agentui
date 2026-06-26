@@ -180,4 +180,74 @@ describe('tenantContextMiddleware', () => {
     expect(ctx.storedContext?.intellectTeamId).toBeUndefined();
     expect(ctx.storedContext?.tenantId).toBe('tenant-enterprise-default');
   });
+
+  it('P5 (FR-005):BffTenant.intellectProjectId 存在时注入 intellectProjectId', async () => {
+    const ctx = createMockContext(
+      {
+        'X-Tenant-Id': 'tenant-enterprise',
+        'X-User-Id': 'user-001',
+      },
+      {
+        getTenant: (id: string) =>
+          id === 'tenant-enterprise'
+            ? {
+                id,
+                intellectTenantId: 'team-abc',
+                intellectProjectId: 'project-xyz',
+              }
+            : undefined,
+      },
+    );
+    const next = vi.fn().mockResolvedValue(undefined);
+
+    await tenantContextMiddleware(ctx as never, next);
+
+    // team_id + project_id 都注入
+    expect(ctx.storedContext?.intellectTeamId).toBe('team-abc');
+    expect(ctx.storedContext?.intellectProjectId).toBe('project-xyz');
+  });
+
+  it('P5 (FR-005):BffTenant 无 intellectProjectId 时不注入(向后兼容)', async () => {
+    const ctx = createMockContext(
+      {
+        'X-Tenant-Id': 'tenant-enterprise',
+        'X-User-Id': 'user-001',
+      },
+      {
+        getTenant: (id: string) =>
+          id === 'tenant-enterprise'
+            ? { id, intellectTenantId: 'team-abc' }
+            : undefined,
+      },
+    );
+    const next = vi.fn().mockResolvedValue(undefined);
+
+    await tenantContextMiddleware(ctx as never, next);
+
+    expect(ctx.storedContext?.intellectTeamId).toBe('team-abc');
+    expect(ctx.storedContext?.intellectProjectId).toBeUndefined();
+  });
+
+  it('P5:intellectTenantId="0" 但 intellectProjectId 存在 → project 仍注入(透传灵活性)', async () => {
+    // 边界场景:intellect-team 侧校验 team/project 依赖,BFF 不强制
+    const ctx = createMockContext(
+      {
+        'X-Tenant-Id': 'tenant-edge',
+        'X-User-Id': 'user-001',
+      },
+      {
+        getTenant: (id: string) =>
+          id === 'tenant-edge'
+            ? { id, intellectTenantId: '0', intellectProjectId: 'project-orphan' }
+            : undefined,
+      },
+    );
+    const next = vi.fn().mockResolvedValue(undefined);
+
+    await tenantContextMiddleware(ctx as never, next);
+
+    // team_id="0" 不注入,但 project_id 仍注入(透传,intellect-team 侧决定是否拒绝)
+    expect(ctx.storedContext?.intellectTeamId).toBeUndefined();
+    expect(ctx.storedContext?.intellectProjectId).toBe('project-orphan');
+  });
 });

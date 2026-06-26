@@ -49,6 +49,9 @@ function createMockTenantStore(tenants: BffTenant[]): TenantStore {
     getHarnessBinding: vi.fn(),
     setCanvasBinding: vi.fn(),
     getCanvasBinding: vi.fn(),
+    setIntellectBinding: vi.fn(),
+    getIntellectTeamId: vi.fn(),
+    getIntellectProjectId: vi.fn(),
   };
 }
 
@@ -986,18 +989,16 @@ describe('auth 路由 (P4b US1)', () => {
   // GET /api/bff/auth/login/:channel — OAuth 授权重定向
   // -------------------------------------------------------------------------
 
-  it('US3:企业版 login/{channel} 调 intellect-team /api/oauth/authorize 并 302', async () => {
+  it('US3:企业版 login/{channel} 调 intellect-team GET /api/oauth/login/{provider} 并透传 302', async () => {
     const tenantStore = createMockTenantStore([enterpriseTenant]);
     const app = createApp(tenantStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          redirect_uri: 'https://github.com/login/oauth/authorize?client_id=x&state=abc',
-          state: 'abc',
-        }),
-        { status: 200 },
-      ),
+      // intellect-team P4a-4 返回 302 + Location(BFF 透传)
+      new Response(null, {
+        status: 302,
+        headers: { Location: 'https://github.com/login/oauth/authorize?client_id=x&state=abc' },
+      }),
     );
 
     const resp = await app.request('/api/bff/auth/login/github', {
@@ -1005,11 +1006,12 @@ describe('auth 路由 (P4b US1)', () => {
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
 
+    // 验证调 GET /api/oauth/login/github?usage=login(redirect: manual 不跟随)
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://mock-enterprise:9381/api/oauth/authorize',
+      'http://mock-enterprise:9381/api/oauth/login/github?usage=login',
       expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ provider_id: 'github', usage: 'login' }),
+        method: 'GET',
+        redirect: 'manual',
       }),
     );
 
@@ -1019,12 +1021,30 @@ describe('auth 路由 (P4b US1)', () => {
     );
   });
 
-  it('US3:企业版 login/{channel} authorize 响应缺 redirect_uri → 502', async () => {
+  it('US3:企业版 login/{channel} intellect-team 返回非 302(错误)→ 透传错误状态', async () => {
     const tenantStore = createMockTenantStore([enterpriseTenant]);
     const app = createApp(tenantStore);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ state: 'abc' }), { status: 200 }),
+      // intellect-team 返回 400(provider 不存在)
+      new Response(JSON.stringify({ error: 'provider not found' }), { status: 400 }),
+    );
+
+    const resp = await app.request('/api/bff/auth/login/github', {
+      method: 'GET',
+      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+    });
+
+    expect(resp.status).toBe(400);
+  });
+
+  it('US3:企业版 login/{channel} 302 但缺 Location 头 → 502', async () => {
+    const tenantStore = createMockTenantStore([enterpriseTenant]);
+    const app = createApp(tenantStore);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      // 异常:302 但无 Location
+      new Response(null, { status: 302 }),
     );
 
     const resp = await app.request('/api/bff/auth/login/github', {
@@ -1043,7 +1063,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request('/api/bff/auth/login/github', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise'.replace('prise', 'prise') },
+      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
 
     expect(resp.status).toBe(502);

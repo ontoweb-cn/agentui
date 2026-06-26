@@ -31,8 +31,16 @@ export interface BffTenant {
   /**
    * 对应的 Intellect 企业版 Tenant ID(企业版用户必填)。
    * Intellect RAG 单租户场景可为空。
+   * 值 "0" 表示缺省(P4b:不注入 X-Intellect-Team 头,intellect-team 走全局默认)。
+   * 真实 team_id 启用多租户隔离(P5:注入 X-Intellect-Team 头)。
    */
   intellectTenantId?: string;
+  /**
+   * 可选绑定的 Intellect 企业版 Project ID(P5 新增)。
+   * 设置后 TenantContext 注入 X-Intellect-Project 头(intellect-team 按 project 隔离)。
+   * 未设置则不注入 X-Intellect-Project(intellect-team 用全局 project)。
+   */
+  intellectProjectId?: string;
   /**
    * 主后端 ID(指向 HarnessBackend.id)。
    * 任意类型(intellect-rag 或 intellect-enterprise)。

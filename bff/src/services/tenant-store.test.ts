@@ -416,6 +416,66 @@ describe('JSONFileTenantStore', () => {
   });
 
   // -------------------------------------------------------------------------
+  // setIntellectBinding() - P5 Team/Project 绑定
+  // -------------------------------------------------------------------------
+
+  describe('setIntellectBinding() P5 Team/Project 绑定', () => {
+    it('tenant 不存在时抛出错误', async () => {
+      const harnessStore = createMockHarnessStore([ragBackend]);
+      const store = new JSONFileTenantStore(harnessStore);
+
+      await expect(
+        store.setIntellectBinding('non-existent-tenant', 'team-1'),
+      ).rejects.toThrow(/Tenant not found: non-existent-tenant/);
+    });
+
+    it('设置真实 team_id + project_id 正常更新绑定', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      const harnessStore = createMockHarnessStore([ragBackend]);
+      const store = new JSONFileTenantStore(harnessStore);
+      const tenant = await store.createTenant('T', 'intellect-rag-default');
+
+      await store.setIntellectBinding(tenant.id, 'team-abc', 'project-xyz');
+
+      expect(store.getIntellectTeamId(tenant.id)).toBe('team-abc');
+      expect(store.getIntellectProjectId(tenant.id)).toBe('project-xyz');
+    });
+
+    it('intellectTenantId=undefined → 回退缺省 "0"(不注入 X-Intellect-Team)', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      const harnessStore = createMockHarnessStore([ragBackend]);
+      const store = new JSONFileTenantStore(harnessStore);
+      const tenant = await store.createTenant('T', 'intellect-rag-default', 'team-old');
+
+      await store.setIntellectBinding(tenant.id, undefined);
+
+      // getIntellectTeamId 对 "0" 返回 undefined(中间件据此不注入头)
+      expect(store.getIntellectTeamId(tenant.id)).toBeUndefined();
+    });
+
+    it('intellectProjectId=undefined → 清除 project 绑定', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      const harnessStore = createMockHarnessStore([ragBackend]);
+      const store = new JSONFileTenantStore(harnessStore);
+      const tenant = await store.createTenant('T', 'intellect-rag-default');
+      await store.setIntellectBinding(tenant.id, 'team-1', 'project-1');
+
+      // 解绑 project
+      await store.setIntellectBinding(tenant.id, 'team-1', undefined);
+
+      expect(store.getIntellectProjectId(tenant.id)).toBeUndefined();
+    });
+
+    it('getIntellectTeamId 对未绑定 tenant 返回 undefined', () => {
+      const harnessStore = createMockHarnessStore([ragBackend]);
+      const store = new JSONFileTenantStore(harnessStore);
+
+      expect(store.getIntellectTeamId('non-existent')).toBeUndefined();
+      expect(store.getIntellectProjectId('non-existent')).toBeUndefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // getHarnessBinding / getCanvasBinding 查询
   // -------------------------------------------------------------------------
 

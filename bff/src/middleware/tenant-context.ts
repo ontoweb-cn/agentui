@@ -64,6 +64,12 @@ export const tenantContextMiddleware: MiddlewareHandler = async (c, next) => {
         ctx.intellectTeamId = bffTenant.intellectTenantId;
       }
     }
+    // P5 (FR-005):intellectProjectId 存在时注入 X-Intellect-Project 头。
+    // 注意:project 隶属于 team,仅当 team_id 已绑定(非 "0")时 project 才有意义。
+    // 但此处不强制校验 team/project 依赖(intellect-team 侧校验),保持透传灵活性。
+    if (bffTenant?.intellectProjectId) {
+      ctx.intellectProjectId = bffTenant.intellectProjectId;
+    }
   }
 
   c.set(TENANT_CONTEXT_KEY, ctx);

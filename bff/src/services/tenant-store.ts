@@ -26,6 +26,7 @@ const tenantSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   intellectTenantId: z.string().optional(),
+  intellectProjectId: z.string().optional(),
   intellectBackendId: z.string().min(1),
   canvasBackendId: z.string().optional(),
   authMode: z.enum(['intellect-rag', 'intellect-enterprise']).optional(),
@@ -175,6 +176,39 @@ export class JSONFileTenantStore implements TenantStore {
 
   getHarnessBinding(tenantId: string): string | undefined {
     return this.getTenant(tenantId)?.intellectBackendId;
+  }
+
+  async setIntellectBinding(
+    tenantId: string,
+    intellectTenantId: string | undefined,
+    intellectProjectId?: string,
+  ): Promise<void> {
+    const tenant = this.getTenant(tenantId);
+    if (!tenant) {
+      throw new Error(`[tenant-store] Tenant not found: ${tenantId}`);
+    }
+    // intellectTenantId 为 undefined 时清除绑定(回退缺省),为 "0" 也表示缺省
+    tenant.intellectTenantId = intellectTenantId || '0';
+    // intellectProjectId 为 undefined/空字符串时清除 project 绑定
+    if (intellectProjectId) {
+      tenant.intellectProjectId = intellectProjectId;
+    } else {
+      delete tenant.intellectProjectId;
+    }
+    tenant.updatedAt = new Date().toISOString();
+    await this.persist();
+  }
+
+  getIntellectTeamId(tenantId: string): string | undefined {
+    const tenant = this.getTenant(tenantId);
+    if (!tenant?.intellectTenantId || tenant.intellectTenantId === '0') {
+      return undefined;
+    }
+    return tenant.intellectTenantId;
+  }
+
+  getIntellectProjectId(tenantId: string): string | undefined {
+    return this.getTenant(tenantId)?.intellectProjectId;
   }
 
   async setCanvasBinding(tenantId: string, backendId: string): Promise<void> {

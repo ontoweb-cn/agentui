@@ -14,6 +14,9 @@ import { harnessAdminRoutes } from './routes/harness-admin';
 import { sessionRoutes } from './routes/session';
 import { healthRoutes } from './routes/health';
 import { proxyRoutes } from './routes/proxy';
+import { teamRoutes } from './routes/teams';
+import { projectRoutes } from './routes/projects';
+import { tenantBindingRoutes } from './routes/tenant-bindings';
 import { authSessionMiddleware } from './middleware/auth-session';
 import { JSONFileHarnessStore } from './services/harness-store';
 import { JSONFileTenantStore } from './services/tenant-store';
@@ -132,6 +135,22 @@ app.route('/', capabilitiesRoutes);
 app.use('/auth/me', authSessionMiddleware);
 app.use('/auth/logout', authSessionMiddleware);
 app.route('/', authRoutes);
+
+// Multi-Harness P5 (US1/US2/US3): Team/Project CRUD + Tenant 绑定路由。
+// Constitution Principle I + V + VIII: 前端经 BFF 管理 intellect-team Team/Project,
+// BffTenant 绑定真实 team_id 后启用多租户隔离。
+// 路径映射(Vite proxy rewrite 去掉 /api/bff):
+//   前端 /api/bff/admin/teams/*                     → BFF /admin/teams/*
+//   前端 /api/bff/admin/projects/*                  → BFF /admin/projects/*(独立路径,对齐 intellect-team)
+//   前端 /api/bff/admin/tenants/:id/binding         → BFF /admin/tenants/:id/binding
+// 鉴权:authMiddleware(运维操作,非租户隔离,无 tenantContextMiddleware)。
+// 挂载点 '/' 与其他路由并列,路径前缀不冲突。
+app.use('/admin/teams/*', authMiddleware);
+app.use('/admin/projects/*', authMiddleware);
+app.use('/admin/tenants/*', authMiddleware);
+app.route('/', teamRoutes);
+app.route('/', projectRoutes);
+app.route('/', tenantBindingRoutes);
 
 const port = Number(process.env.BFF_PORT) || 9390;
 
