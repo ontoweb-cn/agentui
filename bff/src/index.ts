@@ -7,12 +7,14 @@ import { tenantContextMiddleware } from './middleware/tenant-context';
 import { errorHandler } from './middleware/error';
 import { adminRoutes } from './routes/admin';
 import { agentRoutes } from './routes/agent';
+import { authRoutes } from './routes/auth';
 import { bffAgentRoutes } from './routes/bff-agents';
 import { capabilitiesRoutes } from './routes/capabilities';
 import { harnessAdminRoutes } from './routes/harness-admin';
 import { sessionRoutes } from './routes/session';
 import { healthRoutes } from './routes/health';
 import { proxyRoutes } from './routes/proxy';
+import { authSessionMiddleware } from './middleware/auth-session';
 import { JSONFileHarnessStore } from './services/harness-store';
 import { JSONFileTenantStore } from './services/tenant-store';
 import { AdapterRegistry } from './services/adapter-registry';
@@ -20,6 +22,7 @@ import { IntellectRagAdapter } from './services/adapters/intellect-rag/intellect
 import { IntellectEnterpriseAdapter } from './services/adapters/intellect-enterprise/intellect-enterprise-adapter';
 import type { HarnessStore, TenantStore } from './types';
 import type { TenantContext } from './types/tenant';
+import type { AuthSession } from './types/auth';
 
 // Hono context variables type (for c.set / c.get)
 interface AppVariables {
@@ -27,6 +30,7 @@ interface AppVariables {
   tenantStore: TenantStore;
   adapterRegistry: AdapterRegistry;
   tenantContext?: TenantContext;
+  authSession?: AuthSession;
 }
 
 const app = new Hono<{ Variables: AppVariables }>();
@@ -116,6 +120,18 @@ app.route('/', harnessAdminRoutes);
 app.use('/capabilities/*', authMiddleware);
 app.use('/capabilities/*', tenantContextMiddleware);
 app.route('/', capabilitiesRoutes);
+
+// Multi-Harness P4b (US1/US2/US3): BFF 统一认证路由 /api/bff/auth/*
+// Constitution Principle I + V + VIII: 前端认证经 BFF,企业版用 member token(imt_*)存 HttpOnly cookie。
+// 路径:前端 /api/bff/auth/* → Vite proxy rewrite 去掉 /api/bff → BFF 收到 /auth/*
+// 中间件策略:
+//   - 公开端点(login/register/login/channels/login/{channel}/oauth/callback)无需鉴权
+//   - 需认证端点(me/logout)挂 auth-session 中间件(从 cookie 提取 token)
+// authMiddleware(全局 Authorization header 校验)不拦截 /auth/*,因社区版透传用前端自带 Authorization,
+// 企业版用 cookie 而非 Authorization header。
+app.use('/auth/me', authSessionMiddleware);
+app.use('/auth/logout', authSessionMiddleware);
+app.route('/', authRoutes);
 
 const port = Number(process.env.BFF_PORT) || 9390;
 

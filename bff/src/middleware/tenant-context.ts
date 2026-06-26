@@ -54,8 +54,15 @@ export const tenantContextMiddleware: MiddlewareHandler = async (c, next) => {
   if (tenantStore) {
     const bffTenant = tenantStore.getTenant(tenantId);
     if (bffTenant?.intellectTenantId) {
-      // research.md R3:intellectTenantId 视为 team_id 同义词
-      ctx.intellectTeamId = bffTenant.intellectTenantId;
+      // P4b (FR-006):缺省 TenantID="0" 时不注入 X-Intellect-Team 头。
+      // intellect-team 侧 _resolve_member_context 检测到无此头时使用全局默认上下文,
+      // 实现企业版零多租户改动兼容(见 intellect-team/docs/agentui-integration/default-tenant-compat.md)。
+      if (bffTenant.intellectTenantId === '0') {
+        // 缺省租户:不注入 intellectTeamId,留空让 intellect-team 走全局默认
+      } else {
+        // research.md R3:intellectTenantId 视为 team_id 同义词
+        ctx.intellectTeamId = bffTenant.intellectTenantId;
+      }
     }
   }
 

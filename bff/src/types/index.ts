@@ -30,6 +30,9 @@ export type {
   TenantContext,
 } from './tenant';
 
+export type { AuthSession } from './auth';
+export { AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE } from './auth';
+
 export type {
   AgentSummary,
   Session,

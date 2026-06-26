@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Intellect Enterprise Mock Server(P3 冒烟测试用)。
+ * Intellect Enterprise Mock Server(P3+P4b 冒烟测试用)。
  * 模拟 intellect-team 关键端点,验证 BFF IntellectEnterpriseAdapter 端到端集成。
  *
  * 覆盖端点(Constitution Principle VIII):
@@ -10,6 +10,16 @@
  * - POST /api/sessions, GET/PATCH/DELETE /api/sessions/{id}
  * - GET  /api/sessions/{id}/messages
  * - POST /api/sessions/{id}/chat/stream (SSE,assistant.delta/tool.progress/run.completed/done)
+ *
+ * P4b 认证端点(Constitution Principle I + V + VIII):
+ * - POST /api/members/register(公开)
+ * - POST /api/members/login(公开,返回 member token)
+ * - POST /api/members/logout(member token 鉴权)
+ * - GET  /api/members/me(member token 鉴权)
+ * - POST /api/members/{id}/token(API_SERVER_KEY 鉴权,BFF 内部签发)
+ * - GET  /api/oauth/providers(公开)
+ * - POST /api/oauth/authorize(公开,返回 redirect_uri)
+ * - GET  /api/oauth/callback(公开,返回 member_id)
  */
 
 import { createServer } from 'node:http';
@@ -19,6 +29,18 @@ const PORT = 8642;
 const API_SERVER_KEY = 'test-api-server-key-smoke';
 
 const sessions = new Map();
+const members = new Map(); // login_name → { member_id, display_name, password, role }
+const tokens = new Map();  // token → member_id(已签发的 member token)
+
+// 预置测试用户
+members.set('alice', {
+  member_id: 'm-alice',
+  login_name: 'alice',
+  display_name: 'Alice',
+  password: 'secret',
+  role: 'member',
+  email: 'alice@enterprise.com',
+});
 
 function sendJson(res, status, body) {
   const json = JSON.stringify(body);
@@ -48,12 +70,10 @@ function sendSSE(res, frames) {
 }
 
 const server = createServer((req, res) => {
-  // 鉴权校验(Principle VIII)
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const path = url.pathname;
+  const method = req.method;
   const auth = req.headers['authorization'];
-  if (auth !== `Bearer ${API_SERVER_KEY}`) {
-    sendJson(res, 401, { message: 'invalid API_SERVER_KEY' });
-    return;
-  }
 
   // 记录多租户头(Principle V,场景 7 验证)
   const teamHeader = req.headers['x-intellect-team'];
@@ -62,9 +82,176 @@ const server = createServer((req, res) => {
     console.log(`[mock] X-Intellect-Team=${teamHeader} X-Intellect-Project=${projectHeader || '(none)'}`);
   }
 
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-  const path = url.pathname;
-  const method = req.method;
+  // -------------------------------------------------------------------------
+  // P4b 认证端点(公开,无需鉴权)
+  // -------------------------------------------------------------------------
+
+  // POST /api/members/register
+  if (method === 'POST' && path === '/api/members/register') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      const { login_name, password, display_name, email } = JSON.parse(body || '{}');
+      if (members.has(login_name)) {
+        sendJson(res, 409, { error: 'login_name already in use' });
+        return;
+      }
+      const member = {
+        member_id: `m-${randomUUID().slice(0, 8)}`,
+        login_name,
+        display_name,
+        password,
+        role: 'member',
+        email: email || '',
+      };
+      members.set(login_name, member);
+      sendJson(res, 201, { member_id: member.member_id, registration_pending: 0 });
+    });
+    return;
+  }
+
+  // POST /api/members/login
+  if (method === 'POST' && path === '/api/members/login') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      const { login_name, password } = JSON.parse(body || '{}');
+      const member = members.get(login_name);
+      if (!member || member.password !== password) {
+        sendJson(res, 401, { error: 'invalid credentials' });
+        return;
+      }
+      const token = `imt_${randomUUID().replace(/-/g, '')}`;
+      tokens.set(token, member.member_id);
+      sendJson(res, 200, {
+        member_id: member.member_id,
+        display_name: member.display_name,
+        role: member.role,
+        token,
+        permissions: ['chat', 'read'],
+      });
+    });
+    return;
+  }
+
+  // POST /api/members/logout(member token 鉴权)
+  if (method === 'POST' && path === '/api/members/logout') {
+    const token = (auth || '').replace('Bearer ', '');
+    if (!tokens.has(token)) {
+      sendJson(res, 401, { error: 'invalid token' });
+      return;
+    }
+    tokens.delete(token);
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // GET /api/members/me(member token 鉴权)
+  if (method === 'GET' && path === '/api/members/me') {
+    const token = (auth || '').replace('Bearer ', '');
+    const memberId = tokens.get(token);
+    if (!memberId) {
+      sendJson(res, 401, { error: 'invalid token' });
+      return;
+    }
+    const member = Array.from(members.values()).find((m) => m.member_id === memberId);
+    if (!member) {
+      sendJson(res, 404, { error: 'member not found' });
+      return;
+    }
+    sendJson(res, 200, {
+      member_id: member.member_id,
+      display_name: member.display_name,
+      role: member.role,
+      email: member.email,
+    });
+    return;
+  }
+
+  // POST /api/members/{id}/token(API_SERVER_KEY 鉴权,BFF 内部签发)
+  const tokenIssueMatch = path.match(/^\/api\/members\/([^/]+)\/token$/);
+  if (method === 'POST' && tokenIssueMatch) {
+    if (auth !== `Bearer ${API_SERVER_KEY}`) {
+      sendJson(res, 403, { error: 'invalid API_SERVER_KEY' });
+      return;
+    }
+    const memberId = tokenIssueMatch[1];
+    const member = Array.from(members.values()).find((m) => m.member_id === memberId);
+    if (!member) {
+      sendJson(res, 404, { error: 'member not found' });
+      return;
+    }
+    const newToken = `imt_${randomUUID().replace(/-/g, '')}`;
+    tokens.set(newToken, memberId);
+    sendJson(res, 201, { token_id: `tk-${randomUUID().slice(0, 8)}`, token: newToken });
+    return;
+  }
+
+  // GET /api/oauth/providers(公开)
+  if (method === 'GET' && path === '/api/oauth/providers') {
+    sendJson(res, 200, [
+      {
+        id: 'github',
+        name: 'GitHub',
+        usage: 'login,bind',
+        auth_flow: 'oauth2',
+        enabled: true,
+        logo_svg: '<svg>gh</svg>',
+        is_builtin: true,
+        display_order: 1,
+      },
+      {
+        id: 'google',
+        name: 'Google',
+        usage: 'login',
+        auth_flow: 'oauth2',
+        enabled: true,
+        logo_svg: '',
+        is_builtin: true,
+        display_order: 2,
+      },
+    ]);
+    return;
+  }
+
+  // POST /api/oauth/authorize(公开)
+  if (method === 'POST' && path === '/api/oauth/authorize') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      const { provider_id, usage } = JSON.parse(body || '{}');
+      const state = randomUUID().slice(0, 8);
+      const redirect_uri = `https://oauth.example.com/${provider_id}/authorize?client_id=mock&state=${state}&redirect_uri=http://localhost:3000/api/bff/auth/oauth/callback`;
+      sendJson(res, 200, { redirect_uri, state });
+    });
+    return;
+  }
+
+  // GET /api/oauth/callback(公开)
+  if (method === 'GET' && path === '/api/oauth/callback') {
+    const code = url.searchParams.get('code');
+    const state = url.searchParams.get('state');
+    if (!code || !state) {
+      sendJson(res, 400, { error: 'missing code or state' });
+      return;
+    }
+    // 模拟 OAuth 回调:返回预置 alice 的 member_id(或新建)
+    sendJson(res, 200, {
+      ok: true,
+      provider_id: 'github',
+      member_id: 'm-alice',
+      claims: { sub: 'gh:12345' },
+    });
+    return;
+  }
+
+  // -------------------------------------------------------------------------
+  // 以下端点需要 API_SERVER_KEY 鉴权(Principle VIII)
+  // -------------------------------------------------------------------------
+  if (auth !== `Bearer ${API_SERVER_KEY}`) {
+    sendJson(res, 401, { message: 'invalid API_SERVER_KEY' });
+    return;
+  }
 
   // GET /health
   if (method === 'GET' && path === '/health') {

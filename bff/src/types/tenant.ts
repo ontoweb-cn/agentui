@@ -46,6 +46,13 @@ export interface BffTenant {
    *   canvasBackendId 可空(画布走主后端)。
    */
   canvasBackendId?: string;
+  /**
+   * 认证模式(P4b 新增,默认 'intellect-rag',向后兼容)。
+   * - 'intellect-rag':社区版,BFF 透传到 intellect-rag /api/v1/auth/*
+   * - 'intellect-enterprise':企业版,BFF 调 intellect-team /api/members/* + /api/oauth/*
+   *   此时 intellectBackendId 必须指向 type='intellect-enterprise' 的后端。
+   */
+  authMode?: 'intellect-rag' | 'intellect-enterprise';
   /** ISO 8601 创建时间戳 */
   createdAt: string;
   /** ISO 8601 更新时间戳 */

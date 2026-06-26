@@ -158,4 +158,26 @@ describe('tenantContextMiddleware', () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(ctx.storedContext?.tenantId).toBe('tenant-001');
   });
+
+  it('P4b (FR-006):intellectTenantId="0" 时不注入 intellectTeamId(缺省 TenantID 兼容)', async () => {
+    const ctx = createMockContext(
+      {
+        'X-Tenant-Id': 'tenant-enterprise-default',
+        'X-User-Id': 'user-001',
+      },
+      {
+        getTenant: (id: string) =>
+          id === 'tenant-enterprise-default'
+            ? { id, intellectTenantId: '0' }
+            : undefined,
+      },
+    );
+    const next = vi.fn().mockResolvedValue(undefined);
+
+    await tenantContextMiddleware(ctx as never, next);
+
+    // intellectTenantId="0" → 不注入 intellectTeamId(intellect-team 走全局默认)
+    expect(ctx.storedContext?.intellectTeamId).toBeUndefined();
+    expect(ctx.storedContext?.tenantId).toBe('tenant-enterprise-default');
+  });
 });

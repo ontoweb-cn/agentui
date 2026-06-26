@@ -28,6 +28,7 @@ const tenantSchema = z.object({
   intellectTenantId: z.string().optional(),
   intellectBackendId: z.string().min(1),
   canvasBackendId: z.string().optional(),
+  authMode: z.enum(['intellect-rag', 'intellect-enterprise']).optional(),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
 });
@@ -85,6 +86,16 @@ export class JSONFileTenantStore implements TenantStore {
         // 校验失败:抛出明确错误(不静默,spec.md Edge Cases)
         throw new Error(
           `[tenant-store] Tenant "${tenant.id}" references unknown intellectBackendId "${tenant.intellectBackendId}"`,
+        );
+      }
+
+      // P4b: authMode=intellect-enterprise 时,intellectBackendId 必须指向 type='intellect-enterprise' 后端
+      if (
+        tenant.authMode === 'intellect-enterprise' &&
+        mainBackend.type !== 'intellect-enterprise'
+      ) {
+        throw new Error(
+          `[tenant-store] Tenant "${tenant.id}" authMode=intellect-enterprise requires intellectBackendId to point to type='intellect-enterprise' backend, got: ${mainBackend.type}`,
         );
       }
 

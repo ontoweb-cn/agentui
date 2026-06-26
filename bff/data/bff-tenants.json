@@ -4,6 +4,7 @@
       "id": "tenant-rag",
       "name": "RAG Tenant",
       "intellectBackendId": "intellect-rag-default",
+      "authMode": "intellect-rag",
       "createdAt": "2026-06-26T00:00:00Z",
       "updatedAt": "2026-06-26T00:00:00Z"
     },
@@ -12,6 +13,7 @@
       "name": "Enterprise Tenant",
       "intellectTenantId": "team-smoke-001",
       "intellectBackendId": "intellect-enterprise-default",
+      "authMode": "intellect-enterprise",
       "createdAt": "2026-06-26T00:00:00Z",
       "updatedAt": "2026-06-26T00:00:00Z"
     }

@@ -18,19 +18,24 @@ const bffAdmin = `/api/bff/admin`;
 // Multi-Harness P2 (US1, Constitution Principle I + V + Token Security):
 // Harness 后端配置 Admin 路由,运维操作(非租户隔离),响应不含 adminToken 明文。
 const bffHarnessAdmin = `/api/bff/admin/harness-backends`;
+// Multi-Harness P4b (US1/US2/US3, Constitution Principle I + V + VIII):
+// BFF 统一认证路由,按 X-Tenant-Id 分发企业版(intellect-team)或社区版(intellect-rag)。
+// 前端认证路径统一经 BFF,token 存 HttpOnly cookie,前端不接触。
+// 改回 `${restAPIv1}/auth/*` 可瞬时回滚(FR-006)。
+const bffAuth = `/api/bff/auth`;
 
-export { restAPIv1, webAPI, bffAgents, bffCapabilities, bffHarnessAdmin };
+export { restAPIv1, webAPI, bffAgents, bffCapabilities, bffHarnessAdmin, bffAuth };
 
 export default {
   // user
-  login: `${restAPIv1}/auth/login`,
-  logout: `${restAPIv1}/auth/logout`,
-  register: `${restAPIv1}/users`,
+  login: `${bffAuth}/login`,
+  logout: `${bffAuth}/logout`,
+  register: `${bffAuth}/register`,
   setting: `${restAPIv1}/users/me`,
-  userInfo: `${restAPIv1}/users/me`,
+  userInfo: `${bffAuth}/me`,
   tenantInfo: `${restAPIv1}/users/me/models`,
-  loginChannels: `${restAPIv1}/auth/login/channels`,
-  loginChannel: (channel: string) => `${restAPIv1}/auth/login/${channel}`,
+  loginChannels: `${bffAuth}/login/channels`,
+  loginChannel: (channel: string) => `${bffAuth}/login/${channel}`,
 
   // team
   addTenantUser: (tenantId: string) => `${restAPIv1}/tenants/${tenantId}/users`,
