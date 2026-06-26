@@ -17,6 +17,7 @@ import { JSONFileHarnessStore } from './services/harness-store';
 import { JSONFileTenantStore } from './services/tenant-store';
 import { AdapterRegistry } from './services/adapter-registry';
 import { IntellectRagAdapter } from './services/adapters/intellect-rag/intellect-rag-adapter';
+import { IntellectEnterpriseAdapter } from './services/adapters/intellect-enterprise/intellect-enterprise-adapter';
 import type { HarnessStore, TenantStore } from './types';
 import type { TenantContext } from './types/tenant';
 
@@ -39,6 +40,11 @@ const adapterRegistry = new AdapterRegistry(harnessStore, tenantStore);
 adapterRegistry.registerFactory(
   'intellect-rag',
   (backend) => new IntellectRagAdapter(backend),
+);
+// Multi-Harness P3 (Constitution Principle II + VIII):注册企业版 Adapter 工厂。
+adapterRegistry.registerFactory(
+  'intellect-enterprise',
+  (backend) => new IntellectEnterpriseAdapter(backend),
 );
 
 // Global middleware

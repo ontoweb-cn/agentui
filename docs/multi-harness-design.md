@@ -1415,30 +1415,36 @@ function AgentPage() {
 - ✅ 单元测试全过:BFF 8 套件 125 测试(harness-admin 17 + capabilities 6),前端 service 8 测试
 - ⏳ 冒烟测试(需真实 Intellect RAG 运行):见 [quickstart.md](../specs/003-harness-admin-capabilities/quickstart.md)
 
-#### P3：Intellect 企业版 Adapter（核心层）
+#### P3：Intellect 企业版 Adapter（核心层）✅ 已完成
+
+**状态**:✅ 已完成(2026-06-26,详见 [specs/004-intellect-enterprise-adapter/tasks.md](../specs/004-intellect-enterprise-adapter/tasks.md))
 
 **目标**：BFF 可对接 Intellect 企业版，基础对话功能可用。
 
-| 任务 | 文件 | 说明 |
-|------|------|------|
-| 实现 Intellect HTTP 客户端 | `bff/src/services/adapters/intellect/client.ts` | 封装 Intellect REST 调用（含多租户头注入） |
-| 实现 IntellectEnterpriseAdapter | `bff/src/services/adapters/intellect/adapter.ts` | 实现核心层 `IHarnessAdapter` |
-| 对接 `/v1/models` | `intellect/adapter.ts` | `listAgents()` 调用 `/v1/models` |
-| 对接 `/api/sessions` | `intellect/adapter.ts` | 会话 CRUD |
-| 对接 `/v1/chat/completions` | `intellect/adapter.ts` | SSE 流式对话（复用 openai-sse 解析器） |
-| 对接 `/v1/capabilities` | `intellect/adapter.ts` | `discoverCapabilities()` |
-| 注册 Intellect Adapter | `bff/src/services/adapters/registry.ts` | 支持 `intellect-enterprise` 类型 |
-| 集成测试 | 手动 curl | 验证 Agent 列表、会话创建、流式对话 |
+| 任务 | 文件 | 说明 | 状态 |
+|------|------|------|------|
+| Intellect HTTP 客户端 | `bff/src/services/adapters/intellect-enterprise/http-client.ts` | 封装 REST 调用 + 多租户头注入 + 错误转换(404/5xx/超时) | ✅ |
+| IntellectEnterpriseAdapter | `bff/src/services/adapters/intellect-enterprise/intellect-enterprise-adapter.ts` | 实现核心层 `IHarnessAdapter`(8 方法) | ✅ |
+| 对接 `/v1/models` | adapter.ts | `listAgents()` 调用 `/v1/models`,后端不可达降级空数组 | ✅ |
+| 对接 `/api/sessions` | adapter.ts | 会话 CRUD(create/get/list/delete) | ✅ |
+| 对接 `/api/sessions/{id}/chat/stream` | adapter.ts + parse-intellect-enterprise-sse.ts | SSE 流式对话(主通道,Principle VIII),不复用 `/v1/chat/completions` | ✅ |
+| parseIntellectEnterpriseSSE | `bff/src/services/adapters/intellect-enterprise/parse-intellect-enterprise-sse.ts` | 企业版自定义事件解析器(10 事件类型,Principle IV) | ✅ |
+| 对接 `/v1/capabilities` | adapter.ts | `discoverCapabilities()`,404 降级默认能力 | ✅ |
+| 注册 Adapter 工厂 | `bff/src/index.ts` | `registerFactory('intellect-enterprise', ...)`,路由层零改动 | ✅ |
+| 单元测试 | `*.test.ts` + fixtures/ | http-client 12 + adapter 17 + sse 9 = 38 测试,Mock fetch | ✅ |
 
 **外部依赖**：无（核心层只用到 Intellect 已有的 `/v1/*` 和 `/api/sessions/*`）
 
 **验收标准**：
-- BFF 可连接 Intellect 企业版 :8642
-- `listAgents()` 返回 Intellect 模型列表
-- `createSession()` 创建会话成功
-- `sendMessage()` 流式返回正常
-- `healthCheck()` 和 `discoverCapabilities()` 正常
-- 多租户头 `X-Intellect-Team`/`X-Intellect-Project` 正确注入
+- ✅ BFF 可连接 Intellect 企业版 :8642(healthCheck 调 `/health`)
+- ✅ `listAgents()` 返回 Intellect 模型列表(调 `/v1/models`,不可达降级空数组)
+- ✅ `createSession()` 创建会话成功(调 `POST /api/sessions`)
+- ✅ `sendMessage()` 流式返回正常(调 `/api/sessions/{id}/chat/stream`,parseIntellectEnterpriseSSE 解析)
+- ✅ `healthCheck()` 和 `discoverCapabilities()` 正常(`/v1/capabilities` 404 降级默认)
+- ✅ 多租户头 `X-Intellect-Team`/`X-Intellect-Project` 正确注入(httpClient 统一注入)
+- ✅ TypeScript 编译零错误(BFF + 前端)
+- ✅ 单元测试全过:BFF 11 套件 163 测试(P0/P1/P2 125 + P3 38),无回归
+- ⏳ 冒烟测试(需真实 intellect-team 运行):见 [quickstart.md](../specs/004-intellect-enterprise-adapter/quickstart.md)
 
 ### 10.2 后续阶段（P4-P7，依赖外部条件）
 
