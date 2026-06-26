@@ -104,7 +104,7 @@
 
 **Purpose**: 为 intellect-team 团队提供 P4a 实现规范
 
-- [ ] T019 [P] [DOC] 创建 `intellect-team/docs/agentui-integration/README.md`,对接总览:架构图(BFF↔intellect-team)、端点清单、依赖关系、P4a 实现优先级
+- [x] T019 [P] [DOC] 创建 `docs/intellect-team-integration/README.md`,对接总览:架构图(BFF↔intellect-team)、端点清单、依赖关系、P4a 实现优先级
 - [x] T020 [P] [DOC] 创建 `intellect-team/docs/agentui-integration/member-auth-api.md`,member 认证端点规范:POST /api/members/register|login|logout、GET /api/members/me、POST /api/members/{id}/token,含请求/响应示例 + 复用 MembershipDB 方法说明
 - [x] T021 [P] [DOC] 创建 `intellect-team/docs/agentui-integration/oauth-callback-token.md`,OAuth callback 补全方案:现有 /api/oauth/callback 返回 {member_id} 无 token 的问题,BFF 通过 POST /api/members/{id}/token 补全的流程图 + 代码示例
 - [x] T022 [P] [DOC] 创建 `intellect-team/docs/agentui-integration/default-tenant-compat.md`,缺省 TenantID=0 兼容说明:BFF 不传 X-Intellect-Team 头时 intellect-team 用全局默认的机制,_resolve_member_context 源码引用,P5 升级路径
