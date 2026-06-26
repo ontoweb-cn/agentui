@@ -78,6 +78,10 @@ export enum Routes {
   AdminMonitoring = `${Admin}/monitoring`,
   // Multi-Harness P2 (US3):Harness 后端配置 Admin 页面。
   AdminHarnessBackends = `${Admin}/harness-backends`,
+  // Multi-Harness P5 (US1/US2/US3):Team/Project/Tenant-binding Admin 页面。
+  AdminTeams = `${Admin}/teams`,
+  AdminProjects = `${Admin}/projects`,
+  AdminTenantBindings = `${Admin}/tenant-bindings`,
 }
 
 const defaultRouteFallback = (
@@ -272,6 +276,20 @@ const routeConfigOptions = [
               {
                 path: Routes.AdminHarnessBackends,
                 Component: () => import('@/pages/admin/harness-backends'),
+              },
+              // Multi-Harness P5 (US1/US2/US3):Team/Project/Tenant-binding Admin 页面。
+              {
+                path: Routes.AdminTeams,
+                Component: () => import('@/pages/admin/teams'),
+              },
+              {
+                path: Routes.AdminProjects,
+                Component: () => import('@/pages/admin/projects'),
+              },
+              {
+                path: Routes.AdminTenantBindings,
+                Component: () =>
+                  import('@/pages/admin/tenant-bindings'),
               },
               ...(IS_ENTERPRISE
                 ? [

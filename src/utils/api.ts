@@ -419,6 +419,17 @@ export default {
   // 前端按 tenant 隔离查询后端能力,无能力降级(Progressive Enhancement)。
   harnessCapabilities: `${bffCapabilities}`,
 
+  // Multi-Harness P5 (US1/US2/US3) — Team/Project/Tenant-binding Admin CRUD
+  // Constitution Principle I + V + VIII: 前端经 BFF 管理 intellect-team Team/Project,
+  // BffTenant 绑定真实 team_id 后启用多租户隔离。
+  // 对齐 intellect-team 实际契约:slug/display_name/created_by,软删除,独立 /api/projects 路径。
+  adminTeams: `${bffAdmin}/teams`,
+  adminTeam: (ref: string) => `${bffAdmin}/teams/${ref}`,
+  adminProjects: `${bffAdmin}/projects`,
+  adminProject: (ref: string) => `${bffAdmin}/projects/${ref}`,
+  adminTenantBinding: (tenantId: string) =>
+    `${bffAdmin}/tenants/${tenantId}/binding`,
+
   // Sandbox settings
   adminListSandboxProviders: `${restAPIv1}/admin/sandbox/providers`,
   adminGetSandboxProviderSchema: (providerId: string) =>

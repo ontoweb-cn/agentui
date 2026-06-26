@@ -5,11 +5,14 @@ import { NavLink, Outlet, useNavigate } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import {
+  LucideFolderKanban,
+  LucideLink,
   LucideMonitor,
   LucideServerCrash,
   LucideSquareUserRound,
   LucideUserCog,
   LucideUserStar,
+  LucideUsers,
   LucideZap,
 } from 'lucide-react';
 
@@ -50,6 +53,22 @@ const AdminNavigationLayout = () => {
         path: Routes.AdminSandboxSettings,
         name: t('admin.sandboxSettings'),
         icon: <LucideZap className="size-[1em]" />,
+      },
+      // Multi-Harness P5 (US1/US2/US3):Team/Project/Tenant-binding Admin 页面。
+      {
+        path: Routes.AdminTeams,
+        name: t('admin.teams.title'),
+        icon: <LucideUsers className="size-[1em]" />,
+      },
+      {
+        path: Routes.AdminProjects,
+        name: t('admin.projects.title'),
+        icon: <LucideFolderKanban className="size-[1em]" />,
+      },
+      {
+        path: Routes.AdminTenantBindings,
+        name: t('admin.tenantBinding.title'),
+        icon: <LucideLink className="size-[1em]" />,
       },
       ...(IS_ENTERPRISE
         ? [

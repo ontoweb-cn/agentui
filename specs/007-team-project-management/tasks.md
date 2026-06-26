@@ -74,9 +74,9 @@
 
 - [x] T018 创建 BFF Tenant 绑定路由(`bff/src/routes/tenant-bindings.ts`), 实现 GET/PUT `/admin/tenants/:id/binding`
 - [x] T019 在 `bff/src/index.ts` 注册绑定路由
-- [~] T020 扩展前端 Tenant 管理页面, 添加 Team/Project 下拉选择绑定(待前端实现)
-- [~] T021 实现 Team 下拉框: 从 BFF `/api/bff/admin/teams` 获取列表(待前端实现)
-- [~] T022 实现 Project 级联下拉框: 选择 Team 后从 `/api/bff/admin/teams/:id/projects` 获取(待前端实现)
+- [x] T020 扩展前端 Tenant 管理页面, 添加 Team/Project 下拉选择绑定(`src/pages/admin/tenant-bindings.tsx`)
+- [x] T021 实现 Team 下拉框: 从 BFF `/api/bff/admin/teams` 获取列表
+- [x] T022 实现 Project 级联下拉框: 选择 Team 后从 `/api/bff/admin/teams/:id/projects` 获取(改为 `/api/bff/admin/projects` 按 team_id 前端过滤)
 
 ---
 
