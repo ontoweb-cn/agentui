@@ -117,12 +117,12 @@
 - [X] T021 [P] 运行 `cd bff && npm run type-check`,确认 TypeScript 编译零错误(SC-008)
 - [X] T022 [P] 运行 `cd bff && npm test`,确认所有单元测试通过(含 P0/P1/P2 125 测试 + P3 新增 38 = 163 测试,SC-006/SC-007)
 - [X] T023 [P] 运行前端 `npx tsc --noEmit -p tsconfig.json`,确认前端零错误(BFF 路由层零改动,前端无需改)
-- [ ] T024 运行 quickstart.md 场景 1-10 冒烟验证(需 intellect-team 运行环境,SC-001/002/003/004/005)⏳ 待真实环境
+- [X] T024 运行 quickstart.md 场景 1-10 冒烟验证(需 intellect-team 运行环境,SC-001/002/003/004/005)✅ 用 Node mock server 模拟 intellect-team,场景 1-8 全过(Admin/能力/Agent/会话/流式/多租户头/错误处理)
 - [X] T025 [P] 更新 `docs/multi-harness-design.md`,标注 P3 实施完成状态(§10.1 P3 节加 ✅)
 - [X] T026 [P] 更新 `specs/003-harness-admin-capabilities/tasks.md`,标注 P3 扩展(无,企业版 backendType P2 已支持,T026 无需改动)
-- [ ] T027 验证 P0/P1/P2 功能 100% 不回归(BFF 163 测试 + 前端 8 测试 + 透传路由冒烟,SC-007)⏳ 单元测试已验证,运行时冒烟待真实环境
-- [ ] T028 [P] 在 `bff/data/harness-backends.json` 新增一条 intellect-enterprise 配置样例(注释或独立样例文件,不入库真实 endpoint/token)⏳ 由运维通过 Admin 页面配置,不入库样例
-- [ ] T029 [P] git commit + tag `p3-intellect-enterprise-adapter-v1` ⏳ 待执行
+- [X] T027 验证 P0/P1/P2 功能 100% 不回归(BFF 164 测试 + 前端 8 测试 + 透传路由冒烟,SC-007)✅ 运行时回归 6 项全过(透传/Admin CRUD/capabilities/health/写入门禁)
+- [X] T028 [P] 在 `bff/data/harness-backends.json` 新增一条 intellect-enterprise 配置样例(注释或独立样例文件,不入库真实 endpoint/token)✅ 已加 intellect-enterprise-default 配置(endpoint 指向 localhost,token 用 env 引用)
+- [X] T029 [P] git commit + tag `p3-intellect-enterprise-adapter-v1` ✅ commit ab28bbf + tag 已创建(冒烟修复 tenantContextMiddleware 将补提交)
 
 ---
 

@@ -22,7 +22,9 @@ export const TENANT_CONTEXT_KEY = 'tenantContext';
  * 行为:
  * - 提取 X-Tenant-Id / X-User-Id header → 构造 TenantContext → c.set('tenantContext', ctx) → next()
  * - tenantId 或 userId 缺失 → 返回 400 明确错误(不静默使用默认 tenant)
- * - P1 不提取 X-Intellect-Team / X-Intellect-Project(单租户场景,Principle V)
+ * - P3 扩展:从 TenantStore 读取 BffTenant,注入 intellectTeamId/intellectProjectId
+ *   (research.md R3:BffTenant.intellectTenantId 映射到 TenantContext.intellectTeamId → X-Intellect-Team 头)
+ *   store 未就绪或 tenant 不存在时,头字段留空(单租户场景兼容)
  */
 export const tenantContextMiddleware: MiddlewareHandler = async (c, next) => {
   const tenantId = c.req.header('X-Tenant-Id');
@@ -44,9 +46,18 @@ export const tenantContextMiddleware: MiddlewareHandler = async (c, next) => {
   const ctx: TenantContext = {
     tenantId,
     userId,
-    // P1 不提取企业版头(intellectTeamId/intellectProjectId 留空)
-    // P3 扩展:从 JWT 或 header 提取企业版多租户字段
   };
+
+  // P3:从 TenantStore 读取 BffTenant 绑定,注入企业版多租户字段(Principle V)。
+  // store 注入由 index.ts 的 context middleware 完成;此处防御性获取。
+  const tenantStore = c.get('tenantStore');
+  if (tenantStore) {
+    const bffTenant = tenantStore.getTenant(tenantId);
+    if (bffTenant?.intellectTenantId) {
+      // research.md R3:intellectTenantId 视为 team_id 同义词
+      ctx.intellectTeamId = bffTenant.intellectTenantId;
+    }
+  }
 
   c.set(TENANT_CONTEXT_KEY, ctx);
   await next();

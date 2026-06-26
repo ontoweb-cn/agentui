@@ -7,11 +7,15 @@ interface MockContext {
     header: (name: string) => string | undefined;
   };
   set: (key: 'tenantContext', value: TenantContext) => void;
+  get: (key: string) => unknown;
   json: (body: unknown, status?: number) => { body: unknown; status: number };
   storedContext?: TenantContext;
 }
 
-function createMockContext(headers: Record<string, string>): MockContext {
+function createMockContext(
+  headers: Record<string, string>,
+  tenantStore?: unknown,
+): MockContext {
   // 模拟 Hono req.header() 大小写不敏感匹配
   const normalized: Record<string, string> = {};
   for (const [k, v] of Object.entries(headers)) {
@@ -24,6 +28,7 @@ function createMockContext(headers: Record<string, string>): MockContext {
     set: (_key, value) => {
       ctx.storedContext = value;
     },
+    get: (key: string) => (key === 'tenantStore' ? tenantStore : undefined),
     json: (body, status) => ({ body, status: status ?? 200 }),
   };
   return ctx;
@@ -99,20 +104,46 @@ describe('tenantContextMiddleware', () => {
     });
   });
 
-  it('不提取 X-Intellect-Team / X-Intellect-Project(P1 单租户场景,Principle V)', async () => {
-    const ctx = createMockContext({
-      'X-Tenant-Id': 'tenant-001',
-      'X-User-Id': 'user-001',
-      'X-Intellect-Team': 'team-1',
-      'X-Intellect-Project': 'proj-1',
-    });
+  it('P3:store 无 BffTenant 绑定时不注入 intellectTeamId(单租户场景兼容)', async () => {
+    const ctx = createMockContext(
+      {
+        'X-Tenant-Id': 'tenant-001',
+        'X-User-Id': 'user-001',
+        // 直接传 header 不应被提取(P3 从 store 读,不从 header 读)
+        'X-Intellect-Team': 'team-1',
+        'X-Intellect-Project': 'proj-1',
+      },
+      // tenantStore.getTenant 返回 undefined(无绑定)
+      { getTenant: () => undefined },
+    );
     const next = vi.fn().mockResolvedValue(undefined);
 
     await tenantContextMiddleware(ctx as never, next);
 
-    // P1 不提取企业版头,intellectTeamId/intellectProjectId 应为 undefined
+    // P3:store 无绑定 → 不注入企业版头字段
     expect(ctx.storedContext?.intellectTeamId).toBeUndefined();
     expect(ctx.storedContext?.intellectProjectId).toBeUndefined();
+  });
+
+  it('P3:store 含 BffTenant.intellectTenantId → 注入 intellectTeamId(企业版)', async () => {
+    const ctx = createMockContext(
+      {
+        'X-Tenant-Id': 'tenant-enterprise',
+        'X-User-Id': 'user-001',
+      },
+      {
+        getTenant: (id: string) =>
+          id === 'tenant-enterprise'
+            ? { id, intellectTenantId: 'team-abc' }
+            : undefined,
+      },
+    );
+    const next = vi.fn().mockResolvedValue(undefined);
+
+    await tenantContextMiddleware(ctx as never, next);
+
+    // research.md R3:intellectTenantId 映射到 intellectTeamId
+    expect(ctx.storedContext?.intellectTeamId).toBe('team-abc');
   });
 
   it('header 大小写不敏感(经 Hono 标准化)', async () => {

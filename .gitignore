@@ -16,6 +16,7 @@
 /.env
 /.env.local
 /.env.*.local
+/bff/.env
 
 *storybook.log
 storybook-static

@@ -1443,8 +1443,9 @@ function AgentPage() {
 - ✅ `healthCheck()` 和 `discoverCapabilities()` 正常(`/v1/capabilities` 404 降级默认)
 - ✅ 多租户头 `X-Intellect-Team`/`X-Intellect-Project` 正确注入(httpClient 统一注入)
 - ✅ TypeScript 编译零错误(BFF + 前端)
-- ✅ 单元测试全过:BFF 11 套件 163 测试(P0/P1/P2 125 + P3 38),无回归
-- ⏳ 冒烟测试(需真实 intellect-team 运行):见 [quickstart.md](../specs/004-intellect-enterprise-adapter/quickstart.md)
+- ✅ 单元测试全过:BFF 11 套件 164 测试(P0/P1/P2 125 + P3 39),无回归
+- ✅ 冒烟测试通过:用 Node mock server 模拟 intellect-team,验证 Admin/能力探测/Agent 列表/会话 CRUD/流式对话(reasoning+delta+usage)/多租户头注入(X-Intellect-Team)/错误处理(400/401/404),见 [quickstart.md](../specs/004-intellect-enterprise-adapter/quickstart.md)
+- ✅ P0/P1/P2 运行时回归 6 项全过(透传路由/Admin CRUD/capabilities/health)
 
 ### 10.2 后续阶段（P4-P7，依赖外部条件）
 

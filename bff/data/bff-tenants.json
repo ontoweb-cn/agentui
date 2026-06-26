@@ -1,0 +1,19 @@
+{
+  "tenants": [
+    {
+      "id": "tenant-rag",
+      "name": "RAG Tenant",
+      "intellectBackendId": "intellect-rag-default",
+      "createdAt": "2026-06-26T00:00:00Z",
+      "updatedAt": "2026-06-26T00:00:00Z"
+    },
+    {
+      "id": "tenant-enterprise",
+      "name": "Enterprise Tenant",
+      "intellectTenantId": "team-smoke-001",
+      "intellectBackendId": "intellect-enterprise-default",
+      "createdAt": "2026-06-26T00:00:00Z",
+      "updatedAt": "2026-06-26T00:00:00Z"
+    }
+  ]
+}
