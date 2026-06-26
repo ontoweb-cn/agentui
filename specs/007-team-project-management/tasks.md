@@ -40,8 +40,8 @@
 
 - [x] T008 创建 BFF Team CRUD 路由(`bff/src/routes/teams.ts`), 实现 POST/GET/PUT/DELETE `/admin/teams[/:id]`, 调 intellect-team API, 删除前检查 BffTenant 绑定(FR-011)
 - [x] T009 在 `bff/src/index.ts` 注册 Team 路由, 挂载 authMiddleware 到 `/admin/teams/*`
-- [~] T010 创建前端 Team 管理页面(`src/pages/admin/teams.tsx`), 展示 Team 列表 + 新增/编辑/删除表单(待前端实现)
-- [~] T011 在前端路由配置注册 `/admin/teams` 路由(待前端实现)
+- [x] T010 创建前端 Team 管理页面(`src/pages/admin/teams.tsx`), 展示 Team 列表 + 新增/归档表单(react-hook-form + zod)
+- [x] T011 在前端路由配置注册 `/admin/teams` 路由(`src/routes.tsx` Routes.AdminTeams)
 
 ---
 
@@ -57,8 +57,8 @@
 
 - [x] T013 创建 BFF Project CRUD 路由(`bff/src/routes/projects.ts`), 实现 POST/GET/PUT/DELETE `/admin/teams/:teamId/projects[/:id]`
 - [x] T014 在 `bff/src/index.ts` 注册 Project 路由
-- [~] T015 创建前端 Project 管理页面(`src/pages/admin/team-projects.tsx`)(待前端实现)
-- [~] T016 在前端路由配置注册 `/admin/teams/:teamId/projects` 路由(待前端实现)
+- [x] T015 创建前端 Project 管理页面(`src/pages/admin/projects.tsx`), 列表 + 新增(team_ref 关联) + 归档
+- [x] T016 在前端路由配置注册 `/admin/projects` 路由(`src/routes.tsx` Routes.AdminProjects)
 
 ---
 
@@ -86,7 +86,7 @@
 - [x] T024 [P] 运行 `cd bff && npm test`, 确认所有测试通过(248 tests, 含 P0-P4b 211 + P5 新增 37)
 - [x] T025 验证 TenantID=0 模式 100% 不回归(tenant-context.test.ts 覆盖 + 全量测试通过)
 - [x] T026 验证 Team 绑定后 X-Intellect-Team 头正确注入(tenant-context.test.ts P5 用例 + http-client.test.ts 已覆盖)
-- [~] T027 更新 `docs/multi-harness-design.md`, 标注 P5 BFF 侧实施完成状态(前端待实现)
+- [x] T027 更新 `docs/multi-harness-design.md`, 标注 P5(BFF + 前端)实施完成状态 + 追加 P4d 章节
 
 ---
 
@@ -131,10 +131,11 @@ intellect-team 侧 P4a(member 认证)+ P5(Team/Project CRUD)**已全部实现**,
 6. **移除 PUT**:intellect-team 未实现 Team/Project 更新,BFF 不暴露 PUT 路由(YAGNI)
 7. **list 响应提取**:intellect-team 返回 `{data: [...]}`,BFF admin client 提取数组
 
-### 前端侧待实现(T010-T011, T015-T016, T020-T022)
-- Team/Project/Admin 页面需前端 React 实现
+### 前端侧已完成(2026-06-27,T010-T011/T015-T016/T020-T022)
+- Team/Project/Tenant-binding Admin 页面已实现(react-hook-form + zod)
 - BFF API 已就绪并对齐 intellect-team 实际契约:
   - `/api/bff/admin/teams/*`(POST/GET/DELETE,slug/display_name/created_by)
   - `/api/bff/admin/projects/*`(POST/GET/DELETE,独立路径,team_ref 关联)
   - `/api/bff/admin/tenants/:id/binding`(GET/PUT)
 - 前端调用时:`created_by` 可不传(BFF 从 session 自动注入),Team/Project 用 slug 作为标识
+- 文件:`src/services/team-admin-service.ts`、`src/pages/admin/{teams,projects,tenant-bindings}.tsx`、`src/routes.tsx`、`src/pages/admin/layouts/navigation-layout.tsx`、`src/locales/en.ts`

@@ -1473,16 +1473,98 @@ function AgentPage() {
 - ✅ 单元测试全过:BFF 13 套件 211 测试(P0-P3 164 + P4b 47),无回归
 - ✅ intellect-team 对接文档完成(README + member-auth-api + oauth-callback-token + default-tenant-compat)
 
-### 10.2 后续阶段（P4d-P7，依赖外部条件）
+#### P4d：前端登录页字段适配 ✅ 已完成
+
+**状态**:✅ 已完成(2026-06-26,详见 [specs/006-frontend-login-adaptation/tasks.md](../specs/006-frontend-login-adaptation/tasks.md))
+
+**目标**:登录/注册页根据 BffTenant.authMode 动态切换字段(企业版 `login_name`/`display_name`,社区版 `email`/`nickname`)。
+
+| 任务 | 文件 | 说明 | 状态 |
+|------|------|------|------|
+| BFF auth config 端点 | `bff/src/routes/auth.ts` | 公开 GET `/api/bff/auth/config` 返回 `{ authMode }`(无需认证) | ✅ |
+| auth config 测试 | `bff/src/routes/auth.test.ts` | 3 场景:企业版/社区版/无 tenantId | ✅ |
+| useAuthMode hook | `src/hooks/use-login-request.ts` | TanStack Query 5min 缓存,从 BFF 拉 authMode | ✅ |
+| 登录页表单适配 | `src/pages/login-next/index.tsx` | authMode=intellect-enterprise 显示 login_name;authMode=intellect-rag 显示 email | ✅ |
+| zod schema 切换 | `src/pages/login-next/index.tsx` | email 格式校验 vs login_name 长度校验 | ✅ |
+| 注册页表单适配 | `src/pages/login-next/index.tsx` | intellect-enterprise 显示 login_name + display_name;intellect-rag 显示 email + nickname | ✅ |
+| i18n 键新增 | `src/locales/{en,zh}.ts` | loginNameLabel/Placeholder + displayNameLabel/Placeholder | ✅ |
+| useLogin/useRegister 类型扩展 | `src/hooks/use-login-request.ts` | 支持 login_name + display_name 字段 | ✅ |
+
+**验收标准**:
+- ✅ 企业版登录页显示 `login_name` 字段,社区版显示 `email` 字段(根据 BFF authMode 动态切换)
+- ✅ 注册页对应显示 `login_name + display_name` 或 `email + nickname`
+- ✅ zod 校验按 authMode 切换(email 正则 vs login_name 长度)
+- ✅ BFF auth config 端点无需认证,3 场景测试通过
+- ✅ TypeScript 编译零错误(BFF + 前端)
+- ✅ 单元测试全过:BFF 214 测试(P0-P4b 211 + P4d 3),无回归
+
+#### P5：Team/Project 管理 + Tenant 绑定 ✅ 已完成
+
+**状态**:✅ 已完成(2026-06-26,详见 [specs/007-team-project-management/tasks.md](../specs/007-team-project-management/tasks.md))
+
+**目标**:BFF 多租户层透传 Team/Project CRUD 到 intellect-team,前端 Admin 页面管理 Team/Project + BffTenant 绑定,替换缺省 TenantID=0 实现真实多租户隔离。
+
+**BFF 侧任务**:
+
+| 任务 | 文件 | 说明 | 状态 |
+|------|------|------|------|
+| Team/Project 类型 | `bff/src/types/team.ts` | Team(slug/display_name/enabled/created_by/created_at) + Project(team_ref/slug/display_name/enabled/created_by/created_at) | ✅ |
+| intellect-team admin client | `bff/src/services/intellect-team-admin-client.ts` | Team/Project CRUD 调用,注入 API_SERVER_KEY + X-Intellect-Team/Project 头 | ✅ |
+| BffTenant 配置扩展 | `bff/data/bff-tenants.json` | 新增示例 tenant + 缺省 TenantID=0 tenant | ✅ |
+| TenantContext 注入 project_id | `bff/src/middleware/tenant-context.ts` | intellectProjectId 存在时注入 X-Intellect-Project 头 | ✅ |
+| 中间件测试扩展 | `bff/src/middleware/tenant-context.test.ts` | 真实 team_id + project_id 注入头(+3 tests) | ✅ |
+| Team CRUD 路由 | `bff/src/routes/teams.ts` | POST/GET/DELETE `/admin/teams[/:ref]`,删除前检查 BffTenant 绑定(409) | ✅ |
+| Project CRUD 路由 | `bff/src/routes/projects.ts` | POST/GET/DELETE `/admin/projects[/:ref]`,独立路径 + team_ref 关联 | ✅ |
+| Tenant 绑定路由 | `bff/src/routes/tenant-bindings.ts` | GET/PUT `/admin/tenants/:id/binding` | ✅ |
+| 路由注册 | `bff/src/index.ts` | 挂载 teams/projects/tenant-bindings 到 authMiddleware | ✅ |
+| BFF 契约对齐修正 | (多处) | 5 处偏差修正:OAuth 路由/Team 字段/Project 端点/DELETE 软删除/created_by 自动注入 | ✅ |
+| Team CRUD 测试 | `bff/src/routes/teams.test.ts` | 10 tests:CRUD + 删除被绑定 Team 409 | ✅ |
+| Project CRUD 测试 | `bff/src/routes/projects.test.ts` | 7 tests:CRUD + X-Intellect-Team 注入 + 502 | ✅ |
+| Tenant 绑定测试 | `bff/src/routes/tenant-bindings.test.ts` | 10 tests:GET/PUT 绑定/回退缺省/解绑 project/404/400 | ✅ |
+
+**前端侧任务**:
+
+| 任务 | 文件 | 说明 | 状态 |
+|------|------|------|------|
+| API 路径常量 | `src/utils/api.ts` | adminTeams/adminProjects/adminTenantBinding 路径 | ✅ |
+| 数据访问层 | `src/services/team-admin-service.ts` | Team/Project/Tenant-binding CRUD 封装 | ✅ |
+| Team 管理页面 | `src/pages/admin/teams.tsx` | 列表 + 新增(slug/display_name) + 归档(软删除) | ✅ |
+| Project 管理页面 | `src/pages/admin/projects.tsx` | 列表 + 新增(team_ref 关联 + slug/display_name) + 归档 | ✅ |
+| Tenant 绑定页面 | `src/pages/admin/tenant-bindings.tsx` | Team/Project 级联下拉,Project 按 team_id 前端过滤 | ✅ |
+| 路由注册 | `src/routes.tsx` | AdminTeams/AdminProjects/AdminTenantBindings 路由 | ✅ |
+| 导航菜单 | `src/pages/admin/layouts/navigation-layout.tsx` | Teams(Users icon)/Projects(FolderKanban)/Tenant Bindings(Link icon) | ✅ |
+| i18n 翻译 | `src/locales/en.ts` | teams/projects/tenantBinding 命名空间 | ✅ |
+
+**验收标准**:
+- ✅ Team/Project CRUD 路由调 intellect-team API,slug 作为标识(对齐 intellect-team 实际契约)
+- ✅ Team 删除前检查 BffTenant 绑定,绑定则返回 409(FR-011)
+- ✅ TenantContext 在 intellectTenantId !== "0" 时注入 X-Intellect-Team,intellectProjectId 存在时注入 X-Intellect-Project
+- ✅ TenantID=0 模式 100% 不回归(向后兼容 P4b)
+- ✅ 前端 Admin 页面可管理 Team/Project + Tenant 绑定(级联下拉)
+- ✅ created_by 由 BFF 从 AuthSession.memberId 自动注入,前端可不传
+- ✅ DELETE 语义为软删除(archive),intellect-team 返回 `{ok:true}` → BFF 返回 `{archived:true}`
+- ✅ TypeScript 编译零错误(BFF + 前端)
+- ✅ 单元测试全过:BFF 253 测试(P0-P4b 211 + P5 BFF 42),无回归
+
+**契约对齐修正**(2026-06-26,对比 intellect-team 实际实现):
+
+1. OAuth 路由:`POST /api/oauth/authorize` → `GET /api/oauth/login/{provider}`(直接透传 302,`redirect: manual`)
+2. Team 字段:`{name, description}` → `{slug, display_name, enabled, created_by}`
+3. Project 端点:嵌套 `/api/teams/{id}/projects` → 独立 `/api/projects` + `team_ref` 关联
+4. DELETE 语义:硬删除 → 软删除(archive),`{ok: true}` → `{archived: true}`
+5. created_by 注入:BFF 从 AuthSession.memberId 自动注入,前端可不传
+6. 移除 PUT:intellect-team 未实现 Team/Project 更新,BFF 不暴露 PUT 路由(YAGNI)
+7. list 响应提取:intellect-team 返回 `{data: [...]}`,BFF admin client 提取数组
+
+### 10.2 后续阶段（P6-P7，依赖外部条件）
 
 | 阶段 | 内容 | 依赖 |
 |------|------|------|
 | **P4** | Intellect 侧新增 Team/Project CRUD HTTP API | Intellect 团队（参考 [Intellect Admin API 接口指南](file:///Users/simon/workspace/agentui/docs/intellect-admin-api-guide.md)） |
-| **P4b** | BFF 统一认证路由 + 缺省 TenantID=0 | ✅ 已完成(2026-06-26) |
-| **P4d** | 前端登录页字段适配(login_name vs email) | P4b(详见 [specs/006-frontend-login-adaptation/spec.md](../specs/006-frontend-login-adaptation/spec.md)) |
-| **P5** | BFF 多租户层（Team/Project 透传）+ 前端 Admin 页面 | P3 + P4(详见 [specs/007-team-project-management/spec.md](../specs/007-team-project-management/spec.md)) |
 | **P6** | 画布服务（硬绑定 Intellect） | P1 |
 | **P7** | SSE 事件扩展（runs/skills，可选） | P3 |
+
+> **已完成阶段**:P0-前置 / P0 / P1 / P2 / P3 / P4b / P4d / P5 全部 ✅,详见 §10.1 各阶段章节。
 
 ## 十一、涉及文件清单
 
