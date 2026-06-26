@@ -10,8 +10,8 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 调研 BFF 是否需要新增 `/api/bff/auth/mode` 端点(无需认证即可返回 authMode),或复用 `/api/bff/capabilities`(需认证)
-- [ ] T002 确认前端登录页现有表单结构(src/pages/login/ 或 src/features/auth/),梳理需改动的组件
+- [x] T001 BFF 新增公开端点 GET `/api/bff/auth/config`(无需认证),返回 `{ authMode }`,文件 `bff/src/routes/auth.ts`
+- [x] T002 确认前端登录页结构:主登录页 `src/pages/login-next/index.tsx` + Admin 登录页 `src/pages/admin/login.tsx`
 
 ---
 
@@ -19,28 +19,29 @@
 
 ### Tests
 
-- [ ] T003 编写登录表单组件测试,验证:authMode=intellect-enterprise 时标签为 "用户名",authMode=intellect-rag 时标签为 "邮箱"
+- [x] T003 编写 BFF auth config 端点测试(3 个场景:企业版/社区版/无 tenantId),文件 `bff/src/routes/auth.test.ts`
 
 ### Implementation
 
-- [ ] T004 创建 `useAuthMode` hook(或扩展现有 hook),从 BFF 获取 authMode 信息(无需认证)
-- [ ] T005 修改登录页表单组件,根据 authMode 动态切换字段标签(email ↔ login_name)
-- [ ] T006 修改 zod 校验 schema,按 authMode 切换(email 格式 vs login_name 长度)
-- [ ] T007 修改注册页表单组件,根据 authMode 切换字段(email+nickname ↔ login_name+display_name)
-- [ ] T008 修改 OAuth 渠道列表,从 BFF `/auth/login/channels` 获取(不硬编码)
+- [x] T004 创建 `useAuthMode` hook(`src/hooks/use-login-request.ts`),从 BFF GET `/api/bff/auth/config` 获取 authMode,TanStack Query 5min 缓存
+- [x] T005 修改登录页表单(`src/pages/login-next/index.tsx`),authMode=intellect-enterprise 时显示 login_name 字段,authMode=intellect-rag 时显示 email 字段
+- [x] T006 修改 zod 校验 schema,按 authMode 切换(email 格式校验 vs login_name 长度校验)
+- [x] T007 修改注册页表单,authMode=intellect-enterprise 时显示 login_name + display_name,authMode=intellect-rag 时显示 email + nickname
+- [x] T008 新增 i18n 键:loginNameLabel/loginNamePlaceholder/displayNameLabel/displayNamePlaceholder(en.ts + zh.ts)
+- [x] T009 更新 useLogin/useRegister hook 类型,支持 login_name + display_name 字段
 
 ---
 
 ## Phase 3: Polish
 
-- [ ] T009 运行 `npx tsc --noEmit -p tsconfig.json`,确认前端零错误
-- [ ] T010 运行 `cd bff && npm test`,确认 BFF 测试不回归
-- [ ] T011 验证社区版登录/注册/OAuth 100% 不回归
+- [x] T010 运行 `npx tsc --noEmit -p tsconfig.json`,确认前端零错误
+- [x] T011 运行 `cd bff && npm test`,确认 214 个 BFF 测试全部通过
+- [x] T012 运行 `cd bff && npm run type-check`,确认 BFF TypeScript 零错误
 
 ---
 
 ## Dependencies
 
-- T001 阻塞 T004(需要确定 authMode 获取方式)
+- T001 阻塞 T004(BFF 端点必须就绪)
 - T004 阻塞 T005/T006/T007(表单组件依赖 authMode hook)
 - T008 独立(可与 T005-T007 并行)

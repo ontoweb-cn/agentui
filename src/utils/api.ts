@@ -31,6 +31,7 @@ export default {
   login: `${bffAuth}/login`,
   logout: `${bffAuth}/logout`,
   register: `${bffAuth}/register`,
+  authConfig: `${bffAuth}/config`,
   setting: `${restAPIv1}/users/me`,
   userInfo: `${bffAuth}/me`,
   tenantInfo: `${restAPIv1}/users/me/models`,

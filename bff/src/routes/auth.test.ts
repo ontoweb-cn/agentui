@@ -91,6 +91,47 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   // -------------------------------------------------------------------------
+  // GET /api/bff/auth/config — 认证配置(公开端点)
+  // -------------------------------------------------------------------------
+
+  it('auth config:企业版 tenant → 返回 authMode=intellect-enterprise', async () => {
+    const tenantStore = createMockTenantStore([enterpriseTenant]);
+    const app = createApp(tenantStore);
+
+    const resp = await app.request('/api/bff/auth/config', {
+      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+    });
+
+    expect(resp.status).toBe(200);
+    const body = await resp.json();
+    expect(body.data.authMode).toBe('intellect-enterprise');
+  });
+
+  it('auth config:社区版 tenant → 返回 authMode=intellect-rag', async () => {
+    const tenantStore = createMockTenantStore([ragTenant]);
+    const app = createApp(tenantStore);
+
+    const resp = await app.request('/api/bff/auth/config', {
+      headers: { 'X-Tenant-Id': 'tenant-rag' },
+    });
+
+    expect(resp.status).toBe(200);
+    const body = await resp.json();
+    expect(body.data.authMode).toBe('intellect-rag');
+  });
+
+  it('auth config:无 X-Tenant-Id → 默认 intellect-rag', async () => {
+    const tenantStore = createMockTenantStore([enterpriseTenant]);
+    const app = createApp(tenantStore);
+
+    const resp = await app.request('/api/bff/auth/config');
+
+    expect(resp.status).toBe(200);
+    const body = await resp.json();
+    expect(body.data.authMode).toBe('intellect-rag');
+  });
+
+  // -------------------------------------------------------------------------
   // POST /api/bff/auth/login — 企业版
   // -------------------------------------------------------------------------
 

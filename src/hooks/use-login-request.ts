@@ -13,13 +13,18 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useSaveSetting } from './use-user-setting-request';
 
+import api from '@/utils/api';
+import request from '@/utils/request';
+
 export interface ILoginRequestBody {
-  email: string;
+  email?: string;
+  login_name?: string;
   password: string;
 }
 
 export interface IRegisterRequestBody extends ILoginRequestBody {
-  nickname: string;
+  nickname?: string;
+  display_name?: string;
 }
 
 export interface ILoginChannel {
@@ -60,7 +65,7 @@ export const useLogin = () => {
     mutateAsync,
   } = useMutation({
     mutationKey: ['login'],
-    mutationFn: async (params: { email: string; password: string }) => {
+    mutationFn: async (params: { email?: string; login_name?: string; password: string }) => {
       const { data: res = {}, response } = await userService.login(params);
       if (res?.code === 0) {
         // The language is based on the .lng stored in the client's local storage.
@@ -98,9 +103,11 @@ export const useRegister = () => {
   } = useMutation({
     mutationKey: ['register'],
     mutationFn: async (params: {
-      email: string;
+      email?: string;
+      login_name?: string;
       password: string;
-      nickname: string;
+      nickname?: string;
+      display_name?: string;
     }) => {
       const { data = {} } = await userService.register(params);
       if (data?.code === 0) {
@@ -140,4 +147,23 @@ export const useLogout = () => {
   });
 
   return { data, loading, logout: mutateAsync };
+};
+
+export type AuthMode = 'intellect-rag' | 'intellect-enterprise';
+
+/**
+ * 获取当前 tenant 的认证模式(公开端点,无需登录)。
+ * 登录页根据 authMode 动态切换表单字段(email ↔ login_name)。
+ */
+export const useAuthMode = () => {
+  const { data, isLoading } = useQuery({
+    queryKey: ['authConfig'],
+    queryFn: async () => {
+      const { data: res = {} } = await request.get(api.authConfig);
+      return (res?.data?.authMode as AuthMode) ?? 'intellect-rag';
+    },
+    staleTime: 5 * 60 * 1000, // 5 min
+  });
+
+  return { authMode: (data ?? 'intellect-rag') as AuthMode, loading: isLoading };
 };

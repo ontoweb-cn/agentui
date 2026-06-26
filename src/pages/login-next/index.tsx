@@ -5,6 +5,7 @@ import {
   useLoginChannels,
   useLoginWithChannel,
   useRegister,
+  useAuthMode,
 } from '@/hooks/use-login-request';
 import { useSystemConfig } from '@/hooks/use-system-request';
 import { rsaPsw } from '@/utils';
@@ -45,6 +46,7 @@ type LoginFormContentProps = {
   handleLoginWithChannel: (channel: string) => void;
   t: ReturnType<typeof useTranslation>['t'];
   disablePasswordLogin?: boolean;
+  isEnterprise?: boolean;
 };
 
 function LoginFormContent({
@@ -59,6 +61,7 @@ function LoginFormContent({
   handleLoginWithChannel,
   t,
   disablePasswordLogin,
+  isEnterprise,
 }: LoginFormContentProps) {
   const face = useContext(FlipFaceContext);
   const isActiveFace = isLoginPage ? face === 'front' : face === 'back';
@@ -79,35 +82,17 @@ function LoginFormContent({
               data-active={isActiveFace ? 'true' : undefined}
               onSubmit={form.handleSubmit(onCheck)}
             >
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel required>{t('emailLabel')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        data-testid="auth-email"
-                        placeholder={t('emailPlaceholder')}
-                        autoComplete="email"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              {title === 'register' && (
+              {isEnterprise ? (
                 <FormField
                   control={form.control}
-                  name="nickname"
+                  name="login_name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel required>{t('nicknameLabel')}</FormLabel>
+                      <FormLabel required>{t('loginNameLabel')}</FormLabel>
                       <FormControl>
                         <Input
-                          data-testid="auth-nickname"
-                          placeholder={t('nicknamePlaceholder')}
+                          data-testid="auth-email"
+                          placeholder={t('loginNamePlaceholder')}
                           autoComplete="username"
                           {...field}
                         />
@@ -116,6 +101,66 @@ function LoginFormContent({
                     </FormItem>
                   )}
                 />
+              ) : (
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel required>{t('emailLabel')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          data-testid="auth-email"
+                          placeholder={t('emailPlaceholder')}
+                          autoComplete="email"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+              {title === 'register' && (
+                isEnterprise ? (
+                  <FormField
+                    control={form.control}
+                    name="display_name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel required>{t('displayNameLabel')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            data-testid="auth-nickname"
+                            placeholder={t('displayNamePlaceholder')}
+                            autoComplete="name"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : (
+                  <FormField
+                    control={form.control}
+                    name="nickname"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel required>{t('nicknameLabel')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            data-testid="auth-nickname"
+                            placeholder={t('nicknamePlaceholder')}
+                            autoComplete="username"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )
               )}
 
               <FormField
@@ -253,17 +298,20 @@ const Login = () => {
   const { channels, loading: channelsLoading } = useLoginChannels();
   const { login: loginWithChannel, loading: loginWithChannelLoading } =
     useLoginWithChannel();
+  const { authMode, loading: authModeLoading } = useAuthMode();
   const { t } = useTranslation('translation', { keyPrefix: 'login' });
   const { t: tSetting } = useTranslation('translation', {
     keyPrefix: 'setting',
   });
   const [isLoginPage, setIsLoginPage] = useState(true);
+  const isEnterprise = authMode === 'intellect-enterprise';
 
   const loading =
     signLoading ||
     registerLoading ||
     channelsLoading ||
-    loginWithChannelLoading;
+    loginWithChannelLoading ||
+    authModeLoading;
   const { config } = useSystemConfig();
   const registerEnabled = config?.registerEnabled !== 0;
 
@@ -292,35 +340,71 @@ const Login = () => {
   const FormSchema = z
     .object({
       nickname: z.string().optional(),
-      email: z
-        .string()
-        .email()
-        .min(1, { message: t('emailPlaceholder') }),
+      display_name: z.string().optional(),
+      login_name: z.string().optional(),
+      email: z.string().optional(),
       password: z.string().min(1, { message: t('passwordPlaceholder') }),
       remember: z.boolean().optional(),
     })
     .superRefine((data, ctx) => {
-      if (title !== 'register') return;
-      if (!data.nickname) {
-        ctx.addIssue({
-          path: ['nickname'],
-          message: 'nicknamePlaceholder',
-          code: z.ZodIssueCode.custom,
-        });
-        return;
-      }
-      if (!NICKNAME_PATTERN.test(data.nickname)) {
-        ctx.addIssue({
-          path: ['nickname'],
-          message: tSetting('usernameInvalidCharacters'),
-          code: z.ZodIssueCode.custom,
-        });
+      if (isEnterprise) {
+        // 企业版:login_name 必填
+        if (!data.login_name || data.login_name.length < 1) {
+          ctx.addIssue({
+            path: ['login_name'],
+            message: t('loginNamePlaceholder'),
+            code: z.ZodIssueCode.custom,
+          });
+        }
+        if (title === 'register') {
+          if (!data.display_name || data.display_name.length < 1) {
+            ctx.addIssue({
+              path: ['display_name'],
+              message: t('displayNamePlaceholder'),
+              code: z.ZodIssueCode.custom,
+            });
+          }
+        }
+      } else {
+        // 社区版:email 必填 + 格式校验
+        if (!data.email || data.email.length < 1) {
+          ctx.addIssue({
+            path: ['email'],
+            message: t('emailPlaceholder'),
+            code: z.ZodIssueCode.custom,
+          });
+        } else if (!z.string().email().safeParse(data.email).success) {
+          ctx.addIssue({
+            path: ['email'],
+            message: t('emailPlaceholder'),
+            code: z.ZodIssueCode.custom,
+          });
+        }
+        if (title === 'register') {
+          if (!data.nickname) {
+            ctx.addIssue({
+              path: ['nickname'],
+              message: 'nicknamePlaceholder',
+              code: z.ZodIssueCode.custom,
+            });
+            return;
+          }
+          if (!NICKNAME_PATTERN.test(data.nickname)) {
+            ctx.addIssue({
+              path: ['nickname'],
+              message: tSetting('usernameInvalidCharacters'),
+              code: z.ZodIssueCode.custom,
+            });
+          }
+        }
       }
     });
   type FormValues = z.infer<typeof FormSchema>;
   const form = useForm<FormValues>({
     defaultValues: {
       nickname: '',
+      display_name: '',
+      login_name: '',
       email: '',
       password: '',
       remember: false,
@@ -333,21 +417,35 @@ const Login = () => {
       const rsaPassWord = rsaPsw(params.password) as string;
 
       if (title === 'login') {
+        const loginField = isEnterprise
+          ? { login_name: (params.login_name ?? '').trim() }
+          : { email: (params.email ?? '').trim() };
         const code = await login({
-          email: `${params.email}`.trim(),
+          ...loginField,
           password: rsaPassWord,
         });
         if (code === 0) {
           navigate('/');
         }
       } else {
-        const code = await register({
-          nickname: params.nickname as string,
-          email: params.email,
-          password: rsaPassWord,
-        });
-        if (code === 0) {
-          setTitle('login');
+        if (isEnterprise) {
+          const code = await register({
+            login_name: params.login_name ?? '',
+            display_name: params.display_name ?? '',
+            password: rsaPassWord,
+          });
+          if (code === 0) {
+            setTitle('login');
+          }
+        } else {
+          const code = await register({
+            nickname: params.nickname as string,
+            email: params.email ?? '',
+            password: rsaPassWord,
+          });
+          if (code === 0) {
+            setTitle('login');
+          }
         }
       }
     } catch (errorInfo) {
@@ -405,6 +503,7 @@ const Login = () => {
               handleLoginWithChannel={handleLoginWithChannel}
               t={t}
               disablePasswordLogin={!!config?.disablePasswordLogin}
+              isEnterprise={isEnterprise}
             />
           </FlipCard3D>
         </div>

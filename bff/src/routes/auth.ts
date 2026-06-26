@@ -113,6 +113,17 @@ function getEnterpriseBackend(tenantStore: TenantStore | undefined, tenantId: st
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/bff/auth/config — 认证配置(公开,无需登录)
+// ---------------------------------------------------------------------------
+
+authRoutes.get('/api/bff/auth/config', (c) => {
+  const tenantId = c.req.header('X-Tenant-Id') || '0';
+  const tenantStore = c.get('tenantStore');
+  const authMode = getAuthMode(tenantStore, tenantId);
+  return c.json(ok({ authMode }));
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/bff/auth/login — 登录
 // ---------------------------------------------------------------------------
 
