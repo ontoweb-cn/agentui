@@ -1447,12 +1447,40 @@ function AgentPage() {
 - ✅ 冒烟测试通过:用 Node mock server 模拟 intellect-team,验证 Admin/能力探测/Agent 列表/会话 CRUD/流式对话(reasoning+delta+usage)/多租户头注入(X-Intellect-Team)/错误处理(400/401/404),见 [quickstart.md](../specs/004-intellect-enterprise-adapter/quickstart.md)
 - ✅ P0/P1/P2 运行时回归 6 项全过(透传路由/Admin CRUD/capabilities/health)
 
-### 10.2 后续阶段（P4-P7，依赖外部条件）
+#### P4b：BFF 统一认证路由 + 缺省 TenantID=0 ✅ 已完成
+
+**状态**:✅ 已完成(2026-06-26,详见 [specs/005-bff-auth-default-tenant/tasks.md](../specs/005-bff-auth-default-tenant/tasks.md))
+
+**目标**:企业版认证经 BFF 路由,cookie 存储 member token,缺省 TenantID=0 简化对接。
+
+| 任务 | 文件 | 说明 | 状态 |
+|------|------|------|------|
+| BffTenant.authMode 字段 | `bff/src/types/tenant.ts` + `bff/src/services/tenant-store.ts` | intellect-rag \| intellect-enterprise | ✅ |
+| 缺省 TenantID=0 兼容 | `bff/src/middleware/tenant-context.ts` | intellectTenantId==="0" 不注入 X-Intellect-Team | ✅ |
+| auth-session 中间件 | `bff/src/middleware/auth-session.ts` | cookie 提取 imt_token 注入 AuthSession | ✅ |
+| 认证路由 | `bff/src/routes/auth.ts` | login/register/logout/me/channels/oauth callback | ✅ |
+| Mock server 扩展 | `bff/scripts/mock-intellect-team.mjs` | /api/members/* + /api/oauth/* | ✅ |
+| 前端路径迁移 | `src/utils/api.ts` | 认证路径从 proxy/v1/auth 到 /api/bff/auth | ✅ |
+| intellect-team 对接文档 | `docs/intellect-team-integration/README.md` | 架构图 + 端点清单 + P4a 优先级 | ✅ |
+
+**验收标准**:
+- ✅ 企业版密码登录:POST /api/bff/auth/login → 200 + Set-Cookie(imt_token)
+- ✅ /auth/me:cookie 鉴权 → 返回 member 信息
+- ✅ 注册/登出闭环:register → login → logout → /auth/me → 401
+- ✅ OAuth 渠道列表 + authorize + callback + token 签发完整流程
+- ✅ 社区版 authMode=intellect-rag 透传,100% 不回归
+- ✅ TypeScript 编译零错误(BFF + 前端)
+- ✅ 单元测试全过:BFF 13 套件 211 测试(P0-P3 164 + P4b 47),无回归
+- ✅ intellect-team 对接文档完成(README + member-auth-api + oauth-callback-token + default-tenant-compat)
+
+### 10.2 后续阶段（P4d-P7，依赖外部条件）
 
 | 阶段 | 内容 | 依赖 |
 |------|------|------|
 | **P4** | Intellect 侧新增 Team/Project CRUD HTTP API | Intellect 团队（参考 [Intellect Admin API 接口指南](file:///Users/simon/workspace/agentui/docs/intellect-admin-api-guide.md)） |
-| **P5** | BFF 多租户层（Team/Project 透传）+ 前端 Admin 页面 | P3 + P4 |
+| **P4b** | BFF 统一认证路由 + 缺省 TenantID=0 | ✅ 已完成(2026-06-26) |
+| **P4d** | 前端登录页字段适配(login_name vs email) | P4b(详见 [specs/006-frontend-login-adaptation/spec.md](../specs/006-frontend-login-adaptation/spec.md)) |
+| **P5** | BFF 多租户层（Team/Project 透传）+ 前端 Admin 页面 | P3 + P4(详见 [specs/007-team-project-management/spec.md](../specs/007-team-project-management/spec.md)) |
 | **P6** | 画布服务（硬绑定 Intellect） | P1 |
 | **P7** | SSE 事件扩展（runs/skills，可选） | P3 |
 
