@@ -36,13 +36,7 @@ export const authSessionMiddleware: MiddlewareHandler = async (c, next) => {
     return;
   }
 
-  const tenantId = c.req.header('X-Tenant-Id');
-
-  // 无 tenantId 无法构造 AuthSession:不注入,继续(不阻塞)
-  if (!tenantId) {
-    await next();
-    return;
-  }
+  const tenantId = c.req.header('X-Tenant-Id') || 'default';
 
   // 从 TenantStore 读取 BffTenant.authMode(默认 intellect-rag,向后兼容)
   const tenantStore = c.get('tenantStore');

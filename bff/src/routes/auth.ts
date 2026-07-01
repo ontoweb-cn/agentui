@@ -116,7 +116,7 @@ function getEnterpriseBackend(tenantStore: TenantStore | undefined, tenantId: st
 // GET /api/bff/auth/config — 认证配置(公开,无需登录)
 // ---------------------------------------------------------------------------
 
-authRoutes.get('/api/bff/auth/config', (c) => {
+authRoutes.get('/auth/config', (c) => {
   const tenantId = c.req.header('X-Tenant-Id') || '0';
   const tenantStore = c.get('tenantStore');
   const authMode = getAuthMode(tenantStore, tenantId);
@@ -127,11 +127,8 @@ authRoutes.get('/api/bff/auth/config', (c) => {
 // POST /api/bff/auth/login — 登录
 // ---------------------------------------------------------------------------
 
-authRoutes.post('/api/bff/auth/login', async (c) => {
-  const tenantId = c.req.header('X-Tenant-Id');
-  if (!tenantId) {
-    return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);
-  }
+authRoutes.post('/auth/login', async (c) => {
+  const tenantId = c.req.header('X-Tenant-Id') || 'default';
 
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
@@ -233,33 +230,36 @@ authRoutes.post('/api/bff/auth/login', async (c) => {
   }
 
   const data = (await resp.json()) as RagLoginResponse;
-  return c.json(ok(data));
+  const authorizationHeader = resp.headers.get('Authorization');
+  const responseData = { ...data };
+  if (authorizationHeader) {
+    responseData.access_token = authorizationHeader;
+  }
+  const response = c.json(ok(responseData));
+  if (authorizationHeader) {
+    response.headers.set('Authorization', authorizationHeader);
+  }
+  return response;
 });
 
 // ---------------------------------------------------------------------------
 // GET /api/bff/auth/me — 获取当前用户信息
 // ---------------------------------------------------------------------------
 
-authRoutes.get('/api/bff/auth/me', async (c) => {
-  const tenantId = c.req.header('X-Tenant-Id');
-  if (!tenantId) {
-    return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);
-  }
-
-  const session = getAuthSession(c);
-  if (!session) {
-    return c.json(fail(401, 'Unauthorized: no valid session cookie'), 401);
-  }
+authRoutes.get('/auth/me', async (c) => {
+  const tenantId = c.req.header('X-Tenant-Id') || 'default';
 
   const tenantStore = c.get('tenantStore');
+  const authMode = getAuthMode(tenantStore, tenantId);
 
-  // 社区版模式:透传(前端用 localStorage access_token,经 Authorization header 传入)
-  if (session.authMode === 'intellect-rag') {
+  if (authMode === 'intellect-rag') {
     const ragHost = process.env.INTELLECT_RAG_HOST || 'localhost';
     const ragPort = process.env.PYTHON_API_PORT || '9380';
     const ragBaseUrl = `http://${ragHost}:${ragPort}`;
-    // 社区版 session.token 是 intellect-rag access_token(从 cookie 提取,前端也可带 Authorization)
-    const authHeader = c.req.header('Authorization') || `Bearer ${session.token}`;
+    const authHeader = c.req.header('Authorization');
+    if (!authHeader) {
+      return c.json(fail(401, 'Unauthorized: missing Authorization header'), 401);
+    }
 
     let resp: Response;
     try {
@@ -286,6 +286,11 @@ authRoutes.get('/api/bff/auth/me', async (c) => {
 
     const data = (await resp.json()) as RagUserInfoResponse;
     return c.json(ok(data));
+  }
+
+  const session = getAuthSession(c);
+  if (!session) {
+    return c.json(fail(401, 'Unauthorized: no valid session cookie'), 401);
   }
 
   // 企业版模式:调 intellect-team GET /api/members/me(用 member token 鉴权)
@@ -330,7 +335,7 @@ authRoutes.get('/api/bff/auth/me', async (c) => {
 // POST /api/bff/auth/register — 注册
 // ---------------------------------------------------------------------------
 
-authRoutes.post('/api/bff/auth/register', async (c) => {
+authRoutes.post('/auth/register', async (c) => {
   const tenantId = c.req.header('X-Tenant-Id');
   if (!tenantId) {
     return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);
@@ -439,7 +444,7 @@ authRoutes.post('/api/bff/auth/register', async (c) => {
 // POST /api/bff/auth/logout — 登出
 // ---------------------------------------------------------------------------
 
-authRoutes.post('/api/bff/auth/logout', async (c) => {
+authRoutes.post('/auth/logout', async (c) => {
   const tenantId = c.req.header('X-Tenant-Id');
   if (!tenantId) {
     return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);
@@ -539,12 +544,8 @@ interface OAuthProviderConverted {
   icon: string;
 }
 
-authRoutes.get('/api/bff/auth/login/channels', async (c) => {
-  const tenantId = c.req.header('X-Tenant-Id');
-  if (!tenantId) {
-    return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);
-  }
-
+authRoutes.get('/auth/login/channels', async (c) => {
+  const tenantId = c.req.header('X-Tenant-Id') || 'default';
   const tenantStore = c.get('tenantStore');
   const authMode = getAuthMode(tenantStore, tenantId);
 
@@ -622,7 +623,7 @@ authRoutes.get('/api/bff/auth/login/channels', async (c) => {
 // GET /api/bff/auth/login/:channel — OAuth 授权重定向
 // ---------------------------------------------------------------------------
 
-authRoutes.get('/api/bff/auth/login/:channel', async (c) => {
+authRoutes.get('/auth/login/:channel', async (c) => {
   const tenantId = c.req.header('X-Tenant-Id');
   if (!tenantId) {
     return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);
@@ -690,7 +691,7 @@ authRoutes.get('/api/bff/auth/login/:channel', async (c) => {
 // GET /api/bff/auth/oauth/callback — OAuth 回调 + token 签发
 // ---------------------------------------------------------------------------
 
-authRoutes.get('/api/bff/auth/oauth/callback', async (c) => {
+authRoutes.get('/auth/oauth/callback', async (c) => {
   const tenantId = c.req.header('X-Tenant-Id');
   if (!tenantId) {
     return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);

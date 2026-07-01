@@ -30,6 +30,17 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
     ? fullPath.slice(prefix.length)
     : fullPath.replace(/^\/proxy\/v1\/?/, '');
 
+  // 安全校验:防止路径遍历攻击
+  if (relativePath.includes('..') || relativePath.startsWith('/')) {
+    return c.json(
+      {
+        code: 400,
+        message: 'Invalid path: path traversal not allowed',
+      },
+      400,
+    );
+  }
+
   // 构造 query string(保留原始 ? 前缀)
   const queryString = c.req.url.includes('?')
     ? '?' + c.req.url.split('?')[1]

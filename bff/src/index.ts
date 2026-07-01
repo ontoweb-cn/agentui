@@ -56,8 +56,20 @@ adapterRegistry.registerFactory(
 
 // Global middleware
 app.use('*', logger());
-app.use('*', cors());
+app.use('*', cors({
+  origin: process.env.CORS_ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173', 'http://localhost:9391'],
+  credentials: true,
+}));
 app.use('*', errorHandler);
+
+// 安全响应头中间件
+app.use('*', async (c, next) => {
+  await next();
+  c.res.headers.set('X-Content-Type-Options', 'nosniff');
+  c.res.headers.set('X-Frame-Options', 'DENY');
+  c.res.headers.set('X-XSS-Protection', '1; mode=block');
+  c.res.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+});
 
 // 将 store + registry 实例存到 Hono context(必须在路由注册之前挂载,
 // 否则路由处理时 c.get('harnessStore') 等返回 undefined)
@@ -90,6 +102,8 @@ app.route('/api/admin', adminRoutes);
 //         → 透传到 intellect-rag /api/v1/agents
 //
 // authMiddleware 挂载到 /proxy/* (与 /api/* 并行,覆盖 proxy 路由)
+// 但排除公开接口 /proxy/v1/system/config
+app.use('/proxy/v1/system/config', async (c, next) => await next());
 app.use('/proxy/*', authMiddleware);
 app.route('/', proxyRoutes);
 

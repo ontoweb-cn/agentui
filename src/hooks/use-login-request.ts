@@ -68,22 +68,24 @@ export const useLogin = () => {
     mutationFn: async (params: { email?: string; login_name?: string; password: string }) => {
       const { data: res = {}, response } = await userService.login(params);
       if (res?.code === 0) {
-        // The language is based on the .lng stored in the client's local storage.
-        // The language stored in the database is for agent template resources,
-        // since the agent template resources are stored on the server.
         saveSetting({ language: storage.getLanguage() });
         const { data } = res;
-        const authorization = response.headers.get(Authorization);
-        const token = data.access_token;
+        let authorization = response.headers.get(Authorization);
+        let token = data.access_token;
+        if (authorization && authorization.startsWith('Bearer ')) {
+          token = authorization.substring(7);
+        } else if (token && !token.startsWith('Bearer ')) {
+          authorization = `Bearer ${token}`;
+        }
         const userInfo = {
           avatar: data.avatar,
           name: data.nickname,
           email: data.email,
         };
         authorizationUtil.setItems({
-          Authorization: authorization,
+          Authorization: authorization || '',
           userInfo: JSON.stringify(userInfo),
-          Token: token,
+          Token: token || '',
         });
       }
       return res.code;
