@@ -1,7 +1,7 @@
 # AgentUI ↔ Intellect-Team Integration Overview
 
-> **Version**: P4b (2026-06-26)
-> **Status**: BFF 侧实现完成,等待 intellect-team 侧 P4a 端点就绪
+> **Version**: P4a+P4b Complete (2026-07-13)
+> **Status**: ✅ 两端均已完成 — 全部 13 个 P4a 端点已在 intellect-team gateway 中实现并通过验证
 
 ## 1. Architecture
 
@@ -79,9 +79,9 @@
 
 ### 3.1 intellect-team Endpoints Required by BFF
 
-BFF P4b depends on the following intellect-team endpoints. **Endpoints marked ⚠️ NEED IMPL** are not yet available and require P4a implementation.
+BFF P4b depends on the following intellect-team endpoints. All endpoints verified as of 2026-07-13.
 
-#### Member Auth (⚠️ NEED IMPL)
+#### Member Auth (✅ COMPLETE)
 
 | Endpoint | Method | Description | Request | Response |
 |---|---|---|---|---|
@@ -91,7 +91,7 @@ BFF P4b depends on the following intellect-team endpoints. **Endpoints marked �
 | `/api/members/me` | GET | Get current member info | (Authorization: Bearer imt_*) | `{member_id, display_name, role, ...}` |
 | `/api/members/{id}/token` | POST | Sign token for member (internal) | (Authorization: Bearer API_SERVER_KEY) | `{token:"imt_*"}` |
 
-#### OAuth (⚠️ NEED IMPL for callback token补全)
+#### OAuth (✅ COMPLETE — token signing endpoint verified)
 
 | Endpoint | Method | Description | Request | Response |
 |---|---|---|---|---|
@@ -99,7 +99,7 @@ BFF P4b depends on the following intellect-team endpoints. **Endpoints marked �
 | `/api/oauth/authorize` | POST | Start OAuth flow | `{provider_id, usage:"login"}` | `{state, redirect_uri}` |
 | `/api/oauth/callback` | GET | Handle OAuth callback | `?code=x&state=y` | `{member_id, claims}` |
 
-**⚠️ Critical**: After `/api/oauth/callback` returns `member_id`, BFF calls `POST /api/members/{member_id}/token` to sign a token. This endpoint MUST exist for OAuth to work.
+**✅ Verified**: After `/api/oauth/callback` returns `member_id`, BFF calls `POST /api/members/{member_id}/token` to sign a token. **Requires `Authorization: Bearer {API_SERVER_KEY}`** — BFF must have API_SERVER_KEY configured.
 
 #### Data API (✅ EXISTS)
 
