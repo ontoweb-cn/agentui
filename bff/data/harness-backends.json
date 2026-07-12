@@ -31,6 +31,22 @@
         "modelManagement": false
       },
       "defaultForTenant": false
+    },
+    {
+      "id": "intellect-llm-main",
+      "name": "Intellect LLM Gateway (Phase 3)",
+      "comment": "Shares endpoint with intellect-enterprise (localhost:8642). Gateway serves both enterprise and LLM APIs on the same port. Distinguished by capabilities.",
+      "type": "intellect-llm",
+      "endpoint": "http://localhost:8642",
+      "adminTokenEnvVar": "INTELLECT_LLM_API_KEY",
+      "capabilities": {
+        "chat": true,
+        "embedding": true,
+        "rerank": true,
+        "costTracking": true,
+        "modelManagement": true
+      },
+      "defaultForTenant": false
     }
   ]
 }

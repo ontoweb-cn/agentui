@@ -16,6 +16,8 @@ import { isLocalLlmFactory } from '../utils';
 import SystemSetting from './components/system-setting';
 import { AvailableModels } from './components/un-add-model';
 import { UsedModel } from './components/used-model';
+import { GatewayProviderPanel } from './components/gateway-provider-panel';
+import { IntellectLlmAdapter } from '@/../bff/src/services/adapters/intellect-llm/intellect-llm-adapter';
 import { useSubmitBedrock } from './hooks';
 import BedrockModal from './modal/bedrock-modal';
 import ProviderModal, { IViewModeOkPayload } from './modal/provider-modal';
@@ -349,6 +351,14 @@ const ModelProviders = () => {
         <UsedModel
           handleAddModel={handleAddModel}
           onEditInstance={handleEditInstance}
+        />
+        <GatewayProviderPanel
+          adapter={
+            new IntellectLlmAdapter({
+              url: import.meta.env.VITE_INTELLECT_LLM_SERVICE_URL || 'http://localhost:8642',
+              adminToken: import.meta.env.VITE_INTELLECT_LLM_API_KEY || '',
+            })
+          }
         />
       </section>
       <section className="flex flex-col w-2/5 overflow-auto scrollbar-auto">
