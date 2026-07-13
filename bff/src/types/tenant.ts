@@ -8,8 +8,10 @@
  * Constitution references:
  * - Principle III (Canvas Hard-Bound): canvasBackendId must be intellect-rag type
  * - Principle V (Tenant Isolation via BFF):
+ *   真正的租户隔离通过多实例实现:不同 BffTenant 绑定不同 intellectBackendId(即不同 intellect-team 实例)。
  *   BffTenant only stores binding refs, NOT Team/Project/Member business data.
  *   Team/Project/Member managed via Intellect Enterprise HTTP API passthrough.
+ *   intellectTenantId/intellectProjectId 是实例内 Team/Project 组织隔离,非租户隔离。
  */
 
 // ---------------------------------------------------------------------------
@@ -29,10 +31,12 @@ export interface BffTenant {
   /** 人类可读名称 */
   name: string;
   /**
-   * 对应的 Intellect 企业版 Tenant ID(企业版用户必填)。
-   * Intellect RAG 单租户场景可为空。
+   * 对应的 Intellect 企业版实例内 Team ID(企业版用户可选)。
+   * Intellect RAG 无 Team 概念,可为空。
    * 值 "0" 表示缺省(P4b:不注入 X-Intellect-Team 头,intellect-team 走全局默认)。
-   * 真实 team_id 启用多租户隔离(P5:注入 X-Intellect-Team 头)。
+   * 真实 team_id 启用实例内 Team/Project 数据隔离(P5:注入 X-Intellect-Team 头)。
+   * 注意:真正的租户隔离通过 intellectBackendId 绑定不同 intellect-team 实例实现,
+   * 此字段是实例内的组织隔离,非租户隔离。
    */
   intellectTenantId?: string;
   /**
@@ -73,7 +77,9 @@ export interface BffTenant {
 
 /**
  * 请求上下文,携带租户/用户/Intellect 侧 team/project 标识。
- * Adapter 据此注入多租户头(Intellect 企业版: X-Intellect-Team / X-Intellect-Project)。
+ * Adapter 据此注入 Team/Project 组织隔离头(Intellect 企业版: X-Intellect-Team / X-Intellect-Project)。
+ * 注意:真正的租户隔离通过多实例(intellectBackendId 绑定不同 intellect-team 实例)实现,
+ * Team/Project 头是实例内的组织数据隔离。
  *
  * Lifecycle:
  * 1. BFF 路由层从请求(JWT/Session)提取 userId
@@ -90,15 +96,17 @@ export interface TenantContext {
   /** 当前用户 ID */
   userId: string;
   /**
-   * Intellect 企业版 Team ID(多租户场景必填)。
+   * Intellect 企业版实例内 Team ID(组织隔离场景必填)。
    * Adapter 用此值注入 `X-Intellect-Team` 头。
    * 注意:intellect-team 接受 team_id(而非 slug),值为 intellect-team DB 中 teams.id。
+   * 这是实例内的 Team 级数据隔离,非租户隔离。
    */
   intellectTeamId?: string;
   /**
-   * Intellect 企业版 Project ID(多租户场景必填)。
+   * Intellect 企业版 Project ID(组织隔离场景可选)。
    * Adapter 用此值注入 `X-Intellect-Project` 头。
    * 注意:intellect-team 接受 project_id(而非 slug),值为 intellect-team DB 中 projects.id。
+   * 这是实例内的 Project 级数据隔离,非租户隔离。
    */
   intellectProjectId?: string;
   /**

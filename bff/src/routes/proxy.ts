@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { proxy as proxyToUpstream, type ProxyRequest } from '../services/intellect-client';
+import { proxy as proxyToUpstream, type ProxyRequest } from '../services/intellect-rag-client';
 
 // ---------------------------------------------------------------------------
 // BFF 透明反向代理路由 (Multi-Harness P0-前置, Constitution Principle I)

@@ -1,3 +1,4 @@
+// TODO(spec-009): 待 BFF widget API 统一后解耦,见 phase0-t002-t003-review.md §T-R3
 import CopyToClipboard from '@/components/copy-to-clipboard';
 import PdfSheet from '@/components/pdf-drawer';
 import { useClickDrawer } from '@/components/pdf-drawer/hooks';
@@ -135,9 +136,15 @@ const FloatingChatWidget = () => {
     '#111827',
   );
 
-  const hookResult = (
-    isFromAgent ? useSendNextSharedMessage : useSendSharedMessage
-  )(() => {});
+  // 评审 Q4(已知问题,T-R4 关联):两个 hook 均无条件调用以满足 Rules of Hooks,
+  // 但 useSendSharedMessage 内部 useEffect 会主动调用 fetchSessionId() 发起网络请求
+  // (见 next-chats/hooks/use-send-shared-message.ts:120-122)。
+  // 在 from=agent 模式下,chatHookResult 不被使用,但 fetchSessionId 仍会执行一次空请求。
+  // useSendNextSharedMessage 内部 runTask 受 sendedTaskMessage ref 保护,影响较小。
+  // 待 BFF 统一 API(Phase 1+)合并两个 hook 后可彻底消除此副作用。
+  const agentHookResult = useSendNextSharedMessage(() => {});
+  const chatHookResult = useSendSharedMessage();
+  const hookResult = isFromAgent ? agentHookResult : chatHookResult;
   const {
     handlePressEnter,
     handleInputChange,
@@ -146,6 +153,9 @@ const FloatingChatWidget = () => {
     derivedMessages,
     hasError,
   } = hookResult;
+  // TODO(T-R4): useSendSharedMessage 与 useSendNextSharedMessage 返回类型不一致,
+  // 前者携带 findReferenceByMessageId 而后者未在类型中声明。Phase 0 阶段保留 as any 兜底,
+  // 待 BFF 统一 API(Phase 1+)后,将两者返回类型对齐并移除此处断言。
   const findReferenceByMessageId = (hookResult as any).findReferenceByMessageId;
 
   // Sync our local input with the hook's value when needed
@@ -155,9 +165,9 @@ const FloatingChatWidget = () => {
     }
   }, [hookValue, inputValue]);
 
-  const { data } = (
-    isFromAgent ? useFetchExternalAgentInputs : useFetchExternalChatInfo
-  )();
+  const { data: agentData } = useFetchExternalAgentInputs();
+  const { data: chatData } = useFetchExternalChatInfo();
+  const data = isFromAgent ? agentData : chatData;
 
   const title = data.title;
   const displayTitle = widgetTitle || title || t('chat.chatSupport');

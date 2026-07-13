@@ -145,7 +145,7 @@ curl -X POST http://localhost:9390/api/bff/agents/<agentId>/sessions/<sessionId>
 
 ---
 
-## 场景 7:多租户头注入验证(US3)
+## 场景 7:Team/Project 组织隔离头注入验证(US3)
 
 **步骤**: 在 intellect-team 侧开启请求日志,执行场景 6
 
@@ -156,7 +156,7 @@ X-Intellect-Team: <team_id>
 X-Intellect-Project: <project_id>(若 BffTenant 配置了)
 ```
 
-**验收**: FR-004(多租户头注入)
+**验收**: FR-004(Team/Project 组织隔离头注入)
 
 ---
 

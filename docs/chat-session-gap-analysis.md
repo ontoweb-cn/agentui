@@ -155,7 +155,7 @@ AgentUI 沿用 Intellect RAG 的「Chat 助手 → Session → Message」三层�
 | **阶段 1** | MVP 独立聊天 | P0 全部：BFF 存储层 + CRUD + 独立聊天页 + SSE 流式 + 侧边栏 | 需先确认方案 A/B/C |
 | **阶段 2** | 会话操作完整性 | P1 全部：操作 API + slash 命令 + 消息编辑/分支 + 导出 + 草稿 | 阶段 1 落地后 |
 | **阶段 3** | 可靠性 | P2 全部：列表 SSE + 恢复机制 + cancel + 离线横幅 | 阶段 2 完成后 |
-| **阶段 4** | 企业版多租户 | P3 全部：RBAC + scoped 存储 + Tenant 绑定 | 对齐 Intellect-Team Tenant 实体进度 |
+| **阶段 4** | 企业版 Team/Project 组织隔离 | P3 全部：RBAC + scoped 存储 + Tenant 绑定 | 对齐 Intellect-Team Tenant 实体进度 |
 | **阶段 5** | webui 全功能对齐 | P4 全部：压缩链 + 跨来源 + memory 生命周期 + 用量 + FTS + worktree + 审批 | 视产品需求优先级 |
 
 ---
@@ -208,7 +208,7 @@ AgentUI 因画布/Agent 调试定位，有 webui 完全不具备的能力，迁�
 | 必要性来源 | 说明 |
 |---|---|
 | **BFF 当前 session 路由是 stub** | [bff/src/routes/session.ts](file:///Users/simon/project/agentui/bff/src/routes/session.ts) 返回假数据，必须落地真实实现才能支撑任何会话功能 |
-| **企业版多租户隔离约束** | project_memory 要求「BFF Tenant 绑定 Intellect Tenant 实例」「会话需 member/team RBAC」。RAG 的 `/v1/chats/sessions` 不持有 Tenant/Team 维度，无法满足企业版隔离 |
+| **企业版 Team/Project 组织隔离约束** | project_memory 要求「BFF Tenant 绑定 Intellect Tenant 实例」「会话需 member/team RBAC」。RAG 的 `/v1/chats/sessions` 不持有 Tenant/Team 维度，无法满足企业版隔离 |
 | **RAG API 能力缺口** | Intellect RAG 不支持：压缩链/血缘/恢复/slash 命令/会话列表 SSE/FTS/草稿/置顶归档。这些是 webui 会话核心能力，无法靠 RAG 透传 |
 | **会话与画布解耦需求** | 当前会话强绑 Agent/画布，无法支持「独立聊天页」「跨 Agent 会话聚合」。BFF 自建层才能让会话成为顶级实体 |
 | **跨来源聚合** | webui 聚合 webui/cli/messaging/cron 来源；AgentUI 未来若接入多来源（MCP、外部 Agent），必须有 BFF 投影层 |
@@ -330,7 +330,7 @@ AgentUI 因画布/Agent 调试定位，有 webui 完全不具备的能力，迁�
 
 1. **优先解决决策点**：方案 A（BFF 自建）虽工作量大，但能完整对齐 webui 且与画布解耦，符合「Intellect RAG 与企业版功能完全独立」的约束。方案 B 无法实现 webui 的高级能力。
 2. **阶段 1 可借用现有资产**：复用 `use-send-agent-message.ts` 的 SSE 逻辑、`message-item` 组件、`next-chat-service.ts` 的 API 封装模式，降低 MVP 成本。
-3. **P3 企业版多租户**需与 Intellect-Team Tenant 实体开发进度对齐，建议作为并行轨道而非阻塞。
+3. **P3 企业版 Team/Project 组织隔离**需与 Intellect-Team Tenant 实体开发进度对齐，建议作为并行轨道而非阻塞。
 4. **P4 部分能力**（跨来源聚合、memory 生命周期）依赖 intellect-agent 运行时，若 AgentUI 不直接对接 agent runtime，可降级或省略。
 5. **UI 借鉴优先级**：增量 markdown 渲染 > Tool call 内联卡片 > Context ring > Slash 命令面板 > Approval/Clarify 卡片 > 草稿持久化。
 6. **保留 AgentUI 独有优势**：画布可视化、节点调试、知识库引用追溯、Agent 模板/分享/嵌入等能力在迁移中不应丢失。

@@ -5,7 +5,8 @@
  *
  * Constitution references (v1.2.0):
  * - Principle I (BFF-Mediated Frontend): 前端经 BFF 透传 intellect-team Team CRUD
- * - Principle V (Tenant Isolation): Team 绑定到 BffTenant 后启用多租户隔离
+ * - Principle V (Tenant Isolation): Team 绑定到 BffTenant 后启用实例内 Team 数据隔离
+ *   (真正的租户隔离通过多实例:不同 BffTenant 绑定不同 intellectBackendId)
  * - Principle VIII (BFF ↔ Intellect Enterprise Access Contract):
  *   管理操作用 API_SERVER_KEY 鉴权(BFF 内部,前端不接触)
  * - Principle VII (YAGNI): P5 仅透传 CRUD,不实现复杂业务逻辑

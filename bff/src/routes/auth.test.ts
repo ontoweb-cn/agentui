@@ -94,14 +94,14 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // GET /api/bff/auth/config — 认证配置(公开端点)
+  // GET /auth/config — 认证配置(公开端点)
   // -------------------------------------------------------------------------
 
   it('auth config:企业版 tenant → 返回 authMode=intellect-enterprise', async () => {
     const tenantStore = createMockTenantStore([enterpriseTenant]);
     const app = createApp(tenantStore);
 
-    const resp = await app.request('/api/bff/auth/config', {
+    const resp = await app.request('/auth/config', {
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
 
@@ -114,7 +114,7 @@ describe('auth 路由 (P4b US1)', () => {
     const tenantStore = createMockTenantStore([ragTenant]);
     const app = createApp(tenantStore);
 
-    const resp = await app.request('/api/bff/auth/config', {
+    const resp = await app.request('/auth/config', {
       headers: { 'X-Tenant-Id': 'tenant-rag' },
     });
 
@@ -127,7 +127,7 @@ describe('auth 路由 (P4b US1)', () => {
     const tenantStore = createMockTenantStore([enterpriseTenant]);
     const app = createApp(tenantStore);
 
-    const resp = await app.request('/api/bff/auth/config');
+    const resp = await app.request('/auth/config');
 
     expect(resp.status).toBe(200);
     const body = await resp.json();
@@ -135,7 +135,7 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // POST /api/bff/auth/login — 企业版
+  // POST /auth/login — 企业版
   // -------------------------------------------------------------------------
 
   it('US1:企业版登录成功 → 200 + Set-Cookie + 不含 token 的 body', async () => {
@@ -155,7 +155,7 @@ describe('auth 路由 (P4b US1)', () => {
       ),
     );
 
-    const resp = await app.request('/api/bff/auth/login', {
+    const resp = await app.request('/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -208,7 +208,7 @@ describe('auth 路由 (P4b US1)', () => {
       ),
     );
 
-    await app.request('/api/bff/auth/login', {
+    await app.request('/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -234,7 +234,7 @@ describe('auth 路由 (P4b US1)', () => {
       new Response(JSON.stringify({ error: 'Invalid credentials' }), { status: 401 }),
     );
 
-    const resp = await app.request('/api/bff/auth/login', {
+    const resp = await app.request('/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -256,7 +256,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
-    const resp = await app.request('/api/bff/auth/login', {
+    const resp = await app.request('/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -275,7 +275,7 @@ describe('auth 路由 (P4b US1)', () => {
     const tenantStore = createMockTenantStore([enterpriseTenant]);
     const app = createApp(tenantStore);
 
-    const resp = await app.request('/api/bff/auth/login', {
+    const resp = await app.request('/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -294,7 +294,7 @@ describe('auth 路由 (P4b US1)', () => {
     const tenantStore = createMockTenantStore([enterpriseTenant]);
     const app = createApp(tenantStore);
 
-    const resp = await app.request('/api/bff/auth/login', {
+    const resp = await app.request('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ login_name: 'alice', password: 'secret' }),
@@ -306,7 +306,7 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // POST /api/bff/auth/login — 社区版透传
+  // POST /auth/login — 社区版透传
   // -------------------------------------------------------------------------
 
   it('US1:社区版登录(authMode=intellect-rag)透传到 intellect-rag /api/v1/auth/login', async () => {
@@ -324,7 +324,7 @@ describe('auth 路由 (P4b US1)', () => {
       ),
     );
 
-    const resp = await app.request('/api/bff/auth/login', {
+    const resp = await app.request('/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -364,7 +364,7 @@ describe('auth 路由 (P4b US1)', () => {
       new Response(JSON.stringify({ access_token: 'tok' }), { status: 200 }),
     );
 
-    await app.request('/api/bff/auth/login', {
+    await app.request('/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -381,7 +381,7 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // GET /api/bff/auth/me — 企业版
+  // GET /auth/me — 企业版
   // -------------------------------------------------------------------------
 
   it('US1:企业版 /auth/me 有 cookie → 调 intellect-team /api/members/me', async () => {
@@ -406,7 +406,7 @@ describe('auth 路由 (P4b US1)', () => {
       ),
     );
 
-    const resp = await app.request('/api/bff/auth/me', {
+    const resp = await app.request('/auth/me', {
       method: 'GET',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -432,7 +432,7 @@ describe('auth 路由 (P4b US1)', () => {
     const tenantStore = createMockTenantStore([enterpriseTenant]);
     const app = createApp(tenantStore); // 不注入 session
 
-    const resp = await app.request('/api/bff/auth/me', {
+    const resp = await app.request('/auth/me', {
       method: 'GET',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -456,7 +456,7 @@ describe('auth 路由 (P4b US1)', () => {
       new Response(JSON.stringify({ error: 'token expired' }), { status: 401 }),
     );
 
-    const resp = await app.request('/api/bff/auth/me', {
+    const resp = await app.request('/auth/me', {
       method: 'GET',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -465,7 +465,7 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // GET /api/bff/auth/me — 社区版
+  // GET /auth/me — 社区版
   // -------------------------------------------------------------------------
 
   it('US1:社区版 /auth/me 透传到 intellect-rag /api/v1/users/me(带 Authorization)', async () => {
@@ -489,7 +489,7 @@ describe('auth 路由 (P4b US1)', () => {
       ),
     );
 
-    const resp = await app.request('/api/bff/auth/me', {
+    const resp = await app.request('/auth/me', {
       method: 'GET',
       headers: { 'X-Tenant-Id': 'tenant-rag' },
     });
@@ -510,7 +510,7 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // POST /api/bff/auth/register — 企业版
+  // POST /auth/register — 企业版
   // -------------------------------------------------------------------------
 
   it('US2:企业版注册成功 → 201 + {member_id, registration_pending}', async () => {
@@ -524,7 +524,7 @@ describe('auth 路由 (P4b US1)', () => {
       ),
     );
 
-    const resp = await app.request('/api/bff/auth/register', {
+    const resp = await app.request('/auth/register', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -569,7 +569,7 @@ describe('auth 路由 (P4b US1)', () => {
       ),
     );
 
-    await app.request('/api/bff/auth/register', {
+    await app.request('/auth/register', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -604,7 +604,7 @@ describe('auth 路由 (P4b US1)', () => {
       new Response(JSON.stringify({ error: 'login_name already in use' }), { status: 409 }),
     );
 
-    const resp = await app.request('/api/bff/auth/register', {
+    const resp = await app.request('/auth/register', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -631,7 +631,7 @@ describe('auth 路由 (P4b US1)', () => {
       new Response(JSON.stringify({ error: 'registration disabled' }), { status: 403 }),
     );
 
-    const resp = await app.request('/api/bff/auth/register', {
+    const resp = await app.request('/auth/register', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -655,7 +655,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
-    const resp = await app.request('/api/bff/auth/register', {
+    const resp = await app.request('/auth/register', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -675,7 +675,7 @@ describe('auth 路由 (P4b US1)', () => {
     const tenantStore = createMockTenantStore([enterpriseTenant]);
     const app = createApp(tenantStore);
 
-    const resp = await app.request('/api/bff/auth/register', {
+    const resp = await app.request('/auth/register', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -690,7 +690,7 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // POST /api/bff/auth/register — 社区版透传
+  // POST /auth/register — 社区版透传
   // -------------------------------------------------------------------------
 
   it('US2:社区版注册透传到 intellect-rag /api/v1/users', async () => {
@@ -701,7 +701,7 @@ describe('auth 路由 (P4b US1)', () => {
       new Response(JSON.stringify({ id: 'u-new' }), { status: 201 }),
     );
 
-    const resp = await app.request('/api/bff/auth/register', {
+    const resp = await app.request('/auth/register', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -722,7 +722,7 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // POST /api/bff/auth/logout — 企业版
+  // POST /auth/logout — 企业版
   // -------------------------------------------------------------------------
 
   it('US2:企业版登出成功 → 200 + 清 cookie + 调 intellect-team /api/members/logout', async () => {
@@ -738,7 +738,7 @@ describe('auth 路由 (P4b US1)', () => {
       new Response(JSON.stringify({ ok: true }), { status: 200 }),
     );
 
-    const resp = await app.request('/api/bff/auth/logout', {
+    const resp = await app.request('/auth/logout', {
       method: 'POST',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -766,7 +766,7 @@ describe('auth 路由 (P4b US1)', () => {
     // 登出后 cookie 已清,auth-session 中间件无法提取 token → 无 session
     const app = createApp(tenantStore); // 不注入 session
 
-    const resp = await app.request('/api/bff/auth/me', {
+    const resp = await app.request('/auth/me', {
       method: 'GET',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -785,7 +785,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
-    const resp = await app.request('/api/bff/auth/logout', {
+    const resp = await app.request('/auth/logout', {
       method: 'POST',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -809,7 +809,7 @@ describe('auth 路由 (P4b US1)', () => {
       new Response(JSON.stringify({ error: 'token expired' }), { status: 401 }),
     );
 
-    const resp = await app.request('/api/bff/auth/logout', {
+    const resp = await app.request('/auth/logout', {
       method: 'POST',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -826,7 +826,7 @@ describe('auth 路由 (P4b US1)', () => {
     const tenantStore = createMockTenantStore([enterpriseTenant]);
     const app = createApp(tenantStore); // 不注入 session
 
-    const resp = await app.request('/api/bff/auth/logout', {
+    const resp = await app.request('/auth/logout', {
       method: 'POST',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -838,7 +838,7 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // POST /api/bff/auth/logout — 社区版透传
+  // POST /auth/logout — 社区版透传
   // -------------------------------------------------------------------------
 
   it('US2:社区版登出透传到 intellect-rag /api/v1/auth/logout(带 Authorization)', async () => {
@@ -854,7 +854,7 @@ describe('auth 路由 (P4b US1)', () => {
       new Response(JSON.stringify({ ok: true }), { status: 200 }),
     );
 
-    const resp = await app.request('/api/bff/auth/logout', {
+    const resp = await app.request('/auth/logout', {
       method: 'POST',
       headers: { 'X-Tenant-Id': 'tenant-rag' },
     });
@@ -873,7 +873,7 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // GET /api/bff/auth/login/channels — OAuth 渠道列表
+  // GET /auth/login/channels — OAuth 渠道列表
   // -------------------------------------------------------------------------
 
   it('US3:企业版 channels 调 intellect-team /api/oauth/providers 并转换格式', async () => {
@@ -926,7 +926,7 @@ describe('auth 路由 (P4b US1)', () => {
       ),
     );
 
-    const resp = await app.request('/api/bff/auth/login/channels', {
+    const resp = await app.request('/auth/login/channels', {
       method: 'GET',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -957,7 +957,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
-    const resp = await app.request('/api/bff/auth/login/channels', {
+    const resp = await app.request('/auth/login/channels', {
       method: 'GET',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -973,7 +973,7 @@ describe('auth 路由 (P4b US1)', () => {
       new Response(JSON.stringify([{ channel: 'github', display_name: 'GitHub' }]), { status: 200 }),
     );
 
-    const resp = await app.request('/api/bff/auth/login/channels', {
+    const resp = await app.request('/auth/login/channels', {
       method: 'GET',
       headers: { 'X-Tenant-Id': 'tenant-rag' },
     });
@@ -986,7 +986,7 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // GET /api/bff/auth/login/:channel — OAuth 授权重定向
+  // GET /auth/login/:channel — OAuth 授权重定向
   // -------------------------------------------------------------------------
 
   it('US3:企业版 login/{channel} 调 intellect-team GET /api/oauth/login/{provider} 并透传 302', async () => {
@@ -1001,7 +1001,7 @@ describe('auth 路由 (P4b US1)', () => {
       }),
     );
 
-    const resp = await app.request('/api/bff/auth/login/github', {
+    const resp = await app.request('/auth/login/github', {
       method: 'GET',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -1030,7 +1030,7 @@ describe('auth 路由 (P4b US1)', () => {
       new Response(JSON.stringify({ error: 'provider not found' }), { status: 400 }),
     );
 
-    const resp = await app.request('/api/bff/auth/login/github', {
+    const resp = await app.request('/auth/login/github', {
       method: 'GET',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -1047,7 +1047,7 @@ describe('auth 路由 (P4b US1)', () => {
       new Response(null, { status: 302 }),
     );
 
-    const resp = await app.request('/api/bff/auth/login/github', {
+    const resp = await app.request('/auth/login/github', {
       method: 'GET',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -1061,7 +1061,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
-    const resp = await app.request('/api/bff/auth/login/github', {
+    const resp = await app.request('/auth/login/github', {
       method: 'GET',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -1073,7 +1073,7 @@ describe('auth 路由 (P4b US1)', () => {
     const tenantStore = createMockTenantStore([ragTenant]);
     const app = createApp(tenantStore);
 
-    const resp = await app.request('/api/bff/auth/login/github', {
+    const resp = await app.request('/auth/login/github', {
       method: 'GET',
       headers: { 'X-Tenant-Id': 'tenant-rag' },
     });
@@ -1083,7 +1083,7 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // GET /api/bff/auth/oauth/callback — OAuth 回调 + token 签发
+  // GET /auth/oauth/callback — OAuth 回调 + token 签发
   // -------------------------------------------------------------------------
 
   it('US3:企业版 callback 成功 → 200/302 + Set-Cookie + 调 callback + token 签发', async () => {
@@ -1112,7 +1112,7 @@ describe('auth 路由 (P4b US1)', () => {
       );
 
     const resp = await app.request(
-      '/api/bff/auth/oauth/callback?code=gh-code&state=gh-state',
+      '/auth/oauth/callback?code=gh-code&state=gh-state',
       { method: 'GET', headers: { 'X-Tenant-Id': 'tenant-enterprise' } },
     );
 
@@ -1147,7 +1147,7 @@ describe('auth 路由 (P4b US1)', () => {
     const tenantStore = createMockTenantStore([enterpriseTenant]);
     const app = createApp(tenantStore);
 
-    const resp = await app.request('/api/bff/auth/oauth/callback?state=abc', {
+    const resp = await app.request('/auth/oauth/callback?state=abc', {
       method: 'GET',
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
@@ -1164,7 +1164,7 @@ describe('auth 路由 (P4b US1)', () => {
     );
 
     const resp = await app.request(
-      '/api/bff/auth/oauth/callback?code=x&state=y',
+      '/auth/oauth/callback?code=x&state=y',
       { method: 'GET', headers: { 'X-Tenant-Id': 'tenant-enterprise' } },
     );
 
@@ -1187,7 +1187,7 @@ describe('auth 路由 (P4b US1)', () => {
       );
 
     const resp = await app.request(
-      '/api/bff/auth/oauth/callback?code=x&state=y',
+      '/auth/oauth/callback?code=x&state=y',
       { method: 'GET', headers: { 'X-Tenant-Id': 'tenant-enterprise' } },
     );
 
@@ -1203,7 +1203,7 @@ describe('auth 路由 (P4b US1)', () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
     const resp = await app.request(
-      '/api/bff/auth/oauth/callback?code=x&state=y',
+      '/auth/oauth/callback?code=x&state=y',
       { method: 'GET', headers: { 'X-Tenant-Id': 'tenant-enterprise' } },
     );
 
@@ -1219,7 +1219,7 @@ describe('auth 路由 (P4b US1)', () => {
     );
 
     const resp = await app.request(
-      '/api/bff/auth/oauth/callback?code=x&state=y',
+      '/auth/oauth/callback?code=x&state=y',
       { method: 'GET', headers: { 'X-Tenant-Id': 'tenant-rag' } },
     );
 

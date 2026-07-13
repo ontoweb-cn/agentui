@@ -18,7 +18,7 @@ import { SwitchLogicOperator, SwitchOperatorOptions } from '@/constants/agent';
 import { useBuildSwitchOperatorOptions } from '@/hooks/logic-hooks/use-build-operator-options';
 import { useFetchKnowledgeMetadata } from '@/hooks/use-knowledge-request';
 import { cn } from '@/lib/utils';
-import { PromptEditor } from '@/pages/agent/form/components/prompt-editor';
+import { PromptEditor } from '@/components/prompt-editor';
 import { Plus, X } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
 import { useFieldArray, useFormContext, useWatch } from 'react-hook-form';

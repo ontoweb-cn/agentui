@@ -75,7 +75,7 @@ const server = createServer((req, res) => {
   const method = req.method;
   const auth = req.headers['authorization'];
 
-  // 记录多租户头(Principle V,场景 7 验证)
+  // 记录 Team/Project 组织隔离头(Principle V,场景 7 验证)
   const teamHeader = req.headers['x-intellect-team'];
   const projectHeader = req.headers['x-intellect-project'];
   if (teamHeader) {

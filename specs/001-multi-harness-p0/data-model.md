@@ -32,7 +32,7 @@
 - `type` 必须是 `'intellect-rag'` 或 `'intellect-enterprise'`,禁用 `'intellect-community'`
 - `endpoint` 必须是合法 http(s) URL
 - `adminTokenEnvVar` 必须是合法的 shell 环境变量名(`^[A-Z][A-Z0-9_]*$`)
-- `intellect-enterprise` 类型 P0-P3 阶段**不要求** `projectTokenEnvVar`(Constitution Principle VIII:P0-P3 统一用 `API_SERVER_KEY` + 多租户头,P4+ 评估引入 `imt_p_*` 项目级 token)
+- `intellect-enterprise` 类型 P0-P3 阶段**不要求** `projectTokenEnvVar`(Constitution Principle VIII:P0-P3 统一用 `API_SERVER_KEY` + Team/Project 组织隔离头,P4+ 评估引入 `imt_p_*` 项目级 token)
 
 ---
 
@@ -70,7 +70,7 @@
 | `knowledgeBase` | boolean | ✅ | false | 是否支持知识库 CRUD |
 | `memory` | boolean | ✅ | false | 是否支持 Memory(对话历史/总结) |
 | `mcp` | boolean | ✅ | false | 是否支持 MCP 工具调用 |
-| `multiTenant` | boolean | ✅ | false | 是否支持多租户 Team/Project(企业版 = true) |
+| `multiTenant` | boolean | ✅ | false | 是否支持实例内 Team/Project 组织模型(企业版 = true;真正租户隔离通过多实例部署) |
 | `modelManagement` | boolean | ✅ | false | 是否支持模型管理 UI |
 
 **Validation**:
@@ -111,7 +111,7 @@
 
 ## Entity: TenantContext
 
-**Purpose**: 请求上下文,携带租户/用户/Intellect 侧 team/project/session 标识,Adapter 据此注入多租户头
+**Purpose**: 请求上下文,携带租户/用户/Intellect 侧 team/project/session 标识,Adapter 据此注入 Team/Project 组织隔离头
 
 **Fields**:
 
@@ -119,8 +119,8 @@
 |-------|------|----------|-------------|
 | `tenantId` | string | ✅ | BFF Tenant ID |
 | `userId` | string | ✅ | 当前用户 ID |
-| `intellectTeamId` | string | ❌ | Intellect 企业版 Team ID(多租户场景必填)。Adapter 注入 `X-Intellect-Team` 头(Constitution Principle V v1.1.0) |
-| `intellectProjectId` | string | ❌ | Intellect 企业版 Project ID(多租户场景必填)。Adapter 注入 `X-Intellect-Project` 头 |
+| `intellectTeamId` | string | ❌ | Intellect 企业版实例内 Team ID(组织隔离场景必填)。Adapter 注入 `X-Intellect-Team` 头(Constitution Principle V v1.1.0)。注:真正的租户隔离通过多实例部署实现,此字段是实例内组织隔离 |
+| `intellectProjectId` | string | ❌ | Intellect 企业版实例内 Project ID(组织隔离场景可选)。Adapter 注入 `X-Intellect-Project` 头。注:实例内 Project 级数据隔离,非租户隔离 |
 | `intellectSessionId` | string | ❌ | Intellect 企业版 Session ID(可选,会话续接)。Adapter 注入 `X-Intellect-Session-Id` 头 |
 | `intellectSessionKey` | string | ❌ | Intellect 企业版 Session Key(可选,长期记忆范围)。Adapter 注入 `X-Intellect-Session-Key` 头 |
 

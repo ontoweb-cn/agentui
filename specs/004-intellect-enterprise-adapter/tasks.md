@@ -103,7 +103,7 @@
 ### Implementation for User Story 3
 
 - [X] T018 [US3] 实现 `parseIntellectEnterpriseSSE(stream: ReadableStream<Uint8Array>): AsyncIterable<StreamChunk>` 解析器,按 SSE 协议解析 `event: <name>\ndata: <json>\n\n` 帧,按 contracts 映射规则产出 StreamChunk,容错(JSON 失败/未知事件 console.warn + 跳过,流断开产出 error),文件 `bff/src/services/adapters/intellect-enterprise/parse-intellect-enterprise-sse.ts`
-- [X] T019 [US3] 编写 sendMessage 单元测试,Mock httpClient.requestStream 返回 fixture 流,验证 sendMessage 返回的 AsyncIterable 产出正确 StreamChunk 序列 + 多租户头注入,文件 `bff/src/services/adapters/intellect-enterprise/intellect-enterprise-adapter.test.ts`(扩展 T005/T011)
+- [X] T019 [US3] 编写 sendMessage 单元测试,Mock httpClient.requestStream 返回 fixture 流,验证 sendMessage 返回的 AsyncIterable 产出正确 StreamChunk 序列 + Team/Project 组织隔离头注入,文件 `bff/src/services/adapters/intellect-enterprise/intellect-enterprise-adapter.test.ts`(扩展 T005/T011)
 - [X] T020 [US3] 实现 `sendMessage(ctx, sessionId, req)` 调 `POST /api/sessions/{id}/chat/stream`(body 含 message),获取 ReadableStream,返回 `parseIntellectEnterpriseSSE(stream)` 的 AsyncIterable,文件 `bff/src/services/adapters/intellect-enterprise/intellect-enterprise-adapter.ts`
 
 **Checkpoint**: US3 完成,流式对话可用,reasoning 与 delta 正确区分
@@ -117,7 +117,7 @@
 - [X] T021 [P] 运行 `cd bff && npm run type-check`,确认 TypeScript 编译零错误(SC-008)
 - [X] T022 [P] 运行 `cd bff && npm test`,确认所有单元测试通过(含 P0/P1/P2 125 测试 + P3 新增 38 = 163 测试,SC-006/SC-007)
 - [X] T023 [P] 运行前端 `npx tsc --noEmit -p tsconfig.json`,确认前端零错误(BFF 路由层零改动,前端无需改)
-- [X] T024 运行 quickstart.md 场景 1-10 冒烟验证(需 intellect-team 运行环境,SC-001/002/003/004/005)✅ 用 Node mock server 模拟 intellect-team,场景 1-8 全过(Admin/能力/Agent/会话/流式/多租户头/错误处理)
+- [X] T024 运行 quickstart.md 场景 1-10 冒烟验证(需 intellect-team 运行环境,SC-001/002/003/004/005)✅ 用 Node mock server 模拟 intellect-team,场景 1-8 全过(Admin/能力/Agent/会话/流式/Team/Project 组织隔离头/错误处理)
 - [X] T025 [P] 更新 `docs/multi-harness-design.md`,标注 P3 实施完成状态(§10.1 P3 节加 ✅)
 - [X] T026 [P] 更新 `specs/003-harness-admin-capabilities/tasks.md`,标注 P3 扩展(无,企业版 backendType P2 已支持,T026 无需改动)
 - [X] T027 验证 P0/P1/P2 功能 100% 不回归(BFF 164 测试 + 前端 8 测试 + 透传路由冒烟,SC-007)✅ 运行时回归 6 项全过(透传/Admin CRUD/capabilities/health/写入门禁)

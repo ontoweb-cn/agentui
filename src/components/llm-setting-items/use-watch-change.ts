@@ -1,16 +1,14 @@
 import { settledModelVariableMap } from '@/constants/knowledge';
-import { AgentFormContext } from '@/pages/agent/context';
-import useGraphStore from '@/pages/agent/store';
 import { setChatVariableEnabledFieldValuePage } from '@/utils/chat';
-import { useCallback, useContext } from 'react';
+import { useCallback } from 'react';
 import { useFormContext } from 'react-hook-form';
+import { useFormSync } from './form-sync-context';
 
 export function useHandleFreedomChange(
   getFieldWithPrefix: (name: string) => string,
 ) {
   const form = useFormContext();
-  const node = useContext(AgentFormContext);
-  const updateNodeForm = useGraphStore((state) => state.updateNodeForm);
+  const { nodeId, updateNodeForm } = useFormSync();
 
   const setLLMParameters = useCallback(
     (values: Record<string, any>, withPrefix: boolean) => {
@@ -36,8 +34,8 @@ export function useHandleFreedomChange(
 
       const nextValues = { ...currentValues, ...values };
 
-      if (node?.id) {
-        updateNodeForm(node?.id, nextValues);
+      if (nodeId) {
+        updateNodeForm(nodeId, nextValues);
       }
 
       const variableCheckBoxFieldMap = setChatVariableEnabledFieldValuePage();
@@ -45,7 +43,7 @@ export function useHandleFreedomChange(
       setLLMParameters(values, true);
       setLLMParameters(variableCheckBoxFieldMap, false);
     },
-    [form, node?.id, setLLMParameters, updateNodeForm],
+    [form, nodeId, setLLMParameters, updateNodeForm],
   );
 
   return handleChange;

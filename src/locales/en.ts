@@ -3161,7 +3161,7 @@ Important structured information may include: names, dates, locations, events, k
         isolated: 'Isolated',
         team: 'Team',
         teamPlaceholder: 'Select a team',
-        teamHint: 'Bind a real team_id to enable multi-tenant isolation',
+        teamHint: 'Bind a real team_id to enable in-instance Team data isolation (tenant isolation is via multi-instance: different intellectBackendId)',
         defaultTeam: 'Default (no team)',
         project: 'Project',
         projectPlaceholder: 'Select a project (optional)',

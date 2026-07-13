@@ -57,7 +57,7 @@
 
 ---
 
-### R3. BffTenant 多租户字段映射决策(Constitution Principle V)
+### R3. BffTenant Team/Project 组织隔离字段映射决策(Constitution Principle V)
 
 **Decision**: P3 不修改 `BffTenant` 接口。映射关系如下:
 
@@ -69,7 +69,7 @@
 **问题**: BffTenant 有 `intellectTenantId` 但无 `intellectProjectId`。TenantContext 有 `intellectTeamId`/`intellectProjectId` 但无 `intellectTenantId`。
 
 **Rationale**: 
-- `BffTenant.intellectTenantId` 在 P0 设计时的语义是"Intellect 企业版租户标识",实际 intellect-team 用 team_id 作为多租户隔离键。P3 将 `intellectTenantId` 视为 team_id 的同义词,BFF 路由层构造 TenantContext 时 `intellectTeamId = bffTenant.intellectTenantId`。
+- `BffTenant.intellectTenantId` 在 P0 设计时的语义是"Intellect 企业版租户标识",实际 intellect-team 用 team_id 作为实例内 Team 数据隔离键(真正租户隔离通过多实例部署)。P3 将 `intellectTenantId` 视为 team_id 的同义词,BFF 路由层构造 TenantContext 时 `intellectTeamId = bffTenant.intellectTenantId`。
 - `intellectProjectId` 缺失: intellect-team 的 `/api/sessions` 端点在无 `X-Intellect-Project` 头时使用 team 默认 project。P3 阶段不强制传 project_id,Adapter 仅在 TenantContext.intellectProjectId 存在时注入头。
 - P4+ 评估是否给 BffTenant 新增 `intellectProjectId` 字段实现更细粒度隔离。
 
@@ -110,14 +110,14 @@
 **Decision**: 新增 `http-client.ts` 封装,统一处理:
 - endpoint 拼接(`${baseUrl}${path}`)
 - 鉴权头注入(`Authorization: Bearer ${API_SERVER_KEY}`)
-- 多租户头注入(从 TenantContext 读取 `X-Intellect-Team`/`X-Intellect-Project`)
+- Team/Project 组织隔离头注入(从 TenantContext 读取 `X-Intellect-Team`/`X-Intellect-Project`)
 - 超时(REST 30s,SSE 流式不超时)
 - 错误转换(非 2xx 抛 `HarnessBackendError`,404 在 `listMessages` 时返回空数组)
 
-**Rationale**: 与 IntellectRagAdapter 内联 fetch 调用不同,企业版需注入多租户头 + API_SERVER_KEY,封装客户端降低重复 + 确保头注入不遗漏(Principle V 安全约束)。
+**Rationale**: 与 IntellectRagAdapter 内联 fetch 调用不同,企业版需注入 Team/Project 组织隔离头 + API_SERVER_KEY,封装客户端降低重复 + 确保头注入不遗漏(Principle V 安全约束)。
 
 **Alternatives considered**:
-- Adapter 内联 fetch — 拒绝,多租户头注入逻辑会在每个方法重复,易遗漏
+- Adapter 内联 fetch — 拒绝,Team/Project 组织隔离头注入逻辑会在每个方法重复,易遗漏
 - 复用 IntellectRagAdapter 的 HTTP 逻辑 — 拒绝,鉴权方式不同(admin token vs API_SERVER_KEY),头注入不同
 
 ---

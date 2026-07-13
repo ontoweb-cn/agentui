@@ -4,7 +4,8 @@
  *
  * Constitution references (v1.2.0):
  * - Principle I (BFF-Mediated Frontend): 前端经 BFF 管理 BffTenant ↔ Team/Project 绑定
- * - Principle V (Tenant Isolation): 绑定真实 team_id 后启用多租户隔离
+ * - Principle V (Tenant Isolation): 绑定真实 team_id 后启用实例内 Team 数据隔离
+ *   (真正的租户隔离通过多实例:intellectBackendId 绑定不同 intellect-team 实例)
  * - Principle VII (YAGNI): P5 仅实现绑定更新,不实现复杂权限校验
  *
  * 路径映射(Vite proxy rewrite 去掉 /api/bff):
@@ -13,7 +14,7 @@
  * 行为:
  * - PUT /admin/tenants/:id/binding { intellectTenantId, intellectProjectId? }
  *   - intellectTenantId="0" 或 undefined:回退缺省(不注入 X-Intellect-Team)
- *   - intellectTenantId=真实 team_id:启用多租户隔离
+ *   - intellectTenantId=真实 team_id:启用实例内 Team 数据隔离
  *   - intellectProjectId 可选,设置后注入 X-Intellect-Project
  * - GET /admin/tenants/:id/binding:返回当前绑定状态
  */

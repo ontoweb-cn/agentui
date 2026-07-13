@@ -171,6 +171,6 @@
 
 - BFF 认证路由独立文件,与 P1/P3 Adapter 解耦
 - member token 存 HttpOnly cookie,前端 localStorage 不存(防 XSS)
-- 缺省 TenantID=0 是关键简化:intellect-team 侧零多租户改动
+- 缺省 TenantID=0 是关键简化:intellect-team 侧零 Team/Project 改动(多租户通过多实例部署天然支持)
 - intellect-team 侧仅文档(P4a 代码由其团队实现)
 - 社区版 authMode=intellect-rag 透传,100% 不回归(SC-004)

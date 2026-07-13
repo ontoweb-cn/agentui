@@ -1,19 +1,17 @@
 import { DocumentParserType } from '@/constants/knowledge';
 import { useFetchKnowledgeList } from '@/hooks/use-knowledge-request';
 import { IDataset } from '@/interfaces/database/dataset';
-import { useBuildQueryVariableOptions } from '@/pages/agent/hooks/use-get-begin-query';
 import { useDebounce } from 'ahooks';
-import { toLower } from 'lodash';
-import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { IntellectAvatar } from './intellect-avatar';
 import { IntellectFormItem } from './intellect-form';
-import { MultiSelect } from './ui/multi-select';
-
-function buildQueryVariableOptionsByShowVariable(showVariable?: boolean) {
-  return showVariable ? useBuildQueryVariableOptions : () => [];
-}
+import {
+  type MultiSelectGroupOptionType,
+  type MultiSelectOptionType,
+  MultiSelect,
+} from './ui/multi-select';
 
 function DatasetLabel({ text }: { text: string }) {
   return (
@@ -99,61 +97,23 @@ export function useDisableDifferenceEmbeddingDataset(name: string) {
   };
 }
 
-export function KnowledgeBaseFormField({
-  showVariable = false,
+// 通用 UI 子组件:仅负责渲染 FormItem + MultiSelect,不依赖任何画布 hook
+export function KnowledgeBaseSelect({
   name = 'dataset_ids',
   required = false,
+  options,
+  searchString,
+  handleSearchChange,
+  loading,
 }: {
-  showVariable?: boolean;
   name?: string;
   required?: boolean;
+  options: (MultiSelectGroupOptionType | MultiSelectOptionType)[];
+  searchString: string;
+  handleSearchChange: (value: string) => void;
+  loading: boolean;
 }) {
   const { t } = useTranslation();
-
-  const { datasetOptions, handleSearchChange, loading, searchString } =
-    useDisableDifferenceEmbeddingDataset(name);
-
-  const nextOptions = buildQueryVariableOptionsByShowVariable(showVariable)();
-
-  const knowledgeOptions = datasetOptions;
-  const options = useMemo(() => {
-    if (showVariable) {
-      return [
-        {
-          label: t('knowledgeDetails.dataset'),
-          options: knowledgeOptions,
-        },
-        ...nextOptions.map((x) => {
-          const groupLabel = (('label' in x
-            ? x.label
-            : 'title' in x
-              ? x.title
-              : '') ?? '') as ReactNode;
-
-          return {
-            ...x,
-            label: groupLabel,
-            options: x.options
-              .filter((y) => toLower(y.type).includes('string'))
-              .map((x) => ({
-                ...x,
-                label: x.label ?? x.value ?? '',
-                value: x.value ?? '',
-                icon: () => (
-                  <IntellectAvatar
-                    className="size-4 mr-2"
-                    avatar={String(x.label ?? '')}
-                    name={String(x.label ?? '')}
-                  />
-                ),
-              })),
-          };
-        }),
-      ];
-    }
-
-    return knowledgeOptions;
-  }, [knowledgeOptions, nextOptions, showVariable, t]);
 
   return (
     <IntellectFormItem
@@ -182,5 +142,28 @@ export function KnowledgeBaseFormField({
         />
       )}
     </IntellectFormItem>
+  );
+}
+
+// 通用版本:仅使用 datasetOptions,不合并变量选项
+export function KnowledgeBaseFormField({
+  name = 'dataset_ids',
+  required = false,
+}: {
+  name?: string;
+  required?: boolean;
+}) {
+  const { datasetOptions, handleSearchChange, loading, searchString } =
+    useDisableDifferenceEmbeddingDataset(name);
+
+  return (
+    <KnowledgeBaseSelect
+      name={name}
+      required={required}
+      options={datasetOptions}
+      searchString={searchString}
+      handleSearchChange={handleSearchChange}
+      loading={loading}
+    />
   );
 }

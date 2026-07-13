@@ -46,7 +46,7 @@
 2. **Given** Adapter 契约已定义,**When** P3 实现 `IntellectEnterpriseAdapter`,**Then** 它能实现 `IHarnessAdapter` + `IMultiTenantAdapter` 扩展接口,无需修改契约
 3. **Given** 两个后端 SSE 协议不同,**When** 解析器产出 `StreamChunk`,**Then** `StreamChunk` 的 `type` 字段能表达 Intellect RAG(delta/done)和 Intellect 企业版(delta/reasoning/tool_start/tool_complete/tool_progress/usage/done)的所有事件,无需扩展枚举(Constitution Principle IV v1.1.0)
 4. **Given** 后端能力不同,**When** `HarnessCapabilities` 声明画布/知识库/多租户等能力,**Then** 前端 `useHarnessCapabilities` 能据此条件渲染,且 BFF 能据此选择走 Adapter 还是透传
-5. **Given** 多租户上下文,**When** `TenantContext` 携带 tenantId/intellectTeamId/intellectProjectId,**Then** Adapter 能据此注入 `X-Intellect-Team` / `X-Intellect-Project` 多租户头(Constitution Principle V v1.1.0),路由层不需感知
+5. **Given** 多租户上下文,**When** `TenantContext` 携带 tenantId/intellectTeamId/intellectProjectId,**Then** Adapter 能据此注入 `X-Intellect-Team` / `X-Intellect-Project` Team/Project 组织隔离头(Constitution Principle V v1.1.0),路由层不需感知
 
 ---
 
@@ -99,7 +99,7 @@
 
 - **FR-010**: BFF MUST 定义 `IHarnessAdapter` 接口,包含 Agent(listAgents/getAgent)、Session(createSession/listSessions/getSession/deleteSession)、Message 流式(sendMessage/cancelMessage)、Health(healthCheck/discoverCapabilities)四组方法
 - **FR-011**: BFF MUST 定义 `IMultiTenantAdapter` 扩展接口,包含 Team CRUD + 成员管理、Project CRUD + 成员管理(供 Intellect 企业版 Adapter 实现)
-- **FR-012**: BFF MUST 定义 `TenantContext` 类型,携带 tenantId/userId/intellectTeamId/intellectProjectId(可选 intellectSessionId/intellectSessionKey),用于 Adapter 注入 `X-Intellect-Team` / `X-Intellect-Project` 等多租户头(Constitution Principle V v1.1.0)
+- **FR-012**: BFF MUST 定义 `TenantContext` 类型,携带 tenantId/userId/intellectTeamId/intellectProjectId(可选 intellectSessionId/intellectSessionKey),用于 Adapter 注入 `X-Intellect-Team` / `X-Intellect-Project` 等 Team/Project 组织隔离头(Constitution Principle V v1.1.0)
 - **FR-013**: BFF MUST 定义 `HarnessCapabilities` 类型,声明 canvas/knowledgeBase/memory/mcp/multiTenant/modelManagement 六个能力 flag
 - **FR-014**: BFF MUST 定义 `StreamChunk` 类型,`type` 枚举为 `delta|reasoning|tool_start|tool_complete|tool_progress|usage|done|error`(8 值),覆盖两后端所有事件(详见 Constitution Principle IV v1.1.0)
 - **FR-015**: BFF MUST 定义 `AgentSummary`、`Session`、`Team`、`Project`、`TeamMember`、`ProjectMember` 数据模型(供 Adapter 方法签名使用)
@@ -120,10 +120,10 @@
 ### Key Entities *(include if feature involves data)*
 
 - **HarnessBackend**: 一个 Harness 后端实例,含 id/name/type/endpoint/capabilities/status/adminTokenEnvVar(配置层)+ adminToken(运行时)
-- **BffTenant**: BFF 维护的租户实体,含 id/name/createdAt/updatedAt,绑定到一个 Intellect 企业版 Tenant 实例
+- **BffTenant**: BFF 维护的租户实体,含 id/name/createdAt/updatedAt,绑定到一个 intellect-team 实例(通过 intellectBackendId,每个实例=一个租户,多实例部署实现多租户)
 - **TenantBackendBinding**: 租户与后端的绑定关系,区分"主后端"和"画布后端"两种角色
 - **IHarnessAdapter**: Adapter 契约接口,所有后端必选实现核心层
-- **IMultiTenantAdapter**: 多租户扩展契约,仅 Intellect 企业版实现
+- **IMultiTenantAdapter**: Team/Project 组织扩展契约,仅 Intellect 企业版实现(实例内组织隔离,非租户隔离)
 - **TenantContext**: 请求上下文,携带租户/用户/Intellect 侧 team/project 标识
 - **HarnessCapabilities**: 后端能力声明,前端据此条件渲染
 - **StreamChunk**: BFF 统一流式输出格式,两后端解析后产出

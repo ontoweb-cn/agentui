@@ -35,7 +35,7 @@
 
 ### 2. IntellectEnterpriseHttpClient(运行时类,内部封装)
 
-**职责**: 封装 intellect-team HTTP 调用,统一注入鉴权头 + 多租户头 + 错误转换
+**职责**: 封装 intellect-team HTTP 调用,统一注入鉴权头 + Team/Project 组织隔离头 + 错误转换
 
 **字段**:
 - `baseUrl: string`

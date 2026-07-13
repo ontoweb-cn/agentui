@@ -59,7 +59,7 @@
 3. **Given** SSE 流中收到 `tool.progress` 事件且 `tool_name === '_thinking'`, **When** 解析, **Then** 产出 `StreamChunk { type: 'reasoning', content: <text> }`
 4. **Given** SSE 流中收到 `run.completed` 事件, **When** 解析, **Then** 产出 `StreamChunk { type: 'usage', ... }` 后接 `{ type: 'done' }`
 5. **Given** SSE 流中收到 `error` 事件或连接断开, **When** 解析, **Then** 产出 `StreamChunk { type: 'error', message }` 并终止迭代
-6. **Given** 多租户头已通过 TenantContext 注入, **When** Adapter 调用 intellect-team, **Then** 请求携带 `X-Intellect-Team` / `X-Intellect-Project` / `Authorization: Bearer ${API_SERVER_KEY}`(Principle V + VIII)
+6. **Given** Team/Project 组织隔离头已通过 TenantContext 注入, **When** Adapter 调用 intellect-team, **Then** 请求携带 `X-Intellect-Team` / `X-Intellect-Project` / `Authorization: Bearer ${API_SERVER_KEY}`(Principle V + VIII)
 
 ---
 
@@ -120,7 +120,7 @@
 
 - **intellect-team 实例可达**:P3 冒烟测试需要 intellect-team 运行在 localhost:8642,配置了 `API_SERVER_KEY` 和至少一个 Team/Project;若环境不可用,仅跑 Mock 单元测试
 - **API_SERVER_KEY 鉴权生效**:intellect-team `/api/sessions/*` 端点接受 `Authorization: Bearer ${API_SERVER_KEY}`(Principle VIII),P3 不实现 `imt_p_*` 项目级 token
-- **BffTenant 已扩展多租户字段**:P3 假设 `BffTenant` 已含 `intellectTeamId` / `intellectProjectId` 字段(若 P0/P1 未加,P3 spec-plan 阶段补齐 data-model)
+- **BffTenant 已扩展 Team/Project 组织隔离字段**:P3 假设 `BffTenant` 已含 `intellectTeamId` / `intellectProjectId` 字段(若 P0/P1 未加,P3 spec-plan 阶段补齐 data-model)
 - **复用 P1 StreamChunk 类型**:P3 不修改 `StreamChunk` 类型定义,仅启用 `tool_progress` 字段(P1 已预留)
 - **复用 P1 BFF Agent 路由**:P3 不新增 BFF 路由,仅注册 Adapter 工厂到 AdapterRegistry
 - **复用 P2 Admin CRUD**:P3 不新增 Admin 页面,P2 已支持的 `intellect-enterprise` backendType 直接可用

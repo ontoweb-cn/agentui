@@ -75,7 +75,7 @@ BFF 的 Agent 相关路由(GET/POST/PUT/DELETE `/api/bff/agents/*`)从当前的"
 - **Intellect RAG 返回的 Agent 字段与契约 `AgentSummary` 不完全匹配**:Adapter 做字段映射(透传层 Layer 3 保留后端专有字段到 `metadata`),不丢弃后端原生字段
 - **SSE 流中途上游断连**:Adapter 产出 `StreamError` chunk 后终止迭代,BFF 关闭 SSE 连接,前端收到错误事件
 - **Adapter 创建时 env token 缺失**:HarnessStore 已在 P0 跳过该后端,Registry 查询时该 backend 不存在,返回 500 配置错误
-- **TenantContext 中 intellectTeamId/intellectProjectId 为空**:Intellect RAG 单租户场景不需要这些字段,Adapter 调用时不注入多租户头(Principle V)
+- **TenantContext 中 intellectTeamId/intellectProjectId 为空**:Intellect RAG 单租户场景不需要这些字段,Adapter 调用时不注入 Team/Project 组织隔离头(Principle V)
 - **前端请求的 Agent ID 在上游不存在**:Adapter 透传上游 404,BFF 返回 404(与透传模式一致)
 - **并发请求同一 tenant**:Registry 必须线程安全(Adapter 实例复用,不因并发创建多个实例)
 
@@ -96,7 +96,7 @@ BFF 的 Agent 相关路由(GET/POST/PUT/DELETE `/api/bff/agents/*`)从当前的"
 - **FR-011**: Adapter 实例 MUST 被复用(同一 tenant 不重复创建),避免连接泄漏
 - **FR-012**: BFF MUST 保留 P0 的透明代理路由(`/api/bff/proxy/v1/*`)用于未迁移的域(Dataset/KB/Search/Memory/MCP 等),不受 P1 影响
 - **FR-013**: 上游错误(不可达/非 200)MUST 产出明确的错误响应(502/404/500),不吞异常,日志记录上游 URL 与错误信息
-- **FR-014**: `IntellectRagAdapter` MUST 不注入多租户头(`X-Intellect-Team` 等),因 Intellect RAG 是单租户后端(Principle V)
+- **FR-014**: `IntellectRagAdapter` MUST 不注入 Team/Project 组织隔离头(`X-Intellect-Team` 等),因 Intellect RAG 是单租户后端(Principle V)
 - **FR-015**: Session 路由迁移范围:P1 MUST 评估 Session 与 Agent/Chat 的耦合关系(Intellect RAG session 挂在 `/agents/{id}/sessions` 或 `/chats/{id}/sessions` 下),若契约 `listSessions(ctx)` 无 agentId 参数导致无法映射,则 Session 路由保留透传,留待 P2 评估
 
 ### Key Entities *(include if feature involves data)*

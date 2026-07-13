@@ -1,3 +1,4 @@
+import { FormSyncContext } from '@/components/llm-setting-items/form-sync-context';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -44,7 +45,7 @@ const FormSheet = ({
   showSingleDebugDrawer,
 }: IModalProps<any> & IProps) => {
   const operatorName: Operator = node?.data.label as Operator;
-  const { clickedToolId, getAgentToolById } = useGraphStore();
+  const { clickedToolId, getAgentToolById, updateNodeForm } = useGraphStore();
 
   const currentFormMap = FormConfigMap[operatorName];
   const OperatorForm = currentFormMap?.component ?? EmptyContent;
@@ -128,7 +129,11 @@ const FormSheet = ({
         <section className="pt-4 overflow-auto flex-1">
           {visible && (
             <AgentFormContext.Provider value={node}>
-              <OperatorForm node={node} key={node?.id}></OperatorForm>
+              <FormSyncContext.Provider
+                value={{ nodeId: node?.id, updateNodeForm }}
+              >
+                <OperatorForm node={node} key={node?.id}></OperatorForm>
+              </FormSyncContext.Provider>
             </AgentFormContext.Provider>
           )}
         </section>

@@ -24,10 +24,12 @@ import {
 import React, {
   createContext,
   ForwardedRef,
+  ForwardRefExoticComponent,
   forwardRef,
   HTMLAttributes,
   ReactElement,
   ReactNode,
+  RefAttributes,
   useCallback,
   useContext,
   useEffect,
@@ -39,15 +41,9 @@ import * as ReactDOM from 'react-dom';
 import { resolvePromptVariableOption } from './utils';
 import { $createVariableNode } from './variable-node';
 
+import { JsonSchemaDataType } from '@/constants/agent';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { JsonSchemaDataType, VariableRegex } from '@/pages/agent/constant';
-import {
-  useFindAgentStructuredOutputLabel,
-  useGetStructuredOutputByValue,
-  useShowSecondaryMenu,
-} from '@/pages/agent/hooks/use-build-structured-output';
-import { useFilterQueryVariableOptionsByTypes } from '@/pages/agent/hooks/use-get-begin-query';
 import {
   flip,
   FloatingPortal,
@@ -56,11 +52,49 @@ import {
   useFloating,
 } from '@floating-ui/react';
 import { LucideChevronRight } from 'lucide-react';
-import { PromptIdentity } from '../../agent-form/use-build-prompt-options';
-import { StructuredOutputSecondaryMenu } from '../structured-output-secondary-menu';
-import { ProgrammaticTag } from './constant';
+import { PromptIdentity, ProgrammaticTag, VariableRegex } from './constant';
 
 import './index.css';
+
+// 画布依赖注入的类型定义
+type FindAgentStructuredOutputLabel = (
+  value: string,
+  options: Array<{
+    label: string;
+    value: string;
+    parentLabel?: string | ReactNode;
+    icon?: ReactNode;
+  }>,
+) =>
+  | {
+      label: string;
+      value: string;
+      parentLabel?: string | ReactNode;
+      icon?: ReactNode;
+    }
+  | undefined;
+
+type GetStructuredOutputByValue = (value: string) => any;
+
+type ShowSecondaryMenu = (value: string, outputLabel: string) => boolean;
+
+// StructuredOutputSecondaryMenu 组件类型(画布注入)
+type StructuredOutputSecondaryMenuProps = {
+  data: {
+    label: ReactNode;
+    value: string;
+    parentLabel?: ReactNode;
+    icon?: ReactNode;
+    type?: string;
+  };
+  click: (option: { label: ReactNode; value: string }) => void;
+  types?: JsonSchemaDataType[];
+  className?: string;
+};
+
+type StructuredOutputSecondaryMenuComponentType = ForwardRefExoticComponent<
+  StructuredOutputSecondaryMenuProps & RefAttributes<HTMLLIElement>
+>;
 
 const SelectedValueContext = createContext<string>('');
 
@@ -267,13 +301,16 @@ function VariablePickerOptionGroup({
   options = [],
   selectOptionAndCleanUp,
   types,
+  showSecondaryMenu,
+  StructuredOutputSecondaryMenuComponent,
 }: {
   title?: string;
   options?: VariableOption[];
   types?: JsonSchemaDataType[];
   selectOptionAndCleanUp: (option: VariableOption) => void;
+  showSecondaryMenu?: ShowSecondaryMenu;
+  StructuredOutputSecondaryMenuComponent?: StructuredOutputSecondaryMenuComponentType;
 }) {
-  const showSecondaryMenu = useShowSecondaryMenu();
   const selectedValue = useContext(SelectedValueContext);
 
   return (
@@ -285,10 +322,11 @@ function VariablePickerOptionGroup({
       </li>
 
       {options.map((x) => {
-        const shouldShowSecondary = showSecondaryMenu(x.value, x.label);
+        const shouldShowSecondary =
+          showSecondaryMenu?.(x.value, x.label) ?? false;
         const isSelected = x.value === selectedValue;
 
-        if (shouldShowSecondary) {
+        if (shouldShowSecondary && StructuredOutputSecondaryMenuComponent) {
           // TODO: Stage 2
           /*
           if (
@@ -308,6 +346,8 @@ function VariablePickerOptionGroup({
           );
           */
 
+          const StructuredOutputSecondaryMenu =
+            StructuredOutputSecondaryMenuComponent;
           return (
             <StructuredOutputSecondaryMenu
               ref={x.setRefElement}
@@ -339,7 +379,9 @@ function VariablePickerOptionGroup({
 }
 
 export type VariablePickerMenuOptionType = {
-  label: string;
+  // 评审 Q2: label 实际可为 ReactNode(如 <span>{t('...')}</span>),
+  // 见 useBuildBeginDynamicVariableOptions / useBuildConversationVariableOptions
+  label: ReactNode;
   title: string;
   value?: string;
   options: Array<{
@@ -347,6 +389,9 @@ export type VariablePickerMenuOptionType = {
     value: string;
     icon: ReactNode;
     type?: string;
+    // 评审 Q2: 实际数据携带 parentLabel(见 useBuildBeginDynamicVariableOptions),
+    // 显式声明可选字段以消除 wrapper 的 as any 断言
+    parentLabel?: ReactNode;
   }>;
 };
 
@@ -355,6 +400,12 @@ export type VariablePickerMenuPluginProps = {
   extraOptions?: VariablePickerMenuOptionType[];
   baseOptions?: VariablePickerMenuOptionType[];
   types?: JsonSchemaDataType[];
+  // 画布依赖注入(可选,由画布 wrapper 提供)
+  queryVariableOptions?: VariablePickerMenuOptionType[];
+  findAgentStructuredOutputLabel?: FindAgentStructuredOutputLabel;
+  getStructuredOutputByValue?: GetStructuredOutputByValue;
+  showSecondaryMenu?: ShowSecondaryMenu;
+  StructuredOutputSecondaryMenuComponent?: StructuredOutputSecondaryMenuComponentType;
 };
 
 export default function VariablePickerMenuPlugin({
@@ -362,11 +413,13 @@ export default function VariablePickerMenuPlugin({
   extraOptions,
   baseOptions,
   types,
+  queryVariableOptions,
+  findAgentStructuredOutputLabel,
+  getStructuredOutputByValue: filterStructuredOutput,
+  showSecondaryMenu,
+  StructuredOutputSecondaryMenuComponent,
 }: VariablePickerMenuPluginProps): JSX.Element {
   const [editor] = useLexicalComposerContext();
-  // const shouldShowSecondaryMenu = useShowSecondaryMenu();
-  const findAgentStructuredOutputLabel = useFindAgentStructuredOutputLabel();
-  const filterStructuredOutput = useGetStructuredOutputByValue();
 
   const testTriggerFn = React.useCallback((text: string) => {
     const triggerRegex = /(^|\s|\()([/]((?:[^/\s()])*))$/;
@@ -388,7 +441,7 @@ export default function VariablePickerMenuPlugin({
   const previousValue = useRef<string | undefined>();
   const [queryString, setQueryString] = React.useState<string>('');
 
-  let options = useFilterQueryVariableOptionsByTypes({ types });
+  let options = queryVariableOptions ?? [];
 
   if (baseOptions) {
     options = baseOptions as typeof options;
@@ -530,13 +583,15 @@ export default function VariablePickerMenuPlugin({
         return [...pre, ...(cur.options as any[])] as any;
       }, []);
 
-      // agent structured output
-      const agentStructuredOutput = findAgentStructuredOutputLabel(
-        value,
-        children,
-      );
-      if (agentStructuredOutput) {
-        return agentStructuredOutput;
+      // agent structured output(画布注入的查找逻辑)
+      if (findAgentStructuredOutputLabel) {
+        const agentStructuredOutput = findAgentStructuredOutputLabel(
+          value,
+          children,
+        );
+        if (agentStructuredOutput) {
+          return agentStructuredOutput;
+        }
       }
 
       return resolvePromptVariableOption(value, children);
@@ -732,6 +787,10 @@ export default function VariablePickerMenuPlugin({
                         options={group.options}
                         types={types}
                         selectOptionAndCleanUp={selectOptionAndCleanUp}
+                        showSecondaryMenu={showSecondaryMenu}
+                        StructuredOutputSecondaryMenuComponent={
+                          StructuredOutputSecondaryMenuComponent
+                        }
                       />
                     ))}
                   </div>

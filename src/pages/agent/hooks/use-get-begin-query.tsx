@@ -182,13 +182,11 @@ function splitOperatorOutputValue(value?: string) {
   return { nodeId, output };
 }
 
-function filterDocGeneratorDownloadOutputOptions(
-  groups: Array<{
-    options: Array<{ value?: string } & Record<string, any>>;
-  }>,
-  allowDocGeneratorDownloadOutput: boolean,
-  getOperatorTypeFromId: (nodeId?: string) => string | undefined,
-) {
+function filterDocGeneratorDownloadOutputOptions<T extends {
+  label: unknown;
+  title: unknown;
+  options: Array<{ value?: string } & Record<string, any>>;
+}>(groups: T[], allowDocGeneratorDownloadOutput: boolean, getOperatorTypeFromId: (nodeId?: string) => string | undefined) {
   return groups.map((group) => ({
     ...group,
     options: group.options.filter((option) => {

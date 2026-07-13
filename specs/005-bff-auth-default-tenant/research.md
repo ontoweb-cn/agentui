@@ -87,7 +87,7 @@
 }
 ```
 
-**Rationale**: intellect-team 无 Tenant 实体,team_id="0" 不存在会报错。不传头让 intellect-team 用全局默认空间,P4 阶段所有企业版用户共享(无多租户隔离)。P5 上线 Team 管理后,把 "0" 改成真实 team_id 即可启用隔离,零代码改动。
+**Rationale**: intellect-team 无 Tenant 实体,team_id="0" 不存在会报错。不传头让 intellect-team 用全局默认空间,P4 阶段所有企业版用户共享(无多租户隔离)。P5 上线 Team 管理后,把 "0" 改成真实 team_id 即可启用实例内 Team 数据隔离(真正租户隔离通过多实例:intellectBackendId 绑定不同 intellect-team 实例),零代码改动。
 
 **Alternatives considered**:
 - 在 intellect-team 创建 team_id="0" 的默认 team — 拒绝,需 intellect-team 侧改动,违反"P4b intellect-team 零改动"目标

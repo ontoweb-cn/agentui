@@ -51,7 +51,7 @@ P1 在 P0 基础上实现 `IntellectRagAdapter`(Layer 1)、Canvas Workflow SSE �
 | II. Adapter Abstraction | ✅ PASS | P1 实现 IntellectRagAdapter,验证"加后端不改路由" |
 | III. Canvas Hard-Bound to Intellect RAG | ⚠️ NEEDS CLARIFICATION | Canvas workflow SSE 是否属 canvas hard-bound 范畴?若是,P1 不迁移;若否,P1 实现 parseCanvasWorkflowSSE |
 | IV. SSE Dual-Protocol Parsing | ⚠️ VIOLATION (待修订) | Constitution v1.1.0 描述 Intellect RAG 为 OpenAI 兼容格式,但实际有双协议(canvas workflow + OpenAI 兼容)。需修订 Principle IV 反映实际,见 research.md |
-| V. Tenant Isolation via BFF | ✅ PASS | P1 实现 TenantContext 中间件,Intellect RAG 单租户不注入多租户头 |
+| V. Tenant Isolation via BFF | ✅ PASS | P1 实现 TenantContext 中间件,Intellect RAG 不注入 Team/Project 组织隔离头 |
 | VI. No ACP in BFF | ✅ PASS | P1 不涉及 ACP |
 | VII. YAGNI + Test-First | ✅ PASS | Adapter 核心层必有测试,覆盖率 ≥ 80% |
 | VIII. BFF ↔ Intellect Enterprise Access Contract | ✅ PASS | P1 仅涉及 Intellect RAG,不触发企业版契约 |
@@ -68,7 +68,7 @@ P1 在 P0 基础上实现 `IntellectRagAdapter`(Layer 1)、Canvas Workflow SSE �
 | II. Adapter Abstraction | ✅ PASS | IntellectRagAdapter 实现 IHarnessAdapter,Registry 按 tenantId 选择,路由层不感知后端 |
 | III. Canvas Hard-Bound to Intellect RAG | ✅ PASS (边界澄清) | Canvas DSL 编辑/节点组件/RAG reference 保留透传(Layer 3);Canvas Workflow SSE 传输属 Principle IV 迁移范畴(research.md R2) |
 | IV. SSE Dual-Protocol Parsing | ⚠️ NEEDS CONSTITUTION REVISION | v1.1.0 描述偏差已实证(research.md R1),需修订为 v1.2.0 反映 Intellect RAG 双协议(canvas workflow + OpenAI 兼容)。P1 实现 parseCanvasWorkflowSSE |
-| V. Tenant Isolation via BFF | ✅ PASS | TenantContext 中间件实现,Intellect RAG 单租户不注入多租户头 |
+| V. Tenant Isolation via BFF | ✅ PASS | TenantContext 中间件实现,Intellect RAG 不注入 Team/Project 组织隔离头 |
 | VI. No ACP in BFF | ✅ PASS | P1 不涉及 ACP |
 | VII. YAGNI + Test-First | ✅ PASS | parseOpenAISSE 推迟到 P3(YAGNI),P1 仅实现前端实际用的 parseCanvasWorkflowSSE,覆盖率 ≥ 80% |
 | VIII. BFF ↔ Intellect Enterprise Access Contract | ✅ PASS | P1 仅涉及 Intellect RAG,不触发企业版契约 |

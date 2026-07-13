@@ -59,7 +59,7 @@ Authorization: Bearer imt_xxxxxxxxxxxx
 | DELETE（硬删除） | member token | owner 仅限 |
 | Token 管理 | member token | 自身或 admin 及以上 |
 
-### 3.3 多租户头
+### 3.3 Team/Project 组织隔离头
 
 | 头 | 说明 |
 |----|------|

@@ -16,7 +16,7 @@ P0 已定义的类型(`HarnessBackend`、`BffTenant`、`AgentSummary`、`Session
 
 **角色**: Adapter 实现类,封装 Intellect RAG REST API 调用,实现 `IHarnessAdapter` 接口(Layer 1)。
 
-**Constitution 引用**: Principle II(Adapter Abstraction)、Principle IV(SSE Dual-Protocol,canvas workflow 解析)、Principle V(单租户,不注入多租户头)。
+**Constitution 引用**: Principle II(Adapter Abstraction)、Principle IV(SSE Dual-Protocol,canvas workflow 解析)、Principle V(不注入 Team/Project 组织隔离头)。
 
 ### 字段
 
@@ -44,7 +44,7 @@ P0 已定义的类型(`HarnessBackend`、`BffTenant`、`AgentSummary`、`Session
 
 ### 行为约束
 
-- **不注入多租户头**:Intellect RAG 是单租户后端(Principle V),`X-Intellect-Team`/`X-Intellect-Project` 不注入
+- **不注入 Team/Project 组织隔离头**:Intellect RAG 是单租户后端(Principle V),`X-Intellect-Team`/`X-Intellect-Project` 不注入
 - **Authorization 透传**:从 `ctx` 或 BFF 启动配置注入 `Bearer ${adminToken}`,前端 token 不直接转发(P0 鉴权模式)
 - **错误处理**:上游非 200 抛出明确错误(含 URL + status),不吞异常
 - **实例复用**:同一 `backendId` 对应同一 Adapter 实例(由 AdapterRegistry 保证)
@@ -103,7 +103,7 @@ P0 已定义的类型(`HarnessBackend`、`BffTenant`、`AgentSummary`、`Session
 
 **角色**: Hono 中间件,从请求提取 tenantId/userId 构造 `TenantContext`,注入 Hono context 供路由层使用。
 
-**Constitution 引用**: Principle V(BFF 维护 TenantContext,Adapter 据此注入多租户头或跳过)。
+**Constitution 引用**: Principle V(BFF 维护 TenantContext,Adapter 据此注入 Team/Project 组织隔离头或跳过)。
 
 ### 提取规则
 

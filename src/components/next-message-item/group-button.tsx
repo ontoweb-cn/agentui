@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/tooltip';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { IRemoveMessageById } from '@/hooks/logic-hooks';
-import { AgentChatContext } from '@/pages/agent/context';
+import { useChatSheet } from './chat-sheet-context';
 import { downloadAgentFile } from '@/services/file-manager-service';
 import { downloadFileFromBlob } from '@/utils/file-util';
 import {
@@ -19,7 +19,7 @@ import {
   SyncOutlined,
 } from '@ant-design/icons';
 import { Download, NotebookText } from 'lucide-react';
-import { useCallback, useContext } from 'react';
+import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import FeedbackDialog from '../feedback-dialog';
 import { PromptDialog } from '../prompt-dialog';
@@ -67,7 +67,7 @@ export const AssistantGroupButton = ({
     onFeedbackOk({ thumbup: true });
   }, [onFeedbackOk]);
 
-  const { showLogSheet } = useContext(AgentChatContext);
+  const { showLogSheet } = useChatSheet();
 
   const handleShowLogSheet = useCallback(() => {
     showLogSheet(messageId);

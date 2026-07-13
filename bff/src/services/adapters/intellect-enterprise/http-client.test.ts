@@ -69,7 +69,7 @@ describe('IntellectEnterpriseHttpClient', () => {
       expect(init.headers['Content-Type']).toBe('application/json');
     });
 
-    it('TenantContext 无 team/project 时不注入多租户头', async () => {
+    it('TenantContext 无 team/project 时不注入 Team/Project 组织隔离头', async () => {
       mockFetch.mockResolvedValueOnce(makeJsonResponse({ ok: true }));
       await client.request('GET', '/health', ctxMinimal);
       const [, init] = mockFetch.mock.calls[0];

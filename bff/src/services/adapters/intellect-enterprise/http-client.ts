@@ -49,7 +49,7 @@ const REST_TIMEOUT_MS = 30_000;
 
 /**
  * intellect-team HTTP 客户端封装。
- * 统一注入鉴权头 + 多租户头 + 错误转换。
+ * 统一注入鉴权头 + Team/Project 组织隔离头 + 错误转换。
  */
 export class IntellectEnterpriseHttpClient {
   constructor(
@@ -155,7 +155,8 @@ export class IntellectEnterpriseHttpClient {
     if (this.apiServerKey) {
       headers['Authorization'] = `Bearer ${this.apiServerKey}`;
     }
-    // Principle V:多租户头,仅在 TenantContext 提供时注入
+    // Principle V:Team/Project 组织隔离头,仅在 TenantContext 提供时注入
+    // (注意:真正的租户隔离通过多实例部署实现,非此头)
     if (ctx.intellectTeamId) {
       headers['X-Intellect-Team'] = ctx.intellectTeamId;
     }

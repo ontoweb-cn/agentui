@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { intellectRagClient } from '../services/intellect-client';
+import { intellectRagClient } from '../services/intellect-rag-client';
 
 export const agentRoutes = new Hono();
 

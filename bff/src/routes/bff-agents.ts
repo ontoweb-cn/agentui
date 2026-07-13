@@ -28,7 +28,7 @@ import type { HarnessStore, TenantStore } from '../types';
 import type { TenantContext } from '../types/tenant';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
 import { getTenantContext } from '../middleware/tenant-context';
-import { proxy as proxyToUpstream, type ProxyRequest } from '../services/intellect-client';
+import { proxy as proxyToUpstream, type ProxyRequest } from '../services/intellect-rag-client';
 
 // Hono context variables for BFF agent routes
 interface BffAgentVariables {

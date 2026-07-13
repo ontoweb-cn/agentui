@@ -6,7 +6,7 @@
  *
  * Constitution references (v1.1.0):
  * - Principle II (Adapter Abstraction): Registry 按 tenantId 选择 Adapter,路由层不感知具体后端
- * - Principle V (Tenant Isolation): TenantContext 中间件构造租户上下文,Adapter 据此注入多租户头
+ * - Principle V (Tenant Isolation): TenantContext 中间件构造租户上下文,Adapter 据此注入 Team/Project 组织隔离头
  *
  * Implementation lifecycle:
  * - P0: not implemented

@@ -6,7 +6,7 @@
 
 ## Summary
 
-BFF 新增统一认证路由 `/api/bff/auth/*`(login/register/logout/me/channels/oauth),按 `BffTenant.authMode` 路由到 intellect-rag(社区版,透传)或 intellect-team(企业版,member token + cookie)。企业版模式用缺省 `TenantID=0`(不注入 X-Intellect-Team 头,intellect-team 侧零多租户改动)。同时产出 intellect-team 侧 member 认证 + OAuth callback 补全方案文档(放 intellect-team 仓库)。
+BFF 新增统一认证路由 `/api/bff/auth/*`(login/register/logout/me/channels/oauth),按 `BffTenant.authMode` 路由到 intellect-rag(社区版,透传)或 intellect-team(企业版,member token + cookie)。企业版模式用缺省 `TenantID=0`(不注入 X-Intellect-Team 头,intellect-team 侧零 Team/Project 改动,多租户通过多实例部署天然支持)。同时产出 intellect-team 侧 member 认证 + OAuth callback 补全方案文档(放 intellect-team 仓库)。
 
 ## Technical Context
 

@@ -44,10 +44,11 @@ AgentUI 需支持多个 Agent Harness 后端（Intellect RAG、Intellect Agent �
   - Bearer token（`API_SERVER_KEY` 环境变量）
   - 项目级 token（`imt_p_*`，project-scoped）
   - 可信反向代理 header（`X-Forwarded-User` 等）
-- 多租户（关键）：
+- 实例内 Team/Project 组织隔离（关键）：
   - `X-Intellect-Team` header → team_id
   - `X-Intellect-Project` header → project_id
   - 见 `adapter.py:815-821`
+  - 注:真正的多租户隔离通过多实例部署实现(每个 intellect-team 实例 = 一个租户),Team/Project 是实例内组织模型
 - 会话控制：
   - `X-Intellect-Session-Id` — 会话连续性（继续已有会话）
   - `X-Intellect-Session-Key` — 长期记忆作用域（跨会话用户画像）
@@ -168,7 +169,7 @@ export class IntellectTeamAdapter implements IHarnessAdapter {
 ## 五、关键优势
 
 - **intellect-team 侧已原生就绪**：OpenAI 兼容 API Server 完整实现，无需 intellect-team 侧开发
-- **多租户 header 吻合 BFF 模型**：`X-Intellect-Team`/`X-Intellect-Project` 与 BFF"Team/Project 绑定唯一 backend"模型完全吻合
+- **Team/Project 组织隔离 header 吻合 BFF 模型**：`X-Intellect-Team`/`X-Intellect-Project` 与 BFF"Team/Project 绑定唯一 backend"模型完全吻合
 - **能力驱动渲染天然支持**：`/v1/capabilities` 端点供 BFF 获取功能集，配合前端 `useHarnessCapabilities()` 实现能力驱动 UI
 - **会话管理外包**：intellect-team 的 `/api/sessions` CRUD 承担会话存储，BFF 无需自建 session 存储
 - **SSE 格式统一**：标准 OpenAI `chat.completion.chunk`，与 AgentUI 现有 SSE 消费逻辑兼容（项目记忆已确认 OpenAI 兼容格式为基座）
@@ -196,7 +197,7 @@ export class IntellectTeamAdapter implements IHarnessAdapter {
 | 会话管理 | `/api/sessions/*` | ✅ CRUD + fork + 搜索 | ✅（`/api/v1/agents/{id}/sessions`） |
 | 异步 Run + 事件流 | `/v1/runs/*` | ✅ | ❌ |
 | 多模态（图片输入） | `/v1/chat/completions` | ✅ | ⚠️ |
-| 多租户 | `X-Intellect-Team/Project` | ✅ | ❌（单租户） |
+| Team/Project 组织隔离 | `X-Intellect-Team/Project` | ✅ | ❌（单租户） |
 | 会话连续性 | `X-Intellect-Session-Id` | ✅ | ❌ |
 | 长期记忆作用域 | `X-Intellect-Session-Key` | ✅ | ❌ |
 | 客户端断连取消 | SSE cancel | ✅ | ❌ |

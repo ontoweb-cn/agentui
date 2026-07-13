@@ -10,7 +10,6 @@ import {
   PropsWithChildren,
   memo,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
@@ -20,8 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { IRegenerateMessage, IRemoveMessageById } from '@/hooks/logic-hooks';
 import { INodeEvent, MessageEventType } from '@/hooks/use-send-message';
 import { cn } from '@/lib/utils';
-import { AgentChatContext } from '@/pages/agent/context';
-import { WorkFlowTimeline } from '@/pages/agent/log-sheet/workflow-timeline';
+import { TimelineRenderProps, useChatSheet } from './chat-sheet-context';
 import { citationMarkerReg } from '@/utils/citation-utils';
 import { getDirAttribute } from '@/utils/text-direction';
 import { isEmpty } from 'lodash';
@@ -87,7 +85,7 @@ function MessageItem({
   const isAssistant = item.role === MessageType.Assistant;
   const isUser = item.role === MessageType.User;
   const [showThinking, setShowThinking] = useState(false);
-  const { setLastSendLoadingFunc } = useContext(AgentChatContext);
+  const { setLastSendLoadingFunc, timelineRenderer } = useChatSheet();
 
   useEffect(() => {
     if (typeof setLastSendLoadingFunc === 'function') {
@@ -271,17 +269,20 @@ function MessageItem({
 
             {isAssistant &&
               currentEventListWithoutMessageById &&
-              showThinking && (
+              showThinking &&
+              timelineRenderer && (
                 <div className="mt-4 mb-4">
-                  <WorkFlowTimeline
-                    currentEventListWithoutMessage={currentEventListWithoutMessageById(
-                      item.id,
-                    )}
-                    isShare={isShare}
-                    currentMessageId={item.id}
-                    canvasId={conversationId}
-                    sendLoading={loading}
-                  />
+                  {timelineRenderer({
+                    messageId: item.id,
+                    data: {
+                      currentEventListWithoutMessage:
+                        currentEventListWithoutMessageById(item.id),
+                      isShare,
+                      currentMessageId: item.id,
+                      canvasId: conversationId,
+                      sendLoading: loading,
+                    },
+                  } as TimelineRenderProps)}
                 </div>
               )}
 

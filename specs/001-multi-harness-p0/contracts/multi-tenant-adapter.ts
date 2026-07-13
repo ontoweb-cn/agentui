@@ -29,16 +29,17 @@ import type { IHarnessAdapter } from './harness-adapter';
 // ---------------------------------------------------------------------------
 
 /**
- * 多租户扩展契约。
+ * Team/Project 组织扩展契约。
  * 仅 Intellect 企业版(capabilities.multiTenant = true)实现。
  * 必须同时实现 IHarnessAdapter(Layer 1)。
+ * 注:真正的租户隔离通过多实例部署实现,此契约仅定义实例内 Team/Project 组织隔离能力。
  *
  * Constitution Principle V (v1.1.0): Team/Project/Member 通过此接口透传到
  * intellect-team HTTP API,BFF 不存副本,不维护权限模型。
  * 实际 intellect-team 端点(从 plugins/platforms/api_server/adapter.py 确认):
  * - Team/Project/Member CRUD: 由 intellect-team /api/sessions 等会话级端点隐式管理,
  *   目前没有独立的 /api/teams 或 /api/projects HTTP 端点(P4+ 由 intellect-team 侧新增)
- * - 多租户隔离通过 X-Intellect-Team / X-Intellect-Project 头注入
+ * - 实例内 Team/Project 数据隔离通过 X-Intellect-Team / X-Intellect-Project 头注入(真正租户隔离通过多实例部署)
  *
  * Implementation lifecycle:
  * - P0: contract only (this file), no implementation
@@ -224,8 +225,9 @@ export interface IMultiTenantAdapter extends IHarnessAdapter {
 // ---------------------------------------------------------------------------
 
 /**
- * 类型守卫:Adapter 是否支持多租户(实现了 IMultiTenantAdapter)。
+ * 类型守卫:Adapter 是否支持实例内 Team/Project 组织模型(实现了 IMultiTenantAdapter)。
  * BFF 路由层据此决定是否暴露 Team/Project 相关端点。
+ * 注意:真正的租户隔离通过多实例部署实现,此 guard 仅判断实例内组织模型扩展能力。
  *
  * Constitution Principle II: 路由层用 capabilities.multiTenant 静态判断,
  * 此 guard 作为运行时双保险。

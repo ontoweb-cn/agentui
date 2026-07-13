@@ -389,7 +389,7 @@ export default {
 | `umi-request` | [src/utils/request.ts](file:///Users/simon/workspace/agentui/src/utils/request.ts) | **已标记 deprecated**，旧代码使用 |
 | `axios`（主应用） | 散落在 service 文件中 | 新代码主推 |
 | `axios`（Admin） | [src/services/admin-service.ts](file:///Users/simon/workspace/agentui/src/services/admin-service.ts) | 独立实例，独立 401 处理 |
-| `axios`（BFF 内部） | [bff/src/services/intellect-client.ts](file:///Users/simon/workspace/agentui/bff/src/services/intellect-client.ts) | BFF 调用 Intellect |
+| `axios`（BFF 内部） | [bff/src/services/intellect-rag-client.ts](file:///Users/simon/workspace/agentui/bff/src/services/intellect-rag-client.ts) | BFF 调用 Intellect RAG（社区版后端） |
 
 **响应包络**：`{ code: 0, message: string, data: T }`，BFF admin 路由已对齐此格式（见 `ok()` / `fail()`）。
 
@@ -584,7 +584,7 @@ Admin Page
 BFF 是 Node 端的薄层服务，承担三类职责：
 
 1. **Admin 数据托管**：whitelist / roles / resources（JSON 持久化）
-2. **Intellect 代理**：agent / session 路由当前是纯代理（`intellect-client.ts`）
+2. **Intellect 代理**：agent / session 路由当前是纯代理（`intellect-rag-client.ts`，重命名自 `intellect-client.ts` 以避免与 `intellect-team-admin-client.ts` 混淆）
 3. **多 Harness 适配**（计划中）：`IHarnessAdapter` 抽象不同后端
 
 ### 16.2 目录结构
@@ -601,7 +601,7 @@ bff/src/
 │   └── health.ts           # 健康检查
 ├── services/
 │   ├── admin-store.ts      # JSON 持久化层
-│   └── intellect-client.ts   # Intellect HTTP 客户端
+│   └── intellect-rag-client.ts   # Intellect RAG（社区版）HTTP 客户端
 ├── types/
 │   └── index.ts
 └── index.ts                # Hono 入口
@@ -712,7 +712,7 @@ app.route('/api/admin', adminRoutes);
 | [bff/src/routes/agent.ts](file:///Users/simon/workspace/agentui/bff/src/routes/agent.ts) | Agent 代理 |
 | [bff/src/routes/session.ts](file:///Users/simon/workspace/agentui/bff/src/routes/session.ts) | Session 代理 |
 | [bff/src/services/admin-store.ts](file:///Users/simon/workspace/agentui/bff/src/services/admin-store.ts) | JSON 持久化 |
-| [bff/src/services/intellect-client.ts](file:///Users/simon/workspace/agentui/bff/src/services/intellect-client.ts) | Intellect HTTP 客户端 |
+| [bff/src/services/intellect-rag-client.ts](file:///Users/simon/workspace/agentui/bff/src/services/intellect-rag-client.ts) | Intellect RAG（社区版）HTTP 客户端 |
 
 ### 构建配置
 
@@ -755,6 +755,7 @@ app.route('/api/admin', adminRoutes);
 3. **BFF 鉴权增强**：当前 `authMiddleware` 仅做透传，多租户阶段需引入 TenantContext。
 4. **Storybook 覆盖**：基础组件库（`ui/`）需补齐 stories。
 5. **测试覆盖**：当前 hooks 有少量测试，需扩大覆盖。
+6. **`intellect-llm-adapter` 架构违规（Phase 3 实验性代码）**：[bff/src/services/adapters/intellect-llm/intellect-llm-adapter.ts](file:///Users/simon/workspace/agentui/bff/src/services/adapters/intellect-llm/intellect-llm-adapter.ts) 是 Intellect Gateway LLM API 的 HTTP 客户端（chat/embeddings/rerank/models + Provider/Key/Model Admin API），但**未实现 `IHarnessAdapter` 接口、未注册到 AdapterRegistry、无测试、未走 spec 流程**。更严重的是被前端 3 个文件直接 import 并 `new IntellectLlmAdapter()`（[src/pages/user-setting/setting-model/index.tsx](file:///Users/simon/project/agentui/src/pages/user-setting/setting-model/index.tsx)、[src/pages/user-setting/setting-model/components/gateway-provider-panel.tsx](file:///Users/simon/project/agentui/src/pages/user-setting/setting-model/components/gateway-provider-panel.tsx)、[src/hooks/use-fetch-gateway-models.ts](file:///Users/simon/project/agentui/src/hooks/use-fetch-gateway-models.ts)），绕过 BFF 直接请求 intellect-gateway（:8642），违反 Constitution Principle I（BFF-Mediated Frontend）。此外 `adminToken` 通过 `import.meta.env.VITE_INTELLECT_LLM_API_KEY` 注入前端 bundle，存在 admin API key 浏览器端暴露风险。`bff/data/harness-backends.json` 中 `type: "intellect-llm"` 条目不在 `BackendType` 联合类型（`'intellect-rag' | 'intellect-enterprise'`）中，capabilities 形状也不匹配 `HarnessCapabilities`，属于死配置。**治理方向**：若正式纳入，需扩展 `BackendType`、注册 factory、补 spec 与测试、将前端调用迁移到 BFF 路由；若废弃，需删除文件与 `harness-backends.json` 中的死配置条目。
 
 ---
 

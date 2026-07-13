@@ -1,5 +1,5 @@
 #!/bin/bash
-# P3 冒烟测试场景 4-7(会话 + 流式 + 多租户头)
+# P3 冒烟测试场景 4-7(会话 + 流式 + Team/Project 组织隔离头)
 BFF=http://localhost:9390
 AUTH="Authorization: Bearer test"
 TENANT="X-Tenant-Id: tenant-enterprise"

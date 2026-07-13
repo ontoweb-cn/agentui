@@ -57,10 +57,16 @@ function AdminLogin() {
       const { data: req, headers } = request;
 
       if (req?.code === 0) {
-        const authorization = (headers as AxiosResponseHeaders)?.get(
+        let authorization = (headers as AxiosResponseHeaders)?.get(
           Authorization,
-        );
-        const token = req.data.access_token;
+        ) as string | undefined;
+        let token = req.data.access_token;
+        // 统一 Bearer 前缀兜底:Authorization 存 "Bearer xxx",Token 存纯 token 值
+        if (authorization && authorization.startsWith('Bearer ')) {
+          token = authorization.substring(7);
+        } else if (token && !token.startsWith('Bearer ')) {
+          authorization = `Bearer ${token}`;
+        }
 
         // Lift to global user info context
         setCurrentUserInfo({

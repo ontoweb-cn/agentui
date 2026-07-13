@@ -4,7 +4,8 @@
  * TenantContext 中间件 — 从请求提取 tenantId/userId 构造 TenantContext。
  *
  * Constitution references (v1.2.0):
- * - Principle V (Tenant Isolation): BFF 维护 TenantContext,Adapter 据此注入多租户头
+ * - Principle V (Tenant Isolation): BFF 维护 TenantContext,Adapter 据此注入 Team/Project 组织隔离头
+ *   (真正的租户隔离通过多实例:intellectBackendId 绑定不同 intellect-team 实例)
  *
  * P1: 从 X-Tenant-Id / X-User-Id header 提取(简化方案)
  * P3: 扩展为优先从 JWT 提取,header 作为 fallback
@@ -48,7 +49,7 @@ export const tenantContextMiddleware: MiddlewareHandler = async (c, next) => {
     userId,
   };
 
-  // P3:从 TenantStore 读取 BffTenant 绑定,注入企业版多租户字段(Principle V)。
+  // P3:从 TenantStore 读取 BffTenant 绑定,注入企业版实例内 Team/Project 组织隔离字段(Principle V)。
   // store 注入由 index.ts 的 context middleware 完成;此处防御性获取。
   const tenantStore = c.get('tenantStore');
   if (tenantStore) {
@@ -56,7 +57,7 @@ export const tenantContextMiddleware: MiddlewareHandler = async (c, next) => {
     if (bffTenant?.intellectTenantId) {
       // P4b (FR-006):缺省 TenantID="0" 时不注入 X-Intellect-Team 头。
       // intellect-team 侧 _resolve_member_context 检测到无此头时使用全局默认上下文,
-      // 实现企业版零多租户改动兼容(见 intellect-team/docs/agentui-integration/default-tenant-compat.md)。
+      // 实现企业版零 Team/Project 改动兼容(见 intellect-team/docs/agentui-integration/default-tenant-compat.md)。
       if (bffTenant.intellectTenantId === '0') {
         // 缺省租户:不注入 intellectTeamId,留空让 intellect-team 走全局默认
       } else {

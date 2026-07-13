@@ -18,7 +18,7 @@
 /**
  * Harness 后端类型字面量。
  * - 'intellect-rag' 指 intellect-rag 项目(画布引擎 + 知识库,单租户)
- * - 'intellect-enterprise' 指 intellect-team 项目(Team/Project 多租户 + 编码 Agent)
+ * - 'intellect-enterprise' 指 intellect-team 项目(实例内 Team/Project 组织模型 + 编码 Agent;多租户通过多实例部署)
  * 禁用历史误用 'intellect-community'。
  */
 export type BackendType = 'intellect-rag' | 'intellect-enterprise';
@@ -44,7 +44,7 @@ export interface HarnessCapabilities {
   memory: boolean;
   /** 是否支持 MCP 工具调用 */
   mcp: boolean;
-  /** 是否支持多租户 Team/Project(企业版 = true) */
+  /** 是否支持实例内 Team/Project 组织模型(企业版 = true;真正租户隔离通过多实例部署) */
   multiTenant: boolean;
   /** 是否支持模型管理 UI */
   modelManagement: boolean;

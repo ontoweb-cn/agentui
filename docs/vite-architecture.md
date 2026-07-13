@@ -1385,7 +1385,7 @@ AgentUI 需要支持不同的 Agent Harness 后端：
 | 后端 | 协议 | 项目地址 | 说明 |
 |------|------|---------|------|
 | Intellect | OpenAI 兼容 REST + SSE | `~/workspace/intellect` | 画布编排 + 知识库 |
-| Intellect 企业版 | OpenAI 兼容 REST + SSE | `~/workspace/intellect-team` | 多租户 Team/Project + 编码 Agent |
+| Intellect 企业版 | OpenAI 兼容 REST + SSE | `~/workspace/intellect-team` | 实例内 Team/Project 组织模型 + 编码 Agent（多租户通过多实例部署） |
 | Intellect 社区版 | ACP（stdio JSON-RPC） | `~/workspace/intellect-agent` | 单用户，未来扩展 OpenAPI |
 | Hermes | ACP | `~/workspace/hermes-agent` | 同 Intellect 同源 |
 | OpenClaw | 待确认 | - | - |
@@ -1684,7 +1684,7 @@ export interface HarnessCapabilities {
   knowledgeBase: boolean; // Intellect only
   memory: boolean;
   mcp: boolean;
-  multiTenant: boolean;   // Intellect 企业版（Team/Project）
+  multiTenant: boolean;   // Intellect 企业版（实例内 Team/Project 组织模型）
   modelManagement: boolean;
 }
 
@@ -1809,7 +1809,7 @@ bff/src/
 
 | 任务 | 文件 | 说明 |
 |------|------|------|
-| 实现 Intellect HTTP 客户端 | `bff/src/services/adapters/intellect/client.ts` | 封装 Intellect REST 调用（含多租户头注入） |
+| 实现 Intellect HTTP 客户端 | `bff/src/services/adapters/intellect/client.ts` | 封装 Intellect REST 调用（含 Team/Project 组织隔离头注入） |
 | 实现 IntellectEnterpriseAdapter | `bff/src/services/adapters/intellect/adapter.ts` | 实现核心层 `IHarnessAdapter` |
 | 对接 `/v1/models` | `intellect/adapter.ts` | `listAgents()` 调用 `/v1/models` |
 | 对接 `/api/sessions` | `intellect/adapter.ts` | 会话 CRUD |
@@ -1826,14 +1826,14 @@ bff/src/
 - `createSession()` 创建会话成功
 - `sendMessage()` 流式返回正常
 - `healthCheck()` 和 `discoverCapabilities()` 正常
-- 多租户头 `X-Intellect-Team`/`X-Intellect-Project` 正确注入
+- Team/Project 组织隔离头 `X-Intellect-Team`/`X-Intellect-Project` 正确注入
 
 ### 后续阶段（P4-P7，依赖外部条件）
 
 | 阶段 | 内容 | 依赖 |
 |------|------|------|
 | **P4** | Intellect 侧新增 Team/Project CRUD HTTP API | Intellect 团队（参考 [intellect-admin-api-guide.md](file:///Users/simon/workspace/agentui/docs/intellect-admin-api-guide.md)） |
-| **P5** | BFF 多租户层（Team/Project 透传）+ 前端 Admin 页面 | P3 + P4 |
+| **P5** | BFF Team/Project 管理层（Team/Project 透传）+ 前端 Admin 页面 | P3 + P4 |
 | **P6** | 画布服务（硬绑定 Intellect） | P1 |
 | **P7** | SSE 事件扩展（runs/skills，可选） | P3 |
 

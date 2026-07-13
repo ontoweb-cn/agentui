@@ -152,7 +152,8 @@ app.route('/', authRoutes);
 
 // Multi-Harness P5 (US1/US2/US3): Team/Project CRUD + Tenant 绑定路由。
 // Constitution Principle I + V + VIII: 前端经 BFF 管理 intellect-team Team/Project,
-// BffTenant 绑定真实 team_id 后启用多租户隔离。
+// BffTenant 绑定真实 team_id 后启用实例内 Team 数据隔离。
+// 真正的租户隔离通过多实例:不同 BffTenant 绑定不同 intellectBackendId(intellect-team 实例)。
 // 路径映射(Vite proxy rewrite 去掉 /api/bff):
 //   前端 /api/bff/admin/teams/*                     → BFF /admin/teams/*
 //   前端 /api/bff/admin/projects/*                  → BFF /admin/projects/*(独立路径,对齐 intellect-team)

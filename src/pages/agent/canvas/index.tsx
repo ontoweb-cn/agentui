@@ -39,6 +39,10 @@ import { usePlaceholderManager } from '../hooks/use-placeholder-manager';
 import { useDropdownManager } from './context';
 
 import { AgentBackground } from '@/components/canvas/background';
+import {
+  ChatSheetContext,
+  type TimelineRenderProps,
+} from '@/components/next-message-item/chat-sheet-context';
 import Spotlight from '@/components/spotlight';
 import { useNodeLoading } from '../hooks/use-node-loading';
 import {
@@ -47,6 +51,7 @@ import {
 } from '../hooks/use-show-drawer';
 import { useStopMessageUnmount } from '../hooks/use-stop-message';
 import { LogSheet } from '../log-sheet';
+import { WorkFlowTimeline } from '../log-sheet/workflow-timeline';
 import RunSheet from '../run-sheet';
 import { ButtonEdge } from './edge';
 import styles from './index.module.less';
@@ -268,6 +273,15 @@ function AgentCanvas({ drawerVisible, hideDrawer }: IProps) {
     useNodeLoading({
       currentEventListWithoutMessageById,
     });
+
+  // 通过 render prop 将画布的 WorkFlowTimeline 注入通用消息组件
+  // 评审 Q1: 使用明确的 TimelineRenderProps 类型替代 unknown,消除 as 断言
+  // 评审 Q6: 使用 useCallback 包裹,避免每次渲染都生成新函数引用导致消费者重渲染
+  const timelineRenderer = useCallback(
+    ({ data }: TimelineRenderProps) => <WorkFlowTimeline {...data} />,
+    [],
+  );
+
   return (
     <div className={cn(styles.canvasWrapper, 'px-5 pb-5')}>
       <svg
@@ -412,11 +426,20 @@ function AgentCanvas({ drawerVisible, hideDrawer }: IProps) {
         <AgentChatContext.Provider
           value={{ showLogSheet, setLastSendLoadingFunc, setDerivedMessages }}
         >
-          <AgentChatLogContext.Provider
-            value={{ addEventList, setCurrentMessageId }}
+          <ChatSheetContext.Provider
+            value={{
+              showLogSheet,
+              setLastSendLoadingFunc,
+              setDerivedMessages,
+              timelineRenderer,
+            }}
           >
-            <ChatSheet hideModal={hideRunOrChatDrawer}></ChatSheet>
-          </AgentChatLogContext.Provider>
+            <AgentChatLogContext.Provider
+              value={{ addEventList, setCurrentMessageId }}
+            >
+              <ChatSheet hideModal={hideRunOrChatDrawer}></ChatSheet>
+            </AgentChatLogContext.Provider>
+          </ChatSheetContext.Provider>
         </AgentChatContext.Provider>
       )}
       {runVisible && (

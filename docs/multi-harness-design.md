@@ -14,7 +14,7 @@ AgentUI 当前与 Intellect RAG 深度耦合，需支持多种 Agent Harness 后
 | 后端 | 协议 | 项目地址 | 说明 |
 |------|------|---------|------|
 | Intellect RAG | OpenAI 兼容 REST + SSE | `~/workspace/intellect-rag` | 画布编排 + 知识库，单租户 |
-| Intellect 企业版 | OpenAI 兼容 REST + SSE | `~/workspace/intellect-team` | Team/Project 多租户 + 编码 Agent，无画布 |
+| Intellect 企业版 | OpenAI 兼容 REST + SSE | `~/workspace/intellect-team` | 实例内 Team/Project 组织模型 + 编码 Agent（多租户通过多实例部署实现），无画布 |
 
 > **命名规范**：本文档中"Intellect RAG"指（intellect-rag），“Intellect 社区版”指(intellect-agent),"Intellect 企业版"指 intellect-team，三者通过不同的 Adapter 对接。
 
@@ -27,7 +27,7 @@ AgentUI 当前与 Intellect RAG 深度耦合，需支持多种 Agent Harness 后
 1. AgentUI 前端业务代码零改动，只改 API 路径常量 + 新增 Admin 页面
 2. BFF 通过 Adapter 层屏蔽后端差异
 3. 画布硬绑定 Intellect RAG（复用 Intellect RAG 画布引擎）
-4. 多租户通过 BFF 独立模型（BFF 维护 Tenant 实体，绑定到 Intellect 企业版 Tenant 实例）
+4. 多租户通过 BFF 独立模型（BFF 维护 Tenant 实体，绑定到 intellect-team 实例；每个 intellect-team 实例 = 一个租户，多实例部署实现多租户）
 5. SSE 流式以 Intellect RAG 和 Intellect 企业版 OpenAI 兼容格式为基础
 
 ## 二、方案选择：BFF 适配器层（方案 A）
@@ -101,7 +101,7 @@ AgentUI 当前与 Intellect RAG 深度耦合，需支持多种 Agent Harness 后
 2. **前端零业务改动**，只改 API 路径常量 + 新增 Admin 页面
 3. **SSE 流式格式统一**：Intellect RAG 和 Intellect 企业版都是 OpenAI 兼容格式，共用解析器
 4. **画布硬绑定 Intellect RAG**：画布是 Intellect RAG 专属能力，不经过 Adapter Registry 选择
-5. **多租户通过 BFF 独立模型**：BFF 维护 Tenant 实体，绑定到 Intellect 企业版 Tenant 实例
+5. **多租户通过 BFF 独立模型**：BFF 维护 Tenant 实体，绑定到 intellect-team 实例（每个实例 = 一个租户，多实例部署实现多租户；Team/Project 是实例内组织模型，非多租户）
 
 ## 三、关键决策
 
@@ -136,18 +136,18 @@ ACP（stdio JSON-RPC）设计用于**本地 IDE 集成**（Zed/Claude Code 等�
 
 ### 3.3 多租户数据隔离：BFF 维护独立模型
 
-#### 3.3.1 BFF Tenant ↔ Intellect 企业版 Tenant 映射
+#### 3.3.1 BFF Tenant ↔ intellect-team 实例映射
 
-Intellect 企业版现有数据模型为 **Member → Team → Project** 三层，**无 Tenant 实体**。本方案采用**一对一映射**：一个 BFF Tenant 唯一绑定到一个 Intellect 企业版 Tenant 实例。
+intellect-team 通过**多实例部署**实现多租户(每个 intellect-team 实例 = 一个租户),实例内数据模型为 **Member → Team → Project** 三层,**无 Tenant 实体**。本方案采用**一对一映射**:一个 BFF Tenant 唯一绑定到一个 intellect-team 实例(通过 `intellectBackendId` 指向 HarnessBackend.id)。
 
 ```
 BFF Tenant（BFF 维护）
-  └─ 唯一绑定到 1 个 Intellect 企业版 Tenant 实例（需 Intellect 侧新增）
-       ├─ 包含多个 Team（逻辑分组，归属该 Tenant）
-       └─ 包含多个 Project（逻辑分组，归属某 Team）
+  └─ 唯一绑定到 1 个 intellect-team 实例(通过 intellectBackendId)
+       ├─ 实例内含多个 Team（逻辑分组,实例内组织隔离)
+       └─ 实例内含多个 Project（逻辑分组,归属某 Team)
 ```
 
-**Intellect 企业版侧待办（P4+）**：需新增 `Tenant` 实体（对应 BFF 的 Tenant 概念），一个 Tenant 可包含多个 Team/Project，作为 BFF Tenant 的绑定目标。
+**多租户实现**:无需 intellect-team 侧新增 Tenant 实体。真正的租户隔离通过不同 BffTenant 绑定不同 intellect-team 实例(不同 `intellectBackendId`)实现。`intellectTenantId`/`intellectProjectId` 仅用于实例内 Team/Project 数据隔离(注入 X-Intellect-Team/X-Intellect-Project 头),非租户隔离。
 
 #### 3.3.2 数据模型
 
@@ -156,23 +156,22 @@ BFF Tenant（BFF 维护）
 interface BffTenant {
   id: string;                    // BFF 租户 ID
   name: string;                  // 租户名称（如 "Acme Corp"）
-  intellectTenantId: string;     // 绑定到 Intellect 企业版的 Tenant ID（UUID）
-  intellectBackendId: string;    // 绑定到哪个 Intellect 企业版后端实例
+  intellectTenantId?: string;    // intellect-team 实例内 Team ID(组织隔离,非租户隔离;"0"=缺省)
+  intellectBackendId: string;    // 绑定到哪个 intellect-team 实例(= 租户隔离锚点)
   createdAt: string;
   updatedAt: string;
 }
 
-// Intellect 企业版侧（新增，需 Intellect 团队实现）
-// 表名：tenants
-// 字段：id (PK, UUID), display_name, created_at, ...
-// 约束：一个 Tenant 可包含多个 Team/Project，但一个 Team/Project 只属于一个 Tenant
+// intellect-team 侧无需新增 Tenant 实体,多租户通过多实例部署实现
+// 实例内已有:Member/Team/Project 表,通过 X-Intellect-Team/X-Intellect-Project 头做组织隔离
 ```
 
 #### 3.3.3 核心设计
 
-- **一对一绑定**：BFF Tenant 唯一绑定到一个 Intellect 企业版 Tenant 实例
-- **数据隔离**：Team/Project/Member 数据不复制到 BFF，通过 Intellect 企业版 HTTP API 透传管理
-- **多租户头**(v1.1.0 已与 intellect-team `_resolve_member_context` 实际实现对齐):
+- **一对一绑定**:BFF Tenant 唯一绑定到一个 intellect-team 实例(通过 `intellectBackendId`)
+- **多租户隔离**:通过不同 BffTenant 绑定不同 intellect-team 实例实现,无需 intellect-team 侧新增 Tenant 实体
+- **数据隔离**:Team/Project/Member 数据不复制到 BFF,通过 intellect-team HTTP API 透传管理
+- **Team/Project 组织隔离头**(v1.1.0 已与 intellect-team `_resolve_member_context` 实际实现对齐):
   - `X-Intellect-Team` — 传递 team_id(对应 intellect-team DB teams.id,不是 slug)
   - `X-Intellect-Project` — 传递 project_id(对应 intellect-team DB projects.id,不是 slug)
   - `X-Intellect-Session-Id` — 可选,会话续接
@@ -265,7 +264,7 @@ data: [DONE]
 
 **端点**：`POST /api/sessions/{sessionId}/chat/stream`(Constitution Principle VIII 锁定的主通道)
 
-**鉴权**:`Authorization: Bearer ${API_SERVER_KEY}`,多租户头 `X-Intellect-Team` / `X-Intellect-Project`
+**鉴权**:`Authorization: Bearer ${API_SERVER_KEY}`,Team/Project 组织隔离头 `X-Intellect-Team` / `X-Intellect-Project`
 
 **请求格式**：
 ```json
@@ -339,7 +338,7 @@ data: {"session_id":"...","run_id":"run_xxx","seq":11,"ts":...}
 | **用量信息** | ❌ 无 | ✅ `run.completed.data.usage` |
 | **finish_reason** | ✅ `finish_reason` 字段 | ❌ 无(用 `run.completed` 标记完成) |
 | **多模态支持** | ✅ `input_image` 等 | ❌ 仅文本 |
-| **多租户头** | ❌ 无 | ✅ `X-Intellect-Team` / `X-Intellect-Project` |
+| **Team/Project 组织隔离头** | ❌ 无 | ✅ `X-Intellect-Team` / `X-Intellect-Project` |
 | **会话持久化** | ❌ stateless | ✅ session_id 路径参数 |
 | **公共字段** | 无 | `session_id` / `run_id` / `seq` / `ts` |
 
@@ -899,7 +898,7 @@ export interface HarnessCapabilities {
   knowledgeBase: boolean; // Intellect only
   memory: boolean;
   mcp: boolean;
-  multiTenant: boolean;   // Intellect 企业版（Team/Project）
+  multiTenant: boolean;   // Intellect 企业版（实例内 Team/Project 组织模型）
   modelManagement: boolean;
 }
 
@@ -1066,7 +1065,7 @@ async function* parseIntellectEnterpriseSSE(response: Response): AsyncIterable<S
 
 > **注意**：Intellect 企业版另有一个 OpenAI 兼容端点 `POST /v1/chat/completions`（§12.1），如 Adapter 选择走该端点则可复用 `parseOpenAISSE`，但会丢失 `reasoning` / `usage` 能力。本期 P3 采用 `/api/sessions/{id}/chat/stream` + `parseIntellectEnterpriseSSE` 以保留完整能力。
 
-### 6.3 Intellect 企业版 Adapter（多租户头注入）
+### 6.3 Intellect 企业版 Adapter（Team/Project 组织隔离头注入）
 
 ```typescript
 // bff/src/services/adapters/intellect-enterprise/adapter.ts
@@ -1309,7 +1308,7 @@ function AgentPage() {
 
 | 任务 | 文件 | 状态 |
 |------|------|------|
-| 实现 Intellect RAG 透明代理方法 | `bff/src/services/intellect-client.ts` | ✅ `proxy(path, req)` 透传 method/headers/body/query/SSE 流 |
+| 实现 Intellect RAG 透明代理方法 | `bff/src/services/intellect-rag-client.ts`（重命名自 `intellect-client.ts`） | ✅ `proxy(path, req)` 透传 method/headers/body/query/SSE 流 |
 | 新建 proxy 路由 | `bff/src/routes/proxy.ts` | ✅ catch-all `/proxy/v1/*` → intellect-rag `/api/v1/*` |
 | 挂载 proxy 路由 | `bff/src/index.ts` | ✅ `app.route('/', proxyRoutes)` + `app.use('/proxy/*', authMiddleware)` |
 | 配置 Vite proxy | `vite.config.ts` | ✅ 已有 `/api/bff` 规则(rewrite 去前缀),保留 `/api/v1` 旧规则用于回滚 |
@@ -1423,7 +1422,7 @@ function AgentPage() {
 
 | 任务 | 文件 | 说明 | 状态 |
 |------|------|------|------|
-| Intellect HTTP 客户端 | `bff/src/services/adapters/intellect-enterprise/http-client.ts` | 封装 REST 调用 + 多租户头注入 + 错误转换(404/5xx/超时) | ✅ |
+| Intellect HTTP 客户端 | `bff/src/services/adapters/intellect-enterprise/http-client.ts` | 封装 REST 调用 + Team/Project 组织隔离头注入 + 错误转换(404/5xx/超时) | ✅ |
 | IntellectEnterpriseAdapter | `bff/src/services/adapters/intellect-enterprise/intellect-enterprise-adapter.ts` | 实现核心层 `IHarnessAdapter`(8 方法) | ✅ |
 | 对接 `/v1/models` | adapter.ts | `listAgents()` 调用 `/v1/models`,后端不可达降级空数组 | ✅ |
 | 对接 `/api/sessions` | adapter.ts | 会话 CRUD(create/get/list/delete) | ✅ |
@@ -1441,10 +1440,10 @@ function AgentPage() {
 - ✅ `createSession()` 创建会话成功(调 `POST /api/sessions`)
 - ✅ `sendMessage()` 流式返回正常(调 `/api/sessions/{id}/chat/stream`,parseIntellectEnterpriseSSE 解析)
 - ✅ `healthCheck()` 和 `discoverCapabilities()` 正常(`/v1/capabilities` 404 降级默认)
-- ✅ 多租户头 `X-Intellect-Team`/`X-Intellect-Project` 正确注入(httpClient 统一注入)
+- ✅ Team/Project 组织隔离头 `X-Intellect-Team`/`X-Intellect-Project` 正确注入(httpClient 统一注入)
 - ✅ TypeScript 编译零错误(BFF + 前端)
 - ✅ 单元测试全过:BFF 11 套件 164 测试(P0/P1/P2 125 + P3 39),无回归
-- ✅ 冒烟测试通过:用 Node mock server 模拟 intellect-team,验证 Admin/能力探测/Agent 列表/会话 CRUD/流式对话(reasoning+delta+usage)/多租户头注入(X-Intellect-Team)/错误处理(400/401/404),见 [quickstart.md](../specs/004-intellect-enterprise-adapter/quickstart.md)
+- ✅ 冒烟测试通过:用 Node mock server 模拟 intellect-team,验证 Admin/能力探测/Agent 列表/会话 CRUD/流式对话(reasoning+delta+usage)/Team/Project 组织隔离头注入(X-Intellect-Team)/错误处理(400/401/404),见 [quickstart.md](../specs/004-intellect-enterprise-adapter/quickstart.md)
 - ✅ P0/P1/P2 运行时回归 6 项全过(透传路由/Admin CRUD/capabilities/health)
 
 #### P4b：BFF 统一认证路由 + 缺省 TenantID=0 ✅ 已完成
@@ -1502,7 +1501,7 @@ function AgentPage() {
 
 **状态**:✅ 已完成(2026-06-26,详见 [specs/007-team-project-management/tasks.md](../specs/007-team-project-management/tasks.md))
 
-**目标**:BFF 多租户层透传 Team/Project CRUD 到 intellect-team,前端 Admin 页面管理 Team/Project + BffTenant 绑定,替换缺省 TenantID=0 实现真实多租户隔离。
+**目标**:BFF Team/Project 管理层透传 Team/Project CRUD 到 intellect-team,前端 Admin 页面管理 Team/Project + BffTenant 绑定,替换缺省 TenantID=0 实现实例内 Team/Project 数据隔离（真正租户隔离通过多实例：不同 intellectBackendId）。
 
 **BFF 侧任务**:
 
@@ -1571,7 +1570,7 @@ function AgentPage() {
 | 文件 | 阶段 | 操作 |
 |------|------|------|
 | `bff/src/routes/proxy.ts` | P0-前置 | 新建（透明反向代理） |
-| `bff/src/services/intellect-client.ts` | P0-前置 | 修改（新增 `proxy` 方法） |
+| `bff/src/services/intellect-rag-client.ts` | P0-前置 | 修改（新增 `proxy` 方法；文件重命名自 `intellect-client.ts`） |
 | `bff/src/index.ts` | P0-前置 | 修改（挂载 proxy 路由） |
 | `vite.config.ts` | P0-前置 | 修改（新增 `/api/bff` proxy） |
 | `src/utils/api.ts` | P0-前置 | 修改（`restAPIv1` 切到 `/api/bff/proxy/v1`） |
@@ -1662,7 +1661,7 @@ P1 起，按业务域把代理路由逐个替换为 BFF 原生路由（调 Adapt
 |------|------|------|
 | `bff/src/routes/proxy.ts` | 新建：透明反向代理 | P0 前置 |
 | `bff/src/index.ts` | 挂载 proxy 路由（在 authMiddleware 之后） | P0 前置 |
-| `bff/src/services/intellect-client.ts` | 新增 `proxy(path, req)` 方法（透传 method/headers/body/query） | P0 前置 |
+| `bff/src/services/intellect-rag-client.ts` | 新增 `proxy(path, req)` 方法（透传 method/headers/body/query） | P0 前置 |
 | `vite.config.ts` | 把 `/api/bff` proxy 指向 BFF 9390（保留 `/api/v1` 旧 proxy 用于回滚） | P0 前置 |
 | `src/utils/api.ts` | `restAPIv1` 改为 `/api/bff/proxy/v1`（单行改动） | P0 前置 |
 | `.env.example` | 新增 `VITE_BFF_BASE=/api/bff` | P0 前置 |
@@ -1691,7 +1690,7 @@ P1 起，按业务域把代理路由逐个替换为 BFF 原生路由（调 Adapt
 | 会话 Fork | `POST /api/sessions/{id}/fork` | 会话分叉 |
 | Runs（异步任务） | `POST /v1/runs` + `GET /v1/runs/{id}/events` | 异步执行 |
 | Skills | `GET /v1/skills` | 技能列表 |
-| 多租户头 | `X-Intellect-Team` / `X-Intellect-Project` | HTTP Header 传递 |
+| Team/Project 组织隔离头 | `X-Intellect-Team` / `X-Intellect-Project` | HTTP Header 传递 |
 
 ### 13.2 数据模型
 

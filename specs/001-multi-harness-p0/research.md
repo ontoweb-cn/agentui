@@ -295,14 +295,14 @@ BFF 接入 Intellect 企业版(intellect-team)的主通道锁定为 `POST /api/s
   - `/api/sessions/{id}/chat/stream`(持久化会话,自定义事件 SSE)
   - `/v1/runs/{id}/events`(异步任务 SSE,需先 `POST /v1/runs` 获取 run_id)
 - 选 `/api/sessions/{id}/chat/stream` 的理由:
-  - 原生支持 `X-Intellect-Team` / `X-Intellect-Project` 多租户头
+  - 原生支持 `X-Intellect-Team` / `X-Intellect-Project` Team/Project 组织隔离头
   - 原生输出 `assistant.delta` / `tool.progress` / `run.completed` 事件,匹配 Principle IV
   - 自带 session 持久化,满足 spec FR3.4 "intellect Team 需要新建独立 Session"
   - `/v1/chat/completions` 是 stateless,会话续接需手动管理 `X-Intellect-Session-Id`,与 spec FR3.4 冲突
   - `/v1/runs/{id}/events` 是异步模式,前端协议适配复杂度上升,P3+ 再评估
 - 鉴权选 `API_SERVER_KEY` 而非 `imt_p_*` 项目级 token:
   - intellect-team 同时支持 `Authorization: Bearer ${API_SERVER_KEY}`(全局)与 `Authorization: Bearer imt_p_*`(项目级)
-  - P0-P3 阶段简化运维,所有 BFF 请求统一用 `API_SERVER_KEY`,多租户隔离靠 `X-Intellect-Team` / `X-Intellect-Project` 头
+  - P0-P3 阶段简化运维,所有 BFF 请求统一用 `API_SERVER_KEY`,Team/Project 数据隔离靠 `X-Intellect-Team` / `X-Intellect-Project` 头(真正租户隔离通过多实例部署)
   - P4+ 评估是否切换到 `imt_p_*` 项目级 token 实现更细粒度权限
 
 ### Adapter 两步流程(内部实现,BFF 路由层不感知)

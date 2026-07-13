@@ -49,7 +49,7 @@
 | `/api/bff/auth/logout` | POST | `POST /api/members/logout` | Member token | Revokes token, clears cookie |
 | `/api/bff/auth/me` | GET | `GET /api/members/me` | Member token | Returns member info |
 | `/api/bff/auth/login/channels` | GET | `GET /api/oauth/providers` | Public | Returns OAuth provider list |
-| `/api/bff/auth/login/{channel}` | GET | `POST /api/oauth/authorize` | Public | Returns `{redirect_uri}`, BFF 302s |
+| `/api/bff/auth/login/{channel}` | GET | `GET /api/oauth/login/{provider}` | Public | intellect-team 302 重定向到 OAuth 提供方(BFF 直接透传 302) |
 | `/api/bff/auth/oauth/callback` | GET | `GET /api/oauth/callback` + `POST /api/members/{id}/token` | Public + API_SERVER_KEY | Two-step: callback → token sign → Set-Cookie → 302 |
 
 ### 2.2 Data Endpoints (BFF → intellect-team, via Adapter)
@@ -145,7 +145,7 @@ Recommended implementation order for the intellect-team team:
 ### Priority 3 — OAuth Flow (Nice to have for P4b)
 
 6. **`GET /api/oauth/providers`** — List configured OAuth providers
-7. **`POST /api/oauth/authorize`** — Generate OAuth redirect URL
+7. **`GET /api/oauth/login/{provider}`** — 302 重定向到 OAuth 提供方(实际契约,非 POST /api/oauth/authorize)
 8. **`GET /api/oauth/callback`** — Handle OAuth callback, return `member_id`
 
 > OAuth can be deferred to P4c if needed; password login works without it.
@@ -181,7 +181,18 @@ Once intellect-team P4a endpoints are ready:
 
 ## 6. Related Documents
 
-- [member-auth-api.md](./member-auth-api.md) — Member auth endpoint specification (request/response examples)
-- [oauth-callback-token.md](./oauth-callback-token.md) — OAuth callback token补全 flow diagram
-- [default-tenant-compat.md](./default-tenant-compat.md) — Default TenantID=0 compatibility explanation
+### AgentUI 侧文档（本仓库）
+
 - [intellect-team-openai-integration.md](../intellect-team-openai-integration.md) — Intellect-team OpenAI-compatible integration review
+- [intellect-admin-api-guide.md](../intellect-admin-api-guide.md) — Intellect Admin API 接口指南（注意：其中 PATCH/PUT 端点和分页格式为规划稿，实际契约以 mock + BFF 客户端为准）
+- [multi-harness-design.md](../multi-harness-design.md) — 总体多 Harness 架构设计
+
+### intellect-team 侧文档（跨仓库，位于 intellect-team 仓库 `docs/agentui-integration/`）
+
+> 以下文档由 intellect-team 团队维护，不在 agentui 仓库内。BFF 代码注释中多处引用作为"实际契约"权威源。路径示例：`/Users/simon/workspace/intellect-team/docs/agentui-integration/`
+
+- `member-auth-api.md` — Member auth endpoint specification (request/response examples)
+- `oauth-callback-token.md` — OAuth callback token 补全 flow diagram
+- `default-tenant-compat.md` — Default TenantID=0 compatibility explanation
+- `teams-projects-api.md` — Team/Project CRUD API 实际契约（被 `bff/src/services/intellect-team-admin-client.ts`、`bff/src/routes/teams.ts`、`bff/src/routes/projects.ts` 引用）
+- `p4a-signoff.md` — P4a 阶段验收记录

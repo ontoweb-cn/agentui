@@ -36,7 +36,8 @@ import { parseIntellectEnterpriseSSE } from './parse-intellect-enterprise-sse';
 
 /**
  * 企业版默认能力(当 /v1/capabilities 端点不存在时降级返回)。
- * research.md R4 决策:canvas=false(Principle III),multiTenant=true(Principle V)。
+ * research.md R4 决策:canvas=false(Principle III),multiTenant=true(Principle V,实例内 Team/Project 组织模型)。
+ * 注意:真正的租户隔离通过多实例部署实现,multiTenant flag 仅表示实例内 Team/Project 组织能力。
  */
 const DEFAULT_ENTERPRISE_CAPABILITIES: HarnessCapabilities = {
   canvas: false,

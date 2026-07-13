@@ -421,7 +421,8 @@ export default {
 
   // Multi-Harness P5 (US1/US2/US3) — Team/Project/Tenant-binding Admin CRUD
   // Constitution Principle I + V + VIII: 前端经 BFF 管理 intellect-team Team/Project,
-  // BffTenant 绑定真实 team_id 后启用多租户隔离。
+  // BffTenant 绑定真实 team_id 后启用实例内 Team 数据隔离。
+  // 真正的租户隔离通过多实例:不同 BffTenant 绑定不同 intellectBackendId(intellect-team 实例)。
   // 对齐 intellect-team 实际契约:slug/display_name/created_by,软删除,独立 /api/projects 路径。
   adminTeams: `${bffAdmin}/teams`,
   adminTeam: (ref: string) => `${bffAdmin}/teams/${ref}`,

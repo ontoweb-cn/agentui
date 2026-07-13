@@ -1,6 +1,5 @@
 import { Collapse } from '@/components/collapse';
 import { CrossLanguageFormField } from '@/components/cross-language-form-field';
-import { KnowledgeBaseFormField } from '@/components/knowledge-base-item';
 import { MemoriesFormField } from '@/components/memories-form-field';
 import {
   MetadataFilter,
@@ -35,6 +34,7 @@ import { z } from 'zod';
 import { RetrievalFrom, initialRetrievalValues } from '../../constant';
 import { useWatchFormChange } from '../../hooks/use-watch-form-change';
 import { INextOperatorForm } from '../../interface';
+import { AgentKnowledgeBaseFormField } from '../components/knowledge-base-form-field';
 import { FormWrapper } from '../components/form-wrapper';
 import { Output } from '../components/output';
 import { PromptEditor } from '../components/prompt-editor';
@@ -89,7 +89,7 @@ export function MemoryDatasetForm() {
           <UserIdFormField></UserIdFormField>
         </>
       ) : (
-        <KnowledgeBaseFormField showVariable></KnowledgeBaseFormField>
+        <AgentKnowledgeBaseFormField></AgentKnowledgeBaseFormField>
       )}
     </>
   );

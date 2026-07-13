@@ -1,6 +1,7 @@
 // Multi-Harness P5 (US3):Tenant 绑定管理 Admin 页面。
 // Constitution Principle I + V: 前端经 BFF 管理 BffTenant ↔ Team/Project 绑定。
-// 绑定真实 team_id 后启用多租户隔离;"0"/空 → 回退缺省(向后兼容)。
+// 绑定真实 team_id 后启用实例内 Team 数据隔离;"0"/空 → 回退缺省(向后兼容)。
+// 真正的租户隔离通过多实例:不同 BffTenant 绑定不同 intellectBackendId(intellect-team 实例)。
 // tenantId 从 URL query param ?tenant=xxx 获取(Admin 页面入口传入)。
 
 import { useMemo } from 'react';

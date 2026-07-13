@@ -104,7 +104,7 @@
 
 - **SC-001**: 企业版用户通过密码登录,从提交到进入主界面 < 3 秒(intellect-team 正常负载下)
 - **SC-002**: OAuth 登录完整流程(点击渠道→授权→回调→进入首页)< 10 秒(含用户操作时间)
-- **SC-003**: 缺省 TenantID=0 模式下,企业版登录/对话/会话功能全部可用,不触发 intellect-team 多租户隔离逻辑
+- **SC-003**: 缺省 TenantID=0 模式下,企业版登录/对话/会话功能全部可用,不触发 intellect-team Team/Project 组织隔离逻辑
 - **SC-004**: 社区版(authMode=intellect-rag)认证功能 100% 不回归,现有登录/注册/OAuth 流程行为不变
 - **SC-005**: BFF 认证路由单元测试覆盖 ≥ 10 个场景(企业版登录/注册/登出/OAuth 渠道/OAuth callback + 社区版回归 + 错误场景),通过率 100%
 - **SC-006**: 前端 useLogin/useRegister/useLogout/useLoginChannels/useLoginWithChannel 接口签名零改动,仅 api.ts 路径常量变更

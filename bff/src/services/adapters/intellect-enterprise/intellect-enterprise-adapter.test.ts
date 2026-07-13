@@ -303,7 +303,7 @@ describe('IntellectEnterpriseAdapter', () => {
       expect((chunks[0] as { type: string }).type).toBe('done');
     });
 
-    it('多租户头通过 ctx 传入 requestStream(Principle V)', async () => {
+    it('Team/Project 组织隔离头通过 ctx 传入 requestStream(Principle V)', async () => {
       const sseBytes = new TextEncoder().encode('event: done\ndata: {}\n\n');
       const mockStream = new ReadableStream({
         start(controller) {

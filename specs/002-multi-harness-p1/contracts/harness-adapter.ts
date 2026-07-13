@@ -14,7 +14,7 @@
  * - Principle II (Adapter Abstraction): Layer 1 所有后端必选实现
  * - Principle IV (SSE Dual-Protocol): sendMessage 返回 AsyncIterable<StreamChunk>,
  *   Intellect RAG 用 parseCanvasWorkflowSSE,Intellect 企业版用 parseIntellectEnterpriseSSE
- * - Principle V (Tenant Isolation): Intellect RAG 单租户不注入多租户头
+ * - Principle V (Tenant Isolation): Intellect RAG 不注入 Team/Project 组织隔离头
  *
  * Implementation lifecycle:
  * - P0: contract only, no implementation

@@ -44,7 +44,7 @@ AgentUI 的 Admin 模块当前直连 Intellect RAG Admin（端口 9381），user
 ```
 IHarnessAdapter（业务运行时）
   ├─ Agent / Session / Message 流式
-  └─ 多租户 Team/Project（Intellect 企业版扩展层）
+  └─ 实例内 Team/Project 组织模型（Intellect 企业版扩展层；多租户通过多实例部署）
 
 IPlatformAdminAdapter（平台运维层）  ← 本文档
   ├─ IUserAdmin        用户管理

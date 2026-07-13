@@ -127,8 +127,9 @@ export interface TenantStore {
    * 设置 Tenant 的 Intellect 企业版 Team/Project 绑定(P5 新增)。
    *
    * Constitution Principle V (Tenant Isolation):
+   * - 真正的租户隔离通过多实例(intellectBackendId 绑定不同 intellect-team 实例)实现
    * - intellectTenantId="0" 或 undefined:不注入 X-Intellect-Team 头(缺省,向后兼容)
-   * - intellectTenantId=真实 team_id:注入 X-Intellect-Team 头(启用多租户隔离)
+   * - intellectTenantId=真实 team_id:注入 X-Intellect-Team 头(启用实例内 Team 数据隔离)
    * - intellectProjectId 为空:不注入 X-Intellect-Project 头
    *
    * @param tenantId BFF Tenant ID
