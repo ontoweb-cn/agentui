@@ -96,7 +96,7 @@ BFF P4b depends on the following intellect-team endpoints. All endpoints verifie
 | Endpoint | Method | Description | Request | Response |
 |---|---|---|---|---|
 | `/api/oauth/providers` | GET | List OAuth providers | (Public) | `[{id, name, logo_svg, ...}]` |
-| `/api/oauth/authorize` | POST | Start OAuth flow | `{provider_id, usage:"login"}` | `{state, redirect_uri}` |
+| `/api/oauth/login/{provider}` | GET | Start OAuth flow(302 重定向) | `?usage=login` | `302 + Location`(含 state 参数) |
 | `/api/oauth/callback` | GET | Handle OAuth callback | `?code=x&state=y` | `{member_id, claims}` |
 
 **✅ Verified**: After `/api/oauth/callback` returns `member_id`, BFF calls `POST /api/members/{member_id}/token` to sign a token. **Requires `Authorization: Bearer {API_SERVER_KEY}`** — BFF must have API_SERVER_KEY configured.

@@ -12,6 +12,14 @@ import authorizationUtil, {
 import { convertTheKeysOfTheObjectToSnake } from '@/utils/common-util';
 import { ResultCode, RetcodeMessage } from '@/utils/request';
 
+// P2 T007:Admin 服务层设计说明(非遗漏,有意分离)
+// ------------------------------------------------------------------
+// Admin 登录是运维管理后台专用,与用户认证(BFF /api/bff/auth/*)有意分离:
+//   - Admin 走 intellect-rag `/api/v1/admin/login`(管理员 token,存 localStorage)
+//   - 不走 BFF 统一认证,不涉及企业版 HttpOnly cookie 模式
+//   - 不需要多租户隔离(admin 管理所有租户的后端配置)
+//   - 401 拦截器跳转到 /admin(非 /login),与用户认证跳转目标分离
+// 这是设计决策,不要将其与 BFF auth 流程合并。
 const request = axios.create({
   timeout: 300000,
 });

@@ -6,12 +6,22 @@
  *
  * Constitution references (v1.2.0):
  * - Principle I (BFF-Mediated Frontend):前端所有认证经 BFF,不直连后端
- * - Principle V (Tenant Isolation):缺省 TenantID=0 不注入 X-Intellect-Team 头
+ * - Principle V (Tenant Isolation):多实例多租户(baseUrl 从 harnessStore 按 intellectBackendId 读取)
+ *   + 缺省 TenantID=0 不注入 X-Intellect-Team 头(实例内 Team/Project 组织隔离)
  * - Principle VIII:企业版认证用 member token(imt_*),BFF 管理操作用 API_SERVER_KEY
  *
  * 路由模式:按 BffTenant.authMode 分发
  * - authMode=intellect-rag:透传 intellect-rag /api/v1/auth/*(社区版,零回归)
  * - authMode=intellect-enterprise:调 intellect-team /api/members/* + /api/oauth/*(企业版)
+ *
+ * X-Tenant-Id 策略(统一):
+ * - 公开端点(login/register/channels/login/{channel}/oauth/callback/config):缺失时用 '0' 兜底
+ * - 需认证端点(me/logout):缺失即 400(登录后前端必然知道 tenantId)
+ *
+ * 安全约束:
+ * - OAuth state CSRF 防护:/auth/login/:channel 时从 302 Location 提取 state 存入短期 cookie(10min),
+ *   /auth/oauth/callback 时校验 query.state 与 cookie 一致后清除
+ * - 错误信息脱敏:5xx 错误不透传后端原始 text 给前端,只记 console.error 日志
  */
 
 // ---------------------------------------------------------------------------
@@ -88,8 +98,8 @@ export type AuthMode = 'intellect-rag' | 'intellect-enterprise';
  * | POST /auth/logout           | 透传 intellect-rag /auth/logout   | 调 intellect-team /api/members/logout,清 cookie        |
  * | GET  /auth/me               | 透传 intellect-rag /users/me      | 调 intellect-team /api/members/me(带 cookie token)    |
  * | GET  /auth/login/channels   | 透传 intellect-rag                | 调 intellect-team /api/oauth/providers,转换格式        |
- * | GET  /auth/login/{channel}  | 302 → intellect-rag /auth/login/{channel} | 调 intellect-team /api/oauth/authorize,302 → redirect_uri |
- * | GET  /auth/oauth/callback   | 透传 intellect-rag                | 调 intellect-team /api/oauth/callback + /api/members/{id}/token,Set-Cookie,302 → 首页 |
+ * | GET  /auth/login/{channel}  | 302 → intellect-rag /auth/login/{channel} | 调 intellect-team /api/oauth/login/{provider}?usage=login,透传 302 + 提取 state 存 cookie |
+ * | GET  /auth/oauth/callback   | 透传 intellect-rag                | 校验 state cookie → 调 intellect-team /api/oauth/callback + /api/members/{id}/token,Set-Cookie,302 → 首页 |
  *
  * Cookie 规则(企业版):
  * - 名称: imt_token

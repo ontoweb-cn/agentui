@@ -1,8 +1,14 @@
 import message from '@/components/ui/message';
-import { Authorization } from '@/constants/authorization';
+import {
+  Authorization,
+  AuthMode,
+  TenantId,
+  UserInfo,
+} from '@/constants/authorization';
 import userService, {
   getLoginChannels,
   loginWithChannel,
+  logoutWithHeaders,
 } from '@/services/user-service';
 import {
   default as authorizationUtil,
@@ -59,6 +65,7 @@ export const useLoginWithChannel = () => {
 
 export const useLogin = () => {
   const { saveSetting } = useSaveSetting(true);
+  const { authMode } = useAuthMode(); // T002:顶层调用,闭包传递给 mutationFn
   const {
     data,
     isPending: loading,
@@ -70,23 +77,43 @@ export const useLogin = () => {
       if (res?.code === 0) {
         saveSetting({ language: storage.getLanguage() });
         const { data } = res;
-        let authorization = response.headers.get(Authorization);
-        let token = data.access_token;
-        if (authorization && authorization.startsWith('Bearer ')) {
-          token = authorization.substring(7);
-        } else if (token && !token.startsWith('Bearer ')) {
-          authorization = `Bearer ${token}`;
+
+        if (authMode === 'intellect-enterprise') {
+          // T002 企业版 cookie 模式:token 在 HttpOnly cookie 中,前端 JS 不可读。
+          // localStorage 只存非敏感标记(authMode + tenantId + userInfo),用于前端状态判断。
+          // 真实有效性由后续 /auth/me 请求验证。
+          // 注意:BFF /auth/login 企业版响应不返回 email,此处不写 email 字段,
+          // 后续 useEnterpriseCookieProbe 通过 /auth/me 补全 email。
+          const userInfo = {
+            name: data.display_name,
+            memberId: data.member_id,
+            role: data.role,
+          };
+          authorizationUtil.setItems({
+            [AuthMode]: 'intellect-enterprise',
+            [TenantId]: '0', // 当前阶段固定缺省租户,P5 多租户阶段扩展
+            [UserInfo]: JSON.stringify(userInfo),
+          });
+        } else {
+          // 社区版模式:从 body/header 取 token 存 localStorage(现有逻辑)
+          let authorization = response.headers.get(Authorization);
+          let token = data.access_token;
+          if (authorization && authorization.startsWith('Bearer ')) {
+            token = authorization.substring(7);
+          } else if (token && !token.startsWith('Bearer ')) {
+            authorization = `Bearer ${token}`;
+          }
+          const userInfo = {
+            avatar: data.avatar,
+            name: data.nickname,
+            email: data.email,
+          };
+          authorizationUtil.setItems({
+            Authorization: authorization || '',
+            userInfo: JSON.stringify(userInfo),
+            Token: token || '',
+          });
         }
-        const userInfo = {
-          avatar: data.avatar,
-          name: data.nickname,
-          email: data.email,
-        };
-        authorizationUtil.setItems({
-          Authorization: authorization || '',
-          userInfo: JSON.stringify(userInfo),
-          Token: token || '',
-        });
       }
       return res.code;
     },
@@ -97,6 +124,7 @@ export const useLogin = () => {
 
 export const useRegister = () => {
   const { t } = useTranslation();
+  const { authMode } = useAuthMode(); // T005:企业版响应差异处理
 
   const {
     data,
@@ -113,7 +141,17 @@ export const useRegister = () => {
     }) => {
       const { data = {} } = await userService.register(params);
       if (data?.code === 0) {
-        message.success(t('message.registered'));
+        // T005:企业版响应含 registration_pending,区分提示
+        if (authMode === 'intellect-enterprise') {
+          const regData = data.data as { member_id?: string; registration_pending?: number };
+          if (regData?.registration_pending === 1) {
+            message.success(t('message.registerPending') || 'Registration successful, pending admin approval');
+          } else {
+            message.success(t('message.registered'));
+          }
+        } else {
+          message.success(t('message.registered'));
+        }
       } else if (
         data.message &&
         data.message.includes('registration is disabled')
@@ -138,13 +176,27 @@ export const useLogout = () => {
   } = useMutation({
     mutationKey: ['logout'],
     mutationFn: async () => {
-      const { data = {} } = await userService.logout();
-      if (data?.code === 0) {
-        message.success(t('message.logout'));
+      // T004:从 localStorage 读取 tenantId,防御性用 '0' 兜底(避免 BFF 400 阻塞登出)。
+      // 使用 logoutWithHeaders 直接调 request.post,因为 userService.logout 基于
+      // registerServer,无法透传自定义 headers(BFF /auth/logout 严格校验 X-Tenant-Id)。
+      // P2-A 修复:用户主动登出意图明确,即使 BFF 失败也清除前端标记(防御性),
+      // 避免登出失败后用户卡在已登录状态。
+      const tenantId = localStorage.getItem(TenantId) || '0';
+      let code: number | undefined;
+      try {
+        const { data = {} } = await logoutWithHeaders({
+          'X-Tenant-Id': tenantId,
+        });
+        code = data?.code;
+        if (code === 0) {
+          message.success(t('message.logout'));
+        }
+      } finally {
+        // 无论 BFF 响应如何,用户主动登出都应清除前端登录态
         authorizationUtil.removeAll();
         redirectToLogin();
       }
-      return data?.code;
+      return code;
     },
   });
 

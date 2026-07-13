@@ -55,8 +55,8 @@
 **Acceptance Scenarios**:
 
 1. **Given** 企业版模式且 intellect-team 已配置 OAuth provider, **When** 调用 GET /api/bff/auth/login/channels, **Then** 返回渠道列表[{channel, display_name, icon}]
-2. **Given** 用户点击 GitHub 登录, **When** 调用 GET /api/bff/auth/login/github, **Then** BFF 调用 intellect-team /api/oauth/authorize 获取 redirect_uri,302 重定向到 GitHub 授权页
-3. **Given** GitHub 授权后回调, **When** 浏览器访问 /api/bff/auth/oauth/callback?code=x&state=y, **Then** BFF 调用 intellect-team /api/oauth/callback 获取 member_id,再调 /api/members/{id}/token 签发 token,Set-Cookie 后 302 重定向到前端首页
+2. **Given** 用户点击 GitHub 登录, **When** 调用 GET /api/bff/auth/login/github, **Then** BFF 调用 intellect-team /api/oauth/login/github?usage=login 获取 302 重定向,从 Location 提取 state 存入短期 cookie(10min),302 重定向到 GitHub 授权页
+3. **Given** GitHub 授权后回调, **When** 浏览器访问 /api/bff/auth/oauth/callback?code=x&state=y, **Then** BFF 校验 query.state 与 cookie 中 state 一致后清除 cookie,调 intellect-team /api/oauth/callback 获取 member_id,再调 /api/members/{id}/token 签发 token,Set-Cookie 后 302 重定向到前端首页
 4. **Given** 社区版模式(authMode=intellect-rag), **When** 走 OAuth, **Then** BFF 透传到 intellect-rag /auth/login/{channel}(现状不变)
 
 ---
@@ -68,7 +68,7 @@
 - **intellect-team OAuth callback 不返回 token**:BFF 在 callback 后主动调 /api/members/{member_id}/token 签发(P4a intellect-team 侧新增端点)
 - **跨域 cookie**:BFF 与前端同源(经 Vite proxy),cookie 的 SameSite=Lax,Path=/
 - **login_name vs email 字段差异**:企业版用 login_name,社区版用 email;BFF /api/bff/auth/login 同时接受两个字段,企业版模式把 email 值映射为 login_name
-- **OAuth state 过期**:intellect-team /api/oauth/callback 返回 "Invalid or expired state",BFF 重定向到登录页带 error 参数
+- **OAuth state 过期/不匹配**:BFF /auth/oauth/callback 时 state cookie 已过期(10 分钟)或 query.state 与 cookie 不一致,返回 400 "Invalid OAuth state (possible CSRF attack)",前端重定向登录页带 error 参数
 - **intellect-team 未开启 members 功能**:`is_members_enabled(config)` 返回 false 时,登录/注册返回 503 "Member feature disabled"
 - **并发登录同一账号**:允许多个 token 并存(不互斥),登出仅撤销当前 token
 - **注册关闭**:intellect-team 配置关闭注册时,/api/bff/auth/register 返回 403
@@ -84,19 +84,22 @@
 - **FR-005**: System MUST 在 BFF 新增认证中间件,从 cookie 提取 member token,注入到 intellect-team 请求的 Authorization 头(企业版模式)
 - **FR-006**: System MUST 支持缺省 TenantID=0:当 BffTenant.intellectTenantId==="0" 时,tenantContextMiddleware 不注入 X-Intellect-Team 头(intellect-team 用全局默认)
 - **FR-007**: System MUST 在企业版模式下,将 GET /api/bff/auth/login/channels 转发到 intellect-team /api/oauth/providers,转换响应格式为前端兼容的 [{channel, display_name, icon}]
-- **FR-008**: System MUST 在企业版模式下,将 GET /api/bff/auth/login/{channel} 转发到 intellect-team /api/oauth/authorize,获取 redirect_uri 后 302 重定向
-- **FR-009**: System MUST 在企业版模式下,处理 GET /api/bff/auth/oauth/callback:调 intellect-team /api/oauth/callback 获取 member_id,再调 /api/members/{id}/token 签发 token,Set-Cookie 后 302 重定向前端首页
+- **FR-008**: System MUST 在企业版模式下,将 GET /api/bff/auth/login/{channel} 转发到 intellect-team /api/oauth/login/{provider}?usage=login,透传 302 重定向,并从 Location 中提取 state 参数存入短期 HttpOnly cookie(10 分钟有效期)用于 CSRF 防护
+- **FR-009**: System MUST 在企业版模式下,处理 GET /api/bff/auth/oauth/callback:先校验 query.state 与 cookie 中 state 一致(不一致返回 400),清除 state cookie,再调 intellect-team /api/oauth/callback 获取 member_id,再调 /api/members/{id}/token 签发 token,Set-Cookie 后 302 重定向前端首页
 - **FR-010**: System MUST 在社区版模式下(authMode=intellect-rag),认证路由透传到 intellect-rag /api/v1/auth/*(现状不变,零回归)
 - **FR-011**: System MUST 在前端 api.ts 将认证路径从 /api/bff/proxy/v1/auth/* 迁移到 /api/bff/auth/*(单点改动,useLogin/useRegister/useLogout 接口不变)
 - **FR-012**: System MUST 为 BFF 认证路由提供单元测试,Mock intellect-team/intellect-rag 响应,覆盖:企业版登录成功/失败、社区版登录(回归)、OAuth 渠道列表、OAuth callback 流程
 - **FR-013**: System MUST 在 intellect-team 侧文档(放 intellect-team 仓库 docs/agentui-integration/)描述需新增的 member 认证 + OAuth callback 补全端点规范
+- **FR-014**: System MUST 在企业版模式下,从 HarnessStore 按 tenant.intellectBackendId 读取对应 intellect-team 实例的 endpoint 和 adminToken,不直接读单一环境变量(多实例多租户隔离)
+- **FR-015**: System MUST 统一 X-Tenant-Id 默认值策略:公开端点(login/register/channels/login/{channel}/oauth/callback/config)缺失时用 '0' 兜底;需认证端点(me/logout)缺失即返回 400
+- **FR-016**: System MUST 对认证路由的 5xx 错误响应脱敏:不透传后端原始 text 给前端,只记 console.error 日志;响应体用通用错误消息
 
 ### Key Entities *(include if feature involves data)*
 
 - **BffTenant.authMode**:新增字段,值 'intellect-rag' | 'intellect-enterprise',决定认证路由目标
 - **AuthSession**:BFF 内存中的认证会话(cookie token ↔ member_id ↔ tenantId),不持久化
 - **MemberToken**:intellect-team 签发的 `imt_*` token,存 cookie,用于后续 intellect-team API 鉴权
-- **OAuthFlowState**:OAuth 授权流程中的 state 参数,防 CSRF,intellect-team 侧管理(P4a)
+- **OAuthFlowState**:OAuth 授权流程中的 state 参数,BFF 侧管理(/auth/login/:channel 时存入 cookie,/auth/oauth/callback 时校验,10 分钟有效期,防 CSRF)
 
 ## Success Criteria *(mandatory)*
 

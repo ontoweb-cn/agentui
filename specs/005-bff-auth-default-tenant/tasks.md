@@ -93,8 +93,8 @@
 ### Implementation for User Story 3
 
 - [x] T016 [US3] 实现 GET /api/bff/auth/login/channels:企业版模式调 intellect-team GET /api/oauth/providers,转换格式为 [{channel, display_name, icon}](id→channel, name→display_name, logo_svg→icon);社区版透传
-- [x] T017 [US3] 实现 GET /api/bff/auth/login/{channel}:企业版模式调 intellect-team POST /api/oauth/authorize {provider_id, usage:"login"},获取 {redirect_uri},302 重定向;社区版透传
-- [x] T018 [US3] 实现 GET /api/bff/auth/oauth/callback:企业版模式调 intellect-team GET /api/oauth/callback?code=&state=,获取 {member_id},再调 POST /api/members/{member_id}/token(Authorization: API_SERVER_KEY)签发 token,Set-Cookie,302 重定向前端首页;社区版透传
+- [x] T017 [US3] 实现 GET /api/bff/auth/login/{channel}:企业版模式调 intellect-team GET /api/oauth/login/{provider}?usage=login,透传 302 重定向,从 Location 提取 state 存入短期 cookie(10min,CSRF 防护);社区版透传
+- [x] T018 [US3] 实现 GET /api/bff/auth/oauth/callback:企业版模式先校验 query.state 与 cookie state 一致(不一致 400),清除 state cookie,再调 intellect-team GET /api/oauth/callback?code=&state=,获取 {member_id},再调 POST /api/members/{member_id}/token(Authorization: API_SERVER_KEY)签发 token,Set-Cookie,302 重定向前端首页;社区版透传
 
 **Checkpoint**: US3 完成,OAuth 登录可用
 

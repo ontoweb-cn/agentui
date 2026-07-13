@@ -18,11 +18,19 @@
  */
 
 import { Hono } from 'hono';
-import { setCookie, deleteCookie } from 'hono/cookie';
-import type { TenantStore } from '../types/stores';
+import { setCookie, deleteCookie, getCookie } from 'hono/cookie';
+import type { TenantStore, HarnessStore } from '../types/stores';
 import type { AuthSession } from '../types/auth';
 import { AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE } from '../types/auth';
 import { getAuthSession, AUTH_SESSION_KEY } from '../middleware/auth-session';
+
+/**
+ * OAuth state cookie 名(用于 CSRF 防护,在 /auth/login/:channel 时写入,
+ * /auth/oauth/callback 时校验)。
+ */
+const OAUTH_STATE_COOKIE_NAME = 'oauth_state';
+/** OAuth state cookie 有效期(10 分钟,覆盖 OAuth 跳转时间) */
+const OAUTH_STATE_COOKIE_MAX_AGE = 600;
 
 // ---------------------------------------------------------------------------
 // intellect-team API 响应类型(企业版模式用)
@@ -70,6 +78,7 @@ interface RagUserInfoResponse {
 
 interface AuthVariables {
   tenantStore: TenantStore;
+  harnessStore: HarnessStore;
   [AUTH_SESSION_KEY]?: AuthSession;
 }
 
@@ -98,18 +107,36 @@ function getAuthMode(tenantStore: TenantStore | undefined, tenantId: string): 'i
 
 /**
  * 获取企业版后端 baseUrl + apiServerKey。
- * BFF 内部调用 intellect-team 用 API_SERVER_KEY(Principle VIII 管理操作)。
+ * 从 HarnessStore 按 tenant.intellectBackendId 读取对应 intellect-team 实例的 endpoint。
+ * 多租户隔离:不同 BffTenant 绑定不同 intellectBackendId,即不同 intellect-team 实例。
+ * Constitution Principle V (Tenant Isolation via multi-instance)。
+ *
+ * @returns null 表示 tenant 不存在或 backend 未配置(调用方应返回 502)
  */
-function getEnterpriseBackend(tenantStore: TenantStore | undefined, tenantId: string) {
-  if (!tenantStore) return null;
+function getEnterpriseBackend(
+  tenantStore: TenantStore | undefined,
+  harnessStore: HarnessStore | undefined,
+  tenantId: string,
+): { baseUrl: string; apiServerKey: string } | null {
+  if (!tenantStore || !harnessStore) return null;
   const tenant = tenantStore.getTenant(tenantId);
   if (!tenant) return null;
-  // intellectBackendId 在 T002 已校验为 type='intellect-enterprise'
-  // baseUrl + apiServerKey 由 harnessStore 提供,但 auth 路由为解耦,直接从 env 读
-  // 实际由 index.ts 注入 harnessStore,此处简化:从 backend config 读取
+  const backend = harnessStore.get(tenant.intellectBackendId);
+  if (!backend) return null;
   return {
-    intellectTenantId: tenant.intellectTenantId,
+    baseUrl: backend.endpoint,
+    apiServerKey: backend.adminToken,
   };
+}
+
+/**
+ * 获取社区版后端 baseUrl。
+ * intellect-rag 当前为单实例,从环境变量读取(保留向后兼容)。
+ */
+function getRagBaseUrl(): string {
+  const ragHost = process.env.INTELLECT_RAG_HOST || 'localhost';
+  const ragPort = process.env.PYTHON_API_PORT || '9380';
+  return `http://${ragHost}:${ragPort}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +144,7 @@ function getEnterpriseBackend(tenantStore: TenantStore | undefined, tenantId: st
 // ---------------------------------------------------------------------------
 
 authRoutes.get('/auth/config', (c) => {
+  // 公开端点:缺省 TenantID="0"(向后兼容,未传 header 时返回 intellect-rag 默认模式)
   const tenantId = c.req.header('X-Tenant-Id') || '0';
   const tenantStore = c.get('tenantStore');
   const authMode = getAuthMode(tenantStore, tenantId);
@@ -128,7 +156,8 @@ authRoutes.get('/auth/config', (c) => {
 // ---------------------------------------------------------------------------
 
 authRoutes.post('/auth/login', async (c) => {
-  const tenantId = c.req.header('X-Tenant-Id') || 'default';
+  // 公开端点:缺省 TenantID="0"(向后兼容)
+  const tenantId = c.req.header('X-Tenant-Id') || '0';
 
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
@@ -151,10 +180,11 @@ authRoutes.post('/auth/login', async (c) => {
       return c.json(fail(400, 'login_name (or email) and password are required'), 400);
     }
 
-    const backend = getEnterpriseBackend(tenantStore, tenantId);
-    const baseUrl = process.env.INTELLECT_ENTERPRISE_BASE_URL || 'http://localhost:9381';
-    // API_SERVER_KEY 用于 BFF 内部调用 intellect-team(此处 login 是公开端点,实际无需鉴权,但保留 header 一致性)
-    const apiServerKey = process.env.HARNESS_INTELLECT_ENTERPRISE_API_SERVER_KEY || '';
+    const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
+    if (!backend) {
+      return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
+    }
+    const { baseUrl } = backend;
 
     let resp: Response;
     try {
@@ -164,10 +194,8 @@ authRoutes.post('/auth/login', async (c) => {
         body: JSON.stringify({ login_name: resolvedLoginName, password }),
       });
     } catch (err) {
-      return c.json(
-        fail(502, `intellect-team unreachable: ${(err as Error).message}`),
-        502,
-      );
+      console.error('[auth] intellect-team login fetch error:', (err as Error).message);
+      return c.json(fail(502, 'intellect-team unreachable'), 502);
     }
 
     if (resp.status === 401) {
@@ -175,8 +203,9 @@ authRoutes.post('/auth/login', async (c) => {
     }
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
+      console.error(`[auth] intellect-team login failed: ${resp.status}`, text);
       return c.json(
-        fail(resp.status, `intellect-team login failed: ${text}`),
+        fail(resp.status, 'intellect-team login failed'),
         resp.status as 400 | 403 | 423 | 500 | 502 | 503,
       );
     }
@@ -203,9 +232,7 @@ authRoutes.post('/auth/login', async (c) => {
   }
 
   // 社区版:透传到 intellect-rag /api/v1/auth/login
-  const ragHost = process.env.INTELLECT_RAG_HOST || 'localhost';
-  const ragPort = process.env.PYTHON_API_PORT || '9380';
-  const ragBaseUrl = `http://${ragHost}:${ragPort}`;
+  const ragBaseUrl = getRagBaseUrl();
 
   let resp: Response;
   try {
@@ -215,16 +242,15 @@ authRoutes.post('/auth/login', async (c) => {
       body: JSON.stringify(body),
     });
   } catch (err) {
-    return c.json(
-      fail(502, `intellect-rag unreachable: ${(err as Error).message}`),
-      502,
-    );
+    console.error('[auth] intellect-rag login fetch error:', (err as Error).message);
+    return c.json(fail(502, 'intellect-rag unreachable'), 502);
   }
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
+    console.error(`[auth] intellect-rag login failed: ${resp.status}`, text);
     return c.json(
-      fail(resp.status, `intellect-rag login failed: ${text}`),
+      fail(resp.status, 'intellect-rag login failed'),
       resp.status as 400 | 401 | 500 | 502,
     );
   }
@@ -247,15 +273,17 @@ authRoutes.post('/auth/login', async (c) => {
 // ---------------------------------------------------------------------------
 
 authRoutes.get('/auth/me', async (c) => {
-  const tenantId = c.req.header('X-Tenant-Id') || 'default';
+  // 需认证端点:严格校验 X-Tenant-Id(登录后前端必然知道 tenantId)
+  const tenantId = c.req.header('X-Tenant-Id');
+  if (!tenantId) {
+    return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);
+  }
 
   const tenantStore = c.get('tenantStore');
   const authMode = getAuthMode(tenantStore, tenantId);
 
   if (authMode === 'intellect-rag') {
-    const ragHost = process.env.INTELLECT_RAG_HOST || 'localhost';
-    const ragPort = process.env.PYTHON_API_PORT || '9380';
-    const ragBaseUrl = `http://${ragHost}:${ragPort}`;
+    const ragBaseUrl = getRagBaseUrl();
     const authHeader = c.req.header('Authorization');
     if (!authHeader) {
       return c.json(fail(401, 'Unauthorized: missing Authorization header'), 401);
@@ -270,10 +298,8 @@ authRoutes.get('/auth/me', async (c) => {
         },
       });
     } catch (err) {
-      return c.json(
-        fail(502, `intellect-rag unreachable: ${(err as Error).message}`),
-        502,
-      );
+      console.error('[auth] intellect-rag /me fetch error:', (err as Error).message);
+      return c.json(fail(502, 'intellect-rag unreachable'), 502);
     }
 
     if (resp.status === 401) {
@@ -281,7 +307,8 @@ authRoutes.get('/auth/me', async (c) => {
     }
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
-      return c.json(fail(resp.status, `intellect-rag /users/me failed: ${text}`), 502);
+      console.error(`[auth] intellect-rag /me failed: ${resp.status}`, text);
+      return c.json(fail(502, 'intellect-rag /users/me failed'), 502);
     }
 
     const data = (await resp.json()) as RagUserInfoResponse;
@@ -294,7 +321,11 @@ authRoutes.get('/auth/me', async (c) => {
   }
 
   // 企业版模式:调 intellect-team GET /api/members/me(用 member token 鉴权)
-  const baseUrl = process.env.INTELLECT_ENTERPRISE_BASE_URL || 'http://localhost:9381';
+  const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
+  if (!backend) {
+    return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
+  }
+  const { baseUrl } = backend;
 
   let resp: Response;
   try {
@@ -306,10 +337,8 @@ authRoutes.get('/auth/me', async (c) => {
       },
     });
   } catch (err) {
-    return c.json(
-      fail(502, `intellect-team unreachable: ${(err as Error).message}`),
-      502,
-    );
+    console.error('[auth] intellect-team /me fetch error:', (err as Error).message);
+    return c.json(fail(502, 'intellect-team unreachable'), 502);
   }
 
   if (resp.status === 401) {
@@ -317,7 +346,8 @@ authRoutes.get('/auth/me', async (c) => {
   }
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
-    return c.json(fail(resp.status, `intellect-team /me failed: ${text}`), 502);
+    console.error(`[auth] intellect-team /me failed: ${resp.status}`, text);
+    return c.json(fail(502, 'intellect-team /me failed'), 502);
   }
 
   const data = (await resp.json()) as MemberInfoResponse;
@@ -336,10 +366,8 @@ authRoutes.get('/auth/me', async (c) => {
 // ---------------------------------------------------------------------------
 
 authRoutes.post('/auth/register', async (c) => {
-  const tenantId = c.req.header('X-Tenant-Id');
-  if (!tenantId) {
-    return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);
-  }
+  // 公开端点:缺省 TenantID="0"(向后兼容)
+  const tenantId = c.req.header('X-Tenant-Id') || '0';
 
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
@@ -368,7 +396,11 @@ authRoutes.post('/auth/register', async (c) => {
       );
     }
 
-    const baseUrl = process.env.INTELLECT_ENTERPRISE_BASE_URL || 'http://localhost:9381';
+    const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
+    if (!backend) {
+      return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
+    }
+    const { baseUrl } = backend;
 
     let resp: Response;
     try {
@@ -383,24 +415,21 @@ authRoutes.post('/auth/register', async (c) => {
         }),
       });
     } catch (err) {
-      return c.json(
-        fail(502, `intellect-team unreachable: ${(err as Error).message}`),
-        502,
-      );
+      console.error('[auth] intellect-team register fetch error:', (err as Error).message);
+      return c.json(fail(502, 'intellect-team unreachable'), 502);
     }
 
     if (resp.status === 409) {
-      const text = await resp.text().catch(() => '');
-      return c.json(fail(409, `Registration conflict: ${text}`), 409);
+      return c.json(fail(409, 'Registration conflict: login_name already exists'), 409);
     }
     if (resp.status === 403) {
-      const text = await resp.text().catch(() => '');
-      return c.json(fail(403, `Registration disabled: ${text}`), 403);
+      return c.json(fail(403, 'Registration disabled'), 403);
     }
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
+      console.error(`[auth] intellect-team register failed: ${resp.status}`, text);
       return c.json(
-        fail(resp.status, `intellect-team register failed: ${text}`),
+        fail(resp.status, 'intellect-team register failed'),
         resp.status as 400 | 500 | 502 | 503,
       );
     }
@@ -410,9 +439,7 @@ authRoutes.post('/auth/register', async (c) => {
   }
 
   // 社区版:透传到 intellect-rag /api/v1/users
-  const ragHost = process.env.INTELLECT_RAG_HOST || 'localhost';
-  const ragPort = process.env.PYTHON_API_PORT || '9380';
-  const ragBaseUrl = `http://${ragHost}:${ragPort}`;
+  const ragBaseUrl = getRagBaseUrl();
 
   let resp: Response;
   try {
@@ -422,16 +449,15 @@ authRoutes.post('/auth/register', async (c) => {
       body: JSON.stringify(body),
     });
   } catch (err) {
-    return c.json(
-      fail(502, `intellect-rag unreachable: ${(err as Error).message}`),
-      502,
-    );
+    console.error('[auth] intellect-rag register fetch error:', (err as Error).message);
+    return c.json(fail(502, 'intellect-rag unreachable'), 502);
   }
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
+    console.error(`[auth] intellect-rag register failed: ${resp.status}`, text);
     return c.json(
-      fail(resp.status, `intellect-rag register failed: ${text}`),
+      fail(resp.status, 'intellect-rag register failed'),
       resp.status as 400 | 409 | 500 | 502,
     );
   }
@@ -445,6 +471,7 @@ authRoutes.post('/auth/register', async (c) => {
 // ---------------------------------------------------------------------------
 
 authRoutes.post('/auth/logout', async (c) => {
+  // 需认证端点:严格校验 X-Tenant-Id(登录后前端必然知道 tenantId)
   const tenantId = c.req.header('X-Tenant-Id');
   if (!tenantId) {
     return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);
@@ -461,9 +488,7 @@ authRoutes.post('/auth/logout', async (c) => {
 
   // 社区版模式:透传到 intellect-rag /api/v1/auth/logout
   if (session.authMode === 'intellect-rag') {
-    const ragHost = process.env.INTELLECT_RAG_HOST || 'localhost';
-    const ragPort = process.env.PYTHON_API_PORT || '9380';
-    const ragBaseUrl = `http://${ragHost}:${ragPort}`;
+    const ragBaseUrl = getRagBaseUrl();
     const authHeader = c.req.header('Authorization') || `Bearer ${session.token}`;
 
     let resp: Response;
@@ -475,10 +500,8 @@ authRoutes.post('/auth/logout', async (c) => {
     } catch (err) {
       // 网络错误仍清 cookie(本地登出)
       deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
-      return c.json(
-        fail(502, `intellect-rag unreachable: ${(err as Error).message}`),
-        502,
-      );
+      console.error('[auth] intellect-rag logout fetch error:', (err as Error).message);
+      return c.json(fail(502, 'intellect-rag unreachable'), 502);
     }
 
     // 无论上游返回什么,都清 cookie(本地登出)
@@ -492,7 +515,13 @@ authRoutes.post('/auth/logout', async (c) => {
   }
 
   // 企业版模式:调 intellect-team POST /api/members/logout(用 member token 鉴权)
-  const baseUrl = process.env.INTELLECT_ENTERPRISE_BASE_URL || 'http://localhost:9381';
+  const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
+  if (!backend) {
+    // backend 未配置也清 cookie(本地登出)
+    deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
+    return c.json(ok({ logged_out: true }));
+  }
+  const { baseUrl } = backend;
 
   let resp: Response;
   try {
@@ -506,10 +535,8 @@ authRoutes.post('/auth/logout', async (c) => {
   } catch (err) {
     // 网络错误仍清 cookie(本地登出)
     deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
-    return c.json(
-      fail(502, `intellect-team unreachable: ${(err as Error).message}`),
-      502,
-    );
+    console.error('[auth] intellect-team logout fetch error:', (err as Error).message);
+    return c.json(fail(502, 'intellect-team unreachable'), 502);
   }
 
   // 无论上游返回什么,都清 cookie(本地登出)
@@ -545,13 +572,18 @@ interface OAuthProviderConverted {
 }
 
 authRoutes.get('/auth/login/channels', async (c) => {
-  const tenantId = c.req.header('X-Tenant-Id') || 'default';
+  // 公开端点:缺省 TenantID="0"(向后兼容)
+  const tenantId = c.req.header('X-Tenant-Id') || '0';
   const tenantStore = c.get('tenantStore');
   const authMode = getAuthMode(tenantStore, tenantId);
 
   if (authMode === 'intellect-enterprise') {
     // 企业版:调 intellect-team GET /api/oauth/providers,转换格式
-    const baseUrl = process.env.INTELLECT_ENTERPRISE_BASE_URL || 'http://localhost:9381';
+    const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
+    if (!backend) {
+      return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
+    }
+    const { baseUrl } = backend;
 
     let resp: Response;
     try {
@@ -559,18 +591,14 @@ authRoutes.get('/auth/login/channels', async (c) => {
         method: 'GET',
       });
     } catch (err) {
-      return c.json(
-        fail(502, `intellect-team unreachable: ${(err as Error).message}`),
-        502,
-      );
+      console.error('[auth] intellect-team /oauth/providers fetch error:', (err as Error).message);
+      return c.json(fail(502, 'intellect-team unreachable'), 502);
     }
 
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
-      return c.json(
-        fail(resp.status, `intellect-team /oauth/providers failed: ${text}`),
-        502,
-      );
+      console.error(`[auth] intellect-team /oauth/providers failed: ${resp.status}`, text);
+      return c.json(fail(502, 'intellect-team /oauth/providers failed'), 502);
     }
 
     const rawProviders = (await resp.json()) as OAuthProviderRaw[];
@@ -591,9 +619,7 @@ authRoutes.get('/auth/login/channels', async (c) => {
   }
 
   // 社区版:透传到 intellect-rag /api/v1/auth/login/channels
-  const ragHost = process.env.INTELLECT_RAG_HOST || 'localhost';
-  const ragPort = process.env.PYTHON_API_PORT || '9380';
-  const ragBaseUrl = `http://${ragHost}:${ragPort}`;
+  const ragBaseUrl = getRagBaseUrl();
 
   let resp: Response;
   try {
@@ -601,18 +627,14 @@ authRoutes.get('/auth/login/channels', async (c) => {
       method: 'GET',
     });
   } catch (err) {
-    return c.json(
-      fail(502, `intellect-rag unreachable: ${(err as Error).message}`),
-      502,
-    );
+    console.error('[auth] intellect-rag /login/channels fetch error:', (err as Error).message);
+    return c.json(fail(502, 'intellect-rag unreachable'), 502);
   }
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
-    return c.json(
-      fail(resp.status, `intellect-rag /login/channels failed: ${text}`),
-      502,
-    );
+    console.error(`[auth] intellect-rag /login/channels failed: ${resp.status}`, text);
+    return c.json(fail(502, 'intellect-rag /login/channels failed'), 502);
   }
 
   const data = await resp.json().catch(() => []);
@@ -624,10 +646,8 @@ authRoutes.get('/auth/login/channels', async (c) => {
 // ---------------------------------------------------------------------------
 
 authRoutes.get('/auth/login/:channel', async (c) => {
-  const tenantId = c.req.header('X-Tenant-Id');
-  if (!tenantId) {
-    return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);
-  }
+  // 公开端点:缺省 TenantID="0"(向后兼容)
+  const tenantId = c.req.header('X-Tenant-Id') || '0';
 
   const channel = c.req.param('channel');
   if (!channel) {
@@ -641,7 +661,11 @@ authRoutes.get('/auth/login/:channel', async (c) => {
     // 企业版:调 intellect-team GET /api/oauth/login/{provider}(P4a-4,直接 302 重定向)
     // 比 POST /api/oauth/authorize 更简单:intellect-team 直接返回 302 + Location,
     // BFF 透传 302 即可,无需先 POST 拿 redirect_uri 再 302。
-    const baseUrl = process.env.INTELLECT_ENTERPRISE_BASE_URL || 'http://localhost:9381';
+    const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
+    if (!backend) {
+      return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
+    }
+    const { baseUrl } = backend;
     const targetUrl = `${baseUrl}/api/oauth/login/${encodeURIComponent(channel)}?usage=login`;
 
     let resp: Response;
@@ -651,10 +675,8 @@ authRoutes.get('/auth/login/:channel', async (c) => {
         redirect: 'manual', // 不自动跟随,获取 302 Location 透传
       });
     } catch (err) {
-      return c.json(
-        fail(502, `intellect-team unreachable: ${(err as Error).message}`),
-        502,
-      );
+      console.error('[auth] intellect-team /oauth/login fetch error:', (err as Error).message);
+      return c.json(fail(502, 'intellect-team unreachable'), 502);
     }
 
     // intellect-team 返回 302 + Location(BFF 透传)
@@ -663,26 +685,39 @@ authRoutes.get('/auth/login/:channel', async (c) => {
       if (!location) {
         return c.json(fail(502, 'intellect-team login response missing Location header'), 502);
       }
+
+      // CSRF 防护:从 Location 中提取 state,存入短期 cookie,callback 时校验
+      const stateMatch = location.match(/[?&]state=([^&]+)/);
+      const oauthState = stateMatch?.[1];
+      if (oauthState) {
+        setCookie(c, OAUTH_STATE_COOKIE_NAME, oauthState, {
+          httpOnly: true,
+          sameSite: 'Lax',
+          path: '/',
+          maxAge: OAUTH_STATE_COOKIE_MAX_AGE,
+          secure: process.env.NODE_ENV === 'production',
+        });
+      }
+
       return c.redirect(location, 302);
     }
 
     // 非 302 响应(intellect-team 返回错误 JSON)
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
+      console.error(`[auth] intellect-team /oauth/login/${channel} failed: ${resp.status}`, text);
       return c.json(
-        fail(resp.status, `intellect-team /oauth/login/${channel} failed: ${text}`),
+        fail(resp.status, `intellect-team /oauth/login/${channel} failed`),
         resp.status as 400 | 404 | 500 | 502,
       );
     }
 
     // 200 但非 302(异常,理论上不应发生)
-    return c.json(fail(502, `intellect-team login returned unexpected status ${resp.status}`), 502);
+    return c.json(fail(502, 'intellect-team login returned unexpected status'), 502);
   }
 
   // 社区版:302 重定向到 intellect-rag /api/v1/auth/login/{channel}
-  const ragHost = process.env.INTELLECT_RAG_HOST || 'localhost';
-  const ragPort = process.env.PYTHON_API_PORT || '9380';
-  const ragBaseUrl = `http://${ragHost}:${ragPort}`;
+  const ragBaseUrl = getRagBaseUrl();
   // 社区版直接 302 透传(前端跟随重定向到 intellect-rag 的 OAuth 流程)
   return c.redirect(`${ragBaseUrl}/api/v1/auth/login/${channel}`, 302);
 });
@@ -692,10 +727,8 @@ authRoutes.get('/auth/login/:channel', async (c) => {
 // ---------------------------------------------------------------------------
 
 authRoutes.get('/auth/oauth/callback', async (c) => {
-  const tenantId = c.req.header('X-Tenant-Id');
-  if (!tenantId) {
-    return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);
-  }
+  // 公开端点:缺省 TenantID="0"(向后兼容)
+  const tenantId = c.req.header('X-Tenant-Id') || '0';
 
   const code = c.req.query('code');
   const state = c.req.query('state');
@@ -703,13 +736,26 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
     return c.json(fail(400, 'Missing code or state query parameter'), 400);
   }
 
+  // CSRF 防护:校验 state 与 cookie 中保存的一致(仅企业版在 /auth/login/:channel 时写入)
+  const savedState = getCookie(c, OAUTH_STATE_COOKIE_NAME);
+  if (savedState && state !== savedState) {
+    return c.json(fail(400, 'Invalid OAuth state (possible CSRF attack)'), 400);
+  }
+  // 校验后清除 state cookie(一次性使用)
+  if (savedState) {
+    deleteCookie(c, OAUTH_STATE_COOKIE_NAME, { path: '/' });
+  }
+
   const tenantStore = c.get('tenantStore');
   const authMode = getAuthMode(tenantStore, tenantId);
 
   if (authMode === 'intellect-enterprise') {
     // 企业版:调 intellect-team callback + token 签发
-    const baseUrl = process.env.INTELLECT_ENTERPRISE_BASE_URL || 'http://localhost:9381';
-    const apiServerKey = process.env.HARNESS_INTELLECT_ENTERPRISE_API_SERVER_KEY || '';
+    const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
+    if (!backend) {
+      return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
+    }
+    const { baseUrl, apiServerKey } = backend;
     const frontendHome = process.env.BFF_OAUTH_FRONTEND_HOME || '/';
 
     // Step 1: 调 intellect-team GET /api/oauth/callback?code=&state=
@@ -720,16 +766,15 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
         { method: 'GET' },
       );
     } catch (err) {
-      return c.json(
-        fail(502, `intellect-team callback unreachable: ${(err as Error).message}`),
-        502,
-      );
+      console.error('[auth] intellect-team callback fetch error:', (err as Error).message);
+      return c.json(fail(502, 'intellect-team unreachable'), 502);
     }
 
     if (!cbResp.ok) {
       const text = await cbResp.text().catch(() => '');
+      console.error(`[auth] intellect-team callback failed: ${cbResp.status}`, text);
       return c.json(
-        fail(cbResp.status, `intellect-team callback failed: ${text}`),
+        fail(cbResp.status, 'intellect-team callback failed'),
         cbResp.status as 400 | 401 | 500 | 502,
       );
     }
@@ -760,23 +805,19 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
         }),
       });
     } catch (err) {
-      return c.json(
-        fail(502, `intellect-team token issue unreachable: ${(err as Error).message}`),
-        502,
-      );
+      console.error('[auth] intellect-team token issue fetch error:', (err as Error).message);
+      return c.json(fail(502, 'intellect-team unreachable'), 502);
     }
 
     if (tokenResp.status === 403) {
-      const text = await tokenResp.text().catch(() => '');
-      return c.json(
-        fail(403, `Token issue forbidden (API_SERVER_KEY invalid?): ${text}`),
-        403,
-      );
+      console.error('[auth] intellect-team token issue 403 (API_SERVER_KEY invalid?)');
+      return c.json(fail(403, 'Token issue forbidden'), 403);
     }
     if (!tokenResp.ok) {
       const text = await tokenResp.text().catch(() => '');
+      console.error(`[auth] intellect-team token issue failed: ${tokenResp.status}`, text);
       return c.json(
-        fail(tokenResp.status, `intellect-team token issue failed: ${text}`),
+        fail(tokenResp.status, 'intellect-team token issue failed'),
         tokenResp.status as 400 | 500 | 502 | 503,
       );
     }
@@ -799,9 +840,7 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
   }
 
   // 社区版:透传到 intellect-rag /api/v1/auth/oauth/callback
-  const ragHost = process.env.INTELLECT_RAG_HOST || 'localhost';
-  const ragPort = process.env.PYTHON_API_PORT || '9380';
-  const ragBaseUrl = `http://${ragHost}:${ragPort}`;
+  const ragBaseUrl = getRagBaseUrl();
 
   let resp: Response;
   try {
@@ -810,18 +849,14 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
       { method: 'GET' },
     );
   } catch (err) {
-    return c.json(
-      fail(502, `intellect-rag unreachable: ${(err as Error).message}`),
-      502,
-    );
+    console.error('[auth] intellect-rag oauth callback fetch error:', (err as Error).message);
+    return c.json(fail(502, 'intellect-rag unreachable'), 502);
   }
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
-    return c.json(
-      fail(resp.status, `intellect-rag oauth callback failed: ${text}`),
-      502,
-    );
+    console.error(`[auth] intellect-rag oauth callback failed: ${resp.status}`, text);
+    return c.json(fail(502, 'intellect-rag oauth callback failed'), 502);
   }
 
   // 社区版透传上游响应(含可能的 access_token,前端自行处理)

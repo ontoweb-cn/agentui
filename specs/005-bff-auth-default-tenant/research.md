@@ -51,11 +51,13 @@
    返回 [{channel:"github", display_name:"GitHub", icon:"gh"}]
 
 2. 前端 GET /api/bff/auth/login/github
-   BFF → intellect-team POST /api/oauth/authorize {provider_id:"github", usage:"login"}
-   返回 {state, redirect_uri}
-   BFF 302 → redirect_uri
+   BFF → intellect-team GET /api/oauth/login/github?usage=login
+   返回 302 + Location(含 state 参数)
+   BFF 从 Location 提取 state,存入短期 HttpOnly cookie(10min,CSRF 防护)
+   BFF 302 → Location(透传给浏览器)
 
 3. GitHub 回调 → 前端 GET /api/bff/auth/oauth/callback?code=x&state=y
+   BFF 校验 query.state 与 cookie state 一致(不一致 400),清除 state cookie
    BFF → intellect-team GET /api/oauth/callback?code=x&state=y
    返回 {member_id, claims}
    BFF → intellect-team POST /api/members/{member_id}/token (Authorization: API_SERVER_KEY)

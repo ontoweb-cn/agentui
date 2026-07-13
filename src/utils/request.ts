@@ -82,6 +82,9 @@ const request: RequestMethod = extend({
   errorHandler,
   timeout: 300000,
   getResponse: true,
+  // P2 Cookie 模式适配:企业版认证 token 存 HttpOnly cookie,需浏览器自动携带。
+  // 同源策略限制下,跨域请求不会携带 cookie,无安全风险。社区版无 cookie 时行为不变。
+  credentials: 'include',
 });
 
 // avoid duplicate 401 redirects

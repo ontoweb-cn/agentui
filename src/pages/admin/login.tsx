@@ -42,6 +42,11 @@ function AdminLogin() {
   const navigate = useNavigate();
   const [, setCurrentUserInfo] = useContext(CurrentUserInfoContext);
   const { t } = useTranslation('translation', { keyPrefix: 'login' });
+  // P2 T007:Admin 登录与用户认证(BFF /api/bff/auth/*)有意分离。
+  // Admin 走 intellect-rag /api/v1/admin/login,token 存 localStorage,
+  // 不涉及企业版 HttpOnly cookie 模式,不需要多租户隔离。
+  // useAuth 在此仅用于检测是否已登录(跳转 admin services),不触发企业版 cookie 探测
+  // (useEnterpriseCookieProbe 内部跳过 /admin 路径)。
   const { isLogin } = useAuth();
 
   const loginMutation = useMutation({

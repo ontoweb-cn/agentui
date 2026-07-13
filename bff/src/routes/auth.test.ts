@@ -6,7 +6,8 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { Hono } from 'hono';
 import { authRoutes } from './auth';
-import type { TenantStore } from '../types/stores';
+import type { TenantStore, HarnessStore } from '../types/stores';
+import type { HarnessBackend } from '../types/harness';
 import type { BffTenant } from '../types/tenant';
 import type { AuthSession } from '../types/auth';
 import { AUTH_SESSION_KEY } from '../middleware/auth-session';
@@ -35,6 +36,23 @@ const ragTenant: BffTenant = {
   updatedAt: '2026-06-26T00:00:00Z',
 };
 
+const enterpriseBackend: HarnessBackend = {
+  id: 'intellect-enterprise-default',
+  name: 'Intellect Enterprise Default',
+  type: 'intellect-enterprise',
+  endpoint: 'http://mock-enterprise:9381',
+  adminTokenEnvVar: 'HARNESS_INTELLECT_ENTERPRISE_API_SERVER_KEY',
+  adminToken: 'test-api-server-key',
+  capabilities: {
+    canvas: false,
+    knowledgeBase: false,
+    memory: true,
+    mcp: true,
+    multiTenant: true,
+    modelManagement: false,
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Mock factories
 // ---------------------------------------------------------------------------
@@ -55,18 +73,30 @@ function createMockTenantStore(tenants: BffTenant[]): TenantStore {
   };
 }
 
+function createMockHarnessStore(backends: HarnessBackend[]): HarnessStore {
+  return {
+    load: vi.fn().mockResolvedValue(undefined),
+    get: vi.fn((id: string) => backends.find((b) => b.id === id)),
+    list: vi.fn(() => backends),
+    saveConfig: vi.fn(),
+  };
+}
+
 interface TestVariables {
   tenantStore: TenantStore;
+  harnessStore: HarnessStore;
   [AUTH_SESSION_KEY]?: AuthSession;
 }
 
 function createApp(
   tenantStore: TenantStore,
   session?: AuthSession,
+  harnessStore?: HarnessStore,
 ): Hono<{ Variables: TestVariables }> {
   const app = new Hono<{ Variables: TestVariables }>();
   app.use('*', async (c, next) => {
     c.set('tenantStore', tenantStore);
+    c.set('harnessStore', harnessStore ?? createMockHarnessStore([enterpriseBackend]));
     if (session) {
       c.set(AUTH_SESSION_KEY, session);
     }
@@ -290,19 +320,31 @@ describe('auth 路由 (P4b US1)', () => {
     expect(body.message).toContain('login_name');
   });
 
-  it('US1:无 X-Tenant-Id header → 400', async () => {
+  it('US1:无 X-Tenant-Id header → 缺省租户 "0" 走社区版分支(向后兼容)', async () => {
+    // 公开端点缺省 TenantID="0",mock store 中无 id="0" 的 tenant → authMode=intellect-rag
     const tenantStore = createMockTenantStore([enterpriseTenant]);
     const app = createApp(tenantStore);
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ access_token: 'rag-token', email: 'a@b.com' }),
+        { status: 200 },
+      ),
+    );
 
     const resp = await app.request('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ login_name: 'alice', password: 'secret' }),
+      body: JSON.stringify({ email: 'alice@example.com', password: 'secret' }),
     });
 
-    expect(resp.status).toBe(400);
-    const body = await resp.json();
-    expect(body.message).toContain('X-Tenant-Id');
+    // 缺省租户走社区版分支,透传到 intellect-rag
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://mock-rag:9380/api/v1/auth/login',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(resp.status).toBe(200);
   });
 
   // -------------------------------------------------------------------------
@@ -470,12 +512,7 @@ describe('auth 路由 (P4b US1)', () => {
 
   it('US1:社区版 /auth/me 透传到 intellect-rag /api/v1/users/me(带 Authorization)', async () => {
     const tenantStore = createMockTenantStore([ragTenant]);
-    const session: AuthSession = {
-      token: 'rag-access-token',
-      tenantId: 'tenant-rag',
-      authMode: 'intellect-rag',
-    };
-    const app = createApp(tenantStore, session);
+    const app = createApp(tenantStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -491,7 +528,10 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request('/auth/me', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-rag' },
+      headers: {
+        'X-Tenant-Id': 'tenant-rag',
+        Authorization: 'Bearer rag-access-token',
+      },
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -1129,7 +1169,7 @@ describe('auth 路由 (P4b US1)', () => {
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
-          Authorization: 'Bearer ',  // API_SERVER_KEY 默认空
+          Authorization: 'Bearer test-api-server-key',  // 从 harnessStore 获取的 adminToken
         }),
       }),
     );
@@ -1193,7 +1233,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     expect(resp.status).toBe(403);
     const body = await resp.json();
-    expect(body.message).toContain('API_SERVER_KEY');
+    expect(body.message).toContain('Token issue forbidden');
   });
 
   it('US3:企业版 callback 不可达 → 502', async () => {

@@ -121,14 +121,19 @@ describe('authSessionMiddleware', () => {
     expect(ctx.storedSession).toBeUndefined();
   });
 
-  it('有 cookie 但无 X-Tenant-Id 时不注入,不阻塞', async () => {
+  it('有 cookie 但无 X-Tenant-Id 时用缺省 "0" 兜底,仍注入 session(不阻塞)', async () => {
+    // 公开端点策略:无 X-Tenant-Id 时用 '0' 兜底,只要有 cookie 就注入 session
     const ctx = createMockContext({}, 'imt_abc123');
     const next = vi.fn().mockResolvedValue(undefined);
 
     await authSessionMiddleware(ctx as never, next);
 
     expect(next).toHaveBeenCalledTimes(1);
-    expect(ctx.storedSession).toBeUndefined();
+    // 有 cookie 就注入 session(tenantId='0',authMode 默认 intellect-rag)
+    expect(ctx.storedSession).toBeDefined();
+    expect(ctx.storedSession?.token).toBe('imt_abc123');
+    expect(ctx.storedSession?.tenantId).toBe('0');
+    expect(ctx.storedSession?.authMode).toBe('intellect-rag');
   });
 
   it('无 tenantStore 时不报错,authMode 默认 intellect-rag', async () => {

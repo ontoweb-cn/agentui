@@ -1466,11 +1466,17 @@ function AgentPage() {
 - ✅ 企业版密码登录:POST /api/bff/auth/login → 200 + Set-Cookie(imt_token)
 - ✅ /auth/me:cookie 鉴权 → 返回 member 信息
 - ✅ 注册/登出闭环:register → login → logout → /auth/me → 401
-- ✅ OAuth 渠道列表 + authorize + callback + token 签发完整流程
+- ✅ OAuth 渠道列表 + login/{provider} 302 + callback state 校验 + token 签发完整流程
 - ✅ 社区版 authMode=intellect-rag 透传,100% 不回归
 - ✅ TypeScript 编译零错误(BFF + 前端)
-- ✅ 单元测试全过:BFF 13 套件 211 测试(P0-P3 164 + P4b 47),无回归
+- ✅ 单元测试全过:BFF 253 测试(P0-P3 164 + P4b 47 + P5 42),无回归
 - ✅ intellect-team 对接文档完成(README + member-auth-api + oauth-callback-token + default-tenant-compat)
+
+**安全加固**(2026-07-13 评审修复):
+- ✅ 多租户隔离:企业版 baseUrl 从 HarnessStore 按 `tenant.intellectBackendId` 读取对应 intellect-team 实例 endpoint,不直接读单一环境变量(多实例多租户隔离,FR-014)
+- ✅ X-Tenant-Id 统一策略:公开端点(login/register/channels/login/{channel}/oauth/callback/config)缺失时用 '0' 兜底;需认证端点(me/logout)缺失即 400(FR-015)
+- ✅ OAuth state CSRF 防护:/auth/login/:channel 时从 302 Location 提取 state 存入短期 HttpOnly cookie(10min),/auth/oauth/callback 时校验 query.state 与 cookie 一致后清除(FR-008/FR-009)
+- ✅ 错误信息脱敏:5xx 错误不透传后端原始 text 给前端,只记 console.error 日志(FR-016)
 
 #### P4d：前端登录页字段适配 ✅ 已完成
 

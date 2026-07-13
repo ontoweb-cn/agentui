@@ -8,7 +8,7 @@
 2. **P4a intellect-team 端点就绪**(或用扩展后的 mock server 模拟):
    - `POST /api/members/login` / `POST /api/members/register` / `POST /api/members/logout` / `GET /api/members/me`
    - `POST /api/members/{id}/token`(OAuth callback 后签发)
-   - `POST /api/oauth/authorize` / `GET /api/oauth/callback`(已存在)
+   - `GET /api/oauth/login/{provider}?usage=login`(返回 302 + Location,含 state 参数) / `GET /api/oauth/callback`(已存在)
 3. **BFF 配置**(`bff-tenants.json`):
    ```json
    {
