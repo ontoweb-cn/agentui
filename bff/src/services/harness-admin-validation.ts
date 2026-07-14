@@ -39,9 +39,10 @@ export function validateField(
       return null;
     }
     case 'type': {
+      // Admin 表单仅支持 rag/enterprise(intellect-llm 经 JSON 配置,不走表单)
       if (
         typeof value !== 'string' ||
-        !VALIDATION_RULES.type.values.includes(value as BackendType)
+        !(VALIDATION_RULES.type.values as readonly BackendType[]).includes(value as BackendType)
       ) {
         return VALIDATION_RULES.type.message;
       }

@@ -26,7 +26,7 @@ const CONFIG_FILE = resolve(DATA_DIR, 'harness-backends.json');
 // Zod schemas (validate JSON structure)
 // ---------------------------------------------------------------------------
 
-const capabilitiesSchema = z.object({
+const ragEnterpriseCapabilitiesSchema = z.object({
   canvas: z.boolean(),
   knowledgeBase: z.boolean(),
   memory: z.boolean(),
@@ -35,15 +35,24 @@ const capabilitiesSchema = z.object({
   modelManagement: z.boolean(),
 });
 
+const llmCapabilitiesSchema = z.object({
+  chat: z.boolean(),
+  embedding: z.boolean(),
+  rerank: z.boolean(),
+  costTracking: z.boolean(),
+  modelManagement: z.boolean(),
+});
+
 const backendConfigSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  type: z.enum(['intellect-rag', 'intellect-enterprise']),
+  type: z.enum(['intellect-rag', 'intellect-enterprise', 'intellect-llm']),
   endpoint: z.string().url(),
   adminTokenEnvVar: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
   projectTokenEnvVar: z.string().regex(/^[A-Z][A-Z0-9_]*$/).optional(),
-  capabilities: capabilitiesSchema,
+  capabilities: z.union([ragEnterpriseCapabilitiesSchema, llmCapabilitiesSchema]),
   defaultForTenant: z.boolean().optional(),
+  comment: z.string().optional(),
 });
 
 const configFileSchema = z.object({

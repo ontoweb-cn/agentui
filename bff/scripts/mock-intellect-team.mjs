@@ -127,6 +127,7 @@ const server = createServer((req, res) => {
         member_id: member.member_id,
         display_name: member.display_name,
         role: member.role,
+        email: member.email ?? null,
         token,
         permissions: ['chat', 'read'],
       });

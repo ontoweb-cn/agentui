@@ -62,7 +62,8 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
     const baseUrl = backend.endpoint.replace(/\/$/, '');
     // Constitution Principle VIII: adminToken 字段承载 API_SERVER_KEY(env 注入)
     this.httpClient = new IntellectEnterpriseHttpClient(baseUrl, backend.adminToken);
-    this.capabilities = backend.capabilities;
+    // AdapterRegistry 按 backend.type 路由,enterprise 后端 capabilities 必为 HarnessCapabilities
+    this.capabilities = backend.capabilities as HarnessCapabilities;
   }
 
   // -----------------------------------------------------------------------

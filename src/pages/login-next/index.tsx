@@ -414,7 +414,9 @@ const Login = () => {
 
   const onCheck = async (params: FormValues) => {
     try {
-      const rsaPassWord = rsaPsw(params.password) as string;
+      // 企业版模式:intellect-team 不支持 RSA 加密密码,接受明文(依赖 HTTPS 传输安全)
+      // 社区版模式:intellect-rag 要求 RSA + Base64 加密
+      const password = isEnterprise ? params.password : (rsaPsw(params.password) as string);
 
       if (title === 'login') {
         const loginField = isEnterprise
@@ -422,7 +424,7 @@ const Login = () => {
           : { email: (params.email ?? '').trim() };
         const code = await login({
           ...loginField,
-          password: rsaPassWord,
+          password,
         });
         if (code === 0) {
           navigate('/');
@@ -432,7 +434,7 @@ const Login = () => {
           const code = await register({
             login_name: params.login_name ?? '',
             display_name: params.display_name ?? '',
-            password: rsaPassWord,
+            password,
           });
           if (code === 0) {
             setTitle('login');
@@ -441,7 +443,7 @@ const Login = () => {
           const code = await register({
             nickname: params.nickname as string,
             email: params.email ?? '',
-            password: rsaPassWord,
+            password,
           });
           if (code === 0) {
             setTitle('login');

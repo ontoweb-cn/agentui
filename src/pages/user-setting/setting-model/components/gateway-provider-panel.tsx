@@ -8,11 +8,9 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
 import { IntellectTooltip } from '@/components/ui/tooltip';
 import {
   IntellectLlmAdapter,
-  KeyInfo,
   Provider,
 } from '@/../bff/src/services/adapters/intellect-llm/intellect-llm-adapter';
 import { cn } from '@/lib/utils';
@@ -187,12 +185,12 @@ export function GatewayProviderPanel({ adapter }: GatewayProviderPanelProps) {
                   onChange={e => setKeyInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
                   className="flex-1"
                 />
-                <IntellectTooltip content="Save API Key">
+                <IntellectTooltip tooltip="Save API Key">
                   <Button size="sm" variant="outline" onClick={() => handleSetKey(p.id)}>
                     <Key className="h-4 w-4" />
                   </Button>
                 </IntellectTooltip>
-                <IntellectTooltip content="Verify Connection">
+                <IntellectTooltip tooltip="Verify Connection">
                   <Button size="sm" variant="outline" onClick={() => handleVerify(p.id)}>
                     {verifyStatus[p.id] === 'ok' ? (
                       <CheckCircle className="h-4 w-4 text-green-600" />

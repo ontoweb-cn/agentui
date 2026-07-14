@@ -178,8 +178,10 @@ harnessStore.load()
     );
   })
   .catch((err) => {
-    console.error('[BFF] Failed to load stores:', err);
-    // 不退出进程:Store 加载失败不应阻塞 BFF 启动(现有路由仍可用)
+    console.error('[BFF] FATAL: Failed to load stores, exiting:', err);
+    // P1 改进:Store 加载失败应 fail-fast,避免 BFF 在半启动状态下接收请求
+    // (所有依赖 stores 的路由会返回 500,浪费调试时间)
+    process.exit(1);
   });
 
 serve(

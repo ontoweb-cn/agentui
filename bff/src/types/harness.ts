@@ -23,7 +23,7 @@
  * 多租户隔离通过多实例实现:每个 intellect-team 实例 = 一个租户,不同 BffTenant 绑定不同实例。
  * 禁用历史误用 'intellect-community'。
  */
-export type BackendType = 'intellect-rag' | 'intellect-enterprise';
+export type BackendType = 'intellect-rag' | 'intellect-enterprise' | 'intellect-llm';
 
 // ---------------------------------------------------------------------------
 // Harness Capabilities
@@ -52,6 +52,18 @@ export interface HarnessCapabilities {
   modelManagement: boolean;
 }
 
+/**
+ * LLM Gateway 后端能力声明(intellect-llm 类型专用)。
+ * Phase 3 引入,用于 IntellectLlmAdapter。
+ */
+export interface LlmCapabilities {
+  chat: boolean;
+  embedding: boolean;
+  rerank: boolean;
+  costTracking: boolean;
+  modelManagement: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Configuration Layer (persisted to JSON, NO token plaintext)
 // ---------------------------------------------------------------------------
@@ -74,10 +86,12 @@ export interface HarnessBackendConfig {
   adminTokenEnvVar: string;
   /** project token 环境变量名(Intellect 企业版专用,可选,P4+ 预留) */
   projectTokenEnvVar?: string;
-  /** 能力声明 */
-  capabilities: HarnessCapabilities;
+  /** 能力声明(rag/enterprise 用 HarnessCapabilities,llm 用 LlmCapabilities) */
+  capabilities: HarnessCapabilities | LlmCapabilities;
   /** 是否作为新 Tenant 的默认主后端(可选) */
   defaultForTenant?: boolean;
+  /** 备注(可选,如 intellect-llm 共享 endpoint 说明) */
+  comment?: string;
 }
 
 // ---------------------------------------------------------------------------

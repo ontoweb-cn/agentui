@@ -38,7 +38,8 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     // endpoint 形如 'http://localhost:9380',API 路径前缀 /api/v1
     this.baseUrl = backend.endpoint.replace(/\/$/, '');
     this.adminToken = backend.adminToken;
-    this.capabilities = backend.capabilities;
+    // AdapterRegistry 按 backend.type 路由,rag 后端 capabilities 必为 HarnessCapabilities
+    this.capabilities = backend.capabilities as HarnessCapabilities;
   }
 
   // -----------------------------------------------------------------------

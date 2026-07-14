@@ -40,6 +40,7 @@ interface MemberLoginResponse {
   member_id: string;
   display_name: string;
   role: string;
+  email?: string | null;
   token: string;
   permissions: string[];
 }
@@ -222,11 +223,14 @@ authRoutes.post('/auth/login', async (c) => {
     });
 
     // 返回不含 token 的 body(token 只在 cookie)
+    // intellect-team /api/members/login 响应已包含 email 字段(P1 改进),
+    // 透传给前端,减少后续 /auth/me probe 请求。
     return c.json(
       ok({
         member_id: data.member_id,
         display_name: data.display_name,
         role: data.role,
+        email: data.email ?? null,
       }),
     );
   }
@@ -255,13 +259,19 @@ authRoutes.post('/auth/login', async (c) => {
     );
   }
 
-  const data = (await resp.json()) as RagLoginResponse;
+  // Intellect-RAG 响应已是 {code, data, message} 格式,直接透传,不再用 ok() 包装
+  // (避免双层嵌套 {code:0, data:{code:0, data:{...}}})
+  const data = (await resp.json()) as RagLoginResponse & { code?: number; data?: unknown; message?: string };
   const authorizationHeader = resp.headers.get('Authorization');
-  const responseData = { ...data };
-  if (authorizationHeader) {
-    responseData.access_token = authorizationHeader;
+
+  // 若 Intellect-RAG 响应已是 {code:0, data:{...}} 格式,补充 access_token 到 data
+  if (authorizationHeader && data.data && typeof data.data === 'object') {
+    (data.data as Record<string, unknown>).access_token = authorizationHeader;
+  } else if (authorizationHeader) {
+    (data as RagLoginResponse).access_token = authorizationHeader;
   }
-  const response = c.json(ok(responseData));
+
+  const response = c.json(data);
   if (authorizationHeader) {
     response.headers.set('Authorization', authorizationHeader);
   }
@@ -311,8 +321,9 @@ authRoutes.get('/auth/me', async (c) => {
       return c.json(fail(502, 'intellect-rag /users/me failed'), 502);
     }
 
-    const data = (await resp.json()) as RagUserInfoResponse;
-    return c.json(ok(data));
+    // Intellect-RAG 响应已是 {code, data, message} 格式,直接透传
+    const data = await resp.json().catch(() => ({}));
+    return c.json(data);
   }
 
   const session = getAuthSession(c);
@@ -462,8 +473,9 @@ authRoutes.post('/auth/register', async (c) => {
     );
   }
 
+  // Intellect-RAG 响应已是 {code, data, message} 格式,直接透传
   const data = await resp.json().catch(() => ({}));
-  return c.json(ok(data), 201);
+  return c.json(data, 201);
 });
 
 // ---------------------------------------------------------------------------
@@ -477,44 +489,50 @@ authRoutes.post('/auth/logout', async (c) => {
     return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);
   }
 
+  const tenantStore = c.get('tenantStore');
+  const authMode = getAuthMode(tenantStore, tenantId);
+
+  // 企业版 token 在 HttpOnly cookie(由 authSessionMiddleware 注入 session);
+  // 社区版 token 在前端 localStorage(由 Authorization header 传入)。
+  // 不能只依赖 session:社区版无 cookie 时 session 为 undefined,会误判为未登录。
   const session = getAuthSession(c);
-  if (!session) {
+  const enterpriseToken = session?.token;
+  const communityAuthHeader = c.req.header('Authorization');
+
+  // 社区版模式:用前端 Authorization header 调 intellect-rag /api/v1/auth/logout
+  if (authMode === 'intellect-rag') {
+    // 无 token 也清前端标记(防御性,允许登出已过期的会话)
+    if (!communityAuthHeader) {
+      return c.json(ok({ logged_out: true }));
+    }
+
+    const ragBaseUrl = getRagBaseUrl();
+    let resp: Response;
+    try {
+      resp = await fetch(`${ragBaseUrl}/api/v1/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: communityAuthHeader },
+      });
+    } catch (err) {
+      // 网络错误仍返回成功(本地登出,用户视角已登出)
+      console.error('[auth] intellect-rag logout fetch error:', (err as Error).message);
+      return c.json(ok({ logged_out: true }));
+    }
+
+    if (!resp.ok) {
+      // 上游登出失败(token 已过期等),返回成功(用户视角已登出)
+      console.warn(`[auth] intellect-rag logout returned ${resp.status}, logged out locally anyway`);
+    }
+    return c.json(ok({ logged_out: true }));
+  }
+
+  // 企业版模式:用 cookie 中的 token 调 intellect-team POST /api/members/logout
+  if (!enterpriseToken) {
     // 无 session 也清 cookie(防御性,允许登出已过期的会话)
     deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
     return c.json(ok({ logged_out: true }));
   }
 
-  const tenantStore = c.get('tenantStore');
-
-  // 社区版模式:透传到 intellect-rag /api/v1/auth/logout
-  if (session.authMode === 'intellect-rag') {
-    const ragBaseUrl = getRagBaseUrl();
-    const authHeader = c.req.header('Authorization') || `Bearer ${session.token}`;
-
-    let resp: Response;
-    try {
-      resp = await fetch(`${ragBaseUrl}/api/v1/auth/logout`, {
-        method: 'POST',
-        headers: { Authorization: authHeader },
-      });
-    } catch (err) {
-      // 网络错误仍清 cookie(本地登出)
-      deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
-      console.error('[auth] intellect-rag logout fetch error:', (err as Error).message);
-      return c.json(fail(502, 'intellect-rag unreachable'), 502);
-    }
-
-    // 无论上游返回什么,都清 cookie(本地登出)
-    deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
-
-    if (!resp.ok) {
-      // 上游登出失败,但本地 cookie 已清,返回成功(用户视角已登出)
-      console.warn(`[auth] intellect-rag logout returned ${resp.status}, cookie cleared anyway`);
-    }
-    return c.json(ok({ logged_out: true }));
-  }
-
-  // 企业版模式:调 intellect-team POST /api/members/logout(用 member token 鉴权)
   const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
   if (!backend) {
     // backend 未配置也清 cookie(本地登出)
@@ -528,15 +546,15 @@ authRoutes.post('/auth/logout', async (c) => {
     resp = await fetch(`${baseUrl}/api/members/logout`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${session.token}`,
+        Authorization: `Bearer ${enterpriseToken}`,
         'Content-Type': 'application/json',
       },
     });
   } catch (err) {
-    // 网络错误仍清 cookie(本地登出)
+    // 网络错误仍清 cookie(本地登出,与社区版行为一致:用户视角已登出)
     deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
     console.error('[auth] intellect-team logout fetch error:', (err as Error).message);
-    return c.json(fail(502, 'intellect-team unreachable'), 502);
+    return c.json(ok({ logged_out: true }));
   }
 
   // 无论上游返回什么,都清 cookie(本地登出)
@@ -637,8 +655,9 @@ authRoutes.get('/auth/login/channels', async (c) => {
     return c.json(fail(502, 'intellect-rag /login/channels failed'), 502);
   }
 
-  const data = await resp.json().catch(() => []);
-  return c.json(ok(data));
+  // Intellect-RAG 响应已是 {code, data, message} 格式,直接透传(不用 ok() 包装)
+  const data = await resp.json().catch(() => ({ code: 0, data: [], message: 'success' }));
+  return c.json(data);
 });
 
 // ---------------------------------------------------------------------------
@@ -839,27 +858,12 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
     return c.redirect(frontendHome, 302);
   }
 
-  // 社区版:透传到 intellect-rag /api/v1/auth/oauth/callback
-  const ragBaseUrl = getRagBaseUrl();
-
-  let resp: Response;
-  try {
-    resp = await fetch(
-      `${ragBaseUrl}/api/v1/auth/oauth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
-      { method: 'GET' },
-    );
-  } catch (err) {
-    console.error('[auth] intellect-rag oauth callback fetch error:', (err as Error).message);
-    return c.json(fail(502, 'intellect-rag unreachable'), 502);
-  }
-
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    console.error(`[auth] intellect-rag oauth callback failed: ${resp.status}`, text);
-    return c.json(fail(502, 'intellect-rag oauth callback failed'), 502);
-  }
-
-  // 社区版透传上游响应(含可能的 access_token,前端自行处理)
-  const data = await resp.json().catch(() => ({}));
-  return c.json(ok(data));
+  // 社区版 OAuth callback 不走 BFF:
+  // /auth/login/:channel 社区版分支直接 302 浏览器到 intellect-rag /api/v1/auth/login/<channel>,
+  // OAuth Provider 回调 intellect-rag /api/v1/auth/oauth/<channel>/callback,
+  // intellect-rag 处理后 302 到前端 /?auth=<token>,前端 useOAuthCallback hook 读取 query param。
+  // BFF /auth/oauth/callback 仅企业版使用(需 BFF 主动调 intellect-team 交换 token + Set-Cookie)。
+  // 社区版请求若到达此端点,说明 OAuth Provider redirect_uri 配置错误。
+  console.error('[auth] OAuth callback received in community mode — redirect_uri misconfigured');
+  return c.json(fail(400, 'OAuth callback is only available for enterprise mode (community OAuth redirects go directly to intellect-rag)'), 400);
 });

@@ -82,12 +82,13 @@ export const useLogin = () => {
           // T002 企业版 cookie 模式:token 在 HttpOnly cookie 中,前端 JS 不可读。
           // localStorage 只存非敏感标记(authMode + tenantId + userInfo),用于前端状态判断。
           // 真实有效性由后续 /auth/me 请求验证。
-          // 注意:BFF /auth/login 企业版响应不返回 email,此处不写 email 字段,
-          // 后续 useEnterpriseCookieProbe 通过 /auth/me 补全 email。
+          // intellect-team /login 已返回 email(P1 改进),若存在则直接写入 userInfo;
+          // 企业 OAuth(飞书/钉钉)路径 email 可能为 null,后续 probe /auth/me 补全。
           const userInfo = {
             name: data.display_name,
             memberId: data.member_id,
             role: data.role,
+            ...(data.email ? { email: data.email } : {}),
           };
           authorizationUtil.setItems({
             [AuthMode]: 'intellect-enterprise',
@@ -213,7 +214,16 @@ export const useAuthMode = () => {
   const { data, isLoading } = useQuery({
     queryKey: ['authConfig'],
     queryFn: async () => {
-      const { data: res = {} } = await request.get(api.authConfig);
+      // AU4:支持从 URL query param ?tenant=xxx 指定 tenantId(P5+ 多租户场景)。
+      // P4 缺省 '0'(无 query param 时,localStorage 也无标记)。
+      const urlTenant = new URLSearchParams(window.location.search).get('tenant');
+      if (urlTenant) {
+        localStorage.setItem(TenantId, urlTenant);
+      }
+      const tenantId = localStorage.getItem(TenantId) || '0';
+      const { data: res = {} } = await request.get(api.authConfig, {
+        headers: { 'X-Tenant-Id': tenantId },
+      });
       return (res?.data?.authMode as AuthMode) ?? 'intellect-rag';
     },
     staleTime: 5 * 60 * 1000, // 5 min

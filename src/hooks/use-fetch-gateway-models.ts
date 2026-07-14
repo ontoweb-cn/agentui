@@ -8,14 +8,6 @@
 import { useCallback } from 'react';
 import { IntellectLlmAdapter } from '@/../bff/src/services/adapters/intellect-llm/intellect-llm-adapter';
 
-interface GatewayModel {
-  id: string;
-  object: string;
-  owned_by: string;
-  type?: 'chat' | 'embedding' | 'rerank';
-  context_length?: number;
-}
-
 interface LegacyModel {
   model_type: string[];
   name: string;
