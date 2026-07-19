@@ -176,12 +176,12 @@
   - 更新内部 import 路径(相对路径不变,`@/` alias 仍指向主应用通用层)
   - 验证:`tsc --noEmit` 通过
 
-- [ ] T023 迁移画布类型 `src/interfaces/database/agent.ts` → `packages/canvas-plugin/src/types/`
+- [x] T023 迁移画布类型 `src/interfaces/database/agent.ts` → `packages/canvas-plugin/src/types/`
   - `IntellectNodeType` / `BaseNode` / `IRagNode` / `IFlow` / `IFlowTemplate` / `ITraceData` / `IAgentLogResponse` 等
   - 评估:agent 列表也用的类型保留在主应用,画布专属类型迁入插件
   - 若有共享类型,主应用保留权威源,插件 re-export
 
-- [ ] T024 迁移 `src/interfaces/request/agent.ts` 画布部分 → 插件 `types/`
+- [x] T024 迁移 `src/interfaces/request/agent.ts` 画布部分 → 插件 `types/`
   - `IAgentWebhookTraceRequest` / `IDebugSingleRequestBody` 等
 
 - [ ] T025 迁移画布 i18n `src/features/agents/locales/{en,zh}.ts` 画布部分 → `packages/canvas-plugin/src/i18n/`
@@ -212,13 +212,13 @@
     - `nav: [/* 画布导航项 */]`
     - `i18n: { namespaces: ['canvas'], lazy: {/* ... */} }`
 
-- [ ] T029 迁移 `src/components/canvas/background.tsx` → `packages/canvas-plugin/src/editor/`
+- [x] T029 迁移 `src/components/canvas/background.tsx` → `packages/canvas-plugin/src/editor/`
   - 画布专属背景组件
 
-- [ ] T030 迁移 `src/components/xyflow/` → `packages/canvas-plugin/src/editor/`
+- [x] T030 迁移 `src/components/xyflow/` → `packages/canvas-plugin/src/editor/`
   - `base-node.tsx` / `tooltip-node.tsx`(画布专属共享节点)
 
-- [ ] T031 迁移 `src/utils/canvas-util.tsx` → `packages/canvas-plugin/src/editor/utils/`
+- [x] T031 迁移 `src/utils/canvas-util.tsx` → `packages/canvas-plugin/src/editor/utils/`
   - `filterAllUpstreamNodeIds` / `buildOutputOptions` 等画布工具函数
 
 - [ ] T032 迁移 `src/constants/agent.tsx` 画布专属常量 → 插件 `constant/`
