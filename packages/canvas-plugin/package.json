@@ -17,9 +17,7 @@
     "i18next": "^23.7.16",
     "zustand": "^4.5.2",
     "@xyflow/react": "^12.3.6",
-    "axios": "^1.12.0",
     "lodash": "^4.17.23",
-    "dayjs": "^1.11.10",
     "ahooks": "^3.7.10"
   },
   "dependencies": {
