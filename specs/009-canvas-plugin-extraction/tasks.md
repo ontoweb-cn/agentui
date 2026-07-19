@@ -2,7 +2,7 @@
 
 > **Design Doc**: [canvas-plugin-extraction-design.md](../../docs/canvas-plugin-extraction-design.md)
 > **Prerequisites**: spec/008-explicit-canvas-service(BFF CanvasService 独立化,阶段 2 硬依赖)
-> **Status**: 阶段 0 已实施完成(2026-07-13,含评审修复 T007),阶段 1-4 待实施
+> **Status**: 阶段 0 ✅ | 阶段 1 ✅ | 阶段 2 ✅(核心迁移完成) | 阶段 3 📋 | 阶段 4 ⏸️
 > **Created**: 2026-07-13
 
 ## 文档导航
@@ -10,9 +10,9 @@
 | 阶段 | 详细任务文档 | 状态 |
 |---|---|---|
 | 阶段 0(解耦) | [phase0-detailed-tasks.md](./phase0-detailed-tasks.md) | ✅ 已实施 + 评审修复完成 |
-| 阶段 1(包结构) | [phase1-detailed-tasks.md](./phase1-detailed-tasks.md) | 📋 已细化,待实施 |
-| 阶段 2(代码迁移) | [phase2-detailed-tasks.md](./phase2-detailed-tasks.md) | 📋 已细化,待实施(依赖 spec/008) |
-| 阶段 3(验证收尾) | 本文档 §阶段 3 | 📋 已细化,待实施 |
+| 阶段 1(包结构) | [phase1-detailed-tasks.md](./phase1-detailed-tasks.md) | ✅ 已实施(2026-07-20) |
+| 阶段 2(代码迁移) | [phase2-detailed-tasks.md](./phase2-detailed-tasks.md) | ✅ 核心完成(2026-07-20): T022 物理迁移+T028 manifest拆分 |
+| 阶段 3(验证收尾) | 本文档 §阶段 3 | 📋 待实施(需运行环境) |
 | 阶段 4(独立构建) | 本文档 §阶段 4 | ⏸️ 可选,延后 |
 
 ### 评审文档
@@ -112,34 +112,34 @@
 >
 > **可与 spec/008 并行**:本阶段不依赖 BFF `/api/bff/canvas/*`
 
-- [ ] T010 [P] 创建 `packages/canvas-plugin/package.json`
+- [x] T010 [P] 创建 `packages/canvas-plugin/package.json`
   - `name: "@agentui/canvas-plugin"`
   - `private: true`(阶段 1 不发布)
   - `main: "src/index.ts"`(源码直接引用,无构建步骤)
   - `peerDependencies`: react / react-router / @tanstack/react-query / react-i18next / zustand / @xyflow/react
   - `dependencies`: human-id / eventsource-parser / immer
 
-- [ ] T011 [P] 创建 `packages/canvas-plugin/tsconfig.json`
+- [x] T011 [P] 创建 `packages/canvas-plugin/tsconfig.json`
   - `extends: "../../tsconfig.json"`
   - `compilerOptions.paths`: 映射 `@/*` 到 `../../src/*`(引用主应用通用层)
 
-- [ ] T012 [P] 创建 `packages/canvas-plugin/jest.config.ts`
+- [x] T012 [P] 创建 `packages/canvas-plugin/jest.config.ts`
   - 沿用根 jest 配置,`moduleNameMapper` 映射 `@agentui/canvas-plugin` 到 `src/`
   - `rootDir: src`
 
-- [ ] T013 修改根 `package.json`,`workspaces` 扩展为 `["bff", "packages/*"]`
+- [x] T013 修改根 `package.json`,`workspaces` 扩展为 `["bff", "packages/*"]`
 
-- [ ] T014 修改根 `tsconfig.json`,新增 paths:
+- [x] T014 修改根 `tsconfig.json`,新增 paths:
   - `"@agentui/canvas-plugin": ["./packages/canvas-plugin/src"]`
   - `"@agentui/canvas-plugin/*": ["./packages/canvas-plugin/src/*"]`
 
-- [ ] T015 修改 `vite.config.ts`,新增 resolve.alias:
+- [x] T015 修改 `vite.config.ts`,新增 resolve.alias:
   - `'@agentui/canvas-plugin': resolve(__dirname, 'packages/canvas-plugin/src')`
   - 保留现有 `@` alias
 
-- [ ] T016 创建 `packages/canvas-plugin/src/index.ts` 占位(导出空 `ModuleDefinition`)
+- [x] T016 创建 `packages/canvas-plugin/src/index.ts` 占位(导出空 `ModuleDefinition`)
 
-- [ ] T017 创建 `src/features/canvas/manifest.ts` 薄封装:
+- [x] T017 创建 `src/features/canvas/manifest.ts` 薄封装:
   ```typescript
   export { default } from '@agentui/canvas-plugin';
   ```
@@ -147,10 +147,10 @@
 
 ### Checkpoint(阶段 1)
 
-- [ ] T018 运行 `npm install`,确认 workspace 解析成功
-- [ ] T019 运行 `npx tsc --noEmit -p tsconfig.json`,确认零错误
-- [ ] T020 运行 `npm run dev`,确认主应用正常启动(画布功能仍由 `features/agents` 提供)
-- [ ] T021 运行 `cd packages/canvas-plugin && npx tsc --noEmit`,确认插件包独立编译通过
+- [x] T018 运行 `npm install`,确认 workspace 解析成功
+- [x] T019 运行 `npx tsc --noEmit -p tsconfig.json`,确认零错误
+- [x] T020 运行 `npm run dev`,确认主应用正常启动(画布功能仍由 `features/agents` 提供)
+- [x] T021 运行 `cd packages/canvas-plugin && npx tsc --noEmit`,确认插件包独立编译通过
 
 ---
 
@@ -171,7 +171,7 @@
 
 ### 2.1 核心迁移
 
-- [ ] T022 迁移 `src/pages/agent/` → `packages/canvas-plugin/src/editor/`(整体物理迁移)
+- [x] T022 迁移 `src/pages/agent/` → `packages/canvas-plugin/src/editor/`(整体物理迁移)
   - 包括:canvas/、form/、form-sheet/、run-sheet/、log-sheet/、chat/、explore/、share/、hooks/、constant/、utils/、store.ts、context.ts、hooks.tsx、interface.ts 等
   - 更新内部 import 路径(相对路径不变,`@/` alias 仍指向主应用通用层)
   - 验证:`tsc --noEmit` 通过
@@ -202,7 +202,7 @@
 
 ### 2.3 Manifest 拆分
 
-- [ ] T028 拆分 `src/features/agents/manifest.ts` — 画布路由迁入插件
+- [x] T028 拆分 `src/features/agents/manifest.ts` — 画布路由迁入插件
   - 迁入插件的路由:`/agent/:id`(画布编辑器)、`/agent/:id/explore`、`/agent/share`(画布分享)、`/agent-log-page/:id`
   - 保留主应用的路由:`/agent-list`、`/agents`、`/agent-templates`(agent 列表/模板)
   - 在 `packages/canvas-plugin/src/index.ts` 实现完整 `ModuleDefinition`:
