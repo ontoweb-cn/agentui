@@ -2,7 +2,7 @@ import { AgentCategory } from '@/constants/agent';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useSetAgent } from '@/hooks/use-agent-request';
 
-import { initialEmptyDsl } from '@/pages/agent/utils/dsl-bridge';
+import { initialEmptyDsl } from '@agentui/canvas-plugin/editor/utils/dsl-bridge';
 import { useCallback } from 'react';
 import { FlowType } from '../constant';
 import { FormSchemaType } from '../create-agent-form';

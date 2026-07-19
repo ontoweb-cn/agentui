@@ -108,6 +108,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
+        '@agentui/canvas-plugin': path.resolve(__dirname, 'packages/canvas-plugin/src'),
       },
     },
     css: {

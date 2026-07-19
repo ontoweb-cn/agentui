@@ -4,7 +4,10 @@
   "private": true,
   "description": "OpenKG AgentUI - Agent Harness frontend for Intellect",
   "type": "module",
-  "workspaces": ["bff"],
+  "workspaces": [
+    "bff",
+    "packages/*"
+  ],
   "scripts": {
     "build": "vite build --mode production",
     "build-storybook": "storybook build",
@@ -153,7 +156,7 @@
     "@storybook/addon-webpack5-compiler-swc": "^4.0.1",
     "@storybook/react-webpack5": "^9.1.4",
     "@tailwindcss/container-queries": "^0.1.1",
-    "@testing-library/jest-dom": "^6.4.5",
+    "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^15.0.7",
     "@types/dompurify": "^3.0.5",
     "@types/jest": "^29.5.12",

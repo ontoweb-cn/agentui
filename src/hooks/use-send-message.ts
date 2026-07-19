@@ -2,7 +2,7 @@ import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import { ResponseType } from '@/interfaces/database/base';
 import { IReferenceObject } from '@/interfaces/database/chat';
-import { BeginQuery } from '@/pages/agent/interface';
+import { BeginQuery } from '@agentui/canvas-plugin/editor/interface';
 import { getAuthorization } from '@/utils/authorization-util';
 import { EventSourceParserStream } from 'eventsource-parser/stream';
 import { useCallback, useRef, useState } from 'react';

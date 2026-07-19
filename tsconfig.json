@@ -24,7 +24,9 @@
 
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@agentui/canvas-plugin": ["./packages/canvas-plugin/src"],
+      "@agentui/canvas-plugin/*": ["./packages/canvas-plugin/src/*"]
     },
 
     "types": ["vite/client", "node", "@testing-library/jest-dom"]

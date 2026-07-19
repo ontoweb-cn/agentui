@@ -32,7 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table';
-import { useFetchDataOnMount } from '../agent/hooks/use-fetch-data';
+import { useFetchDataOnMount } from '@agentui/canvas-plugin/editor/hooks/use-fetch-data';
 import { AgentLogDetailModal } from './agent-log-detail-modal';
 import { useExportAgentLogToCSV } from './hooks/use-export-agent-log';
 const getStartOfToday = (): Date => {

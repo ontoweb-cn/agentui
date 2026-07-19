@@ -11,24 +11,6 @@ const definition: ModuleDefinition = {
       Component: () => import('@/pages/agents'),
     },
     {
-      path: AgentRoutes.AgentShare,
-      layout: false,
-      Component: () => import('@/pages/agent/share'),
-    },
-    {
-      path: AgentRoutes.Agent,
-      children: [
-        {
-          path: `${AgentRoutes.Agent}/:id`,
-          Component: () => import('@/pages/agent'),
-        },
-        {
-          path: AgentRoutes.AgentExplore,
-          Component: () => import('@/pages/agent/explore'),
-        },
-      ],
-    },
-    {
       path: `${AgentRoutes.AgentLogPage}/:id`,
       Component: () => import('@/pages/agents/agent-log-page'),
     },
