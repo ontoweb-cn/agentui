@@ -84,3 +84,21 @@ export const tenantContextMiddleware: MiddlewareHandler = async (c, next) => {
 export function getTenantContext(c: Context): TenantContext | undefined {
   return c.get(TENANT_CONTEXT_KEY);
 }
+
+/**
+ * 从 Hono context 解析 TenantContext,缺失时返回社区版默认租户上下文。
+ *
+ * 用于路由 handler:优雅降级,中间件未注入时(如测试环境或未挂载中间件的路由)
+ * 回退到 { tenantId: 'default', userId: 'bff-default' },避免阻塞。
+ */
+export function resolveTenantContext(c: Context): TenantContext {
+  const ctx = getTenantContext(c);
+  if (ctx) {
+    return ctx;
+  }
+  // fallback:中间件未注入(如 P1 阶段未传 X-Tenant-Id header)时使用默认,避免阻塞
+  return {
+    tenantId: 'default',
+    userId: 'bff-default',
+  };
+}

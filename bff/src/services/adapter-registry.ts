@@ -23,8 +23,11 @@ import {
   BackendNotConfiguredError,
   AdapterFactoryNotRegisteredError,
   RegistryNotReadyError,
+  CanvasBackendNotBoundError,
+  InvalidCanvasBackendError,
 } from './adapter-registry-errors';
 import type { HarnessAdapterFactory, IAdapterRegistry } from './adapter-registry-types';
+import { IntellectRagAdapter } from './adapters/intellect-rag/intellect-rag-adapter';
 
 export class AdapterRegistry implements IAdapterRegistry {
   private readonly harnessStore: HarnessStore;
@@ -97,5 +100,68 @@ export class AdapterRegistry implements IAdapterRegistry {
     } else {
       this.adapterCache.delete(backendId);
     }
+  }
+
+  /**
+   * spec-008:按租户解析画布后端,返回 IntellectRagAdapter。
+   *
+   * Constitution Principle III (Canvas Hard-Bound): 画布永远走 Intellect RAG,
+   * 返回类型 IntellectRagAdapter(非 IHarnessAdapter),类型签名落实 hard-bound。
+   *
+   * Resolution flow (research.md R3):
+   * 1. tenant = tenantStore.getTenant(tenantId)
+   * 2. if tenant.canvasBackendId: getAdapterForBackend + instanceof 断言
+   * 3. if !canvasBackendId:
+   *      if tenantId === 'default': 回退首个 intellect-rag backend
+   *      else: throw CanvasBackendNotBoundError
+   */
+  getCanvasBackendForTenant(tenantId: string): IntellectRagAdapter {
+    if (!this.isReady()) {
+      throw new RegistryNotReadyError();
+    }
+
+    const tenant = this.tenantStore.getTenant(tenantId);
+
+    // 有显式 canvasBackendId:直接按 backendId 获取,断言类型
+    if (tenant?.canvasBackendId) {
+      const adapter = this.getAdapterForBackend(tenant.canvasBackendId);
+      if (!(adapter instanceof IntellectRagAdapter)) {
+        const backend = this.harnessStore.get(tenant.canvasBackendId);
+        throw new InvalidCanvasBackendError(
+          tenantId,
+          tenant.canvasBackendId,
+          backend?.type ?? 'unknown',
+        );
+      }
+      return adapter;
+    }
+
+    // 无 canvasBackendId:default 租户回退首个 intellect-rag backend
+    if (tenantId === 'default') {
+      const backends = this.harnessStore.list();
+      const ragBackend = backends.find(
+        (b: { type: string }) => b.type === 'intellect-rag',
+      );
+      if (!ragBackend) {
+        throw new CanvasBackendNotBoundError(tenantId);
+      }
+      const adapter = this.getAdapterForBackend(ragBackend.id);
+      if (!(adapter instanceof IntellectRagAdapter)) {
+        throw new InvalidCanvasBackendError(
+          tenantId,
+          ragBackend.id,
+          ragBackend.type,
+        );
+      }
+      return adapter;
+    }
+
+    // 租户不存在(非 default 且 tenantStore 中找不到)
+    if (!tenant) {
+      throw new TenantNotFoundError(tenantId);
+    }
+
+    // 企业版租户未绑定画布
+    throw new CanvasBackendNotBoundError(tenantId);
   }
 }

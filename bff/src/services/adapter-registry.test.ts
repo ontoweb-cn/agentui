@@ -11,6 +11,11 @@ import type { TenantStore } from '../types/stores';
 import type { HarnessBackend, HarnessCapabilities } from '../types/harness';
 import type { BffTenant } from '../types/tenant';
 import type { IHarnessAdapter } from '../types/adapter';
+import { IntellectRagAdapter } from './adapters/intellect-rag/intellect-rag-adapter';
+import {
+  CanvasBackendNotBoundError,
+  InvalidCanvasBackendError,
+} from './adapter-registry-errors';
 
 const ragCapabilities: HarnessCapabilities = {
   canvas: true,
@@ -303,6 +308,143 @@ describe('AdapterRegistry', () => {
       registry.invalidate('intellect-rag-default');
       const a2 = registry.getAdapterForTenant('tenant-1');
       expect(a2).not.toBe(a1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // spec-008: getCanvasBackendForTenant (Constitution Principle III)
+  // -------------------------------------------------------------------------
+
+  describe('getCanvasBackendForTenant (spec-008)', () => {
+    // Use real IntellectRagAdapter factory for instanceof check
+    function createRealRagAdapter(backend: HarnessBackend): IHarnessAdapter {
+      return new IntellectRagAdapter(backend);
+    }
+
+    let canvasRegistry: AdapterRegistry;
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      canvasRegistry = new AdapterRegistry(harnessStore, tenantStore);
+      canvasRegistry.registerFactory('intellect-rag', createRealRagAdapter);
+      canvasRegistry.registerFactory('intellect-enterprise', createFakeAdapter);
+    });
+
+    it('tenant 有 canvasBackendId → 返回 IntellectRagAdapter 实例', () => {
+      const canvasTenant: BffTenant = {
+        ...tenant1,
+        id: 'tenant-canvas',
+        canvasBackendId: 'intellect-rag-default',
+      };
+      const ts = createMockTenantStore([canvasTenant]);
+      const r = new AdapterRegistry(harnessStore, ts);
+      r.registerFactory('intellect-rag', createRealRagAdapter);
+
+      const adapter = r.getCanvasBackendForTenant('tenant-canvas');
+      expect(adapter).toBeInstanceOf(IntellectRagAdapter);
+      expect(adapter.backendId).toBe('intellect-rag-default');
+    });
+
+    it('default 租户无 canvasBackendId → 回退首个 intellect-rag backend', () => {
+      // tenant1 has no canvasBackendId, tenantId is not 'default' so we need default
+      const defaultTenant: BffTenant = {
+        ...tenant1,
+        id: 'default',
+        // no canvasBackendId
+      };
+      const ts = createMockTenantStore([defaultTenant]);
+      const r = new AdapterRegistry(harnessStore, ts);
+      r.registerFactory('intellect-rag', createRealRagAdapter);
+
+      const adapter = r.getCanvasBackendForTenant('default');
+      expect(adapter).toBeInstanceOf(IntellectRagAdapter);
+      expect(adapter.backendId).toBe('intellect-rag-default');
+    });
+
+    it('default 租户且 tenant 不存在 → 回退首个 intellect-rag backend', () => {
+      // tenantStore returns undefined for unknown id
+      const ts = createMockTenantStore([]);
+      const r = new AdapterRegistry(harnessStore, ts);
+      r.registerFactory('intellect-rag', createRealRagAdapter);
+
+      const adapter = r.getCanvasBackendForTenant('default');
+      expect(adapter).toBeInstanceOf(IntellectRagAdapter);
+    });
+
+    it('企业版租户无 canvasBackendId → 抛 CanvasBackendNotBoundError', () => {
+      // tenant1 has no canvasBackendId and id !== 'default'
+      expect(() => canvasRegistry.getCanvasBackendForTenant('tenant-1')).toThrow(
+        CanvasBackendNotBoundError,
+      );
+    });
+
+    it('未知租户 ID(非 default 且不在 store 中)→ 抛 TenantNotFoundError', () => {
+      expect(() => canvasRegistry.getCanvasBackendForTenant('nonexistent-tenant')).toThrow(
+        TenantNotFoundError,
+      );
+    });
+
+    it('canvasBackendId 指向 intellect-enterprise → 抛 InvalidCanvasBackendError', () => {
+      const enterpriseBackend: HarnessBackend = {
+        ...ragBackend,
+        id: 'intellect-enterprise-1',
+        type: 'intellect-enterprise',
+        capabilities: { ...ragCapabilities, canvas: false, multiTenant: true },
+      };
+      const hs = createMockHarnessStore([ragBackend, enterpriseBackend]);
+      const badTenant: BffTenant = {
+        ...tenant1,
+        id: 'tenant-bad-canvas',
+        canvasBackendId: 'intellect-enterprise-1',
+      };
+      const ts = createMockTenantStore([badTenant]);
+      const r = new AdapterRegistry(hs, ts);
+      r.registerFactory('intellect-rag', createRealRagAdapter);
+      r.registerFactory('intellect-enterprise', createFakeAdapter);
+
+      expect(() => r.getCanvasBackendForTenant('tenant-bad-canvas')).toThrow(
+        InvalidCanvasBackendError,
+      );
+    });
+
+    it('canvasBackendId 指向不存在的 backend → 抛 BackendNotConfiguredError', () => {
+      const badTenant: BffTenant = {
+        ...tenant1,
+        id: 'tenant-missing-backend',
+        canvasBackendId: 'nonexistent-backend',
+      };
+      const ts = createMockTenantStore([badTenant]);
+      const r = new AdapterRegistry(harnessStore, ts);
+      r.registerFactory('intellect-rag', createRealRagAdapter);
+
+      expect(() =>
+        r.getCanvasBackendForTenant('tenant-missing-backend'),
+      ).toThrow(BackendNotConfiguredError);
+    });
+
+    it('同一 canvasBackendId 多次调用返回同一实例(缓存复用)', () => {
+      const canvasTenant: BffTenant = {
+        ...tenant1,
+        id: 'tenant-canvas',
+        canvasBackendId: 'intellect-rag-default',
+      };
+      const ts = createMockTenantStore([canvasTenant]);
+      const r = new AdapterRegistry(harnessStore, ts);
+      r.registerFactory('intellect-rag', createRealRagAdapter);
+
+      const a1 = r.getCanvasBackendForTenant('tenant-canvas');
+      const a2 = r.getCanvasBackendForTenant('tenant-canvas');
+      expect(a1).toBe(a2);
+    });
+
+    it('Store 未就绪 → 抛 RegistryNotReadyError', () => {
+      const emptyStore = createMockHarnessStore([], false);
+      const r = new AdapterRegistry(emptyStore, tenantStore);
+      r.registerFactory('intellect-rag', createRealRagAdapter);
+
+      expect(() => r.getCanvasBackendForTenant('default')).toThrow(
+        RegistryNotReadyError,
+      );
     });
   });
 });

@@ -50,3 +50,30 @@ export class RegistryNotReadyError extends Error {
     this.name = 'RegistryNotReadyError';
   }
 }
+
+// ---------------------------------------------------------------------------
+// spec-008: CanvasService 专属错误(Constitution Principle III + V)
+// ---------------------------------------------------------------------------
+
+/**
+ * 租户未绑定画布后端(canvasBackendId 未设置且 tenantId !== 'default')。
+ * 路由层返回 503。
+ */
+export class CanvasBackendNotBoundError extends Error {
+  constructor(tenantId: string) {
+    super(`Tenant ${tenantId} has no canvas backend bound`);
+    this.name = 'CanvasBackendNotBoundError';
+  }
+}
+
+/**
+ * 租户绑定的 canvasBackendId 指向非 intellect-rag 类型的后端。
+ * Constitution Principle III: 画布硬绑定 IntellectRagAdapter。
+ * 路由层返回 503。
+ */
+export class InvalidCanvasBackendError extends Error {
+  constructor(tenantId: string, backendId: string, actualType: string) {
+    super(`Tenant ${tenantId} canvas backend ${backendId} has invalid type ${actualType}, expected intellect-rag`);
+    this.name = 'InvalidCanvasBackendError';
+  }
+}

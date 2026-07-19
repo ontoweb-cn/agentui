@@ -115,6 +115,7 @@ function createMocks(
     registerFactory: vi.fn(),
     isReady: vi.fn(() => ready),
     invalidate: vi.fn(),
+    getCanvasBackendForTenant: vi.fn(() => adapter) as unknown as IAdapterRegistry['getCanvasBackendForTenant'],
   };
 
   return { harnessStore, tenantStore, registry, adapter };
@@ -249,7 +250,7 @@ describe('capabilities 路由 (P2 US2)', () => {
       expect(body.message).toContain('Registry');
     });
 
-    it('tenant 绑定的 backendId 不存在返回 500(配置不一致)', async () => {
+    it('tenant 绑定的 backendId 不存在返回 503(配置不一致)', async () => {
       // tenant 存在,但 backendId 在 HarnessStore 中找不到
       const tenantWithBadBackend: BffTenant = {
         ...tenant1,
@@ -269,9 +270,10 @@ describe('capabilities 路由 (P2 US2)', () => {
           'X-User-Id': 'user-1',
         },
       });
-      expect(res.status).toBe(500);
+      // 503:配置/基础设施问题(与 canvas.ts 保持一致)
+      expect(res.status).toBe(503);
       const body = await res.json();
-      expect(body.code).toBe(500);
+      expect(body.code).toBe(503);
     });
   });
 });

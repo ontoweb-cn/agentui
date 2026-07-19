@@ -23,8 +23,11 @@ const bffHarnessAdmin = `/api/bff/admin/harness-backends`;
 // 前端认证路径统一经 BFF,token 存 HttpOnly cookie,前端不接触。
 // 改回 `${restAPIv1}/auth/*` 可瞬时回滚(FR-006)。
 const bffAuth = `/api/bff/auth`;
+// spec-008: Canvas routes — 画布脱离 Proxy 路由
+// Constitution Principle I + III: 前端画布操作经 BFF /canvas/*
+const bffCanvas = '/api/bff/canvas';
 
-export { restAPIv1, webAPI, bffAgents, bffCapabilities, bffHarnessAdmin, bffAuth };
+export { restAPIv1, webAPI, bffAgents, bffCapabilities, bffHarnessAdmin, bffAuth, bffCanvas };
 
 export default {
   // user
@@ -264,45 +267,45 @@ export default {
   getSystemConfig: `${restAPIv1}/system/config`,
   setLangfuseConfig: `${restAPIv1}/langfuse/api-key`,
 
-  // flow
-  listAgentTemplate: `${restAPIv1}/agents/templates`,
+  // flow — spec-008: 画布相关 endpoint 已迁到 bffCanvas
+  listAgentTemplate: `${bffCanvas}/templates`,
   listAgents: `${bffAgents}`,
-  listAgentTags: `${restAPIv1}/agents/tags`,
-  updateAgentTags: (agentId: string) => `${restAPIv1}/agents/${agentId}/tags`,
-  createAgent: `${bffAgents}`,
-  updateAgent: (agentId: string) => `${bffAgents}/${agentId}`,
-  deleteAgent: (agentId: string) => `${bffAgents}/${agentId}`,
+  listAgentTags: `${bffCanvas}/tags`,
+  updateAgentTags: (agentId: string) => `${bffCanvas}/${agentId}/tags`,
+  createAgent: `${bffCanvas}`,
+  updateAgent: (agentId: string) => `${bffCanvas}/${agentId}`,
+  deleteAgent: (agentId: string) => `${bffCanvas}/${agentId}`,
   agentChatCompletion: `${bffAgents}/chat/completions`,
-  resetAgent: (agentId: string) => `${restAPIv1}/agents/${agentId}/reset`,
-  testDbConnect: `${restAPIv1}/agents/test_db_connection`,
+  resetAgent: (agentId: string) => `${bffCanvas}/${agentId}/reset`,
+  testDbConnect: `${bffCanvas}/test_db_connection`,
   getInputElements: `${webAPI}/canvas/input_elements`,
   debug: (agentId: string, componentId: string) =>
-    `${restAPIv1}/agents/${agentId}/components/${componentId}/debug`,
+    `${bffCanvas}/${agentId}/components/${componentId}/debug`,
   trace: (agentId: string, messageId: string) =>
-    `${restAPIv1}/agents/${agentId}/logs/${messageId}`,
-  cancelCanvas: (taskId: string) => `${restAPIv1}/tasks/${taskId}/cancel`,
+    `${bffCanvas}/${agentId}/logs/${messageId}`,
+  cancelCanvas: (taskId: string) => `${bffCanvas}/tasks/${taskId}/cancel`,
   // agent
   inputForm: (agentId: string, componentId: string) =>
-    `${restAPIv1}/agents/${agentId}/components/${componentId}/input-form`,
-  fetchVersionList: (id: string) => `${restAPIv1}/agents/${id}/versions`,
+    `${bffCanvas}/${agentId}/components/${componentId}/input-form`,
+  fetchVersionList: (id: string) => `${bffCanvas}/${id}/versions`,
   fetchVersion: (agentId: string, versionId: string) =>
-    `${restAPIv1}/agents/${agentId}/versions/${versionId}`,
+    `${bffCanvas}/${agentId}/versions/${versionId}`,
   getAgent: (id: string) => `${bffAgents}/${id}`,
-  uploadAgentFile: (id?: string) => `${restAPIv1}/agents/${id}/upload`,
+  uploadAgentFile: (id?: string) => `${bffCanvas}/${id}/upload`,
   createAgentSession: (agentId: string) => `${bffAgents}/${agentId}/sessions`,
   fetchAgentLogs: (canvasId: string) => `${webAPI}/canvas/${canvasId}/sessions`,
   fetchAgentSessions: (agentId: string) => `${bffAgents}/${agentId}/sessions`,
   fetchAgentSessionById: (agentId: string, sessionId: string) =>
     `${bffAgents}/${agentId}/sessions/${sessionId}`,
   fetchExternalAgentInputs: (canvasId: string) =>
-    `${restAPIv1}/agentbots/${canvasId}/inputs`,
-  prompt: `${restAPIv1}/agents/prompts`,
-  cancelDataflow: (id: string) => `${restAPIv1}/tasks/${id}/cancel`,
+    `${bffCanvas}/${canvasId}/external-inputs`,
+  prompt: `${bffCanvas}/prompts`,
+  cancelDataflow: (id: string) => `${bffCanvas}/tasks/${id}/cancel`,
   getAttachmentFileDownload: (docId: string) =>
-    `${restAPIv1}/agents/attachments/${docId}/download`,
-  downloadFile: `${restAPIv1}/agents/download`,
-  testWebhook: (id: string) => `${restAPIv1}/agents/${id}/webhook/test`,
-  fetchWebhookTrace: (id: string) => `${restAPIv1}/agents/${id}/webhook/logs`,
+    `${bffCanvas}/attachments/${docId}/download`,
+  downloadFile: `${bffCanvas}/download`,
+  testWebhook: (id: string) => `${bffCanvas}/${id}/webhook/test`,
+  fetchWebhookTrace: (id: string) => `${bffCanvas}/${id}/webhook/logs`,
 
   // explore
 

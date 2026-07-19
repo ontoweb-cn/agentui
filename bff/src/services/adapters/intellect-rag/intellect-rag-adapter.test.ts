@@ -305,4 +305,136 @@ describe('IntellectRagAdapter', () => {
       await expect(adapter.cancelMessage(ctx, 's1')).resolves.toBeUndefined();
     });
   });
+
+  // -------------------------------------------------------------------------
+  // spec-008: request() (public) + proxy() (新增)
+  // -------------------------------------------------------------------------
+
+  describe('request (spec-008 — public, CanvasService JSON 方法)', () => {
+    it('调 GET 返回 JSON', async () => {
+      const data = [{ id: 'a1' }];
+      mockFetch.mockResolvedValueOnce(makeJsonResponse(data));
+
+      const result = await adapter.request<{ id: string }[]>('GET', '/api/v1/agents');
+
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://localhost:9380/api/v1/agents');
+      expect(init.method).toBe('GET');
+      expect(result).toEqual(data);
+    });
+
+    it('调 POST 发送 JSON body', async () => {
+      const created = { id: 'new-agent' };
+      mockFetch.mockResolvedValueOnce(makeJsonResponse(created));
+
+      const result = await adapter.request('POST', '/api/v1/agents', { name: 'test' });
+
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://localhost:9380/api/v1/agents');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body)).toEqual({ name: 'test' });
+      expect(result).toEqual(created);
+    });
+
+    it('DELETE 返回 undefined(204 无 body)', async () => {
+      mockFetch.mockResolvedValueOnce(makeJsonResponse(null, 204));
+
+      const result = await adapter.request('DELETE', '/api/v1/agents/a1');
+
+      expect(result).toBeUndefined();
+    });
+
+    it('上游错误抛错含 URL 与 status', async () => {
+      mockFetch.mockResolvedValueOnce(makeJsonResponse({ message: 'not found' }, 404));
+
+      await expect(
+        adapter.request('GET', '/api/v1/agents/nonexistent'),
+      ).rejects.toThrow(/404/);
+    });
+  });
+
+  describe('proxy (spec-008 — streaming)', () => {
+    it('构造正确的 URL(baseUrl + path + query)', async () => {
+      const mockResponse = { ok: true, status: 200, headers: new Headers(), body: null } as Response;
+      mockFetch.mockResolvedValueOnce(mockResponse);
+
+      const headers = new Headers();
+      headers.set('content-type', 'multipart/form-data');
+      await adapter.proxy('POST', '/api/v1/agents/a1/upload', {
+        headers,
+        body: null,
+        query: '?overwrite=true',
+      });
+
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://localhost:9380/api/v1/agents/a1/upload?overwrite=true');
+    });
+
+    it('覆盖 Authorization 为 adminToken', async () => {
+      const mockResponse = { ok: true, status: 200, headers: new Headers(), body: null } as Response;
+      mockFetch.mockResolvedValueOnce(mockResponse);
+
+      const headers = new Headers();
+      headers.set('authorization', 'Bearer user-token-should-be-overwritten');
+      await adapter.proxy('GET', '/api/v1/agents/download', {
+        headers,
+        query: '',
+      });
+
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers.get('authorization')).toBe('Bearer test-admin-token');
+    });
+
+    it('删除 host 头', async () => {
+      const mockResponse = { ok: true, status: 200, headers: new Headers(), body: null } as Response;
+      mockFetch.mockResolvedValueOnce(mockResponse);
+
+      const headers = new Headers();
+      headers.set('host', 'localhost:9391');
+      await adapter.proxy('GET', '/api/v1/agents/download', {
+        headers,
+        query: '',
+      });
+
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers.get('host')).toBeNull();
+    });
+
+    it('返回上游 Response 原样(不消费 body)', async () => {
+      const upstreamHeaders = new Headers();
+      upstreamHeaders.set('content-type', 'application/octet-stream');
+      const mockResponse = {
+        ok: true,
+        status: 200,
+        headers: upstreamHeaders,
+        body: new ReadableStream(),
+      } as Response;
+      mockFetch.mockResolvedValueOnce(mockResponse);
+
+      const result = await adapter.proxy('GET', '/api/v1/agents/attachments/doc1/download', {
+        headers: new Headers(),
+        query: '',
+      });
+
+      expect(result).toBe(mockResponse);
+      expect(result.status).toBe(200);
+      expect(result.headers.get('content-type')).toBe('application/octet-stream');
+    });
+
+    it('没有 adminToken 时不设置 Authorization', async () => {
+      const backendNoToken = { ...baseBackend, adminToken: '' };
+      const adapterNoToken = new IntellectRagAdapter(backendNoToken);
+      const mockResponse = { ok: true, status: 200, headers: new Headers(), body: null } as Response;
+      mockFetch.mockResolvedValueOnce(mockResponse);
+
+      const headers = new Headers();
+      await adapterNoToken.proxy('GET', '/api/v1/agents/download', {
+        headers,
+        query: '',
+      });
+
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers.get('authorization')).toBeNull();
+    });
+  });
 });

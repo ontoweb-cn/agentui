@@ -216,8 +216,9 @@ describe('auth 路由 (P4b US1)', () => {
       member_id: 'm-001',
       display_name: 'Alice',
       role: 'member',
+      email: null,
     });
-    // 关键:token 不在 body(只在 cookie)
+    // 关键:token 不在 body(只在 cookie),email 透传(减少 /auth/me probe)
     expect(JSON.stringify(body)).not.toContain('imt_abc123');
   });
 
@@ -358,9 +359,12 @@ describe('auth 路由 (P4b US1)', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          access_token: 'rag-token-xxx',
-          email: 'alice@rag.com',
-          nickname: 'Alice',
+          code: 0,
+          data: {
+            access_token: 'rag-token-xxx',
+            email: 'alice@rag.com',
+            nickname: 'Alice',
+          },
         }),
         { status: 200 },
       ),
@@ -387,6 +391,7 @@ describe('auth 路由 (P4b US1)', () => {
     // 社区版:不设置 HttpOnly cookie(前端自己存 access_token)
     expect(resp.headers.get('set-cookie')).toBeNull();
     const body = await resp.json();
+    expect(body.code).toBe(0);
     expect(body.data.access_token).toBe('rag-token-xxx');
   });
 
@@ -517,10 +522,13 @@ describe('auth 路由 (P4b US1)', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          id: 'u-1',
-          email: 'alice@rag.com',
-          nickname: 'Alice',
-          role: 'user',
+          code: 0,
+          data: {
+            id: 'u-1',
+            email: 'alice@rag.com',
+            nickname: 'Alice',
+            role: 'user',
+          },
         }),
         { status: 200 },
       ),
@@ -814,7 +822,7 @@ describe('auth 路由 (P4b US1)', () => {
     expect(resp.status).toBe(401);
   });
 
-  it('US2:企业版登出 intellect-team 不可达 → 仍清 cookie + 502', async () => {
+  it('US2:企业版登出 intellect-team 不可达 → 仍清 cookie + 200(本地登出成功)', async () => {
     const tenantStore = createMockTenantStore([enterpriseTenant]);
     const session: AuthSession = {
       token: 'imt_x',
@@ -830,10 +838,12 @@ describe('auth 路由 (P4b US1)', () => {
       headers: { 'X-Tenant-Id': 'tenant-enterprise' },
     });
 
-    // 网络错误也清 cookie(本地登出),但返回 502
-    expect(resp.status).toBe(502);
+    // 网络错误也清 cookie(本地登出),返回 200(用户视角已登出,与社区版行为一致)
+    expect(resp.status).toBe(200);
     const setCookie = resp.headers.get('set-cookie');
     expect(setCookie).toMatch(/imt_token=;/);
+    const body = await resp.json();
+    expect(body.data.logged_out).toBe(true);
   });
 
   it('US2:企业版登出 token 已过期(intellect-team 返回 401)→ 仍清 cookie + 200(用户视角已登出)', async () => {
@@ -883,12 +893,7 @@ describe('auth 路由 (P4b US1)', () => {
 
   it('US2:社区版登出透传到 intellect-rag /api/v1/auth/logout(带 Authorization)', async () => {
     const tenantStore = createMockTenantStore([ragTenant]);
-    const session: AuthSession = {
-      token: 'rag-token',
-      tenantId: 'tenant-rag',
-      authMode: 'intellect-rag',
-    };
-    const app = createApp(tenantStore, session);
+    const app = createApp(tenantStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ ok: true }), { status: 200 }),
@@ -896,7 +901,10 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request('/auth/logout', {
       method: 'POST',
-      headers: { 'X-Tenant-Id': 'tenant-rag' },
+      headers: {
+        'X-Tenant-Id': 'tenant-rag',
+        Authorization: 'Bearer rag-token',
+      },
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -1250,25 +1258,24 @@ describe('auth 路由 (P4b US1)', () => {
     expect(resp.status).toBe(502);
   });
 
-  it('US3:社区版 callback 透传到 intellect-rag', async () => {
+  it('US3:社区版 callback 返回 400(社区版 OAuth 直连 intellect-rag,不走 BFF)', async () => {
     const tenantStore = createMockTenantStore([ragTenant]);
     const app = createApp(tenantStore);
 
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ access_token: 'rag-token' }), { status: 200 }),
-    );
+    // 社区版 callback 不应调用 fetch — BFF /auth/oauth/callback 仅企业版使用
+    // 社区版 OAuth 流程: /auth/login/:channel → 302 浏览器到 intellect-rag → provider 回调 intellect-rag → intellect-rag 302 到前端
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
 
     const resp = await app.request(
       '/auth/oauth/callback?code=x&state=y',
       { method: 'GET', headers: { 'X-Tenant-Id': 'tenant-rag' } },
     );
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      'http://mock-rag:9380/api/v1/auth/oauth/callback?code=x&state=y',
-      expect.objectContaining({ method: 'GET' }),
-    );
-    expect(resp.status).toBe(200);
+    // 不调上游 — 直接返回 400(redirect_uri 配置错误)
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(resp.status).toBe(400);
     const body = await resp.json();
-    expect(body.data.access_token).toBe('rag-token');
+    expect(body.code).toBe(400);
+    expect(body.message).toContain('enterprise mode');
   });
 });

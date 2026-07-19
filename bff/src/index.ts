@@ -21,8 +21,10 @@ import { authSessionMiddleware } from './middleware/auth-session';
 import { JSONFileHarnessStore } from './services/harness-store';
 import { JSONFileTenantStore } from './services/tenant-store';
 import { AdapterRegistry } from './services/adapter-registry';
+import { CanvasService } from './services/canvas-service';
 import { IntellectRagAdapter } from './services/adapters/intellect-rag/intellect-rag-adapter';
 import { IntellectEnterpriseAdapter } from './services/adapters/intellect-enterprise/intellect-enterprise-adapter';
+import { canvasRoutes } from './routes/canvas';
 import type { HarnessStore, TenantStore } from './types';
 import type { TenantContext } from './types/tenant';
 import type { AuthSession } from './types/auth';
@@ -32,6 +34,7 @@ interface AppVariables {
   harnessStore: HarnessStore;
   tenantStore: TenantStore;
   adapterRegistry: AdapterRegistry;
+  canvasService: CanvasService;
   tenantContext?: TenantContext;
   authSession?: AuthSession;
 }
@@ -71,12 +74,16 @@ app.use('*', async (c, next) => {
   c.res.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
 });
 
-// 将 store + registry 实例存到 Hono context(必须在路由注册之前挂载,
+// spec-008: CanvasService 实例(依赖 adapterRegistry,需在路由注册前创建)
+const canvasService = new CanvasService(adapterRegistry);
+
+// 将 store + registry + canvasService 实例存到 Hono context(必须在路由注册之前挂载,
 // 否则路由处理时 c.get('harnessStore') 等返回 undefined)
 app.use('*', async (c, next) => {
   c.set('harnessStore', harnessStore);
   c.set('tenantStore', tenantStore);
   c.set('adapterRegistry', adapterRegistry);
+  c.set('canvasService', canvasService);
   await next();
 });
 
@@ -137,6 +144,16 @@ app.route('/', harnessAdminRoutes);
 app.use('/capabilities/*', authMiddleware);
 app.use('/capabilities/*', tenantContextMiddleware);
 app.route('/', capabilitiesRoutes);
+
+// spec-008: Canvas 路由 — 画布脱离 Proxy 路由
+// Constitution Principle I + III: 前端画布操作经 BFF /canvas/*,硬绑定 IntellectRagAdapter。
+// Constitution Principle V: 按 BffTenant.canvasBackendId 路由,未绑定返回 503。
+// 路径:前端 /api/bff/canvas/* → Vite proxy rewrite 去掉 /api/bff → BFF 收到 /canvas/*
+// 中间件:authMiddleware(鉴权) + tenantContextMiddleware(租户上下文注入,缺失回退 default)
+// 挂载点 '/' 与其他路由并列,路径前缀不冲突(/canvas/* vs /agents/* / /admin/* / /capabilities/*)
+app.use('/canvas/*', authMiddleware);
+app.use('/canvas/*', tenantContextMiddleware);
+app.route('/', canvasRoutes);
 
 // Multi-Harness P4b (US1/US2/US3): BFF 统一认证路由 /api/bff/auth/*
 // Constitution Principle I + V + VIII: 前端认证经 BFF,企业版用 member token(imt_*)存 HttpOnly cookie。

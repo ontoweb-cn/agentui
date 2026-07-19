@@ -9,14 +9,13 @@
  * 路径映射:
  * - GET    /api/bff/agents                   → adapter.listAgents(ctx)
  * - GET    /api/bff/agents/:id               → adapter.getAgent(ctx, id)
- * - POST   /api/bff/agents                   → 透传(canvas DSL 创建,P1 不经 Adapter)
- * - PUT    /api/bff/agents/:id               → 透传(canvas DSL 编辑,Principle III)
- * - DELETE /api/bff/agents/:id               → 透传(Layer 3)
  * - GET    /api/bff/agents/:agentId/sessions → adapter.listSessions(ctx, agentId)
  * - POST   /api/bff/agents/:agentId/sessions → adapter.createSession(ctx, agentId, title)
  * - GET    /api/bff/agents/:agentId/sessions/:sessionId → adapter.getSession(ctx, agentId, sessionId)
  * - DELETE /api/bff/agents/:agentId/sessions/:sessionId → adapter.deleteSession(ctx, agentId, sessionId)
  * - POST   /api/bff/agents/chat/completions  → adapter.sendMessage(US2 实现)
+ *
+ * spec-008: 画布 DSL 创建/编辑/删除(POST/PUT/DELETE /agents)已迁到 /canvas/* 路由。
  *
  * P1 占位 Registry:从 HarnessStore 获取首个 intellect-rag backend,直接 new IntellectRagAdapter。
  * US3 替换为 AdapterRegistry.getAdapterForTenant(tenantId)。
@@ -27,8 +26,7 @@ import { IntellectRagAdapter } from '../services/adapters/intellect-rag/intellec
 import type { HarnessStore, TenantStore } from '../types';
 import type { TenantContext } from '../types/tenant';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
-import { getTenantContext } from '../middleware/tenant-context';
-import { proxy as proxyToUpstream, type ProxyRequest } from '../services/intellect-rag-client';
+import { getTenantContext, resolveTenantContext } from '../middleware/tenant-context';
 
 // Hono context variables for BFF agent routes
 interface BffAgentVariables {
@@ -77,42 +75,7 @@ function getAdapter(c: Context): IntellectRagAdapter | null {
   return new IntellectRagAdapter(ragBackend);
 }
 
-/** 从 Hono context 获取 TenantContext,缺失时返回默认(P1 兜底,P3 强制) */
-function resolveTenantContext(c: Context): TenantContext {
-  const ctx = getTenantContext(c);
-  if (ctx) {
-    return ctx;
-  }
-  // P1 兜底:中间件未注入(如未带 header)时使用默认,避免阻塞
-  return {
-    tenantId: 'default',
-    userId: 'bff-default',
-  };
-}
-
-/** 透传到 Intellect RAG /api/v1/{path}(canvas DSL 编辑等 Layer 3,P1 保留) */
-async function passthrough(c: Context, path: string): Promise<Response> {
-  const proxyReq: ProxyRequest = {
-    method: c.req.method,
-    headers: c.req.raw.headers,
-    body: c.req.raw.body,
-    query: c.req.url.includes('?') ? '?' + c.req.url.split('?')[1] : '',
-  };
-  const upstream = await proxyToUpstream(path, proxyReq);
-  const responseHeaders = new Headers();
-  upstream.headers.forEach((value, key) => {
-    const lower = key.toLowerCase();
-    if (lower === 'transfer-encoding' || lower === 'content-encoding') return;
-    responseHeaders.set(key, value);
-  });
-  return new Response(upstream.body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers: responseHeaders,
-  });
-}
-
-// --- Agent CRUD (listAgents / getAgent 经 Adapter;create/update/delete 透传 canvas DSL) ---
+// --- Agent CRUD (listAgents / getAgent 经 Adapter;create/update/delete 已迁到 canvas routes) ---
 
 bffAgentRoutes.get('/agents', async (c) => {
   const adapter = getAdapter(c);
@@ -145,11 +108,6 @@ bffAgentRoutes.get('/agents/:id', async (c) => {
     return c.json({ code: status, message: msg }, status);
   }
 });
-
-// POST/PUT/DELETE agents — canvas DSL 编辑,Principle III 透传层,P1 不经 Adapter
-bffAgentRoutes.post('/agents', async (c) => passthrough(c, 'agents'));
-bffAgentRoutes.put('/agents/:id', async (c) => passthrough(c, `agents/${c.req.param('id')}`));
-bffAgentRoutes.delete('/agents/:id', async (c) => passthrough(c, `agents/${c.req.param('id')}`));
 
 // --- Agent Sessions (全部经 Adapter) ---
 

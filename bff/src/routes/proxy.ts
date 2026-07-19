@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { proxy as proxyToUpstream, type ProxyRequest } from '../services/intellect-rag-client';
+import { streamResponse } from '../utils/response';
 
 // ---------------------------------------------------------------------------
 // BFF 透明反向代理路由 (Multi-Harness P0-前置, Constitution Principle I)
@@ -74,22 +75,6 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
   const elapsed = Date.now() - startedAt;
   console.log(`[proxy] ${method} ${fullPath} - ${upstream.status} (${elapsed}ms)`);
 
-  // 透传上游响应:status + headers + body stream
-  // 关键:用上游 headers 原样,保持 Content-Type(尤其 text/event-stream 不改)
-  const responseHeaders = new Headers();
-  // 复制上游响应头(过滤掉 transfer-encoding 由 hono/node-server 自动处理)
-  upstream.headers.forEach((value, key) => {
-    const lower = key.toLowerCase();
-    if (lower === 'transfer-encoding' || lower === 'content-encoding') {
-      return; // 跳过,由底层处理
-    }
-    responseHeaders.set(key, value);
-  });
-
-  // 返回上游 body stream(不缓冲,支持 SSE 透传)
-  return new Response(upstream.body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers: responseHeaders,
-  });
+  // 透传上游响应:共享 streamResponse 工具(hono/node-server 处理 transfer-encoding)
+  return streamResponse(upstream);
 });

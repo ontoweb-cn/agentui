@@ -171,22 +171,13 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     return this.capabilities;
   }
 
-  // -----------------------------------------------------------------------
-  // Private helpers
-  // -----------------------------------------------------------------------
-
-  private buildHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (this.adminToken) {
-      headers['Authorization'] = `Bearer ${this.adminToken}`;
-    }
-    // Constitution Principle V: Intellect RAG 单租户,不注入 X-Intellect-Team/X-Intellect-Project
-    return headers;
-  }
-
-  private async request<T>(
+  /**
+   * JSON 请求方法(供 CanvasService 等调用方直接使用)。
+   *
+   * spec-008 (Constitution Principle III): CanvasService 不引入 IR 层,
+   * 直接调 adapter.request() 透传上游 JSON。
+   */
+  async request<T>(
     method: string,
     path: string,
     body?: unknown,
@@ -195,7 +186,7 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     const response = await fetch(url, {
       method,
       headers: this.buildHeaders(),
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body != null ? JSON.stringify(body) : undefined,
     });
 
     if (!response.ok) {
@@ -210,6 +201,61 @@ export class IntellectRagAdapter implements IHarnessAdapter {
       return undefined as T;
     }
     return response.json() as Promise<T>;
+  }
+
+  /**
+   * 流式透传方法(供 CanvasService 上传/下载使用)。
+   *
+   * spec-008 R5: 用 Adapter 实例的 baseUrl + adminToken(而非全局 BASE_URL),
+   * 落实 Principle II 多后端支持。
+   *
+   * @param method HTTP method
+   * @param path 上游路径(如 /api/v1/agents/:id/upload)
+   * @param req 请求组成部分(headers/body/query)
+   * @returns 上游 fetch Response(不调 .json()/.text(),保留 body ReadableStream)
+   */
+  async proxy(
+    method: string,
+    path: string,
+    req: { headers: Headers; body?: ReadableStream<Uint8Array> | null; query: string },
+  ): Promise<Response> {
+    const url = `${this.baseUrl}${path}${req.query}`;
+
+    // 复制请求头,覆盖 Authorization 为 adapter 的 admin token
+    const headers = new Headers(req.headers);
+    headers.delete('host');
+    if (this.adminToken) {
+      headers.set('Authorization', `Bearer ${this.adminToken}`);
+    }
+
+    const fetchInit: Record<string, unknown> = {
+      method,
+      headers,
+      body: req.body ?? undefined,
+    };
+    // duplex 仅在 body 为 ReadableStream 时需要(Node fetch stream body 要求)
+    if (req.body) {
+      fetchInit.duplex = 'half';
+    }
+
+    const response = await fetch(url, fetchInit as RequestInit);
+
+    return response;
+  }
+
+  // -----------------------------------------------------------------------
+  // Private helpers
+  // -----------------------------------------------------------------------
+
+  private buildHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (this.adminToken) {
+      headers['Authorization'] = `Bearer ${this.adminToken}`;
+    }
+    // Constitution Principle V: Intellect RAG 单租户,不注入 X-Intellect-Team/X-Intellect-Project
+    return headers;
   }
 
   /**

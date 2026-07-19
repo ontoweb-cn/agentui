@@ -83,9 +83,10 @@ capabilitiesRoutes.get('/capabilities', async (c) => {
     }
     if (err instanceof BackendNotConfiguredError) {
       // tenant 存在但绑定的 backendId 不在 HarnessStore(配置不一致)
+      // 503:配置/基础设施问题(与 canvas.ts 保持一致)
       return c.json(
-        fail(500, `Backend not configured for tenant: ${(err as Error).message}`),
-        500,
+        fail(503, `Backend not configured for tenant: ${(err as Error).message}`),
+        503,
       );
     }
     if (err instanceof AdapterFactoryNotRegisteredError) {

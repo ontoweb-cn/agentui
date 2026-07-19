@@ -11,6 +11,7 @@
 
 import type { IHarnessAdapter } from '../types/adapter';
 import type { HarnessBackend, BackendType } from '../types/harness';
+import type { IntellectRagAdapter } from './adapters/intellect-rag/intellect-rag-adapter';
 
 /**
  * Adapter 工厂函数签名。
@@ -64,4 +65,24 @@ export interface IAdapterRegistry {
    * @param backendId 可选,不传清空整个缓存,传则只移除该条目
    */
   invalidate(backendId?: string): void;
+
+  /**
+   * spec-008 新增:按租户解析画布后端,返回 IntellectRagAdapter。
+   *
+   * Constitution Principle III (Canvas Hard-Bound): 画布永远走 Intellect RAG,
+   * 返回类型 IntellectRagAdapter(非 IHarnessAdapter),类型签名落实 hard-bound。
+   *
+   * Resolution flow (research.md R3):
+   * 1. tenant = tenantStore.getTenant(tenantId)
+   * 2. if tenant.canvasBackendId: getAdapterForBackend + instanceof 断言
+   * 3. if !canvasBackendId:
+   *      if tenantId === 'default': 回退首个 intellect-rag backend
+   *      else: throw CanvasBackendNotBoundError
+   *
+   * @throws CanvasBackendNotBoundError 企业版租户未绑定画布后端
+   * @throws InvalidCanvasBackendError canvasBackendId 指向非 intellect-rag 后端
+   * @throws BackendNotConfiguredError canvasBackendId 在 HarnessStore 不存在
+   * @throws RegistryNotReadyError Store 未加载完成
+   */
+  getCanvasBackendForTenant(tenantId: string): IntellectRagAdapter;
 }

@@ -116,6 +116,7 @@ function createMockStores(
     registerFactory: vi.fn(),
     isReady: vi.fn(() => true),
     invalidate: invalidateMock,
+    getCanvasBackendForTenant: vi.fn() as unknown as IAdapterRegistry['getCanvasBackendForTenant'],
   };
 
   return { harnessStore, tenantStore, registry, loadMock, saveConfigMock, invalidateMock };
