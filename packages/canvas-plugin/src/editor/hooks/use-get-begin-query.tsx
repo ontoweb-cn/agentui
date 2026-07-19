@@ -7,7 +7,7 @@ import {
   buildOutputOptions,
   buildUpstreamNodeOutputOptions,
   isAgentStructured,
-} from '@/utils/canvas-util';
+} from '@agentui/canvas-plugin/utils/canvas-util';
 import { t } from 'i18next';
 import { flatten, isEmpty, toLower } from 'lodash';
 import get from 'lodash/get';

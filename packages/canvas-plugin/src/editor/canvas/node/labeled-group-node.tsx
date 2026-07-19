@@ -1,7 +1,7 @@
 import { Panel, type NodeProps, type PanelPosition } from '@xyflow/react';
 import { type ComponentProps, type ReactNode } from 'react';
 
-import { BaseNode } from '@/components/xyflow/base-node';
+import { BaseNode } from '@agentui/canvas-plugin/editor/canvas/node/base-node';
 import { cn } from '@/lib/utils';
 
 /* GROUP NODE Label ------------------------------------------------------- */

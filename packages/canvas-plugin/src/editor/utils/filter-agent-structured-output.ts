@@ -1,5 +1,5 @@
 import { JSONSchema } from '@/components/jsonjoy-builder';
-import { getStructuredDatatype } from '@/utils/canvas-util';
+import { getStructuredDatatype } from '@agentui/canvas-plugin/utils/canvas-util';
 import { get, isPlainObject, toLower } from 'lodash';
 import { JsonSchemaDataType } from '../constant';
 

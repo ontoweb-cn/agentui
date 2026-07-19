@@ -1,4 +1,4 @@
-import { getStructuredDatatype } from '@/utils/canvas-util';
+import { getStructuredDatatype } from '@agentui/canvas-plugin/utils/canvas-util';
 import { get, isPlainObject } from 'lodash';
 import { ReactNode, useCallback } from 'react';
 import {

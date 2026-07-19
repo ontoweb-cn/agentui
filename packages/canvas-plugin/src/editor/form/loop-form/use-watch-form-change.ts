@@ -1,5 +1,5 @@
 import { JsonSchemaDataType } from '@/constants/agent';
-import { buildVariableValue } from '@/utils/canvas-util';
+import { buildVariableValue } from '@agentui/canvas-plugin/utils/canvas-util';
 import { useCallback, useEffect } from 'react';
 import { UseFormReturn, useFormContext, useWatch } from 'react-hook-form';
 import { InputMode } from '../../constant';

@@ -38,7 +38,7 @@ import { useMoveNote } from '../hooks/use-move-note';
 import { usePlaceholderManager } from '../hooks/use-placeholder-manager';
 import { useDropdownManager } from './context';
 
-import { AgentBackground } from '@/components/canvas/background';
+import { AgentBackground } from '@agentui/canvas-plugin/editor/canvas/background';
 import {
   ChatSheetContext,
   type TimelineRenderProps,

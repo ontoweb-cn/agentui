@@ -1,4 +1,4 @@
-import { buildUpstreamNodeOutputOptions } from '@/utils/canvas-util';
+import { buildUpstreamNodeOutputOptions } from '@agentui/canvas-plugin/utils/canvas-util';
 import { useMemo } from 'react';
 import { Operator } from '../constant';
 import OperatorIcon from '../operator-icon';

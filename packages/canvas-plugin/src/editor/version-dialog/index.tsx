@@ -1,4 +1,4 @@
-import { AgentBackground } from '@/components/canvas/background';
+import { AgentBackground } from '@agentui/canvas-plugin/editor/canvas/background';
 import Spotlight from '@/components/spotlight';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';

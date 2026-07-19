@@ -3,7 +3,7 @@ import {
   TooltipContent,
   TooltipNode,
   TooltipTrigger,
-} from '@/components/xyflow/tooltip-node';
+} from '@agentui/canvas-plugin/editor/canvas/node/tooltip-node';
 import { cn } from '@/lib/utils';
 import { Position } from '@xyflow/react';
 import { Copy, Play, Trash2 } from 'lucide-react';

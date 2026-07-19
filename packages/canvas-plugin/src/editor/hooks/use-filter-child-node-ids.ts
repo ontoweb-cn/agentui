@@ -1,4 +1,4 @@
-import { filterChildNodeIds } from '@/utils/canvas-util';
+import { filterChildNodeIds } from '@agentui/canvas-plugin/utils/canvas-util';
 import useGraphStore from '../store';
 
 export function useFilterChildNodeIds(nodeId?: string) {
