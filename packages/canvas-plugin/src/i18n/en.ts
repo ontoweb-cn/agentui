@@ -886,7 +886,7 @@ Important structured information may include: names, dates, locations, events, k
         },
       },
       cancel: 'Cancel',
-      swicthPromptMessage:
+      switchPromptMessage:
         'The prompt word will change. Please confirm whether to abandon the existing prompt word?',
       tokenizerSearchMethodOptions: {
         full_text: 'Full-text',
