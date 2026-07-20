@@ -226,11 +226,11 @@
 
 ### Checkpoint(阶段 2)
 
-- [ ] T033 运行 `npx tsc --noEmit -p tsconfig.json`,确认主应用零错误
-- [ ] T034 运行 `cd packages/canvas-plugin && npx tsc --noEmit`,确认插件包零错误
-- [ ] T035 运行 `npm test`,确认全部测试通过
-- [ ] T036 验证 `src/pages/agent/` 目录已清空(或仅剩 README)
-- [ ] T037 验证 `grep -r "pages/agent" src/components/` 返回空(SC-002)
+- [x] T033 运行 `npx tsc --noEmit -p tsconfig.json`,确认主应用零错误
+- [x] T034 运行 `cd packages/canvas-plugin && npx tsc --noEmit`,确认插件包零错误
+- [x] T035 运行 `npm test`,确认全部测试通过
+- [x] T036 验证 `src/pages/agent/` 目录已清空(或仅剩 README)
+- [x] T037 验证 `grep -r "pages/agent" src/components/` 返回空(SC-002)
 
 ---
 
@@ -281,28 +281,28 @@
 
 ### 3.3 清理与文档
 
-- [ ] T043 清理 `src/pages/agent/` 目录(确认空后删除)
+- [x] T043 清理 `src/pages/agent/` 目录(确认空后删除)
   - T043.1 验证 `src/pages/agent/` 目录已清空
   - T043.2 `git rm -r src/pages/agent/`(若存在空目录)
   - T043.3 更新 `tsconfig.json` include/exclude(若需要)
 
-- [ ] T044 [P] 更新 `docs/frontend-architecture.md`,新增"画布插件"章节
+- [x] T044 [P] 更新 `docs/frontend-architecture.md`,新增"画布插件"章节
   - T044.1 描述画布插件架构(`packages/canvas-plugin/` 结构)
   - T044.2 描述 module system 集成方式
   - T044.3 描述能力门控机制
   - T044.4 描述与 spec/008 BFF CanvasService 的关系
 
-- [ ] T045 [P] 更新 `docs/multi-harness-design.md` §10,新增"Canvas Plugin Extraction"实施记录
+- [x] T045 [P] 更新 `docs/multi-harness-design.md` §10,新增"Canvas Plugin Extraction"实施记录
   - T045.1 记录 4 阶段实施过程
   - T045.2 记录关键决策(复用 ModuleDefinition、不抽离共享 UI 等)
   - T045.3 记录遗留项(Q2 残留、Q3/T-R4、Q4 副作用)
 
-- [ ] T046 更新 `src/features/agents/manifest.ts`,移除已迁出的画布路由
+- [x] T046 更新 `src/features/agents/manifest.ts`,移除已迁出的画布路由
   - T046.1 仅保留 agent 列表/模板路由(SC-009)
   - T046.2 移除 `AgentRoutes` 中画布相关常量
   - T046.3 验证 `features/agents` module 正常加载
 
-- [ ] T047 git commit + tag `canvas-plugin-extraction-v1`
+- [x] T047 git commit + tag `canvas-plugin-extraction-v1`
   - T047.1 提交所有改动
   - T047.2 创建 tag `canvas-plugin-extraction-v1`
   - T047.3 更新 spec.md 状态为"已完成"

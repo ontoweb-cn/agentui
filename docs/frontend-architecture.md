@@ -84,6 +84,7 @@ agentui/
 │   ├── multi-harness-design.md
 │   ├── intellect-admin-api-guide.md
 │   ├── canvas-mechanism.md
+│   ├── canvas-plugin-extraction-design.md  # spec-009 画布插件化设计
 │   ├── orchestration-session-aggregation.md
 │   ├── references/http_api_reference.md
 │   └── frontend-architecture.md  ← 本文档
@@ -274,7 +275,9 @@ Admin 使用独立的 axios 实例（`src/services/admin-service.ts`），**不�
 
 ### 7.2 Agent 编排模块（核心）
 
-`src/pages/agent/` 是最复杂的模块，按职责划分：
+> **spec-009**: 画布代码已从 `src/pages/agent/` 迁入独立包 `packages/canvas-plugin/src/editor/`，通过 `ModuleDefinition` 接口被 `_registry.ts` 加载。详见 [画布插件化设计](canvas-plugin-extraction-design.md)。
+
+原 `src/pages/agent/` 按职责划分：
 
 - **`canvas/`**：基于 `@xyflow/react` 的画布实现
   - `node/`：30+ 节点类型（begin/agent/categorize/iteration/loop/code/message/retrieval/...）
@@ -288,6 +291,39 @@ Admin 使用独立的 axios 实例（`src/services/admin-service.ts`），**不�
 - **`explore/`**：会话探索
 - **`constant/pipeline.tsx`**：节点常量与 DSL 映射
 - **`empty-dsl.ts`**：空白画布的初始 DSL
+
+#### 7.2.1 画布插件架构（spec-009）
+
+```
+packages/canvas-plugin/
+├── src/
+│   ├── index.ts              # ModuleDefinition（路由+能力门控+i18n）
+│   ├── editor/               # 画布主体（从 src/pages/agent/ 迁入）
+│   │   ├── canvas/           # 画布节点、边、上下文菜单
+│   │   ├── form/             # 算子表单（30+ 类型）
+│   │   ├── form-sheet/       # 节点配置面板
+│   │   ├── chat/             # 调试对话
+│   │   ├── explore/          # 会话探索
+│   │   ├── share/            # 分享页
+│   │   ├── constant/         # 常量（迁入 canvas-util, xyflow 组件）
+│   │   ├── hooks/            # 画布专用 hooks
+│   │   └── utils/            # DSL 桥接工具
+│   ├── constant/             # 插件级常量 barrel
+│   ├── i18n/                 # flow.* 翻译文件
+│   ├── service/              # canvas-service + canvas-hooks barrels
+│   ├── types/                # 类型 re-exports
+│   └── utils/                # canvas-util 工具函数
+├── package.json              # @agentui/canvas-plugin
+├── tsconfig.json
+└── jest.config.ts
+```
+
+**关键设计**:
+- 复用现有 `ModuleDefinition` 接口，不引入独立插件协议
+- `@/*` alias 在插件中映射到主应用 `src/*`，共享通用层
+- monorepo 内置包模式（`packages/*` workspace），延后独立构建
+- 能力门控：`enabled: (ctx) => ctx.capabilities.has('canvas')`
+- BFF 画布 API 经 `/api/bff/canvas/*`（spec-008）
 
 ### 7.3 Admin 模块（含本次 BFF 接管调整）
 
