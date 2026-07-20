@@ -184,18 +184,18 @@
 - [x] T024 迁移 `src/interfaces/request/agent.ts` 画布部分 → 插件 `types/`
   - `IAgentWebhookTraceRequest` / `IDebugSingleRequestBody` 等
 
-- [ ] T025 迁移画布 i18n `src/features/agents/locales/{en,zh}.ts` 画布部分 → `packages/canvas-plugin/src/i18n/`
+- [x] T025 迁移画布 i18n `src/features/agents/locales/{en,zh}.ts` 画布部分 → `packages/canvas-plugin/src/i18n/`
   - 拆分 `flow.*` 命名空间到插件,`agents.*` 命名空间保留主应用
   - 更新 `features/agents/manifest.ts` 的 i18n 配置
 
 ### 2.2 Service 拆分
 
-- [ ] T026 拆分 `src/services/agent-service.ts` — 画布方法迁入插件
+- [~] T026 拆分 `src/services/agent-service.ts` — 画布方法迁入插件
   - 迁入插件的方法:`getAgent`(画布详情)、`createAgent`、`fetchVersionList`、`fetchVersion`、`resetAgent`、`agentChatCompletion`、`listAgentTemplate`、`testDbConnect`、`getInputElements`、`debugSingle`、`uploadAgentFile`、`trace`、`inputForm`、`fetchAgentLogs`、`fetchExternalAgentInputs`、`fetchPrompt`、`cancelDataflow`、`cancelCanvas`、`createAgentSession`、`fetchWebhookTrace`
   - 保留主应用的方法:`listAgents`(agent 列表)、`deleteAgent`(若 agent 列表用)
   - 在插件创建 `packages/canvas-plugin/src/service/canvas-service.ts`,URL 改为 `/api/bff/canvas/*`(依赖 spec/008)
 
-- [ ] T027 拆分 `src/hooks/use-agent-request.ts` — 画布 hooks 迁入插件
+- [~] T027 拆分 `src/hooks/use-agent-request.ts` — 画布 hooks 迁入插件
   - 迁入:`useFetchAgent`、`useSetAgent`、`useResetAgent`、`useFetchAgentTemplates`、`useFetchVersionList`、`useFetchVersion`、`useUploadAgentFile`、`useFetchMessageTrace`、`useFetchWebhookTrace`、`useTestDbConnect`、`useDebugSingle`、`useFetchInputForm`、`useFetchAgentLog`、`useFetchExternalAgentInputs`、`useFetchPrompt`、`useCancelDataflow`、`useCancelConversation`、`useCreateAgentSession`、`useDeleteAgentSession`、`useFetchAgentTags`、`useUpdateAgentTags`
   - 保留主应用:`useFetchAgentListByPage`、`useFetchAllAgentList`、`useFetchAgentList`、`useDeleteAgent`(agent 列表用)
   - 在插件创建 `packages/canvas-plugin/src/service/canvas-hooks.ts`
@@ -221,7 +221,7 @@
 - [x] T031 迁移 `src/utils/canvas-util.tsx` → `packages/canvas-plugin/src/editor/utils/`
   - `filterAllUpstreamNodeIds` / `buildOutputOptions` 等画布工具函数
 
-- [ ] T032 迁移 `src/constants/agent.tsx` 画布专属常量 → 插件 `constant/`
+- [~] T032 迁移 `src/constants/agent.tsx` 画布专属常量 → 插件 `constant/`
   - 评估 `AgentCategory` / `AgentGlobals` / `AgentStructuredOutputField` 是否画布专属
 
 ### Checkpoint(阶段 2)
