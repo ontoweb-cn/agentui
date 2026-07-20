@@ -1,5 +1,5 @@
 import { JSONSchema } from '@/components/jsonjoy-builder';
-import { AgentStructuredOutputField } from '@/constants/agent';
+import { AgentStructuredOutputField } from '@agentui/canvas-plugin/constant';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useCallback } from 'react';
 import { initialAgentValues } from '../../constant';

@@ -1,4 +1,4 @@
-import { Operator } from '@/constants/agent';
+import { Operator } from '@agentui/canvas-plugin/constant';
 import { useFetchAgent } from '@/hooks/use-agent-request';
 import { downloadJsonFile } from '@/utils/file-util';
 import { cloneDeepWith, get, isPlainObject } from 'lodash';

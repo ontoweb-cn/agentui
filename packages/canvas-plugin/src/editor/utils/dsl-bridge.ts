@@ -30,7 +30,7 @@
 
 import { Edge } from '@xyflow/react';
 
-import { DataflowOperator, EmptyDsl, Operator } from '@/constants/agent';
+import { DataflowOperator, EmptyDsl, Operator } from '@agentui/canvas-plugin/constant';
 import {
   DSL,
   DSLComponents,

@@ -1,7 +1,7 @@
 import { SelectWithSearch } from '@/components/originui/select-with-search';
 import { IntellectFormItem } from '@/components/intellect-form';
 import { Input } from '@/components/ui/input';
-import { WebhookJWTAlgorithmList } from '@/constants/agent';
+import { WebhookJWTAlgorithmList } from '@agentui/canvas-plugin/constant';
 import { WebhookSecurityAuthType } from '@agentui/canvas-plugin/editor/constant';
 import { buildOptions } from '@/utils/form';
 import { useCallback } from 'react';

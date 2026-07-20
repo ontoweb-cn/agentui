@@ -32,8 +32,11 @@ const canvasModule: ModuleDefinition = {
   ],
 
   i18n: {
-    namespaces: ['agents'],
-    lazy: {},
+    namespaces: ['translation'],
+    lazy: {
+      zh: () => import('./i18n/zh'),
+      en: () => import('./i18n/en'),
+    },
   },
 };
 

@@ -4,7 +4,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { Operator } from '@/constants/agent';
+import { Operator } from '@agentui/canvas-plugin/constant';
 import useGraphStore from '@agentui/canvas-plugin/editor/store';
 import { PropsWithChildren, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';

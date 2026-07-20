@@ -1,4 +1,4 @@
-import { WebhookJWTAlgorithmList } from '@/constants/agent';
+import { WebhookJWTAlgorithmList } from '@agentui/canvas-plugin/constant';
 import { z } from 'zod';
 
 export const BeginFormSchema = z.object({

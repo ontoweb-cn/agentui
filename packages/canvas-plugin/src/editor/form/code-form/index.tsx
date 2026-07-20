@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { IntellectSelect } from '@/components/ui/select';
-import { ProgrammingLanguage } from '@/constants/agent';
+import { ProgrammingLanguage } from '@agentui/canvas-plugin/constant';
 import { ICodeForm } from '@/interfaces/database/agent';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AlertTriangle, Maximize2 } from 'lucide-react';

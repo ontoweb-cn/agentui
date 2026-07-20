@@ -2,7 +2,7 @@ import {
   AgentStructuredOutputField,
   JsonSchemaDataType,
   Operator,
-} from '@/constants/agent';
+} from '@agentui/canvas-plugin/constant';
 import { BaseNode } from '@/interfaces/database/agent';
 import OperatorIcon from '@agentui/canvas-plugin/editor/operator-icon';
 

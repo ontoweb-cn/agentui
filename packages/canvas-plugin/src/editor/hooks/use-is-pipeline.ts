@@ -1,4 +1,4 @@
-import { AgentCategory, AgentQuery } from '@/constants/agent';
+import { AgentCategory, AgentQuery } from '@agentui/canvas-plugin/constant';
 import { useSearchParams } from 'react-router';
 
 export function useIsPipeline() {

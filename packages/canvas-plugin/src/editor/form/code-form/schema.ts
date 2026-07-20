@@ -1,4 +1,4 @@
-import { ProgrammingLanguage } from '@/constants/agent';
+import { ProgrammingLanguage } from '@agentui/canvas-plugin/constant';
 import { z } from 'zod';
 import { isValidCodeOutputName } from './utils';
 

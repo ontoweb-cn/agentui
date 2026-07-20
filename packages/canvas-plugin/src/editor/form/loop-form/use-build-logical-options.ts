@@ -1,4 +1,4 @@
-import { SwitchOperatorOptions } from '@/constants/agent';
+import { SwitchOperatorOptions } from '@agentui/canvas-plugin/constant';
 import { camelCase, toLower } from 'lodash';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';

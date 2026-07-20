@@ -5,7 +5,7 @@ import { IntellectFormItem } from '@/components/intellect-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { ComparisonOperator, SwitchLogicOperator } from '@/constants/agent';
+import { ComparisonOperator, SwitchLogicOperator } from '@agentui/canvas-plugin/constant';
 import { loader } from '@monaco-editor/react';
 import { toLower } from 'lodash';
 import { X } from 'lucide-react';

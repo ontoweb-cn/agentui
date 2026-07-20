@@ -1,4 +1,4 @@
-import { CodeTemplateStrMap, ProgrammingLanguage } from '@/constants/agent';
+import { CodeTemplateStrMap, ProgrammingLanguage } from '@agentui/canvas-plugin/constant';
 import { isEmpty } from 'lodash';
 import { useCallback, useEffect } from 'react';
 import { UseFormReturn, useWatch } from 'react-hook-form';

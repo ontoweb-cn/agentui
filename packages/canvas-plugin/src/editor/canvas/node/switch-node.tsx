@@ -1,5 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { SwitchOperatorOptions } from '@/constants/agent';
+import { SwitchOperatorOptions } from '@agentui/canvas-plugin/constant';
 import { LogicalOperatorIcon } from '@/hooks/logic-hooks/use-build-operator-options';
 import { ISwitchCondition, ISwitchNode } from '@/interfaces/database/agent';
 import { NodeProps, Position } from '@xyflow/react';

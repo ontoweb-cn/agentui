@@ -1,4 +1,4 @@
-import { AgentGlobals, AgentStructuredOutputField } from '@/constants/agent';
+import { AgentGlobals, AgentStructuredOutputField } from '@agentui/canvas-plugin/constant';
 import { useFetchAgent } from '@/hooks/use-agent-request';
 import { DefaultOptionType } from '@/interfaces/antd-compat';
 import { IntellectNodeType } from '@/interfaces/database/agent';

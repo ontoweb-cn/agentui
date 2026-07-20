@@ -10,7 +10,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Separator } from '@/components/ui/separator';
-import { Operator } from '@/constants/agent';
+import { Operator } from '@agentui/canvas-plugin/constant';
 import { IntellectNodeType } from '@/interfaces/database/agent';
 import { t } from 'i18next';
 import { isEmpty } from 'lodash';

@@ -4,7 +4,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Operator } from '@/constants/agent';
+import { Operator } from '@agentui/canvas-plugin/constant';
 import { IModalProps } from '@/interfaces/common';
 import { AgentInstanceContext, HandleContext } from '@agentui/canvas-plugin/editor/context';
 import OperatorIcon from '@agentui/canvas-plugin/editor/operator-icon';
