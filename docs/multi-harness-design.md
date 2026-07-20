@@ -1561,6 +1561,78 @@ function AgentPage() {
 6. 移除 PUT:intellect-team 未实现 Team/Project 更新,BFF 不暴露 PUT 路由(YAGNI)
 7. list 响应提取:intellect-team 返回 `{data: [...]}`,BFF admin client 提取数组
 
+#### spec-008：显式 CanvasService — 画布脱离 Proxy 路由 ✅ 已完成
+
+**状态**:✅ 已完成(2026-07-20)
+
+**目标**:BFF 新增显式 `CanvasService` 服务层 + 单一 `/api/bff/canvas/*` 路由前缀，将画布操作从 `bff-agents.ts` 的 `passthrough()` 与 `proxy.ts` catch-all 迁出，落实 Constitution Principle III（Canvas Hard-Bound to Intellect RAG）。
+
+**BFF 侧任务**:
+
+| 任务 | 文件 | 说明 | 状态 |
+|------|------|------|------|
+| Canvas DTO 类型 | `bff/src/types/canvas.ts` | CanvasAgent/CanvasTemplate/CanvasVersion/CreateCanvasBody 等 | ✅ |
+| CanvasService | `bff/src/services/canvas-service.ts` | 24 方法:21 JSON + 3 流式透传 + 1 private helper | ✅ |
+| Canvas 路由 | `bff/src/routes/canvas.ts` | 24 条显式路由 + 错误码映射(R6) | ✅ |
+| AdapterRegistry 扩展 | `bff/src/services/adapter-registry.ts` | getCanvasBackendForTenant 方法,按 BffTenant.canvasBackendId 路由 | ✅ |
+| 错误类型 | `bff/src/services/adapter-registry-errors.ts` | CanvasBackendNotBoundError / InvalidCanvasBackendError | ✅ |
+| IntellectRagAdapter 扩展 | `bff/src/services/adapters/intellect-rag/` | request() 改为 public + 新增 proxy() 流式透传 | ✅ |
+| 路由注册 | `bff/src/index.ts` | /canvas/* 挂载 authMiddleware + tenantContextMiddleware | ✅ |
+| bff-agents 清理 | `bff/src/routes/bff-agents.ts` | 移除 passthrough + POST/PUT/DELETE /agents | ✅ |
+| 共享工具 | `bff/src/utils/response.ts` | streamResponse() — proxy.ts + canvas.ts 复用 | ✅ |
+| 共享中间件 | `bff/src/middleware/tenant-context.ts` | resolveTenantContext() — bff-agents + canvas 复用 | ✅ |
+
+**前端侧任务**:
+
+| 任务 | 文件 | 说明 | 状态 |
+|------|------|------|------|
+| API 路径常量 | `src/utils/api.ts` | 新增 bffCanvas 常量,22 条 endpoint 迁移 | ✅ |
+
+**测试**:BFF 309 tests passed(18 files),`tsc --noEmit` 零错误
+
+---
+
+#### spec-009：Canvas Plugin Extraction — 画布插件化 ✅ 已完成
+
+**状态**:✅ Phase 0-2 完成(2026-07-20),Phase 3 文档完成
+
+**目标**:将画布代码从 `src/pages/agent/` 物理迁入独立包 `packages/canvas-plugin/`，复用 `ModuleDefinition` 接口实现画布代码内聚与可插拔。
+
+**Phase 0 — 解耦**(2026-07-13):
+
+| 任务 | 说明 | 状态 |
+|------|------|------|
+| T001-T005 | 消除 src/components/ 下 6 个文件对画布内部细节的依赖 | ✅ |
+| T007 | 代码评审修复(7 项) | ✅ |
+
+**Phase 1 — 包结构**(2026-07-20):
+
+| 任务 | 说明 | 状态 |
+|------|------|------|
+| T010-T017 | monorepo workspace + tsconfig paths + vite alias + manifest 薄封装 | ✅ |
+
+**Phase 2 — 代码迁移**(2026-07-20):
+
+| 任务 | 说明 | 状态 |
+|------|------|------|
+| T022 | git mv src/pages/agent/ → packages/canvas-plugin/src/editor/ (323 files) | ✅ |
+| T023-T024 | 类型 barrel + 请求接口 re-export | ✅ |
+| T025 | i18n flow.* 提取 → packages/canvas-plugin/src/i18n/ | ✅ |
+| T026-T027 | canvas-service + canvas-hooks barrels | ✅ |
+| T028 | Manifest 拆分 — agents 仅保留列表路由,canvas 路由迁入 plugin | ✅ |
+| T029-T031 | canvas/background + xyflow + canvas-util 组件/工具迁移 | ✅ |
+| T032 | constants barrel + 19 consumer imports updated | ✅ |
+
+**新建文件**:`packages/canvas-plugin/` 下 10 个文件(含 source tree)
+
+**验收标准**:
+- ✅ `tsc --noEmit` 零错误(主应用 + BFF)
+- ✅ `src/pages/agent/` 目录已删除(git mv)
+- ✅ `grep -rn "from '@/pages/agent/" src/` 返回空(0 stale imports)
+- ✅ agents manifest 仅保留 agent 列表路由
+- ✅ canvas plugin ModuleDefinition:能力门控 `capabilities.has('canvas')`
+- ✅ 53 处 import 路径从 `@/pages/agent/` 更新为 `@agentui/canvas-plugin/editor/`
+
 ### 10.2 后续阶段（P6-P7，依赖外部条件）
 
 | 阶段 | 内容 | 依赖 |
