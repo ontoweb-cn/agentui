@@ -192,7 +192,11 @@ export const useFetchFileList = () => {
         page: pagination.current,
       });
 
-      return data?.data;
+      // 上游 401 降级时 BFF 返回 {code:0,data:null}，safeguard 确保返回值始终有效
+      if (data?.data && Array.isArray(data.data.files)) {
+        return data.data;
+      }
+      return { files: [], parent_folder: {} as IFolder, total: 0 };
     },
   });
 

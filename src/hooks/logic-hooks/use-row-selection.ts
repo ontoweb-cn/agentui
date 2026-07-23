@@ -29,6 +29,10 @@ export function useSelectedIds<T extends Array<{ id: string }>>(
   list: T,
 ) {
   const selectedIds = useMemo(() => {
+    // 防御：当上游降级返回 data:null 时（如 token 过期 BFF 返回 401→{code:0,data:null}），
+    // list 可能为 undefined，避免 .filter() 崩溃
+    if (!Array.isArray(list)) return [];
+
     // When using getRowId, rowSelection keys are IDs, not indices
     const selectionKeys = Object.keys(rowSelection);
 
