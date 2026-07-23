@@ -31,23 +31,24 @@ export const backendContextMiddleware: MiddlewareHandler = async (c, next) => {
   const backendId = c.req.header('X-Backend-Id');
   const userId = c.req.header('X-User-Id');
 
+  // 缺失 X-Backend-Id / X-User-Id 时使用默认值，对齐 resolveBackendContext() 的兜底策略。
+  // P1 阶段前端尚未全局注入这些 header（仅部分 API 显式传递），
+  // 返回 400 会阻断 agent 列表等核心功能。
+  const ctx: BackendContext = {
+    backendId: backendId || 'default',
+    userId: userId || 'bff-default',
+  };
+
   if (!backendId || !userId) {
+    // 记录缺失的 header（有助于调试 P1→P3 迁移时未注入 header 的调用方）
     const missing: string[] = [];
     if (!backendId) missing.push('X-Backend-Id');
     if (!userId) missing.push('X-User-Id');
-    return c.json(
-      {
-        code: 400,
-        message: `Missing required header(s): ${missing.join(', ')}`,
-      },
-      400,
+    console.warn(
+      `[backend-context] Using defaults for missing header(s): ${missing.join(', ')} ` +
+      `(req ${c.req.path})`,
     );
   }
-
-  const ctx: BackendContext = {
-    backendId,
-    userId,
-  };
 
   // P3:从 BackendStore 读取 BffTenant 绑定,注入企业版实例内 Team/Project 组织隔离字段(Principle V)。
   // store 注入由 index.ts 的 context middleware 完成;此处防御性获取。
