@@ -12,7 +12,7 @@
     "build": "vite build --mode production",
     "build-storybook": "storybook build",
     "dev": "vite --host",
-    "dev:bff": "tsx watch bff/src/index.ts",
+    "dev:bff": "tsx watch --env-file=bff/.env bff/src/index.ts",
     "dev:all": "concurrently \"npm:dev\" \"npm:dev:bff\"",
     "lint": "eslint src --ext .ts,.tsx --report-unused-disable-directives",
     "prepare": "husky install",
