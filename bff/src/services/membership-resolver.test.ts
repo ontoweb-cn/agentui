@@ -298,7 +298,7 @@ describe('resolveMembershipsFromContext', () => {
     const ctx = {
       get: (key: string) => {
         if (key === 'authSession') {
-          return { token: 'ent-token', backendId: 'b1' };
+          return { token: 'ent-token', tenantId: 'b1' };
         }
         return undefined;
       },
@@ -323,9 +323,9 @@ describe('resolveMembershipsFromContext', () => {
     const ctx = {
       get: (key: string) => {
         if (key === 'authSession') {
-          return { token: 'ent-token', backendId: 'b1' };
+          return { token: 'ent-token', tenantId: 'b1' };
         }
-        if (key === 'backendStore') {
+        if (key === 'tenantStore') {
           return {
             getBackend: (id: string) =>
               id === 'b1' ? { id, intellectBackendId: 'h1' } : undefined,

@@ -212,7 +212,7 @@ describe('resolveMemberIdFromContext', () => {
     const ctx = {
       get: (key: string) => {
         if (key === 'authSession') {
-          return { token: 'ent-token', backendId: 'b1' };
+          return { token: 'ent-token', tenantId: 'b1' };
         }
         return undefined; // 无 backendStore / harnessStore
       },
@@ -231,9 +231,9 @@ describe('resolveMemberIdFromContext', () => {
     const ctx = {
       get: (key: string) => {
         if (key === 'authSession') {
-          return { token: 'ent-token', backendId: 'b1' };
+          return { token: 'ent-token', tenantId: 'b1' };
         }
-        if (key === 'backendStore') {
+        if (key === 'tenantStore') {
           return {
             getBackend: (id: string) =>
               id === 'b1' ? { id, intellectBackendId: 'h1' } : undefined,
@@ -277,16 +277,16 @@ describe('resolveMemberIdFromContext', () => {
 
     const ctxB1 = {
       get: (key: string) => {
-        if (key === 'authSession') return { token: 'shared-token', backendId: 'b1' };
-        if (key === 'backendStore') return { getBackend: () => ({ intellectBackendId: 'h1' }) };
+        if (key === 'authSession') return { token: 'shared-token', tenantId: 'b1' };
+        if (key === 'tenantStore') return { getBackend: () => ({ intellectBackendId: 'h1' }) };
         if (key === 'harnessStore') return { get: () => ({ endpoint: 'http://ent:9381' }) };
         return undefined;
       },
     };
     const ctxB2 = {
       get: (key: string) => {
-        if (key === 'authSession') return { token: 'shared-token', backendId: 'b2' };
-        if (key === 'backendStore') return { getBackend: () => ({ intellectBackendId: 'h1' }) };
+        if (key === 'authSession') return { token: 'shared-token', tenantId: 'b2' };
+        if (key === 'tenantStore') return { getBackend: () => ({ intellectBackendId: 'h1' }) };
         if (key === 'harnessStore') return { get: () => ({ endpoint: 'http://ent:9381' }) };
         return undefined;
       },
