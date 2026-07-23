@@ -77,7 +77,9 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
 
   // 上游返回 401 时,企业版用户降级返回空数据,避免触发前端 401 拦截器跳转登录页
   if (upstream.status === 401) {
-    return c.json({ code: 0, data: [], message: 'success' });
+    // 返回 null data,前端 hooks 通过 data?.data ?? fallback 自动使用默认值
+    // (如 { chats: [], total: 0 }, [] 等),避免 data:[] 导致 .chats.slice() 崩溃
+    return c.json({ code: 0, data: null, message: 'success' });
   }
 
   // 透传上游响应:共享 streamResponse 工具(hono/node-server 处理 transfer-encoding)
