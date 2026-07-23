@@ -17,7 +17,7 @@
 //   RAG 版不需要 member_id(单租户场景)
 
 import { memberIdCache } from './member-id-cache';
-import type { BackendStore, HarnessStore } from '../types';
+import type { TenantStore, HarnessStore } from '../types';
 import { getAuthSession } from '../middleware/auth-session';
 
 interface MemberInfoResponse {
@@ -130,7 +130,7 @@ export async function resolveMemberId(
  *
  * 流程:
  * 1. 从 authSession 取 token + backendId
- * 2. 用 backendStore + harnessStore 解析 intellect-team endpoint
+ * 2. 用 tenantStore + harnessStore 解析 intellect-team endpoint
  * 3. 调 resolveMemberId(backendId, token, endpoint) 获取 member_id
  *
  * @returns member_id,或 undefined(无 session/后端配置缺失/解析失败)
@@ -146,13 +146,13 @@ export async function resolveMemberIdFromContext(c: {
 
   // v7:authMode 已固定为企业版,无需检查 session.authMode
 
-  const backendStore = c.get('backendStore') as BackendStore | undefined;
+  const tenantStore = c.get('tenantStore') as TenantStore | undefined;
   const harnessStore = c.get('harnessStore') as HarnessStore | undefined;
-  if (!backendStore || !harnessStore) {
+  if (!tenantStore || !harnessStore) {
     return undefined;
   }
 
-  const backendConfig = backendStore.getBackend(session.backendId);
+  const backendConfig = tenantStore.getTenant(session.tenantId);
   if (!backendConfig) {
     return undefined;
   }
@@ -163,5 +163,5 @@ export async function resolveMemberIdFromContext(c: {
   }
 
   // v9 BFF-P2-4:传 backendId 用作 cache 复合 key
-  return resolveMemberId(session.backendId, session.token, backend.endpoint);
+  return resolveMemberId(session.tenantId, session.token, backend.endpoint);
 }

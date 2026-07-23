@@ -27,7 +27,7 @@
 // - /proxy/* /canvas/* 路径允许匿名(fail-open)
 
 import type { Context, Next } from 'hono';
-import type { HarnessStore, BackendStore } from '../types';
+import type { HarnessStore, TenantStore } from '../types';
 import { getAuthSession } from './auth-session';
 import { resolveMemberInfo } from '../services/member-id-resolver';
 
@@ -49,15 +49,15 @@ export function createLlmAuthMiddleware(options: { requireAdmin: boolean }) {
     }
 
     // Step 2: 解析企业版后端 endpoint
-    const backendStore = c.get('backendStore') as BackendStore | undefined;
+    const tenantStore = c.get('tenantStore') as TenantStore | undefined;
     const harnessStore = c.get('harnessStore') as HarnessStore | undefined;
-    if (!backendStore || !harnessStore) {
+    if (!tenantStore || !harnessStore) {
       return c.json(
         { code: 503, message: 'Service unavailable: stores not ready', data: null },
       );
     }
 
-    const backendConfig = backendStore.getBackend(session.backendId);
+    const backendConfig = tenantStore.getTenant(session.tenantId);
     if (!backendConfig) {
       return c.json(
         { code: 401, message: 'Unauthorized: backend not found', data: null },
@@ -72,10 +72,10 @@ export function createLlmAuthMiddleware(options: { requireAdmin: boolean }) {
 
     // Step 3: 调 resolveMemberInfo 校验 token + 解析 role
     // v9:共享 memberIdCache 60s 缓存(与 requestContextMiddleware 路径统一)
-    // v9 BFF-P2-4:传 session.backendId 用作 cache 复合 key
+    // v9 BFF-P2-4:传 session.tenantId 用作 cache 复合 key
     let info;
     try {
-      info = await resolveMemberInfo(session.backendId, session.token, backend.endpoint);
+      info = await resolveMemberInfo(session.tenantId, session.token, backend.endpoint);
     } catch (err) {
       console.error('[llm-auth] resolveMemberInfo error:', (err as Error).message);
       return c.json(
