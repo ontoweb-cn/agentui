@@ -14,6 +14,7 @@ import { harnessAdminRoutes } from './routes/harness-admin';
 import { sessionRoutes } from './routes/session';
 import { healthRoutes } from './routes/health';
 import { proxyRoutes } from './routes/proxy';
+import { llmProxyRoutes } from './routes/llm-proxy';
 import { teamRoutes } from './routes/teams';
 import { projectRoutes } from './routes/projects';
 import { tenantBindingRoutes } from './routes/tenant-bindings';
@@ -112,6 +113,10 @@ app.route('/api/admin', adminRoutes);
 // 但排除公开接口 /proxy/v1/system/config
 app.use('/proxy/v1/system/config', async (c, next) => await next());
 app.use('/proxy/*', authMiddleware);
+// LLM Gateway 代理:模型管理 /providers /models 等 → intellect-team :8642
+// 必须在通用 proxyRoutes 之前注册,确保 LLM 路径优先匹配
+app.route('/', llmProxyRoutes);
+// 通用代理:其余 /proxy/v1/* → intellect-rag :9380
 app.route('/', proxyRoutes);
 
 // Multi-Harness P1 (US3): BFF Agent 原生路由 /agents/*
@@ -189,10 +194,13 @@ const port = Number(process.env.BFF_PORT) || 9390;
 // 启动 Store 加载(异步,不阻塞 serve 启动;加载完成前 list() 返回空数组)
 harnessStore.load()
   .then(() => backendStore.load())
-  .then(() => {
+  .then(async () => {
     console.log(
       `[BFF] Stores loaded: ${harnessStore.list().length} backend(s), ${backendStore.listBackends().length} tenant(s)`,
     );
+    // 预热 RAG token(后台异步,失败不阻塞 BFF 启动)
+    const { ragTokenProvider } = await import('./services/rag-token-provider');
+    ragTokenProvider.login().catch(() => {});
   })
   .catch((err) => {
     console.error('[BFF] FATAL: Failed to load stores, exiting:', err);
