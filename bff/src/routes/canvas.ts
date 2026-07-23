@@ -80,8 +80,11 @@ function handleCanvasError(c: Context, err: Error, defaultStatus = 502) {
     return c.json({ code: 404, message: msg }, 404 as 200);
   }
 
-  if (/4\d{2}/.test(msg)) {
-    return c.json({ code: 400, message: msg }, 400 as 200);
+  // 提取上游 HTTP 状态码(如 "Intellect RAG API error 401 at ...")，保留真实错误码
+  const upstreamStatusMatch = msg.match(/\b(4\d{2})\b/);
+  if (upstreamStatusMatch) {
+    const upstreamStatus = parseInt(upstreamStatusMatch[1], 10);
+    return c.json({ code: upstreamStatus, message: msg }, upstreamStatus as 200);
   }
 
   return c.json({ code: defaultStatus, message: msg }, defaultStatus as 200);
