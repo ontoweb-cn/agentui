@@ -51,7 +51,7 @@ export class JSONFileBackendStore implements BackendStore {
     // JSON 不存在:返回空数组
     if (!existsSync(TENANTS_FILE)) {
       console.warn(
-        `[tenant-store] Tenants file not found: ${TENANTS_FILE}, loading empty tenant list`,
+        `\[backend-store\] Tenants file not found: ${TENANTS_FILE}, loading empty tenant list`,
       );
       this.tenants = [];
       return;
@@ -63,7 +63,7 @@ export class JSONFileBackendStore implements BackendStore {
       parsed = JSON.parse(raw);
     } catch (err) {
       console.error(
-        `[tenant-store] Failed to parse JSON: ${(err as Error).message}, loading empty list`,
+        `\[backend-store\] Failed to parse JSON: ${(err as Error).message}, loading empty list`,
       );
       this.tenants = [];
       return;
@@ -72,7 +72,7 @@ export class JSONFileBackendStore implements BackendStore {
     const validationResult = tenantsFileSchema.safeParse(parsed);
     if (!validationResult.success) {
       console.error(
-        `[tenant-store] Invalid tenants schema: ${validationResult.error.message}, loading empty list`,
+        `\[backend-store\] Invalid tenants schema: ${validationResult.error.message}, loading empty list`,
       );
       this.tenants = [];
       return;
@@ -86,7 +86,7 @@ export class JSONFileBackendStore implements BackendStore {
       if (!mainBackend) {
         // 校验失败:抛出明确错误(不静默,spec.md Edge Cases)
         throw new Error(
-          `[tenant-store] Tenant "${tenant.id}" references unknown intellectBackendId "${tenant.intellectBackendId}"`,
+          `\[backend-store\] Tenant "${tenant.id}" references unknown intellectBackendId "${tenant.intellectBackendId}"`,
         );
       }
 
@@ -96,7 +96,7 @@ export class JSONFileBackendStore implements BackendStore {
         mainBackend.type !== 'intellect-enterprise'
       ) {
         throw new Error(
-          `[tenant-store] Tenant "${tenant.id}" authMode=intellect-enterprise requires intellectBackendId to point to type='intellect-enterprise' backend, got: ${mainBackend.type}`,
+          `\[backend-store\] Tenant "${tenant.id}" authMode=intellect-enterprise requires intellectBackendId to point to type='intellect-enterprise' backend, got: ${mainBackend.type}`,
         );
       }
 
@@ -105,18 +105,18 @@ export class JSONFileBackendStore implements BackendStore {
         const canvasBackend = this.harnessStore.get(tenant.canvasBackendId);
         if (!canvasBackend) {
           throw new Error(
-            `[tenant-store] Tenant "${tenant.id}" references unknown canvasBackendId "${tenant.canvasBackendId}"`,
+            `\[backend-store\] Tenant "${tenant.id}" references unknown canvasBackendId "${tenant.canvasBackendId}"`,
           );
         }
         if (canvasBackend.type !== 'intellect-rag') {
           throw new Error(
-            `[tenant-store] Tenant "${tenant.id}" canvasBackendId must be intellect-rag type, got: ${canvasBackend.type}`,
+            `\[backend-store\] Tenant "${tenant.id}" canvasBackendId must be intellect-rag type, got: ${canvasBackend.type}`,
           );
         }
       }
 
       loaded.push(tenant as BffTenant);
-      console.log(`[tenant-store] Loaded tenant: ${tenant.id} (backend: ${tenant.intellectBackendId})`);
+      console.log(`\[backend-store\] Loaded tenant: ${tenant.id} (backend: ${tenant.intellectBackendId})`);
     }
 
     this.tenants = loaded;
@@ -131,7 +131,7 @@ export class JSONFileBackendStore implements BackendStore {
     const backend = this.harnessStore.get(intellectBackendId);
     if (!backend) {
       throw new Error(
-        `[tenant-store] Cannot create tenant: intellectBackendId "${intellectBackendId}" not found in HarnessStore`,
+        `\[backend-store\] Cannot create tenant: intellectBackendId "${intellectBackendId}" not found in HarnessStore`,
       );
     }
 
@@ -161,12 +161,12 @@ export class JSONFileBackendStore implements BackendStore {
   async setHarnessBinding(tenantId: string, backendId: string): Promise<void> {
     const tenant = this.getBackend(tenantId);
     if (!tenant) {
-      throw new Error(`[tenant-store] Tenant not found: ${tenantId}`);
+      throw new Error(`\[backend-store\] Tenant not found: ${tenantId}`);
     }
     const backend = this.harnessStore.get(backendId);
     if (!backend) {
       throw new Error(
-        `[tenant-store] Backend not found in HarnessStore: ${backendId}`,
+        `\[backend-store\] Backend not found in HarnessStore: ${backendId}`,
       );
     }
     tenant.intellectBackendId = backendId;
@@ -185,7 +185,7 @@ export class JSONFileBackendStore implements BackendStore {
   ): Promise<void> {
     const tenant = this.getBackend(tenantId);
     if (!tenant) {
-      throw new Error(`[tenant-store] Tenant not found: ${tenantId}`);
+      throw new Error(`\[backend-store\] Tenant not found: ${tenantId}`);
     }
     // intellectTenantId 为 undefined 时清除绑定(回退缺省),为 "0" 也表示缺省
     tenant.intellectTenantId = intellectTenantId || '0';
@@ -214,18 +214,18 @@ export class JSONFileBackendStore implements BackendStore {
   async setCanvasBinding(tenantId: string, backendId: string): Promise<void> {
     const tenant = this.getBackend(tenantId);
     if (!tenant) {
-      throw new Error(`[tenant-store] Tenant not found: ${tenantId}`);
+      throw new Error(`\[backend-store\] Tenant not found: ${tenantId}`);
     }
     const backend = this.harnessStore.get(backendId);
     if (!backend) {
       throw new Error(
-        `[tenant-store] Backend not found in HarnessStore: ${backendId}`,
+        `\[backend-store\] Backend not found in HarnessStore: ${backendId}`,
       );
     }
     // Constitution Principle III 强制校验:canvasBackendId 必须是 intellect-rag 类型
     if (backend.type !== 'intellect-rag') {
       throw new Error(
-        `[tenant-store] canvasBackendId must be intellect-rag type, got: ${backend.type}`,
+        `\[backend-store\] canvasBackendId must be intellect-rag type, got: ${backend.type}`,
       );
     }
     tenant.canvasBackendId = backendId;

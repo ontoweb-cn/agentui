@@ -230,7 +230,7 @@ describe('fetchHarnessCapabilities', () => {
     mockedRequest.get.mockResolvedValueOnce({ data: caps });
 
     const headers = {
-      'X-Tenant-Id': 'tenant-1',
+      'X-Backend-Id': 'tenant-1',
       'X-User-Id': 'user-1',
     };
     const res = await fetchHarnessCapabilities(headers);
