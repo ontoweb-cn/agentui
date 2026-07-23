@@ -76,7 +76,7 @@ function handleCanvasError(c: Context, err: Error, defaultStatus = 502) {
     return c.json({ code: 404, message: msg }, 404 as 200);
   }
 
-  if (/404/.test(msg)) {
+  if (/\b404\b/.test(msg)) {
     return c.json({ code: 404, message: msg }, 404 as 200);
   }
 

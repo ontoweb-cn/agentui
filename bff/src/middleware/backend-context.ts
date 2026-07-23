@@ -22,7 +22,7 @@ export const BACKEND_CONTEXT_KEY = 'backendContext';
  *
  * 行为:
  * - 提取 X-Backend-Id / X-User-Id header → 构造 BackendContext → c.set('backendContext', ctx) → next()
- * - tenantId 或 userId 缺失 → 返回 400 明确错误(不静默使用默认 tenant)
+ * - tenantId 或 userId 缺失 → 降级使用默认值('default'/'bff-default')并 console.warn,避免阻断 P1 阶段未注入 header 的调用方
  * - P3 扩展:从 BackendStore 读取 BffTenant,注入 intellectTeamId/intellectProjectId
  *   (research.md R3:BffTenant.intellectTenantId 映射到 BackendContext.intellectTeamId → X-Intellect-Team 头)
  *   store 未就绪或 tenant 不存在时,头字段留空(单租户场景兼容)
