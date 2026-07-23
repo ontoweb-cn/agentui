@@ -8,7 +8,7 @@
  *
  * Constitution references (v1.2.0):
  * - Principle III (Canvas Hard-Bound): 硬绑定 IntellectRagAdapter,不经过 Adapter Registry 选择
- * - Principle V (Tenant Isolation): 经 AdapterRegistry.getCanvasBackendForTenant 按租户路由
+ * - Principle V (Tenant Isolation): 经 AdapterRegistry.getCanvasBackendForBackend 按租户路由
  * - Principle VII (YAGNI): 不引入 Canvas IR,DTO 字段与上游 1:1
  *
  * 两类方法:
@@ -16,7 +16,7 @@
  * - 流式方法:调 adapter.proxy(method, path, req),返回上游 Response
  */
 
-import type { TenantContext } from '../types/tenant';
+import type { BackendContext } from '../types/tenant';
 import type { IAdapterRegistry } from './adapter-registry-types';
 import type {
   CanvasAgent,
@@ -41,40 +41,40 @@ export class CanvasService {
   // -------------------------------------------------------------------------
 
   /** 按租户上下文解析画布 Adapter(Constitution Principle III + V) */
-  private resolveAdapter(ctx: TenantContext): IntellectRagAdapter {
-    return this.registry.getCanvasBackendForTenant(ctx.tenantId);
+  private resolveAdapter(ctx: BackendContext): IntellectRagAdapter {
+    return this.registry.getCanvasBackendForBackend(ctx.backendId);
   }
 
   // -------------------------------------------------------------------------
   // JSON 方法 — 画布 CRUD
   // -------------------------------------------------------------------------
 
-  async listCanvas(ctx: TenantContext): Promise<CanvasAgent[]> {
+  async listCanvas(ctx: BackendContext): Promise<CanvasAgent[]> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<CanvasAgent[]>('GET', '/api/v1/agents');
   }
 
-  async getCanvas(ctx: TenantContext, id: string): Promise<CanvasAgent> {
+  async getCanvas(ctx: BackendContext, id: string): Promise<CanvasAgent> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<CanvasAgent>('GET', `/api/v1/agents/${encodeURIComponent(id)}`);
   }
 
-  async createCanvas(ctx: TenantContext, body: CreateCanvasBody): Promise<CanvasAgent> {
+  async createCanvas(ctx: BackendContext, body: CreateCanvasBody): Promise<CanvasAgent> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<CanvasAgent>('POST', '/api/v1/agents', body);
   }
 
-  async saveCanvas(ctx: TenantContext, id: string, body: SaveCanvasBody): Promise<CanvasAgent> {
+  async saveCanvas(ctx: BackendContext, id: string, body: SaveCanvasBody): Promise<CanvasAgent> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<CanvasAgent>('PUT', `/api/v1/agents/${encodeURIComponent(id)}`, body);
   }
 
-  async deleteCanvas(ctx: TenantContext, id: string): Promise<void> {
+  async deleteCanvas(ctx: BackendContext, id: string): Promise<void> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<void>('DELETE', `/api/v1/agents/${encodeURIComponent(id)}`);
   }
 
-  async resetCanvas(ctx: TenantContext, id: string): Promise<void> {
+  async resetCanvas(ctx: BackendContext, id: string): Promise<void> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<void>('POST', `/api/v1/agents/${encodeURIComponent(id)}/reset`);
   }
@@ -83,17 +83,17 @@ export class CanvasService {
   // JSON 方法 — 模板与 Tags
   // -------------------------------------------------------------------------
 
-  async listTemplates(ctx: TenantContext): Promise<CanvasTemplate[]> {
+  async listTemplates(ctx: BackendContext): Promise<CanvasTemplate[]> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<CanvasTemplate[]>('GET', '/api/v1/agents/templates');
   }
 
-  async listTags(ctx: TenantContext): Promise<CanvasTag[]> {
+  async listTags(ctx: BackendContext): Promise<CanvasTag[]> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<CanvasTag[]>('GET', '/api/v1/agents/tags');
   }
 
-  async updateTags(ctx: TenantContext, id: string, body: UpdateTagsBody): Promise<void> {
+  async updateTags(ctx: BackendContext, id: string, body: UpdateTagsBody): Promise<void> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<void>('PUT', `/api/v1/agents/${encodeURIComponent(id)}/tags`, body);
   }
@@ -102,12 +102,12 @@ export class CanvasService {
   // JSON 方法 — 版本
   // -------------------------------------------------------------------------
 
-  async listVersions(ctx: TenantContext, id: string): Promise<CanvasVersion[]> {
+  async listVersions(ctx: BackendContext, id: string): Promise<CanvasVersion[]> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<CanvasVersion[]>('GET', `/api/v1/agents/${encodeURIComponent(id)}/versions`);
   }
 
-  async getVersion(ctx: TenantContext, id: string, vid: string): Promise<CanvasVersion> {
+  async getVersion(ctx: BackendContext, id: string, vid: string): Promise<CanvasVersion> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<CanvasVersion>(
       'GET',
@@ -119,7 +119,7 @@ export class CanvasService {
   // JSON 方法 — 组件
   // -------------------------------------------------------------------------
 
-  async getInputForm(ctx: TenantContext, id: string, cid: string): Promise<unknown> {
+  async getInputForm(ctx: BackendContext, id: string, cid: string): Promise<unknown> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<unknown>(
       'GET',
@@ -127,7 +127,7 @@ export class CanvasService {
     );
   }
 
-  async debugComponent(ctx: TenantContext, id: string, cid: string, body: unknown): Promise<unknown> {
+  async debugComponent(ctx: BackendContext, id: string, cid: string, body: unknown): Promise<unknown> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<unknown>(
       'POST',
@@ -140,7 +140,7 @@ export class CanvasService {
   // JSON 方法 — Trace / Prompts / DB / Webhook / Rerun / Cancel / External
   // -------------------------------------------------------------------------
 
-  async trace(ctx: TenantContext, id: string, messageId: string): Promise<unknown> {
+  async trace(ctx: BackendContext, id: string, messageId: string): Promise<unknown> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<unknown>(
       'GET',
@@ -148,17 +148,17 @@ export class CanvasService {
     );
   }
 
-  async listPrompts(ctx: TenantContext): Promise<unknown> {
+  async listPrompts(ctx: BackendContext): Promise<unknown> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<unknown>('GET', '/api/v1/agents/prompts');
   }
 
-  async testDbConnection(ctx: TenantContext, body: unknown): Promise<unknown> {
+  async testDbConnection(ctx: BackendContext, body: unknown): Promise<unknown> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<unknown>('POST', '/api/v1/agents/test_db_connection', body);
   }
 
-  async testWebhook(ctx: TenantContext, id: string, body: unknown): Promise<unknown> {
+  async testWebhook(ctx: BackendContext, id: string, body: unknown): Promise<unknown> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<unknown>(
       'POST',
@@ -167,7 +167,7 @@ export class CanvasService {
     );
   }
 
-  async fetchWebhookLogs(ctx: TenantContext, id: string): Promise<unknown> {
+  async fetchWebhookLogs(ctx: BackendContext, id: string): Promise<unknown> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<unknown>(
       'GET',
@@ -175,17 +175,17 @@ export class CanvasService {
     );
   }
 
-  async rerun(ctx: TenantContext, body: unknown): Promise<unknown> {
+  async rerun(ctx: BackendContext, body: unknown): Promise<unknown> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<unknown>('POST', '/api/v1/agents/rerun', body);
   }
 
-  async cancelTask(ctx: TenantContext, taskId: string): Promise<void> {
+  async cancelTask(ctx: BackendContext, taskId: string): Promise<void> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<void>('POST', `/api/v1/tasks/${encodeURIComponent(taskId)}/cancel`);
   }
 
-  async fetchExternalInputs(ctx: TenantContext, canvasId: string): Promise<unknown> {
+  async fetchExternalInputs(ctx: BackendContext, canvasId: string): Promise<unknown> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<unknown>(
       'GET',
@@ -198,7 +198,7 @@ export class CanvasService {
   // -------------------------------------------------------------------------
 
   async uploadAttachment(
-    ctx: TenantContext,
+    ctx: BackendContext,
     id: string,
     req: { headers: Headers; body?: ReadableStream<Uint8Array> | null; query: string },
   ): Promise<Response> {
@@ -207,7 +207,7 @@ export class CanvasService {
   }
 
   async downloadAttachment(
-    ctx: TenantContext,
+    ctx: BackendContext,
     docId: string,
     query: string,
   ): Promise<Response> {
@@ -219,7 +219,7 @@ export class CanvasService {
   }
 
   async downloadFile(
-    ctx: TenantContext,
+    ctx: BackendContext,
     req: { headers: Headers; body?: ReadableStream<Uint8Array> | null; query: string },
   ): Promise<Response> {
     const adapter = this.resolveAdapter(ctx);

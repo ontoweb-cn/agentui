@@ -1,14 +1,14 @@
 // Multi-Harness P2 (US1):harness-admin 路由单元测试
 // Constitution Principle VII (Test-First):测试先于实现。
 // 覆盖 CRUD 全流程 + 校验规则 + Token Security + 热加载 + 缓存失效。
-// Mock HarnessStore + TenantStore + AdapterRegistry,隔离路由层逻辑。
+// Mock HarnessStore + BackendStore + AdapterRegistry,隔离路由层逻辑。
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import { Hono } from 'hono';
 import { harnessAdminRoutes } from './harness-admin';
 import type { HarnessStore } from '../types/stores';
-import type { TenantStore } from '../types/stores';
+import type { BackendStore } from '../types/stores';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
 import type {
   HarnessBackend,
@@ -70,7 +70,7 @@ const validForm = {
 
 interface MockStores {
   harnessStore: HarnessStore & HarnessStoreListConfigs;
-  tenantStore: TenantStore;
+  backendStore: BackendStore;
   registry: IAdapterRegistry;
   loadMock: Mock;
   saveConfigMock: Mock;
@@ -94,11 +94,11 @@ function createMockStores(
     listConfigs: vi.fn(() => configs),
   };
 
-  const tenantStore: TenantStore = {
+  const backendStore: BackendStore = {
     load: vi.fn().mockResolvedValue(undefined),
-    getTenant: vi.fn((id: string) => tenants.find((t) => t.id === id)),
-    listTenants: vi.fn(() => tenants),
-    createTenant: vi.fn(),
+    getBackend: vi.fn((id: string) => tenants.find((t) => t.id === id)),
+    listBackends: vi.fn(() => tenants),
+    createBackend: vi.fn(),
     setHarnessBinding: vi.fn(),
     getHarnessBinding: vi.fn((id: string) =>
       tenants.find((t) => t.id === id)?.intellectBackendId,
@@ -111,20 +111,19 @@ function createMockStores(
   };
 
   const registry: IAdapterRegistry = {
-    getAdapterForTenant: vi.fn(),
     getAdapterForBackend: vi.fn(),
     registerFactory: vi.fn(),
     isReady: vi.fn(() => true),
     invalidate: invalidateMock,
-    getCanvasBackendForTenant: vi.fn() as unknown as IAdapterRegistry['getCanvasBackendForTenant'],
+    getCanvasBackendForBackend: vi.fn() as unknown as IAdapterRegistry['getCanvasBackendForBackend'],
   };
 
-  return { harnessStore, tenantStore, registry, loadMock, saveConfigMock, invalidateMock };
+  return { harnessStore, backendStore, registry, loadMock, saveConfigMock, invalidateMock };
 }
 
 interface TestVariables {
   harnessStore: HarnessStore;
-  tenantStore: TenantStore;
+  backendStore: BackendStore;
   adapterRegistry: IAdapterRegistry;
 }
 
@@ -132,7 +131,7 @@ function createApp(stores: MockStores): Hono<{ Variables: TestVariables }> {
   const app = new Hono<{ Variables: TestVariables }>();
   app.use('*', async (c, next) => {
     c.set('harnessStore', stores.harnessStore as HarnessStore);
-    c.set('tenantStore', stores.tenantStore);
+    c.set('backendStore', stores.backendStore);
     c.set('adapterRegistry', stores.registry);
     await next();
   });

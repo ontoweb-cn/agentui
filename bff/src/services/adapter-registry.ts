@@ -9,7 +9,7 @@
  * Constitution references (v1.2.0):
  * - Principle II (Adapter Abstraction): Registry 按 tenantId 选择 Adapter,路由层不感知后端
  * - Principle III (Canvas Hard-Bound): getAdapterForBackend 用于 canvas 硬绑定场景
- * - Principle V (Tenant Isolation): 通过 TenantStore 查询绑定关系
+ * - Principle V (Tenant Isolation): 通过 BackendStore 查询绑定关系
  *
  * P1: 单后端(intellect-rag)
  * P3: 多后端切换(intellect-rag + intellect-enterprise)
@@ -17,7 +17,7 @@
 
 import type { IHarnessAdapter } from '../types/adapter';
 import type { HarnessBackend, BackendType } from '../types/harness';
-import type { HarnessStore, TenantStore } from '../types/stores';
+import type { HarnessStore, BackendStore } from '../types/stores';
 import {
   TenantNotFoundError,
   BackendNotConfiguredError,
@@ -31,13 +31,13 @@ import { IntellectRagAdapter } from './adapters/intellect-rag/intellect-rag-adap
 
 export class AdapterRegistry implements IAdapterRegistry {
   private readonly harnessStore: HarnessStore;
-  private readonly tenantStore: TenantStore;
+  private readonly backendStore: BackendStore;
   private readonly adapterCache = new Map<string, IHarnessAdapter>();
   private readonly factories = new Map<BackendType, HarnessAdapterFactory>();
 
-  constructor(harnessStore: HarnessStore, tenantStore: TenantStore) {
+  constructor(harnessStore: HarnessStore, backendStore: BackendStore) {
     this.harnessStore = harnessStore;
-    this.tenantStore = tenantStore;
+    this.backendStore = backendStore;
   }
 
   registerFactory(backendType: BackendType, factory: HarnessAdapterFactory): void {
@@ -50,21 +50,21 @@ export class AdapterRegistry implements IAdapterRegistry {
     return this.harnessStore.list().length > 0;
   }
 
-  getAdapterForTenant(tenantId: string): IHarnessAdapter {
+  getAdapterForBackend(tenantId: string): IHarnessAdapter {
     if (!this.isReady()) {
       throw new RegistryNotReadyError();
     }
 
-    const tenant = this.tenantStore.getTenant(tenantId);
+    const tenant = this.backendStore.getBackend(tenantId);
     if (!tenant) {
       throw new TenantNotFoundError(tenantId);
     }
 
     const backendId = tenant.intellectBackendId;
-    return this.getAdapterForBackend(backendId);
+    return this.resolveAdapter(backendId);
   }
 
-  getAdapterForBackend(backendId: string): IHarnessAdapter {
+  private resolveAdapter(backendId: string): IHarnessAdapter {
     // 复用缓存(同 backendId 同实例)
     const cached = this.adapterCache.get(backendId);
     if (cached) {
@@ -89,7 +89,7 @@ export class AdapterRegistry implements IAdapterRegistry {
   /**
    * P2 新增:失效缓存的 Adapter 实例。
    *
-   * 后端配置变更(CRUD)后调用,下次 getAdapterForTenant/getAdapterForBackend
+   * 后端配置变更(CRUD)后调用,下次 getAdapterForBackend/getAdapterForBackend
    * 创建新实例(用最新 HarnessBackend 配置)。
    *
    * @param backendId 可选,不传清空整个缓存,传则只移除该条目
@@ -109,22 +109,22 @@ export class AdapterRegistry implements IAdapterRegistry {
    * 返回类型 IntellectRagAdapter(非 IHarnessAdapter),类型签名落实 hard-bound。
    *
    * Resolution flow (research.md R3):
-   * 1. tenant = tenantStore.getTenant(tenantId)
+   * 1. tenant = backendStore.getBackend(tenantId)
    * 2. if tenant.canvasBackendId: getAdapterForBackend + instanceof 断言
    * 3. if !canvasBackendId:
    *      if tenantId === 'default': 回退首个 intellect-rag backend
    *      else: throw CanvasBackendNotBoundError
    */
-  getCanvasBackendForTenant(tenantId: string): IntellectRagAdapter {
+  getCanvasBackendForBackend(tenantId: string): IntellectRagAdapter {
     if (!this.isReady()) {
       throw new RegistryNotReadyError();
     }
 
-    const tenant = this.tenantStore.getTenant(tenantId);
+    const tenant = this.backendStore.getBackend(tenantId);
 
     // 有显式 canvasBackendId:直接按 backendId 获取,断言类型
     if (tenant?.canvasBackendId) {
-      const adapter = this.getAdapterForBackend(tenant.canvasBackendId);
+      const adapter = this.resolveAdapter(tenant.canvasBackendId);
       if (!(adapter instanceof IntellectRagAdapter)) {
         const backend = this.harnessStore.get(tenant.canvasBackendId);
         throw new InvalidCanvasBackendError(
@@ -145,7 +145,7 @@ export class AdapterRegistry implements IAdapterRegistry {
       if (!ragBackend) {
         throw new CanvasBackendNotBoundError(tenantId);
       }
-      const adapter = this.getAdapterForBackend(ragBackend.id);
+      const adapter = this.resolveAdapter(ragBackend.id);
       if (!(adapter instanceof IntellectRagAdapter)) {
         throw new InvalidCanvasBackendError(
           tenantId,
@@ -156,7 +156,7 @@ export class AdapterRegistry implements IAdapterRegistry {
       return adapter;
     }
 
-    // 租户不存在(非 default 且 tenantStore 中找不到)
+    // 租户不存在(非 default 且 backendStore 中找不到)
     if (!tenant) {
       throw new TenantNotFoundError(tenantId);
     }

@@ -1,13 +1,13 @@
 // @see specs/001-multi-harness-p0/contracts/stores.ts (authority source)
 /**
- * Contract: Stores — HarnessStore & TenantStore
+ * Contract: Stores — HarnessStore & BackendStore
  *
  * Authority source: specs/001-multi-harness-p0/contracts/stores.ts
  * Runtime copy: bff/src/types/stores.ts
  *
  * Constitution references:
  * - Principle V (Tenant Isolation via BFF):
- *   TenantStore maintains BffTenant entities with binding refs only.
+ *   BackendStore maintains BffTenant entities with binding refs only.
  * - Token Security:
  *   HarnessStore reads token from env, JSON stores adminTokenEnvVar ref only.
  *   Runtime HarnessBackend (with token) is in-memory, never persisted.
@@ -72,7 +72,7 @@ export interface HarnessStore {
 }
 
 // ---------------------------------------------------------------------------
-// TenantStore
+// BackendStore
 // ---------------------------------------------------------------------------
 
 /**
@@ -81,13 +81,13 @@ export interface HarnessStore {
  * Persistence:
  * - JSON file: bff/data/bff-tenants.json (BffTenant[], NO token, git-tracked)
  *
- * Constitution Principle V: TenantStore 只存绑定关系,
+ * Constitution Principle V: BackendStore 只存绑定关系,
  * 不存 Team/Project/Member 业务数据(那些通过 IMultiTenantAdapter 透传管理)。
  *
  * Constitution Principle III: setCanvasBinding 强制校验
  * canvasBackendId 对应的 HarnessBackend.type 必须是 'intellect-rag'。
  */
-export interface TenantStore {
+export interface BackendStore {
   /**
    * 从 JSON 加载 BffTenant 数组到内存。
    * 启动时调用一次。
@@ -102,17 +102,17 @@ export interface TenantStore {
    * @returns 新建的 BffTenant
    * @throws 若 intellectBackendId 不存在于 HarnessStore
    */
-  createTenant(
+  createBackend(
     name: string,
     intellectBackendId: string,
     intellectTenantId?: string,
   ): Promise<BffTenant>;
 
   /** 按 ID 获取 Tenant。 */
-  getTenant(tenantId: string): BffTenant | undefined;
+  getBackend(tenantId: string): BffTenant | undefined;
 
   /** 列出所有 Tenant。 */
-  listTenants(): BffTenant[];
+  listBackends(): BffTenant[];
 
   /**
    * 设置 Tenant 的主后端绑定。
@@ -170,10 +170,10 @@ export interface TenantStore {
 
 /**
  * Store 工厂,用于 BFF 启动时初始化。
- * P0 实现为 JSONFileHarnessStore / JSONFileTenantStore。
+ * P0 实现为 JSONFileHarnessStore / JSONFileBackendStore。
  * P4+ 可替换为 SQLiteImplementation,只要实现相同接口。
  */
 export interface StoreFactory {
   createHarnessStore(): HarnessStore;
-  createTenantStore(): TenantStore;
+  createBackendStore(): BackendStore;
 }

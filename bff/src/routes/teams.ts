@@ -29,13 +29,13 @@
 
 import { Hono } from 'hono';
 import { IntellectTeamAdminClient, IntellectAdminError } from '../services/intellect-team-admin-client';
-import type { TenantStore } from '../types/stores';
+import type { BackendStore } from '../types/stores';
 import type { AuthSession } from '../types/auth';
 import { AUTH_SESSION_KEY } from '../middleware/auth-session';
 import type { CreateTeamRequest } from '../types/team';
 
 interface TeamAppVariables {
-  tenantStore?: TenantStore;
+  backendStore?: BackendStore;
   [AUTH_SESSION_KEY]?: AuthSession;
 }
 
@@ -59,9 +59,9 @@ function createAdminClient(): IntellectTeamAdminClient {
  * 检查 Team 是否被任意 BffTenant 绑定(FR-011:删除前检查)。
  * @returns 绑定该 team slug 的 BffTenant 数组(空数组表示未绑定)
  */
-function findTenantsBoundToTeam(tenantStore: TenantStore, teamRef: string) {
+function findTenantsBoundToTeam(backendStore: BackendStore, teamRef: string) {
   // intellect-team 的 team_ref 可能是 slug 或内部 id;BffTenant.intellectTenantId 存的是 slug
-  return tenantStore.listTenants().filter((t) => t.intellectTenantId === teamRef);
+  return backendStore.listBackends().filter((t) => t.intellectTenantId === teamRef);
 }
 
 // ---------------------------------------------------------------------------
@@ -141,11 +141,11 @@ teamRoutes.get('/admin/teams/:ref', async (c) => {
 
 teamRoutes.delete('/admin/teams/:ref', async (c) => {
   const ref = c.req.param('ref');
-  const tenantStore = c.get('tenantStore');
+  const backendStore = c.get('backendStore');
 
   // FR-011:归档前检查是否有 BffTenant 绑定(绑定则拒绝,需先解绑)
-  if (tenantStore) {
-    const boundTenants = findTenantsBoundToTeam(tenantStore, ref);
+  if (backendStore) {
+    const boundTenants = findTenantsBoundToTeam(backendStore, ref);
     if (boundTenants.length > 0) {
       const tenantNames = boundTenants.map((t) => `${t.id}(${t.name})`).join(', ');
       return c.json(

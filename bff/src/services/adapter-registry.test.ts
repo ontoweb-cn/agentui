@@ -7,7 +7,7 @@ import {
   RegistryNotReadyError,
 } from './adapter-registry-errors';
 import type { HarnessStore } from '../types/stores';
-import type { TenantStore } from '../types/stores';
+import type { BackendStore } from '../types/stores';
 import type { HarnessBackend, HarnessCapabilities } from '../types/harness';
 import type { BffTenant } from '../types/tenant';
 import type { IHarnessAdapter } from '../types/adapter';
@@ -44,6 +44,22 @@ const tenant1: BffTenant = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
+const tenantDirectBackend: BffTenant = {
+  id: 'intellect-rag-default',
+  name: 'Direct Backend',
+  intellectBackendId: 'intellect-rag-default',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+const tenantSecondBackend: BffTenant = {
+  id: 'intellect-rag-second',
+  name: 'Second Backend',
+  intellectBackendId: 'intellect-rag-second',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
 function createMockHarnessStore(backends: HarnessBackend[], loaded = true): HarnessStore {
   return {
     load: vi.fn().mockResolvedValue(undefined),
@@ -53,17 +69,17 @@ function createMockHarnessStore(backends: HarnessBackend[], loaded = true): Harn
   };
 }
 
-function createMockTenantStore(
+function createMockBackendStore(
   tenants: BffTenant[],
   loaded = true,
-): TenantStore {
+): BackendStore {
   return {
     load: vi.fn().mockResolvedValue(undefined),
-    getTenant: vi.fn((id: string) =>
+    getBackend: vi.fn((id: string) =>
       loaded ? tenants.find((t) => t.id === id) : undefined,
     ),
-    listTenants: vi.fn(() => (loaded ? tenants : [])),
-    createTenant: vi.fn(),
+    listBackends: vi.fn(() => (loaded ? tenants : [])),
+    createBackend: vi.fn(),
     setHarnessBinding: vi.fn(),
     getHarnessBinding: vi.fn((id: string) =>
       loaded ? tenants.find((t) => t.id === id)?.intellectBackendId : undefined,
@@ -95,14 +111,14 @@ function createFakeAdapter(backend: HarnessBackend): IHarnessAdapter {
 
 describe('AdapterRegistry', () => {
   let harnessStore: HarnessStore;
-  let tenantStore: TenantStore;
+  let backendStore: BackendStore;
   let registry: AdapterRegistry;
 
   beforeEach(() => {
     vi.clearAllMocks();
     harnessStore = createMockHarnessStore([ragBackend]);
-    tenantStore = createMockTenantStore([tenant1]);
-    registry = new AdapterRegistry(harnessStore, tenantStore);
+    backendStore = createMockBackendStore([tenant1, tenantDirectBackend, tenantSecondBackend]);
+    registry = new AdapterRegistry(harnessStore, backendStore);
     registry.registerFactory('intellect-rag', createFakeAdapter);
   });
 
@@ -113,21 +129,21 @@ describe('AdapterRegistry', () => {
 
     it('Store 未加载(backends 为空)时返回 false', () => {
       const emptyStore = createMockHarnessStore([], false);
-      const r = new AdapterRegistry(emptyStore, tenantStore);
+      const r = new AdapterRegistry(emptyStore, backendStore);
       expect(r.isReady()).toBe(false);
     });
   });
 
-  describe('getAdapterForTenant', () => {
+  describe('getAdapterForBackend', () => {
     it('合法 tenantId 返回 Adapter 实例', () => {
-      const adapter = registry.getAdapterForTenant('tenant-1');
+      const adapter = registry.getAdapterForBackend('tenant-1');
       expect(adapter).toBeDefined();
       expect(adapter.backendId).toBe('intellect-rag-default');
     });
 
     it('同一 tenantId 多次调用返回同一 Adapter 实例(复用,===)', () => {
-      const a1 = registry.getAdapterForTenant('tenant-1');
-      const a2 = registry.getAdapterForTenant('tenant-1');
+      const a1 = registry.getAdapterForBackend('tenant-1');
+      const a2 = registry.getAdapterForBackend('tenant-1');
       expect(a1).toBe(a2);
     });
 
@@ -139,16 +155,16 @@ describe('AdapterRegistry', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
       };
-      const ts = createMockTenantStore([tenant1, tenant2]);
+      const ts = createMockBackendStore([tenant1, tenant2]);
       const r = new AdapterRegistry(harnessStore, ts);
       r.registerFactory('intellect-rag', createFakeAdapter);
-      const a1 = r.getAdapterForTenant('tenant-1');
-      const a2 = r.getAdapterForTenant('tenant-2');
+      const a1 = r.getAdapterForBackend('tenant-1');
+      const a2 = r.getAdapterForBackend('tenant-2');
       expect(a1).toBe(a2); // 同 backendId → 同实例
     });
 
     it('tenantId 不存在抛 TenantNotFoundError', () => {
-      expect(() => registry.getAdapterForTenant('nonexistent')).toThrow(
+      expect(() => registry.getAdapterForBackend('nonexistent')).toThrow(
         TenantNotFoundError,
       );
     });
@@ -161,10 +177,10 @@ describe('AdapterRegistry', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
       };
-      const ts = createMockTenantStore([tenantWithBadBackend]);
+      const ts = createMockBackendStore([tenantWithBadBackend]);
       const r = new AdapterRegistry(harnessStore, ts);
       r.registerFactory('intellect-rag', createFakeAdapter);
-      expect(() => r.getAdapterForTenant('tenant-bad')).toThrow(
+      expect(() => r.getAdapterForBackend('tenant-bad')).toThrow(
         BackendNotConfiguredError,
       );
     });
@@ -184,20 +200,20 @@ describe('AdapterRegistry', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
       };
-      const ts = createMockTenantStore([tenantEnterprise]);
+      const ts = createMockBackendStore([tenantEnterprise]);
       const r = new AdapterRegistry(hs, ts);
       // 不注册 intellect-enterprise factory
       r.registerFactory('intellect-rag', createFakeAdapter);
-      expect(() => r.getAdapterForTenant('tenant-ent')).toThrow(
+      expect(() => r.getAdapterForBackend('tenant-ent')).toThrow(
         AdapterFactoryNotRegisteredError,
       );
     });
 
     it('Store 未就绪抛 RegistryNotReadyError', () => {
       const emptyStore = createMockHarnessStore([], false);
-      const r = new AdapterRegistry(emptyStore, tenantStore);
+      const r = new AdapterRegistry(emptyStore, backendStore);
       r.registerFactory('intellect-rag', createFakeAdapter);
-      expect(() => r.getAdapterForTenant('tenant-1')).toThrow(
+      expect(() => r.getAdapterForBackend('tenant-1')).toThrow(
         RegistryNotReadyError,
       );
     });
@@ -216,18 +232,18 @@ describe('AdapterRegistry', () => {
       expect(a1).toBe(a2);
     });
 
-    it('backendId 不存在抛 BackendNotConfiguredError', () => {
+    it('backendId 不存在抛 TenantNotFoundError', () => {
       expect(() => registry.getAdapterForBackend('missing')).toThrow(
-        BackendNotConfiguredError,
+        TenantNotFoundError,
       );
     });
   });
 
   describe('registerFactory', () => {
     it('注册后立即生效', () => {
-      const r = new AdapterRegistry(harnessStore, tenantStore);
+      const r = new AdapterRegistry(harnessStore, backendStore);
       r.registerFactory('intellect-rag', createFakeAdapter);
-      expect(() => r.getAdapterForTenant('tenant-1')).not.toThrow();
+      expect(() => r.getAdapterForBackend('tenant-1')).not.toThrow();
     });
   });
 
@@ -254,7 +270,7 @@ describe('AdapterRegistry', () => {
         id: 'intellect-rag-second',
       };
       const hs = createMockHarnessStore([ragBackend, backend2]);
-      const r = new AdapterRegistry(hs, tenantStore);
+      const r = new AdapterRegistry(hs, backendStore);
       r.registerFactory('intellect-rag', createFakeAdapter);
 
       const a1Default = r.getAdapterForBackend('intellect-rag-default');
@@ -278,7 +294,7 @@ describe('AdapterRegistry', () => {
         id: 'intellect-rag-second',
       };
       const hs = createMockHarnessStore([ragBackend, backend2]);
-      const r = new AdapterRegistry(hs, tenantStore);
+      const r = new AdapterRegistry(hs, backendStore);
       r.registerFactory('intellect-rag', createFakeAdapter);
 
       const a1Default = r.getAdapterForBackend('intellect-rag-default');
@@ -303,19 +319,19 @@ describe('AdapterRegistry', () => {
       expect(a2).toBe(a1); // 未被清掉
     });
 
-    it('invalidate 后 getAdapterForTenant 也创建新实例', () => {
-      const a1 = registry.getAdapterForTenant('tenant-1');
+    it('invalidate 后 getAdapterForBackend 也创建新实例', () => {
+      const a1 = registry.getAdapterForBackend('tenant-1');
       registry.invalidate('intellect-rag-default');
-      const a2 = registry.getAdapterForTenant('tenant-1');
+      const a2 = registry.getAdapterForBackend('tenant-1');
       expect(a2).not.toBe(a1);
     });
   });
 
   // -------------------------------------------------------------------------
-  // spec-008: getCanvasBackendForTenant (Constitution Principle III)
+  // spec-008: getCanvasBackendForBackend (Constitution Principle III)
   // -------------------------------------------------------------------------
 
-  describe('getCanvasBackendForTenant (spec-008)', () => {
+  describe('getCanvasBackendForBackend (spec-008)', () => {
     // Use real IntellectRagAdapter factory for instanceof check
     function createRealRagAdapter(backend: HarnessBackend): IHarnessAdapter {
       return new IntellectRagAdapter(backend);
@@ -325,7 +341,7 @@ describe('AdapterRegistry', () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      canvasRegistry = new AdapterRegistry(harnessStore, tenantStore);
+      canvasRegistry = new AdapterRegistry(harnessStore, backendStore);
       canvasRegistry.registerFactory('intellect-rag', createRealRagAdapter);
       canvasRegistry.registerFactory('intellect-enterprise', createFakeAdapter);
     });
@@ -336,11 +352,11 @@ describe('AdapterRegistry', () => {
         id: 'tenant-canvas',
         canvasBackendId: 'intellect-rag-default',
       };
-      const ts = createMockTenantStore([canvasTenant]);
+      const ts = createMockBackendStore([canvasTenant]);
       const r = new AdapterRegistry(harnessStore, ts);
       r.registerFactory('intellect-rag', createRealRagAdapter);
 
-      const adapter = r.getCanvasBackendForTenant('tenant-canvas');
+      const adapter = r.getCanvasBackendForBackend('tenant-canvas');
       expect(adapter).toBeInstanceOf(IntellectRagAdapter);
       expect(adapter.backendId).toBe('intellect-rag-default');
     });
@@ -352,34 +368,34 @@ describe('AdapterRegistry', () => {
         id: 'default',
         // no canvasBackendId
       };
-      const ts = createMockTenantStore([defaultTenant]);
+      const ts = createMockBackendStore([defaultTenant]);
       const r = new AdapterRegistry(harnessStore, ts);
       r.registerFactory('intellect-rag', createRealRagAdapter);
 
-      const adapter = r.getCanvasBackendForTenant('default');
+      const adapter = r.getCanvasBackendForBackend('default');
       expect(adapter).toBeInstanceOf(IntellectRagAdapter);
       expect(adapter.backendId).toBe('intellect-rag-default');
     });
 
     it('default 租户且 tenant 不存在 → 回退首个 intellect-rag backend', () => {
-      // tenantStore returns undefined for unknown id
-      const ts = createMockTenantStore([]);
+      // backendStore returns undefined for unknown id
+      const ts = createMockBackendStore([]);
       const r = new AdapterRegistry(harnessStore, ts);
       r.registerFactory('intellect-rag', createRealRagAdapter);
 
-      const adapter = r.getCanvasBackendForTenant('default');
+      const adapter = r.getCanvasBackendForBackend('default');
       expect(adapter).toBeInstanceOf(IntellectRagAdapter);
     });
 
     it('企业版租户无 canvasBackendId → 抛 CanvasBackendNotBoundError', () => {
       // tenant1 has no canvasBackendId and id !== 'default'
-      expect(() => canvasRegistry.getCanvasBackendForTenant('tenant-1')).toThrow(
+      expect(() => canvasRegistry.getCanvasBackendForBackend('tenant-1')).toThrow(
         CanvasBackendNotBoundError,
       );
     });
 
     it('未知租户 ID(非 default 且不在 store 中)→ 抛 TenantNotFoundError', () => {
-      expect(() => canvasRegistry.getCanvasBackendForTenant('nonexistent-tenant')).toThrow(
+      expect(() => canvasRegistry.getCanvasBackendForBackend('nonexistent-tenant')).toThrow(
         TenantNotFoundError,
       );
     });
@@ -397,12 +413,12 @@ describe('AdapterRegistry', () => {
         id: 'tenant-bad-canvas',
         canvasBackendId: 'intellect-enterprise-1',
       };
-      const ts = createMockTenantStore([badTenant]);
+      const ts = createMockBackendStore([badTenant]);
       const r = new AdapterRegistry(hs, ts);
       r.registerFactory('intellect-rag', createRealRagAdapter);
       r.registerFactory('intellect-enterprise', createFakeAdapter);
 
-      expect(() => r.getCanvasBackendForTenant('tenant-bad-canvas')).toThrow(
+      expect(() => r.getCanvasBackendForBackend('tenant-bad-canvas')).toThrow(
         InvalidCanvasBackendError,
       );
     });
@@ -413,12 +429,12 @@ describe('AdapterRegistry', () => {
         id: 'tenant-missing-backend',
         canvasBackendId: 'nonexistent-backend',
       };
-      const ts = createMockTenantStore([badTenant]);
+      const ts = createMockBackendStore([badTenant]);
       const r = new AdapterRegistry(harnessStore, ts);
       r.registerFactory('intellect-rag', createRealRagAdapter);
 
       expect(() =>
-        r.getCanvasBackendForTenant('tenant-missing-backend'),
+        r.getCanvasBackendForBackend('tenant-missing-backend'),
       ).toThrow(BackendNotConfiguredError);
     });
 
@@ -428,21 +444,21 @@ describe('AdapterRegistry', () => {
         id: 'tenant-canvas',
         canvasBackendId: 'intellect-rag-default',
       };
-      const ts = createMockTenantStore([canvasTenant]);
+      const ts = createMockBackendStore([canvasTenant]);
       const r = new AdapterRegistry(harnessStore, ts);
       r.registerFactory('intellect-rag', createRealRagAdapter);
 
-      const a1 = r.getCanvasBackendForTenant('tenant-canvas');
-      const a2 = r.getCanvasBackendForTenant('tenant-canvas');
+      const a1 = r.getCanvasBackendForBackend('tenant-canvas');
+      const a2 = r.getCanvasBackendForBackend('tenant-canvas');
       expect(a1).toBe(a2);
     });
 
     it('Store 未就绪 → 抛 RegistryNotReadyError', () => {
       const emptyStore = createMockHarnessStore([], false);
-      const r = new AdapterRegistry(emptyStore, tenantStore);
+      const r = new AdapterRegistry(emptyStore, backendStore);
       r.registerFactory('intellect-rag', createRealRagAdapter);
 
-      expect(() => r.getCanvasBackendForTenant('default')).toThrow(
+      expect(() => r.getCanvasBackendForBackend('default')).toThrow(
         RegistryNotReadyError,
       );
     });

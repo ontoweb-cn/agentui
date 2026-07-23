@@ -82,7 +82,7 @@ export const getLoginChannels = () => request.get(api.loginChannels);
 export const loginWithChannel = (channel: string) =>
   (window.location.href = api.loginChannel(channel));
 
-// T004:logout 支持传自定义 headers(X-Tenant-Id),避免 BFF 严格 400
+// T004:logout 支持传自定义 headers(X-Backend-Id),避免 BFF 严格 400
 export const logoutWithHeaders = (headers: Record<string, string>) =>
   request.post(api.logout, { headers });
 

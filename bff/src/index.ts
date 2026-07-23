@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { authMiddleware } from './middleware/auth';
-import { tenantContextMiddleware } from './middleware/tenant-context';
+import { backendContextMiddleware } from './middleware/backend-context';
 import { errorHandler } from './middleware/error';
 import { adminRoutes } from './routes/admin';
 import { agentRoutes } from './routes/agent';
@@ -19,23 +19,23 @@ import { projectRoutes } from './routes/projects';
 import { tenantBindingRoutes } from './routes/tenant-bindings';
 import { authSessionMiddleware } from './middleware/auth-session';
 import { JSONFileHarnessStore } from './services/harness-store';
-import { JSONFileTenantStore } from './services/tenant-store';
+import { JSONFileBackendStore } from './services/backend-store';
 import { AdapterRegistry } from './services/adapter-registry';
 import { CanvasService } from './services/canvas-service';
 import { IntellectRagAdapter } from './services/adapters/intellect-rag/intellect-rag-adapter';
 import { IntellectEnterpriseAdapter } from './services/adapters/intellect-enterprise/intellect-enterprise-adapter';
 import { canvasRoutes } from './routes/canvas';
-import type { HarnessStore, TenantStore } from './types';
-import type { TenantContext } from './types/tenant';
+import type { HarnessStore, BackendStore } from './types';
+import type { BackendContext } from './types/tenant';
 import type { AuthSession } from './types/auth';
 
 // Hono context variables type (for c.set / c.get)
 interface AppVariables {
   harnessStore: HarnessStore;
-  tenantStore: TenantStore;
+  backendStore: BackendStore;
   adapterRegistry: AdapterRegistry;
   canvasService: CanvasService;
-  tenantContext?: TenantContext;
+  backendContext?: BackendContext;
   authSession?: AuthSession;
 }
 
@@ -45,8 +45,8 @@ const app = new Hono<{ Variables: AppVariables }>();
 // Constitution Principle V (Tenant Isolation) + Principle II (Adapter Abstraction)。
 // 必须在所有路由注册之前,确保 context 注入中间件先于路由处理执行。
 const harnessStore: HarnessStore = new JSONFileHarnessStore();
-const tenantStore: TenantStore = new JSONFileTenantStore(harnessStore);
-const adapterRegistry = new AdapterRegistry(harnessStore, tenantStore);
+const backendStore: BackendStore = new JSONFileBackendStore(harnessStore);
+const adapterRegistry = new AdapterRegistry(harnessStore, backendStore);
 adapterRegistry.registerFactory(
   'intellect-rag',
   (backend) => new IntellectRagAdapter(backend),
@@ -81,7 +81,7 @@ const canvasService = new CanvasService(adapterRegistry);
 // 否则路由处理时 c.get('harnessStore') 等返回 undefined)
 app.use('*', async (c, next) => {
   c.set('harnessStore', harnessStore);
-  c.set('tenantStore', tenantStore);
+  c.set('backendStore', backendStore);
   c.set('adapterRegistry', adapterRegistry);
   c.set('canvasService', canvasService);
   await next();
@@ -118,19 +118,19 @@ app.route('/', proxyRoutes);
 // Constitution Principle I + II: 前端经 BFF 原生路由调 Adapter,不直连 Intellect RAG。
 // 路径:前端 /api/bff/agents → Vite proxy rewrite 去掉 /api/bff → BFF 收到 /agents
 //       → bffAgentRoutes 匹配 /agents/* → adapter.listAgents / getAgent / sessions CRUD
-// US3:通过 AdapterRegistry.getAdapterForTenant(tenantId) 选择 Adapter。
+// US3:通过 AdapterRegistry.getAdapterForBackend(tenantId) 选择 Adapter。
 // Canvas DSL 编辑(POST/PUT/DELETE agents)保留透传(Principle III Layer 3)。
-// TenantContext 中间件仅挂载到 /agents/* (US3),不影响 /proxy/v1/* 透传路由。
+// BackendContext 中间件仅挂载到 /agents/* (US3),不影响 /proxy/v1/* 透传路由。
 // 挂载点 '/' 与 proxyRoutes 并列,路径前缀不冲突(/agents/* vs /proxy/v1/*)。
 app.use('/agents/*', authMiddleware);
-app.use('/agents/*', tenantContextMiddleware);
+app.use('/agents/*', backendContextMiddleware);
 app.route('/', bffAgentRoutes);
 
 // Multi-Harness P2 (US1): Harness Admin 路由 /admin/harness-backends/*
 // Constitution Principle I + V (非租户隔离) + Token Security。
 // 路径:前端 /api/bff/admin/harness-backends → Vite proxy rewrite 去掉 /api/bff
 //       → BFF 收到 /admin/harness-backends → harnessAdminRoutes 匹配
-// 鉴权:authMiddleware(运维操作,非租户隔离,无 tenantContextMiddleware)。
+// 鉴权:authMiddleware(运维操作,非租户隔离,无 backendContextMiddleware)。
 // 挂载点 '/' 与 bffAgentRoutes 并列,路径前缀不冲突(/admin/harness-backends vs /agents)。
 app.use('/admin/harness-backends/*', authMiddleware);
 app.route('/', harnessAdminRoutes);
@@ -139,20 +139,20 @@ app.route('/', harnessAdminRoutes);
 // Constitution Principle I + II + V + VIII: 前端经 BFF 查询能力,按 tenant 隔离。
 // 路径:前端 /api/bff/capabilities → Vite proxy rewrite 去掉 /api/bff
 //       → BFF 收到 /capabilities → capabilitiesRoutes 匹配
-// 中间件:authMiddleware + tenantContextMiddleware(注入 tenantId/userId)。
+// 中间件:authMiddleware + backendContextMiddleware(注入 tenantId/userId)。
 // 挂载点 '/' 与其他路由并列,路径前缀不冲突(/capabilities vs /agents vs /admin)。
 app.use('/capabilities/*', authMiddleware);
-app.use('/capabilities/*', tenantContextMiddleware);
+app.use('/capabilities/*', backendContextMiddleware);
 app.route('/', capabilitiesRoutes);
 
 // spec-008: Canvas 路由 — 画布脱离 Proxy 路由
 // Constitution Principle I + III: 前端画布操作经 BFF /canvas/*,硬绑定 IntellectRagAdapter。
 // Constitution Principle V: 按 BffTenant.canvasBackendId 路由,未绑定返回 503。
 // 路径:前端 /api/bff/canvas/* → Vite proxy rewrite 去掉 /api/bff → BFF 收到 /canvas/*
-// 中间件:authMiddleware(鉴权) + tenantContextMiddleware(租户上下文注入,缺失回退 default)
+// 中间件:authMiddleware(鉴权) + backendContextMiddleware(租户上下文注入,缺失回退 default)
 // 挂载点 '/' 与其他路由并列,路径前缀不冲突(/canvas/* vs /agents/* / /admin/* / /capabilities/*)
 app.use('/canvas/*', authMiddleware);
-app.use('/canvas/*', tenantContextMiddleware);
+app.use('/canvas/*', backendContextMiddleware);
 app.route('/', canvasRoutes);
 
 // Multi-Harness P4b (US1/US2/US3): BFF 统一认证路由 /api/bff/auth/*
@@ -175,7 +175,7 @@ app.route('/', authRoutes);
 //   前端 /api/bff/admin/teams/*                     → BFF /admin/teams/*
 //   前端 /api/bff/admin/projects/*                  → BFF /admin/projects/*(独立路径,对齐 intellect-team)
 //   前端 /api/bff/admin/tenants/:id/binding         → BFF /admin/tenants/:id/binding
-// 鉴权:authMiddleware(运维操作,非租户隔离,无 tenantContextMiddleware)。
+// 鉴权:authMiddleware(运维操作,非租户隔离,无 backendContextMiddleware)。
 // 挂载点 '/' 与其他路由并列,路径前缀不冲突。
 app.use('/admin/teams/*', authMiddleware);
 app.use('/admin/projects/*', authMiddleware);
@@ -188,10 +188,10 @@ const port = Number(process.env.BFF_PORT) || 9390;
 
 // 启动 Store 加载(异步,不阻塞 serve 启动;加载完成前 list() 返回空数组)
 harnessStore.load()
-  .then(() => tenantStore.load())
+  .then(() => backendStore.load())
   .then(() => {
     console.log(
-      `[BFF] Stores loaded: ${harnessStore.list().length} backend(s), ${tenantStore.listTenants().length} tenant(s)`,
+      `[BFF] Stores loaded: ${harnessStore.list().length} backend(s), ${backendStore.listBackends().length} tenant(s)`,
     );
   })
   .catch((err) => {

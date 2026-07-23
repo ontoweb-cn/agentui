@@ -179,14 +179,14 @@ export const useLogout = () => {
     mutationFn: async () => {
       // T004:从 localStorage 读取 tenantId,防御性用 '0' 兜底(避免 BFF 400 阻塞登出)。
       // 使用 logoutWithHeaders 直接调 request.post,因为 userService.logout 基于
-      // registerServer,无法透传自定义 headers(BFF /auth/logout 严格校验 X-Tenant-Id)。
+      // registerServer,无法透传自定义 headers(BFF /auth/logout 严格校验 X-Backend-Id)。
       // P2-A 修复:用户主动登出意图明确,即使 BFF 失败也清除前端标记(防御性),
       // 避免登出失败后用户卡在已登录状态。
-      const tenantId = localStorage.getItem(TenantId) || '0';
+      const tenantId = localStorage.getItem(BackendId) || '0';
       let code: number | undefined;
       try {
         const { data = {} } = await logoutWithHeaders({
-          'X-Tenant-Id': tenantId,
+          'X-Backend-Id': tenantId,
         });
         code = data?.code;
         if (code === 0) {
@@ -218,11 +218,11 @@ export const useAuthMode = () => {
       // P4 缺省 '0'(无 query param 时,localStorage 也无标记)。
       const urlTenant = new URLSearchParams(window.location.search).get('tenant');
       if (urlTenant) {
-        localStorage.setItem(TenantId, urlTenant);
+        localStorage.setItem(BackendId, urlTenant);
       }
-      const tenantId = localStorage.getItem(TenantId) || '0';
+      const tenantId = localStorage.getItem(BackendId) || '0';
       const { data: res = {} } = await request.get(api.authConfig, {
-        headers: { 'X-Tenant-Id': tenantId },
+        headers: { 'X-Backend-Id': tenantId },
       });
       return (res?.data?.authMode as AuthMode) ?? 'intellect-rag';
     },

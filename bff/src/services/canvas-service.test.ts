@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CanvasService } from './canvas-service';
 import type { IAdapterRegistry } from './adapter-registry-types';
 import type { IntellectRagAdapter } from './adapters/intellect-rag/intellect-rag-adapter';
-import type { TenantContext } from '../types/tenant';
+import type { BackendContext } from '../types/tenant';
 import { CanvasBackendNotBoundError } from './adapter-registry-errors';
 
-const ctx: TenantContext = {
-  tenantId: 'tenant-001',
+const ctx: BackendContext = {
+  backendId: 'tenant-001',
   userId: 'user-001',
 };
 
@@ -34,12 +34,11 @@ function createMockAdapter(): IntellectRagAdapter {
 
 function createMockRegistry(adapter: IntellectRagAdapter): IAdapterRegistry {
   return {
-    getAdapterForTenant: vi.fn(),
     getAdapterForBackend: vi.fn(),
     registerFactory: vi.fn(),
     isReady: vi.fn().mockReturnValue(true),
     invalidate: vi.fn(),
-    getCanvasBackendForTenant: vi.fn().mockReturnValue(adapter),
+    getCanvasBackendForBackend: vi.fn().mockReturnValue(adapter),
   };
 }
 
@@ -299,9 +298,9 @@ describe('CanvasService', () => {
   // -----------------------------------------------------------------------
 
   describe('error propagation', () => {
-    it('registry.getCanvasBackendForTenant 抛错时向上传播', async () => {
+    it('registry.getCanvasBackendForBackend 抛错时向上传播', async () => {
       const registry = createMockRegistry(mockAdapter);
-      registry.getCanvasBackendForTenant = vi.fn().mockImplementation(() => {
+      registry.getCanvasBackendForBackend = vi.fn().mockImplementation(() => {
         throw new CanvasBackendNotBoundError('tenant-404');
       });
       const s = new CanvasService(registry);

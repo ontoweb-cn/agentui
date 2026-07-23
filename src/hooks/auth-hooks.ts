@@ -1,5 +1,5 @@
 import message from '@/components/ui/message';
-import { AuthMode, TenantId, UserInfo } from '@/constants/authorization';
+import { BackendId } from '@/constants/authorization';
 import api from '@/utils/api';
 import authorizationUtil from '@/utils/authorization-util';
 import { useQuery } from '@tanstack/react-query';
@@ -79,10 +79,10 @@ const useEnterpriseCookieProbe = () => {
       // P2-B 修复:fetch/resp.json() 可能抛错(网络断开、非 JSON 响应),
       // try/catch 兜底返回 false(视为未登录),避免控制台未捕获错误。
       try {
-        const tenantId = localStorage.getItem(TenantId) || '0';
+        const tenantId = localStorage.getItem(BackendId) || '0';
         const resp = await fetch(api.userInfo, {
           credentials: 'include',
-          headers: { 'X-Tenant-Id': tenantId },
+          headers: { 'X-Backend-Id': tenantId },
         });
         if (!resp.ok) {
           // 401/其他错误:未登录或 cookie 过期,不做任何操作

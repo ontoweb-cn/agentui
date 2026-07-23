@@ -27,7 +27,7 @@ export { isTerminalChunk } from './stream';
 
 export type {
   BffTenant,
-  TenantContext,
+  BackendContext,
 } from './tenant';
 
 export type { AuthSession } from './auth';
@@ -55,7 +55,7 @@ export { isMultiTenantAdapter } from './adapter';
 
 export type {
   HarnessStore,
-  TenantStore,
+  BackendStore,
   StoreFactory,
 } from './stores';
 
@@ -63,7 +63,7 @@ export type {
 export interface BffContext {
   requestId: string;
   userId?: string;
-  tenantId?: string;
+  backendId?: string;
 }
 
 export interface AgentSession {

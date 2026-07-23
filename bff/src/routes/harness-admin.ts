@@ -20,7 +20,7 @@
 
 import { Hono, type Context } from 'hono';
 import type { HarnessStore } from '../types/stores';
-import type { TenantStore } from '../types/stores';
+import type { BackendStore } from '../types/stores';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
 import type { HarnessStoreListConfigs, HarnessBackendWithStatus, HarnessBackendForm } from '../types/harness-admin';
 import type { HarnessBackendConfig } from '../types/harness';
@@ -28,7 +28,7 @@ import { validateForm, firstError } from '../services/harness-admin-validation';
 
 interface HarnessAdminVariables {
   harnessStore: HarnessStore;
-  tenantStore: TenantStore;
+  backendStore: BackendStore;
   adapterRegistry: IAdapterRegistry;
 }
 
@@ -48,8 +48,8 @@ function getStore(c: Context): HarnessStore & HarnessStoreListConfigs {
   return store as HarnessStore & HarnessStoreListConfigs;
 }
 
-function getTenantStore(c: Context): TenantStore {
-  return c.get('tenantStore');
+function getBackendStore(c: Context): BackendStore {
+  return c.get('backendStore');
 }
 
 function getRegistry(c: Context): IAdapterRegistry {
@@ -83,10 +83,10 @@ function fail(code: number, message: string) {
  * 检查 backendId 是否被任何 tenant 绑定(intellectBackendId 或 canvasBackendId)。
  */
 function isBackendBound(
-  tenantStore: TenantStore,
+  backendStore: BackendStore,
   backendId: string,
 ): { bound: boolean; tenantId?: string } {
-  for (const tenant of tenantStore.listTenants()) {
+  for (const tenant of backendStore.listBackends()) {
     if (tenant.intellectBackendId === backendId) {
       return { bound: true, tenantId: tenant.id };
     }
@@ -115,7 +115,7 @@ harnessAdminRoutes.get('/admin/harness-backends', (c) => {
 
 harnessAdminRoutes.post('/admin/harness-backends', async (c) => {
   const store = getStore(c);
-  const tenantStore = getTenantStore(c);
+  const backendStore = getBackendStore(c);
   const registry = getRegistry(c);
 
   const body = await c.req.json().catch(() => null);
@@ -233,7 +233,7 @@ harnessAdminRoutes.put('/admin/harness-backends/:id', async (c) => {
 
 harnessAdminRoutes.delete('/admin/harness-backends/:id', async (c) => {
   const store = getStore(c);
-  const tenantStore = getTenantStore(c);
+  const backendStore = getBackendStore(c);
   const registry = getRegistry(c);
   const id = c.req.param('id');
 
@@ -244,7 +244,7 @@ harnessAdminRoutes.delete('/admin/harness-backends/:id', async (c) => {
   }
 
   // 绑定校验:被 tenant 绑定的后端禁止删除
-  const binding = isBackendBound(tenantStore, id);
+  const binding = isBackendBound(backendStore, id);
   if (binding.bound) {
     return c.json(
       fail(409, `Backend "${id}" 已被 tenant "${binding.tenantId}" 绑定,请先解绑`),

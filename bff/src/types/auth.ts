@@ -7,7 +7,7 @@
  *
  * Constitution references (v1.2.0):
  * - Principle I (BFF-Mediated Frontend):前端认证经 BFF,token 存 HttpOnly cookie
- * - Principle V (Tenant Isolation):AuthSession 携带 tenantId/authMode 用于路由
+ * - Principle V (Tenant Isolation):AuthSession 携带 backendId/authMode 用于路由
  * - Principle VIII:企业版认证用 member token(imt_*),非 API_SERVER_KEY
  */
 
@@ -27,8 +27,8 @@ export interface AuthSession {
   memberId?: string;
   /** imt_* member token(从 cookie 提取) */
   token: string;
-  /** 当前租户 ID(从 X-Tenant-Id header) */
-  tenantId: string;
+  /** 当前租户 ID(从 X-Backend-Id header) */
+  backendId: string;
   /** 认证模式(来自 BffTenant.authMode,默认 intellect-rag) */
   authMode: 'intellect-rag' | 'intellect-enterprise';
 }

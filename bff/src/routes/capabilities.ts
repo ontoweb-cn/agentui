@@ -6,22 +6,22 @@
  * Constitution references (v1.2.0):
  * - Principle I (BFF-Mediated Frontend): 前端经 BFF 路由查询能力,不直连 Intellect RAG
  * - Principle II (Adapter Abstraction): 路由层通过 AdapterRegistry 获取 Adapter,不感知后端类型
- * - Principle V (Tenant Isolation): 必须带 X-Tenant-Id + X-User-Id,按 tenant 隔离
+ * - Principle V (Tenant Isolation): 必须带 X-Backend-Id + X-User-Id,按 tenant 隔离
  * - Principle VIII (Progressive Enhancement): 前端按 capabilities 条件渲染,无能力降级
  *
  * 路径映射:
  * - GET /capabilities → 返回当前 tenant 绑定后端的 CapabilitiesResponse
  *
  * 挂载点:index.ts 注册到 `/api/bff/capabilities`(Vite rewrite 后 BFF 收到 /capabilities)。
- * 中间件链:authMiddleware(全局)→ tenantContextMiddleware(注入 tenantId/userId)→ route
+ * 中间件链:authMiddleware(全局)→ backendContextMiddleware(注入 tenantId/userId)→ route
  */
 
 import { Hono } from 'hono';
 import type { HarnessStore } from '../types/stores';
-import type { TenantStore } from '../types/stores';
+import type { BackendStore } from '../types/stores';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
 import type { CapabilitiesResponse } from '../types/harness-admin';
-import { getTenantContext, TENANT_CONTEXT_KEY } from '../middleware/tenant-context';
+import { getBackendContext, BACKEND_CONTEXT_KEY } from '../middleware/backend-context';
 import type { Context } from 'hono';
 import {
   TenantNotFoundError,
@@ -32,9 +32,9 @@ import {
 
 interface CapabilitiesVariables {
   harnessStore: HarnessStore;
-  tenantStore: TenantStore;
+  backendStore: BackendStore;
   adapterRegistry: IAdapterRegistry;
-  [TENANT_CONTEXT_KEY]?: { tenantId: string; userId: string };
+  [BACKEND_CONTEXT_KEY]?: { backendId: string; userId: string };
 }
 
 export const capabilitiesRoutes = new Hono<{ Variables: CapabilitiesVariables }>();
@@ -60,12 +60,12 @@ function getRegistry(c: Context): IAdapterRegistry {
 // ---------------------------------------------------------------------------
 
 capabilitiesRoutes.get('/capabilities', async (c) => {
-  const ctx = getTenantContext(c);
+  const ctx = getBackendContext(c);
   if (!ctx) {
-    // 中间件未注入(理论上 tenantContextMiddleware 已拦截,此处防御性兜底)
-    return c.json(fail(400, 'Missing X-Tenant-Id / X-User-Id header'), 400);
+    // 中间件未注入(理论上 backendContextMiddleware 已拦截,此处防御性兜底)
+    return c.json(fail(400, 'Missing X-Backend-Id / X-User-Id header'), 400);
   }
-  const tenantId = ctx.tenantId;
+  const tenantId = ctx.backendId;
 
   const registry = getRegistry(c);
 
@@ -76,7 +76,7 @@ capabilitiesRoutes.get('/capabilities', async (c) => {
 
   let adapter;
   try {
-    adapter = registry.getAdapterForTenant(tenantId);
+    adapter = registry.getAdapterForBackend(tenantId);
   } catch (err) {
     if (err instanceof TenantNotFoundError) {
       return c.json(fail(404, `Tenant not found: ${tenantId}`), 404);

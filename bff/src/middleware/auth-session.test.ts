@@ -18,7 +18,7 @@ interface MockContext {
 function createMockContext(
   headers: Record<string, string>,
   cookieValue: string | undefined,
-  tenantStore?: unknown,
+  backendStore?: unknown,
 ): MockContext {
   const normalized: Record<string, string> = {};
   for (const [k, v] of Object.entries(headers)) {
@@ -33,7 +33,7 @@ function createMockContext(
         ctx.storedSession = value as AuthSession;
       }
     },
-    get: (key: string) => (key === 'tenantStore' ? tenantStore : undefined),
+    get: (key: string) => (key === 'backendStore' ? backendStore : undefined),
     json: (body, status) => ({ body, status: status ?? 200 }),
     _cookie: cookieValue,
   };
@@ -62,7 +62,7 @@ describe('authSessionMiddleware', () => {
 
   it('有 cookie imt_token 时提取 token 并注入 AuthSession', async () => {
     const ctx = createMockContext(
-      { 'X-Tenant-Id': 'tenant-enterprise' },
+      { 'X-Backend-Id': 'tenant-enterprise' },
       'imt_abc123',
     );
     const next = vi.fn().mockResolvedValue(undefined);
@@ -72,16 +72,16 @@ describe('authSessionMiddleware', () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(ctx.storedSession).toBeDefined();
     expect(ctx.storedSession?.token).toBe('imt_abc123');
-    expect(ctx.storedSession?.tenantId).toBe('tenant-enterprise');
+    expect(ctx.storedSession?.backendId).toBe('tenant-enterprise');
     expect(ctx.storedSession?.authMode).toBe('intellect-rag'); // 默认
   });
 
   it('有 cookie + BffTenant.authMode=intellect-enterprise 时注入正确 authMode', async () => {
     const ctx = createMockContext(
-      { 'X-Tenant-Id': 'tenant-enterprise' },
+      { 'X-Backend-Id': 'tenant-enterprise' },
       'imt_xyz789',
       {
-        getTenant: (id: string) =>
+        getBackend: (id: string) =>
           id === 'tenant-enterprise'
             ? { id, authMode: 'intellect-enterprise' }
             : undefined,
@@ -97,7 +97,7 @@ describe('authSessionMiddleware', () => {
 
   it('无 cookie 时不阻塞,不注入 AuthSession', async () => {
     const ctx = createMockContext(
-      { 'X-Tenant-Id': 'tenant-enterprise' },
+      { 'X-Backend-Id': 'tenant-enterprise' },
       undefined,
     );
     const next = vi.fn().mockResolvedValue(undefined);
@@ -110,7 +110,7 @@ describe('authSessionMiddleware', () => {
 
   it('cookie 值为空字符串时忽略,等同于无 cookie', async () => {
     const ctx = createMockContext(
-      { 'X-Tenant-Id': 'tenant-enterprise' },
+      { 'X-Backend-Id': 'tenant-enterprise' },
       '',
     );
     const next = vi.fn().mockResolvedValue(undefined);
@@ -121,8 +121,8 @@ describe('authSessionMiddleware', () => {
     expect(ctx.storedSession).toBeUndefined();
   });
 
-  it('有 cookie 但无 X-Tenant-Id 时用缺省 "0" 兜底,仍注入 session(不阻塞)', async () => {
-    // 公开端点策略:无 X-Tenant-Id 时用 '0' 兜底,只要有 cookie 就注入 session
+  it('有 cookie 但无 X-Backend-Id 时用缺省 "0" 兜底,仍注入 session(不阻塞)', async () => {
+    // 公开端点策略:无 X-Backend-Id 时用 '0' 兜底,只要有 cookie 就注入 session
     const ctx = createMockContext({}, 'imt_abc123');
     const next = vi.fn().mockResolvedValue(undefined);
 
@@ -132,13 +132,13 @@ describe('authSessionMiddleware', () => {
     // 有 cookie 就注入 session(tenantId='0',authMode 默认 intellect-rag)
     expect(ctx.storedSession).toBeDefined();
     expect(ctx.storedSession?.token).toBe('imt_abc123');
-    expect(ctx.storedSession?.tenantId).toBe('0');
+    expect(ctx.storedSession?.backendId).toBe('0');
     expect(ctx.storedSession?.authMode).toBe('intellect-rag');
   });
 
-  it('无 tenantStore 时不报错,authMode 默认 intellect-rag', async () => {
+  it('无 backendStore 时不报错,authMode 默认 intellect-rag', async () => {
     const ctx = createMockContext(
-      { 'X-Tenant-Id': 'tenant-001' },
+      { 'X-Backend-Id': 'tenant-001' },
       'imt_token1',
       undefined,
     );
@@ -150,11 +150,11 @@ describe('authSessionMiddleware', () => {
     expect(ctx.storedSession?.token).toBe('imt_token1');
   });
 
-  it('tenantStore 无对应 tenant 时 authMode 默认 intellect-rag(向后兼容)', async () => {
+  it('backendStore 无对应 tenant 时 authMode 默认 intellect-rag(向后兼容)', async () => {
     const ctx = createMockContext(
-      { 'X-Tenant-Id': 'unknown-tenant' },
+      { 'X-Backend-Id': 'unknown-tenant' },
       'imt_token2',
-      { getTenant: () => undefined },
+      { getBackend: () => undefined },
     );
     const next = vi.fn().mockResolvedValue(undefined);
 
@@ -165,10 +165,10 @@ describe('authSessionMiddleware', () => {
 
   it('BffTenant.authMode 未设置时默认 intellect-rag(向后兼容旧配置)', async () => {
     const ctx = createMockContext(
-      { 'X-Tenant-Id': 'tenant-001' },
+      { 'X-Backend-Id': 'tenant-001' },
       'imt_token3',
       {
-        getTenant: (id: string) =>
+        getBackend: (id: string) =>
           id === 'tenant-001' ? { id, /* 无 authMode 字段 */ } : undefined,
       },
     );

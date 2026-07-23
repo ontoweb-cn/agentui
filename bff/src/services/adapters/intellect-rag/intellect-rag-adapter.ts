@@ -20,7 +20,7 @@ import type { IHarnessAdapter } from '../../../types/adapter';
 import type { AgentSummary, Session, SendMessageRequest } from '../../../types/domain';
 import type { StreamChunk, StreamIterable } from '../../../types/stream';
 import type { HarnessCapabilities, HarnessBackend } from '../../../types/harness';
-import type { TenantContext } from '../../../types/tenant';
+import type { BackendContext } from '../../../types/tenant';
 import { parseCanvasWorkflowSSE } from './parse-canvas-workflow-sse';
 
 /**
@@ -46,12 +46,12 @@ export class IntellectRagAdapter implements IHarnessAdapter {
   // Agent methods
   // -----------------------------------------------------------------------
 
-  async listAgents(_ctx: TenantContext): Promise<AgentSummary[]> {
+  async listAgents(_ctx: BackendContext): Promise<AgentSummary[]> {
     const data = await this.request<AgentSummary[]>('GET', '/api/v1/agents');
     return data;
   }
 
-  async getAgent(_ctx: TenantContext, agentId: string): Promise<AgentSummary> {
+  async getAgent(_ctx: BackendContext, agentId: string): Promise<AgentSummary> {
     return this.request<AgentSummary>('GET', `/api/v1/agents/${encodeURIComponent(agentId)}`);
   }
 
@@ -60,7 +60,7 @@ export class IntellectRagAdapter implements IHarnessAdapter {
   // -----------------------------------------------------------------------
 
   async createSession(
-    _ctx: TenantContext,
+    _ctx: BackendContext,
     agentId: string,
     title?: string,
   ): Promise<Session> {
@@ -71,7 +71,7 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     );
   }
 
-  async listSessions(_ctx: TenantContext, agentId: string): Promise<Session[]> {
+  async listSessions(_ctx: BackendContext, agentId: string): Promise<Session[]> {
     return this.request<Session[]>(
       'GET',
       `/api/v1/agents/${encodeURIComponent(agentId)}/sessions`,
@@ -79,7 +79,7 @@ export class IntellectRagAdapter implements IHarnessAdapter {
   }
 
   async getSession(
-    _ctx: TenantContext,
+    _ctx: BackendContext,
     agentId: string,
     sessionId: string,
   ): Promise<Session> {
@@ -90,7 +90,7 @@ export class IntellectRagAdapter implements IHarnessAdapter {
   }
 
   async deleteSession(
-    _ctx: TenantContext,
+    _ctx: BackendContext,
     agentId: string,
     sessionId: string,
   ): Promise<void> {
@@ -114,7 +114,7 @@ export class IntellectRagAdapter implements IHarnessAdapter {
    * 错误处理:上游非 200 时产出单个 StreamError chunk 后终止。
    */
   async sendMessage(
-    _ctx: TenantContext,
+    _ctx: BackendContext,
     req: SendMessageRequest,
   ): Promise<StreamIterable> {
     const url = `${this.baseUrl}/api/v1/agents/chat/completions`;
@@ -146,7 +146,7 @@ export class IntellectRagAdapter implements IHarnessAdapter {
    * P1 stub:不调上游(Intellect RAG 取消端点待 US2+ 评估)。
    * 前端取消时直接 abort fetch,BFF 流式路由关闭 SSE 连接。
    */
-  async cancelMessage(_ctx: TenantContext, _sessionId: string): Promise<void> {
+  async cancelMessage(_ctx: BackendContext, _sessionId: string): Promise<void> {
     // P1 stub: no-op,前端通过 AbortController 取消流
   }
 

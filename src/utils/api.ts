@@ -19,7 +19,7 @@ const bffAdmin = `/api/bff/admin`;
 // Harness 后端配置 Admin 路由,运维操作(非租户隔离),响应不含 adminToken 明文。
 const bffHarnessAdmin = `/api/bff/admin/harness-backends`;
 // Multi-Harness P4b (US1/US2/US3, Constitution Principle I + V + VIII):
-// BFF 统一认证路由,按 X-Tenant-Id 分发企业版(intellect-team)或社区版(intellect-rag)。
+// BFF 统一认证路由,按 X-Backend-Id 分发企业版(intellect-team)或社区版(intellect-rag)。
 // 前端认证路径统一经 BFF,token 存 HttpOnly cookie,前端不接触。
 // 改回 `${restAPIv1}/auth/*` 可瞬时回滚(FR-006)。
 const bffAuth = `/api/bff/auth`;
@@ -411,7 +411,7 @@ export default {
 
   // Multi-Harness P2 (US1) — Harness Backend Admin CRUD
   // Constitution Principle I + V (非租户隔离) + Token Security。
-  // 运维页面专用,前端不带 X-Tenant-Id。
+  // 运维页面专用,前端不带 X-Backend-Id。
   listHarnessBackends: `${bffHarnessAdmin}`,
   createHarnessBackend: `${bffHarnessAdmin}`,
   updateHarnessBackend: (id: string) => `${bffHarnessAdmin}/${id}`,

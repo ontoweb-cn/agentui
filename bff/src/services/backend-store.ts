@@ -1,4 +1,4 @@
-// Multi-Harness P0 Phase 5 (US3):TenantStore 实现。
+// Multi-Harness P0 Phase 5 (US3):BackendStore 实现。
 // Constitution Principle V (Tenant Isolation) + Principle III (Canvas Hard-Bound)。
 // 维护 BffTenant 实体与后端绑定关系,只存绑定 refs,不存 Team/Project/Member。
 // setCanvasBinding 强制校验 canvasBackendId 对应的 HarnessBackend.type 必须是 'intellect-rag'。
@@ -8,7 +8,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { BffTenant, TenantStore, HarnessStore } from '../types';
+import type { BffTenant, BackendStore, HarnessStore } from '../types';
 
 // ---------------------------------------------------------------------------
 // File paths
@@ -39,10 +39,10 @@ const tenantsFileSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// JSONFileTenantStore
+// JSONFileBackendStore
 // ---------------------------------------------------------------------------
 
-export class JSONFileTenantStore implements TenantStore {
+export class JSONFileBackendStore implements BackendStore {
   private tenants: BffTenant[] = [];
 
   constructor(private readonly harnessStore: HarnessStore) {}
@@ -122,7 +122,7 @@ export class JSONFileTenantStore implements TenantStore {
     this.tenants = loaded;
   }
 
-  async createTenant(
+  async createBackend(
     name: string,
     intellectBackendId: string,
     intellectTenantId?: string,
@@ -150,16 +150,16 @@ export class JSONFileTenantStore implements TenantStore {
     return tenant;
   }
 
-  getTenant(tenantId: string): BffTenant | undefined {
+  getBackend(tenantId: string): BffTenant | undefined {
     return this.tenants.find((t) => t.id === tenantId);
   }
 
-  listTenants(): BffTenant[] {
+  listBackends(): BffTenant[] {
     return this.tenants;
   }
 
   async setHarnessBinding(tenantId: string, backendId: string): Promise<void> {
-    const tenant = this.getTenant(tenantId);
+    const tenant = this.getBackend(tenantId);
     if (!tenant) {
       throw new Error(`[tenant-store] Tenant not found: ${tenantId}`);
     }
@@ -175,7 +175,7 @@ export class JSONFileTenantStore implements TenantStore {
   }
 
   getHarnessBinding(tenantId: string): string | undefined {
-    return this.getTenant(tenantId)?.intellectBackendId;
+    return this.getBackend(tenantId)?.intellectBackendId;
   }
 
   async setIntellectBinding(
@@ -183,7 +183,7 @@ export class JSONFileTenantStore implements TenantStore {
     intellectTenantId: string | undefined,
     intellectProjectId?: string,
   ): Promise<void> {
-    const tenant = this.getTenant(tenantId);
+    const tenant = this.getBackend(tenantId);
     if (!tenant) {
       throw new Error(`[tenant-store] Tenant not found: ${tenantId}`);
     }
@@ -200,7 +200,7 @@ export class JSONFileTenantStore implements TenantStore {
   }
 
   getIntellectTeamId(tenantId: string): string | undefined {
-    const tenant = this.getTenant(tenantId);
+    const tenant = this.getBackend(tenantId);
     if (!tenant?.intellectTenantId || tenant.intellectTenantId === '0') {
       return undefined;
     }
@@ -208,11 +208,11 @@ export class JSONFileTenantStore implements TenantStore {
   }
 
   getIntellectProjectId(tenantId: string): string | undefined {
-    return this.getTenant(tenantId)?.intellectProjectId;
+    return this.getBackend(tenantId)?.intellectProjectId;
   }
 
   async setCanvasBinding(tenantId: string, backendId: string): Promise<void> {
-    const tenant = this.getTenant(tenantId);
+    const tenant = this.getBackend(tenantId);
     if (!tenant) {
       throw new Error(`[tenant-store] Tenant not found: ${tenantId}`);
     }
@@ -234,7 +234,7 @@ export class JSONFileTenantStore implements TenantStore {
   }
 
   getCanvasBinding(tenantId: string): string | undefined {
-    return this.getTenant(tenantId)?.canvasBackendId;
+    return this.getBackend(tenantId)?.canvasBackendId;
   }
 
   // -----------------------------------------------------------------------

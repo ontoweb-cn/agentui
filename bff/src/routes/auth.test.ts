@@ -1,12 +1,12 @@
 // Multi-Harness P4b (US1):auth 路由单元测试
 // Constitution Principle VII (Test-First):测试先于/同步于实现。
 // 覆盖:企业版登录成功/失败/502、社区版登录透传、/auth/me 企业版/社区版。
-// Mock fetch + TenantStore,隔离路由层逻辑。
+// Mock fetch + BackendStore,隔离路由层逻辑。
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { Hono } from 'hono';
 import { authRoutes } from './auth';
-import type { TenantStore, HarnessStore } from '../types/stores';
+import type { BackendStore, HarnessStore } from '../types/stores';
 import type { HarnessBackend } from '../types/harness';
 import type { BffTenant } from '../types/tenant';
 import type { AuthSession } from '../types/auth';
@@ -57,12 +57,12 @@ const enterpriseBackend: HarnessBackend = {
 // Mock factories
 // ---------------------------------------------------------------------------
 
-function createMockTenantStore(tenants: BffTenant[]): TenantStore {
+function createMockBackendStore(tenants: BffTenant[]): BackendStore {
   return {
     load: vi.fn().mockResolvedValue(undefined),
-    getTenant: vi.fn((id: string) => tenants.find((t) => t.id === id)),
-    listTenants: vi.fn(() => tenants),
-    createTenant: vi.fn(),
+    getBackend: vi.fn((id: string) => tenants.find((t) => t.id === id)),
+    listBackends: vi.fn(() => tenants),
+    createBackend: vi.fn(),
     setHarnessBinding: vi.fn(),
     getHarnessBinding: vi.fn(),
     setCanvasBinding: vi.fn(),
@@ -83,19 +83,19 @@ function createMockHarnessStore(backends: HarnessBackend[]): HarnessStore {
 }
 
 interface TestVariables {
-  tenantStore: TenantStore;
+  backendStore: BackendStore;
   harnessStore: HarnessStore;
   [AUTH_SESSION_KEY]?: AuthSession;
 }
 
 function createApp(
-  tenantStore: TenantStore,
+  backendStore: BackendStore,
   session?: AuthSession,
   harnessStore?: HarnessStore,
 ): Hono<{ Variables: TestVariables }> {
   const app = new Hono<{ Variables: TestVariables }>();
   app.use('*', async (c, next) => {
-    c.set('tenantStore', tenantStore);
+    c.set('backendStore', backendStore);
     c.set('harnessStore', harnessStore ?? createMockHarnessStore([enterpriseBackend]));
     if (session) {
       c.set(AUTH_SESSION_KEY, session);
@@ -128,11 +128,11 @@ describe('auth 路由 (P4b US1)', () => {
   // -------------------------------------------------------------------------
 
   it('auth config:企业版 tenant → 返回 authMode=intellect-enterprise', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/auth/config', {
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     expect(resp.status).toBe(200);
@@ -141,11 +141,11 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('auth config:社区版 tenant → 返回 authMode=intellect-rag', async () => {
-    const tenantStore = createMockTenantStore([ragTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([ragTenant]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/auth/config', {
-      headers: { 'X-Tenant-Id': 'tenant-rag' },
+      headers: { 'X-Backend-Id': 'tenant-rag' },
     });
 
     expect(resp.status).toBe(200);
@@ -153,9 +153,9 @@ describe('auth 路由 (P4b US1)', () => {
     expect(body.data.authMode).toBe('intellect-rag');
   });
 
-  it('auth config:无 X-Tenant-Id → 默认 intellect-rag', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+  it('auth config:无 X-Backend-Id → 默认 intellect-rag', async () => {
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/auth/config');
 
@@ -169,8 +169,8 @@ describe('auth 路由 (P4b US1)', () => {
   // -------------------------------------------------------------------------
 
   it('US1:企业版登录成功 → 200 + Set-Cookie + 不含 token 的 body', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -189,7 +189,7 @@ describe('auth 路由 (P4b US1)', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': 'tenant-enterprise',
+        'X-Backend-Id': 'tenant-enterprise',
       },
       body: JSON.stringify({ login_name: 'alice', password: 'secret' }),
     });
@@ -223,8 +223,8 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US1:企业版登录支持 email → login_name 字段映射(前端社区版字段兼容)', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -243,7 +243,7 @@ describe('auth 路由 (P4b US1)', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': 'tenant-enterprise',
+        'X-Backend-Id': 'tenant-enterprise',
       },
       body: JSON.stringify({ email: 'bob@example.com', password: 'pw' }),
     });
@@ -258,8 +258,8 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US1:企业版登录失败(401 无效凭据)→ 401 + 无 Set-Cookie', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ error: 'Invalid credentials' }), { status: 401 }),
@@ -269,7 +269,7 @@ describe('auth 路由 (P4b US1)', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': 'tenant-enterprise',
+        'X-Backend-Id': 'tenant-enterprise',
       },
       body: JSON.stringify({ login_name: 'alice', password: 'wrong' }),
     });
@@ -282,8 +282,8 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US1:企业版登录 intellect-team 不可达 → 502', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
@@ -291,7 +291,7 @@ describe('auth 路由 (P4b US1)', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': 'tenant-enterprise',
+        'X-Backend-Id': 'tenant-enterprise',
       },
       body: JSON.stringify({ login_name: 'alice', password: 'secret' }),
     });
@@ -303,14 +303,14 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US1:企业版登录缺 login_name → 400', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': 'tenant-enterprise',
+        'X-Backend-Id': 'tenant-enterprise',
       },
       body: JSON.stringify({ password: 'secret' }),
     });
@@ -321,10 +321,10 @@ describe('auth 路由 (P4b US1)', () => {
     expect(body.message).toContain('login_name');
   });
 
-  it('US1:无 X-Tenant-Id header → 缺省租户 "0" 走社区版分支(向后兼容)', async () => {
+  it('US1:无 X-Backend-Id header → 缺省租户 "0" 走社区版分支(向后兼容)', async () => {
     // 公开端点缺省 TenantID="0",mock store 中无 id="0" 的 tenant → authMode=intellect-rag
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -353,8 +353,8 @@ describe('auth 路由 (P4b US1)', () => {
   // -------------------------------------------------------------------------
 
   it('US1:社区版登录(authMode=intellect-rag)透传到 intellect-rag /api/v1/auth/login', async () => {
-    const tenantStore = createMockTenantStore([ragTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([ragTenant]);
+    const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -374,7 +374,7 @@ describe('auth 路由 (P4b US1)', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': 'tenant-rag',
+        'X-Backend-Id': 'tenant-rag',
       },
       body: JSON.stringify({ email: 'alice@rag.com', password: 'secret' }),
     });
@@ -404,8 +404,8 @@ describe('auth 路由 (P4b US1)', () => {
       createdAt: '2026-06-26T00:00:00Z',
       updatedAt: '2026-06-26T00:00:00Z',
     };
-    const tenantStore = createMockTenantStore([legacyTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([legacyTenant]);
+    const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ access_token: 'tok' }), { status: 200 }),
@@ -415,7 +415,7 @@ describe('auth 路由 (P4b US1)', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': 'tenant-legacy',
+        'X-Backend-Id': 'tenant-legacy',
       },
       body: JSON.stringify({ email: 'a@b.com', password: 'p' }),
     });
@@ -432,13 +432,13 @@ describe('auth 路由 (P4b US1)', () => {
   // -------------------------------------------------------------------------
 
   it('US1:企业版 /auth/me 有 cookie → 调 intellect-team /api/members/me', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
     const session: AuthSession = {
       token: 'imt_abc123',
-      tenantId: 'tenant-enterprise',
+      backendId: 'tenant-enterprise',
       authMode: 'intellect-enterprise',
     };
-    const app = createApp(tenantStore, session);
+    const app = createApp(backendStore, session);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -455,7 +455,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request('/auth/me', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -476,12 +476,12 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US1:企业版 /auth/me 无 cookie(session 缺失)→ 401', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore); // 不注入 session
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore); // 不注入 session
 
     const resp = await app.request('/auth/me', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     expect(resp.status).toBe(401);
@@ -491,13 +491,13 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US1:企业版 /auth/me token 无效(intellect-team 返回 401)→ 401', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
     const session: AuthSession = {
       token: 'imt_invalid',
-      tenantId: 'tenant-enterprise',
+      backendId: 'tenant-enterprise',
       authMode: 'intellect-enterprise',
     };
-    const app = createApp(tenantStore, session);
+    const app = createApp(backendStore, session);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ error: 'token expired' }), { status: 401 }),
@@ -505,7 +505,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request('/auth/me', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     expect(resp.status).toBe(401);
@@ -516,8 +516,8 @@ describe('auth 路由 (P4b US1)', () => {
   // -------------------------------------------------------------------------
 
   it('US1:社区版 /auth/me 透传到 intellect-rag /api/v1/users/me(带 Authorization)', async () => {
-    const tenantStore = createMockTenantStore([ragTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([ragTenant]);
+    const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -537,7 +537,7 @@ describe('auth 路由 (P4b US1)', () => {
     const resp = await app.request('/auth/me', {
       method: 'GET',
       headers: {
-        'X-Tenant-Id': 'tenant-rag',
+        'X-Backend-Id': 'tenant-rag',
         Authorization: 'Bearer rag-access-token',
       },
     });
@@ -562,8 +562,8 @@ describe('auth 路由 (P4b US1)', () => {
   // -------------------------------------------------------------------------
 
   it('US2:企业版注册成功 → 201 + {member_id, registration_pending}', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -576,7 +576,7 @@ describe('auth 路由 (P4b US1)', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': 'tenant-enterprise',
+        'X-Backend-Id': 'tenant-enterprise',
       },
       body: JSON.stringify({
         login_name: 'newuser',
@@ -607,8 +607,8 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US2:企业版注册支持 nickname→display_name 字段映射', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -621,7 +621,7 @@ describe('auth 路由 (P4b US1)', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': 'tenant-enterprise',
+        'X-Backend-Id': 'tenant-enterprise',
       },
       body: JSON.stringify({
         email: 'nick@enterprise.com',
@@ -645,8 +645,8 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US2:企业版注册冲突(login_name 已存在)→ 409', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ error: 'login_name already in use' }), { status: 409 }),
@@ -656,7 +656,7 @@ describe('auth 路由 (P4b US1)', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': 'tenant-enterprise',
+        'X-Backend-Id': 'tenant-enterprise',
       },
       body: JSON.stringify({
         login_name: 'existing',
@@ -672,8 +672,8 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US2:企业版注册开关关闭 → 403', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ error: 'registration disabled' }), { status: 403 }),
@@ -683,7 +683,7 @@ describe('auth 路由 (P4b US1)', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': 'tenant-enterprise',
+        'X-Backend-Id': 'tenant-enterprise',
       },
       body: JSON.stringify({
         login_name: 'x',
@@ -698,8 +698,8 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US2:企业版注册 intellect-team 不可达 → 502', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
@@ -707,7 +707,7 @@ describe('auth 路由 (P4b US1)', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': 'tenant-enterprise',
+        'X-Backend-Id': 'tenant-enterprise',
       },
       body: JSON.stringify({
         login_name: 'x',
@@ -720,14 +720,14 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US2:企业版注册缺必填字段 → 400', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/auth/register', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': 'tenant-enterprise',
+        'X-Backend-Id': 'tenant-enterprise',
       },
       body: JSON.stringify({ password: 'p' }),
     });
@@ -742,8 +742,8 @@ describe('auth 路由 (P4b US1)', () => {
   // -------------------------------------------------------------------------
 
   it('US2:社区版注册透传到 intellect-rag /api/v1/users', async () => {
-    const tenantStore = createMockTenantStore([ragTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([ragTenant]);
+    const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ id: 'u-new' }), { status: 201 }),
@@ -753,7 +753,7 @@ describe('auth 路由 (P4b US1)', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': 'tenant-rag',
+        'X-Backend-Id': 'tenant-rag',
       },
       body: JSON.stringify({ email: 'a@b.com', password: 'p', nickname: 'A' }),
     });
@@ -774,13 +774,13 @@ describe('auth 路由 (P4b US1)', () => {
   // -------------------------------------------------------------------------
 
   it('US2:企业版登出成功 → 200 + 清 cookie + 调 intellect-team /api/members/logout', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
     const session: AuthSession = {
       token: 'imt_logout',
-      tenantId: 'tenant-enterprise',
+      backendId: 'tenant-enterprise',
       authMode: 'intellect-enterprise',
     };
-    const app = createApp(tenantStore, session);
+    const app = createApp(backendStore, session);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ ok: true }), { status: 200 }),
@@ -788,7 +788,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request('/auth/logout', {
       method: 'POST',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -810,32 +810,32 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US2:企业版登出后 /auth/me 返回 401(无有效 session)', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
     // 登出后 cookie 已清,auth-session 中间件无法提取 token → 无 session
-    const app = createApp(tenantStore); // 不注入 session
+    const app = createApp(backendStore); // 不注入 session
 
     const resp = await app.request('/auth/me', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     expect(resp.status).toBe(401);
   });
 
   it('US2:企业版登出 intellect-team 不可达 → 仍清 cookie + 200(本地登出成功)', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
     const session: AuthSession = {
       token: 'imt_x',
-      tenantId: 'tenant-enterprise',
+      backendId: 'tenant-enterprise',
       authMode: 'intellect-enterprise',
     };
-    const app = createApp(tenantStore, session);
+    const app = createApp(backendStore, session);
 
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
     const resp = await app.request('/auth/logout', {
       method: 'POST',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     // 网络错误也清 cookie(本地登出),返回 200(用户视角已登出,与社区版行为一致)
@@ -847,13 +847,13 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US2:企业版登出 token 已过期(intellect-team 返回 401)→ 仍清 cookie + 200(用户视角已登出)', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
     const session: AuthSession = {
       token: 'imt_expired',
-      tenantId: 'tenant-enterprise',
+      backendId: 'tenant-enterprise',
       authMode: 'intellect-enterprise',
     };
-    const app = createApp(tenantStore, session);
+    const app = createApp(backendStore, session);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ error: 'token expired' }), { status: 401 }),
@@ -861,7 +861,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request('/auth/logout', {
       method: 'POST',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     // 上游 401 但本地 cookie 已清,返回 200(用户视角已登出)
@@ -873,12 +873,12 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US2:无 cookie 登出也清 cookie + 200(防御性,允许登出已过期会话)', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore); // 不注入 session
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore); // 不注入 session
 
     const resp = await app.request('/auth/logout', {
       method: 'POST',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     expect(resp.status).toBe(200);
@@ -892,8 +892,8 @@ describe('auth 路由 (P4b US1)', () => {
   // -------------------------------------------------------------------------
 
   it('US2:社区版登出透传到 intellect-rag /api/v1/auth/logout(带 Authorization)', async () => {
-    const tenantStore = createMockTenantStore([ragTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([ragTenant]);
+    const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ ok: true }), { status: 200 }),
@@ -902,7 +902,7 @@ describe('auth 路由 (P4b US1)', () => {
     const resp = await app.request('/auth/logout', {
       method: 'POST',
       headers: {
-        'X-Tenant-Id': 'tenant-rag',
+        'X-Backend-Id': 'tenant-rag',
         Authorization: 'Bearer rag-token',
       },
     });
@@ -925,8 +925,8 @@ describe('auth 路由 (P4b US1)', () => {
   // -------------------------------------------------------------------------
 
   it('US3:企业版 channels 调 intellect-team /api/oauth/providers 并转换格式', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -976,7 +976,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request('/auth/login/channels', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -1000,22 +1000,22 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US3:企业版 channels intellect-team 不可达 → 502', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
     const resp = await app.request('/auth/login/channels', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     expect(resp.status).toBe(502);
   });
 
   it('US3:社区版 channels 透传到 intellect-rag', async () => {
-    const tenantStore = createMockTenantStore([ragTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([ragTenant]);
+    const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify([{ channel: 'github', display_name: 'GitHub' }]), { status: 200 }),
@@ -1023,7 +1023,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request('/auth/login/channels', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-rag' },
+      headers: { 'X-Backend-Id': 'tenant-rag' },
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -1038,8 +1038,8 @@ describe('auth 路由 (P4b US1)', () => {
   // -------------------------------------------------------------------------
 
   it('US3:企业版 login/{channel} 调 intellect-team GET /api/oauth/login/{provider} 并透传 302', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       // intellect-team P4a-4 返回 302 + Location(BFF 透传)
@@ -1051,7 +1051,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request('/auth/login/github', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     // 验证调 GET /api/oauth/login/github?usage=login(redirect: manual 不跟随)
@@ -1070,8 +1070,8 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US3:企业版 login/{channel} intellect-team 返回非 302(错误)→ 透传错误状态', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       // intellect-team 返回 400(provider 不存在)
@@ -1080,15 +1080,15 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request('/auth/login/github', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     expect(resp.status).toBe(400);
   });
 
   it('US3:企业版 login/{channel} 302 但缺 Location 头 → 502', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       // 异常:302 但无 Location
@@ -1097,33 +1097,33 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request('/auth/login/github', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     expect(resp.status).toBe(502);
   });
 
   it('US3:企业版 login/{channel} intellect-team 不可达 → 502', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
     const resp = await app.request('/auth/login/github', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     expect(resp.status).toBe(502);
   });
 
   it('US3:社区版 login/{channel} 302 重定向到 intellect-rag', async () => {
-    const tenantStore = createMockTenantStore([ragTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([ragTenant]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/auth/login/github', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-rag' },
+      headers: { 'X-Backend-Id': 'tenant-rag' },
     });
 
     expect(resp.status).toBe(302);
@@ -1135,8 +1135,8 @@ describe('auth 路由 (P4b US1)', () => {
   // -------------------------------------------------------------------------
 
   it('US3:企业版 callback 成功 → 200/302 + Set-Cookie + 调 callback + token 签发', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(
@@ -1161,7 +1161,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request(
       '/auth/oauth/callback?code=gh-code&state=gh-state',
-      { method: 'GET', headers: { 'X-Tenant-Id': 'tenant-enterprise' } },
+      { method: 'GET', headers: { 'X-Backend-Id': 'tenant-enterprise' } },
     );
 
     // 验证 Step 1: callback 调用
@@ -1192,20 +1192,20 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US3:企业版 callback 缺 code 参数 → 400', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/auth/oauth/callback?state=abc', {
       method: 'GET',
-      headers: { 'X-Tenant-Id': 'tenant-enterprise' },
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
     expect(resp.status).toBe(400);
   });
 
   it('US3:企业版 callback intellect-team callback 返回 ok=false → 502', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ ok: false, error: 'invalid code' }), { status: 200 }),
@@ -1213,15 +1213,15 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request(
       '/auth/oauth/callback?code=x&state=y',
-      { method: 'GET', headers: { 'X-Tenant-Id': 'tenant-enterprise' } },
+      { method: 'GET', headers: { 'X-Backend-Id': 'tenant-enterprise' } },
     );
 
     expect(resp.status).toBe(502);
   });
 
   it('US3:企业版 callback token 签发返回 403 → 403(API_SERVER_KEY 无效)', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(
@@ -1236,7 +1236,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request(
       '/auth/oauth/callback?code=x&state=y',
-      { method: 'GET', headers: { 'X-Tenant-Id': 'tenant-enterprise' } },
+      { method: 'GET', headers: { 'X-Backend-Id': 'tenant-enterprise' } },
     );
 
     expect(resp.status).toBe(403);
@@ -1245,22 +1245,22 @@ describe('auth 路由 (P4b US1)', () => {
   });
 
   it('US3:企业版 callback 不可达 → 502', async () => {
-    const tenantStore = createMockTenantStore([enterpriseTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
 
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
     const resp = await app.request(
       '/auth/oauth/callback?code=x&state=y',
-      { method: 'GET', headers: { 'X-Tenant-Id': 'tenant-enterprise' } },
+      { method: 'GET', headers: { 'X-Backend-Id': 'tenant-enterprise' } },
     );
 
     expect(resp.status).toBe(502);
   });
 
   it('US3:社区版 callback 返回 400(社区版 OAuth 直连 intellect-rag,不走 BFF)', async () => {
-    const tenantStore = createMockTenantStore([ragTenant]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([ragTenant]);
+    const app = createApp(backendStore);
 
     // 社区版 callback 不应调用 fetch — BFF /auth/oauth/callback 仅企业版使用
     // 社区版 OAuth 流程: /auth/login/:channel → 302 浏览器到 intellect-rag → provider 回调 intellect-rag → intellect-rag 302 到前端
@@ -1268,7 +1268,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     const resp = await app.request(
       '/auth/oauth/callback?code=x&state=y',
-      { method: 'GET', headers: { 'X-Tenant-Id': 'tenant-rag' } },
+      { method: 'GET', headers: { 'X-Backend-Id': 'tenant-rag' } },
     );
 
     // 不调上游 — 直接返回 400(redirect_uri 配置错误)

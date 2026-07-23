@@ -19,7 +19,7 @@
 
 import { Hono } from 'hono';
 import { setCookie, deleteCookie, getCookie } from 'hono/cookie';
-import type { TenantStore, HarnessStore } from '../types/stores';
+import type { BackendStore, HarnessStore } from '../types/stores';
 import type { AuthSession } from '../types/auth';
 import { AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE } from '../types/auth';
 import { getAuthSession, AUTH_SESSION_KEY } from '../middleware/auth-session';
@@ -78,7 +78,7 @@ interface RagUserInfoResponse {
 // ---------------------------------------------------------------------------
 
 interface AuthVariables {
-  tenantStore: TenantStore;
+  backendStore: BackendStore;
   harnessStore: HarnessStore;
   [AUTH_SESSION_KEY]?: AuthSession;
 }
@@ -100,9 +100,9 @@ function fail(code: number, message: string) {
 /**
  * 获取 tenant 的 authMode,默认 intellect-rag(向后兼容)。
  */
-function getAuthMode(tenantStore: TenantStore | undefined, tenantId: string): 'intellect-rag' | 'intellect-enterprise' {
-  if (!tenantStore) return 'intellect-rag';
-  const tenant = tenantStore.getTenant(tenantId);
+function getAuthMode(backendStore: BackendStore | undefined, tenantId: string): 'intellect-rag' | 'intellect-enterprise' {
+  if (!backendStore) return 'intellect-rag';
+  const tenant = backendStore.getBackend(tenantId);
   return tenant?.authMode ?? 'intellect-rag';
 }
 
@@ -115,12 +115,12 @@ function getAuthMode(tenantStore: TenantStore | undefined, tenantId: string): 'i
  * @returns null 表示 tenant 不存在或 backend 未配置(调用方应返回 502)
  */
 function getEnterpriseBackend(
-  tenantStore: TenantStore | undefined,
+  backendStore: BackendStore | undefined,
   harnessStore: HarnessStore | undefined,
   tenantId: string,
 ): { baseUrl: string; apiServerKey: string } | null {
-  if (!tenantStore || !harnessStore) return null;
-  const tenant = tenantStore.getTenant(tenantId);
+  if (!backendStore || !harnessStore) return null;
+  const tenant = backendStore.getBackend(tenantId);
   if (!tenant) return null;
   const backend = harnessStore.get(tenant.intellectBackendId);
   if (!backend) return null;
@@ -165,9 +165,9 @@ async function enterpriseFetch(
 
 authRoutes.get('/auth/config', (c) => {
   // 公开端点:缺省 TenantID="0"(向后兼容,未传 header 时返回 intellect-rag 默认模式)
-  const tenantId = c.req.header('X-Tenant-Id') || '0';
-  const tenantStore = c.get('tenantStore');
-  const authMode = getAuthMode(tenantStore, tenantId);
+  const tenantId = c.req.header('X-Backend-Id') || '0';
+  const backendStore = c.get('backendStore');
+  const authMode = getAuthMode(backendStore, tenantId);
   return c.json(ok({ authMode }));
 });
 
@@ -177,15 +177,15 @@ authRoutes.get('/auth/config', (c) => {
 
 authRoutes.post('/auth/login', async (c) => {
   // 公开端点:缺省 TenantID="0"(向后兼容)
-  const tenantId = c.req.header('X-Tenant-Id') || '0';
+  const tenantId = c.req.header('X-Backend-Id') || '0';
 
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
     return c.json(fail(400, 'Request body must be JSON'), 400);
   }
 
-  const tenantStore = c.get('tenantStore');
-  const authMode = getAuthMode(tenantStore, tenantId);
+  const backendStore = c.get('backendStore');
+  const authMode = getAuthMode(backendStore, tenantId);
 
   if (authMode === 'intellect-enterprise') {
     // 企业版:调 intellect-team POST /api/members/login
@@ -200,7 +200,7 @@ authRoutes.post('/auth/login', async (c) => {
       return c.json(fail(400, 'login_name (or email) and password are required'), 400);
     }
 
-    const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
+    const backend = getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
     if (!backend) {
       return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
     }
@@ -299,14 +299,14 @@ authRoutes.post('/auth/login', async (c) => {
 // ---------------------------------------------------------------------------
 
 authRoutes.get('/auth/me', async (c) => {
-  // 需认证端点:严格校验 X-Tenant-Id(登录后前端必然知道 tenantId)
-  const tenantId = c.req.header('X-Tenant-Id');
+  // 需认证端点:严格校验 X-Backend-Id(登录后前端必然知道 tenantId)
+  const tenantId = c.req.header('X-Backend-Id');
   if (!tenantId) {
-    return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);
+    return c.json(fail(400, 'Missing X-Backend-Id header'), 400);
   }
 
-  const tenantStore = c.get('tenantStore');
-  const authMode = getAuthMode(tenantStore, tenantId);
+  const backendStore = c.get('backendStore');
+  const authMode = getAuthMode(backendStore, tenantId);
 
   if (authMode === 'intellect-rag') {
     const ragBaseUrl = getRagBaseUrl();
@@ -348,7 +348,7 @@ authRoutes.get('/auth/me', async (c) => {
   }
 
   // 企业版模式:调 intellect-team GET /api/members/me(用 member token 鉴权)
-  const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
+  const backend = getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
   if (!backend) {
     return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
   }
@@ -394,15 +394,15 @@ authRoutes.get('/auth/me', async (c) => {
 
 authRoutes.post('/auth/register', async (c) => {
   // 公开端点:缺省 TenantID="0"(向后兼容)
-  const tenantId = c.req.header('X-Tenant-Id') || '0';
+  const tenantId = c.req.header('X-Backend-Id') || '0';
 
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
     return c.json(fail(400, 'Request body must be JSON'), 400);
   }
 
-  const tenantStore = c.get('tenantStore');
-  const authMode = getAuthMode(tenantStore, tenantId);
+  const backendStore = c.get('backendStore');
+  const authMode = getAuthMode(backendStore, tenantId);
 
   if (authMode === 'intellect-enterprise') {
     // 企业版:调 intellect-team POST /api/members/register
@@ -423,7 +423,7 @@ authRoutes.post('/auth/register', async (c) => {
       );
     }
 
-    const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
+    const backend = getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
     if (!backend) {
       return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
     }
@@ -496,14 +496,14 @@ authRoutes.post('/auth/register', async (c) => {
 // ---------------------------------------------------------------------------
 
 authRoutes.post('/auth/logout', async (c) => {
-  // 需认证端点:严格校验 X-Tenant-Id(登录后前端必然知道 tenantId)
-  const tenantId = c.req.header('X-Tenant-Id');
+  // 需认证端点:严格校验 X-Backend-Id(登录后前端必然知道 tenantId)
+  const tenantId = c.req.header('X-Backend-Id');
   if (!tenantId) {
-    return c.json(fail(400, 'Missing X-Tenant-Id header'), 400);
+    return c.json(fail(400, 'Missing X-Backend-Id header'), 400);
   }
 
-  const tenantStore = c.get('tenantStore');
-  const authMode = getAuthMode(tenantStore, tenantId);
+  const backendStore = c.get('backendStore');
+  const authMode = getAuthMode(backendStore, tenantId);
 
   // 企业版 token 在 HttpOnly cookie(由 authSessionMiddleware 注入 session);
   // 社区版 token 在前端 localStorage(由 Authorization header 传入)。
@@ -546,7 +546,7 @@ authRoutes.post('/auth/logout', async (c) => {
     return c.json(ok({ logged_out: true }));
   }
 
-  const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
+  const backend = getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
   if (!backend) {
     // backend 未配置也清 cookie(本地登出)
     deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
@@ -604,13 +604,13 @@ interface OAuthProviderConverted {
 
 authRoutes.get('/auth/login/channels', async (c) => {
   // 公开端点:缺省 TenantID="0"(向后兼容)
-  const tenantId = c.req.header('X-Tenant-Id') || '0';
-  const tenantStore = c.get('tenantStore');
-  const authMode = getAuthMode(tenantStore, tenantId);
+  const tenantId = c.req.header('X-Backend-Id') || '0';
+  const backendStore = c.get('backendStore');
+  const authMode = getAuthMode(backendStore, tenantId);
 
   if (authMode === 'intellect-enterprise') {
     // 企业版:调 intellect-team GET /api/oauth/providers,转换格式
-    const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
+    const backend = getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
     if (!backend) {
       return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
     }
@@ -677,21 +677,21 @@ authRoutes.get('/auth/login/channels', async (c) => {
 
 authRoutes.get('/auth/login/:channel', async (c) => {
   // 公开端点:缺省 TenantID="0"(向后兼容)
-  const tenantId = c.req.header('X-Tenant-Id') || '0';
+  const tenantId = c.req.header('X-Backend-Id') || '0';
 
   const channel = c.req.param('channel');
   if (!channel) {
     return c.json(fail(400, 'Missing channel parameter'), 400);
   }
 
-  const tenantStore = c.get('tenantStore');
-  const authMode = getAuthMode(tenantStore, tenantId);
+  const backendStore = c.get('backendStore');
+  const authMode = getAuthMode(backendStore, tenantId);
 
   if (authMode === 'intellect-enterprise') {
     // 企业版:调 intellect-team GET /api/oauth/login/{provider}(P4a-4,直接 302 重定向)
     // 比 POST /api/oauth/authorize 更简单:intellect-team 直接返回 302 + Location,
     // BFF 透传 302 即可,无需先 POST 拿 redirect_uri 再 302。
-    const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
+    const backend = getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
     if (!backend) {
       return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
     }
@@ -756,7 +756,7 @@ authRoutes.get('/auth/login/:channel', async (c) => {
 
 authRoutes.get('/auth/oauth/callback', async (c) => {
   // 公开端点:缺省 TenantID="0"(向后兼容)
-  const tenantId = c.req.header('X-Tenant-Id') || '0';
+  const tenantId = c.req.header('X-Backend-Id') || '0';
 
   const code = c.req.query('code');
   const state = c.req.query('state');
@@ -774,12 +774,12 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
     deleteCookie(c, OAUTH_STATE_COOKIE_NAME, { path: '/' });
   }
 
-  const tenantStore = c.get('tenantStore');
-  const authMode = getAuthMode(tenantStore, tenantId);
+  const backendStore = c.get('backendStore');
+  const authMode = getAuthMode(backendStore, tenantId);
 
   if (authMode === 'intellect-enterprise') {
     // 企业版:调 intellect-team callback + token 签发
-    const backend = getEnterpriseBackend(tenantStore, c.get('harnessStore'), tenantId);
+    const backend = getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
     if (!backend) {
       return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
     }

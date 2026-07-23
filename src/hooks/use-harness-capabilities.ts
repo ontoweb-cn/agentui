@@ -42,9 +42,9 @@ export function useHarnessCapabilities(): {
     gcTime: 5 * 60 * 1000, // 5 分钟缓存,避免频繁查询
     retry: 1, // 失败重试 1 次(避免 503 短暂不可用导致的体验问题)
     queryFn: async () => {
-      // 显式带 X-Tenant-Id / X-User-Id header(US2 必需)
+      // 显式带 X-Backend-Id / X-User-Id header(US2 必需)
       const { data: res } = await fetchHarnessCapabilities({
-        'X-Tenant-Id': tenantId as string,
+        'X-Backend-Id': tenantId as string,
         'X-User-Id': userId as string,
       });
       if (res?.code !== 0) {

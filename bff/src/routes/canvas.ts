@@ -12,7 +12,7 @@
  * - Principle V (Tenant Isolation): 按 BffTenant.canvasBackendId 路由,未绑定返回 503
  *
  * 路径映射:前端 /api/bff/canvas/* → Vite proxy rewrite 去掉 /api/bff → BFF 收到 /canvas/*
- * 中间件:authMiddleware + tenantContextMiddleware(在 index.ts 挂载)
+ * 中间件:authMiddleware + backendContextMiddleware(在 index.ts 挂载)
  * 挂载点:'/' 与 bffAgentRoutes 并列,路径前缀不冲突
  *
  * 注意:静态路径(/canvas/templates 等)必须在 /canvas/:id 之前注册,
@@ -21,9 +21,9 @@
 
 import { Hono, type Context } from 'hono';
 import { CanvasService } from '../services/canvas-service';
-import type { TenantContext } from '../types/tenant';
+import type { BackendContext } from '../types/tenant';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
-import { resolveTenantContext } from '../middleware/tenant-context';
+import { resolveBackendContext } from '../middleware/backend-context';
 import { streamResponse } from '../utils/response';
 import {
   CanvasBackendNotBoundError,
@@ -37,7 +37,7 @@ import {
 interface CanvasRouteVariables {
   adapterRegistry: IAdapterRegistry;
   canvasService: CanvasService;
-  tenantContext?: TenantContext;
+  backendContext?: BackendContext;
 }
 
 export const canvasRoutes = new Hono<{ Variables: CanvasRouteVariables }>();
@@ -94,7 +94,7 @@ function handleCanvasError(c: Context, err: Error, defaultStatus = 502) {
 canvasRoutes.get('/canvas/templates', async (c) => {
   const service = getCanvasService(c);
   try {
-    const result = await service.listTemplates(resolveTenantContext(c));
+    const result = await service.listTemplates(resolveBackendContext(c));
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -104,7 +104,7 @@ canvasRoutes.get('/canvas/templates', async (c) => {
 canvasRoutes.get('/canvas/tags', async (c) => {
   const service = getCanvasService(c);
   try {
-    const result = await service.listTags(resolveTenantContext(c));
+    const result = await service.listTags(resolveBackendContext(c));
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -114,7 +114,7 @@ canvasRoutes.get('/canvas/tags', async (c) => {
 canvasRoutes.get('/canvas/prompts', async (c) => {
   const service = getCanvasService(c);
   try {
-    const result = await service.listPrompts(resolveTenantContext(c));
+    const result = await service.listPrompts(resolveBackendContext(c));
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -125,7 +125,7 @@ canvasRoutes.post('/canvas/test_db_connection', async (c) => {
   const service = getCanvasService(c);
   try {
     const body = await c.req.json().catch(() => ({}));
-    const result = await service.testDbConnection(resolveTenantContext(c), body);
+    const result = await service.testDbConnection(resolveBackendContext(c), body);
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -136,7 +136,7 @@ canvasRoutes.post('/canvas/rerun', async (c) => {
   const service = getCanvasService(c);
   try {
     const body = await c.req.json().catch(() => ({}));
-    const result = await service.rerun(resolveTenantContext(c), body);
+    const result = await service.rerun(resolveBackendContext(c), body);
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -147,7 +147,7 @@ canvasRoutes.get('/canvas/download', async (c) => {
   const service = getCanvasService(c);
   try {
     const query = c.req.url.includes('?') ? '?' + c.req.url.split('?')[1] : '';
-    const upstream = await service.downloadFile(resolveTenantContext(c), {
+    const upstream = await service.downloadFile(resolveBackendContext(c), {
       headers: c.req.raw.headers,
       query,
     });
@@ -162,7 +162,7 @@ canvasRoutes.get('/canvas/attachments/:docId/download', async (c) => {
   try {
     const docId = c.req.param('docId');
     const query = c.req.url.includes('?') ? '?' + c.req.url.split('?')[1] : '';
-    const upstream = await service.downloadAttachment(resolveTenantContext(c), docId, query);
+    const upstream = await service.downloadAttachment(resolveBackendContext(c), docId, query);
     return streamResponse(upstream);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -173,7 +173,7 @@ canvasRoutes.post('/canvas/tasks/:taskId/cancel', async (c) => {
   const service = getCanvasService(c);
   try {
     const taskId = c.req.param('taskId');
-    await service.cancelTask(resolveTenantContext(c), taskId);
+    await service.cancelTask(resolveBackendContext(c), taskId);
     return c.json({ code: 0, message: 'ok' });
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -187,7 +187,7 @@ canvasRoutes.post('/canvas/tasks/:taskId/cancel', async (c) => {
 canvasRoutes.get('/canvas', async (c) => {
   const service = getCanvasService(c);
   try {
-    const result = await service.listCanvas(resolveTenantContext(c));
+    const result = await service.listCanvas(resolveBackendContext(c));
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -198,7 +198,7 @@ canvasRoutes.post('/canvas', async (c) => {
   const service = getCanvasService(c);
   try {
     const body = await c.req.json().catch(() => ({}));
-    const result = await service.createCanvas(resolveTenantContext(c), body);
+    const result = await service.createCanvas(resolveBackendContext(c), body);
     return c.json(result, 201);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -213,7 +213,7 @@ canvasRoutes.get('/canvas/:id', async (c) => {
   const service = getCanvasService(c);
   try {
     const id = c.req.param('id');
-    const result = await service.getCanvas(resolveTenantContext(c), id);
+    const result = await service.getCanvas(resolveBackendContext(c), id);
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -225,7 +225,7 @@ canvasRoutes.put('/canvas/:id', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json().catch(() => ({}));
-    const result = await service.saveCanvas(resolveTenantContext(c), id, body);
+    const result = await service.saveCanvas(resolveBackendContext(c), id, body);
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -236,7 +236,7 @@ canvasRoutes.delete('/canvas/:id', async (c) => {
   const service = getCanvasService(c);
   try {
     const id = c.req.param('id');
-    await service.deleteCanvas(resolveTenantContext(c), id);
+    await service.deleteCanvas(resolveBackendContext(c), id);
     return c.json({ code: 0, message: 'ok' });
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -247,7 +247,7 @@ canvasRoutes.post('/canvas/:id/reset', async (c) => {
   const service = getCanvasService(c);
   try {
     const id = c.req.param('id');
-    await service.resetCanvas(resolveTenantContext(c), id);
+    await service.resetCanvas(resolveBackendContext(c), id);
     return c.json({ code: 0, message: 'ok' });
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -259,7 +259,7 @@ canvasRoutes.put('/canvas/:id/tags', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json().catch(() => ({}));
-    await service.updateTags(resolveTenantContext(c), id, body);
+    await service.updateTags(resolveBackendContext(c), id, body);
     return c.json({ code: 0, message: 'ok' });
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -270,7 +270,7 @@ canvasRoutes.get('/canvas/:id/versions', async (c) => {
   const service = getCanvasService(c);
   try {
     const id = c.req.param('id');
-    const result = await service.listVersions(resolveTenantContext(c), id);
+    const result = await service.listVersions(resolveBackendContext(c), id);
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -282,7 +282,7 @@ canvasRoutes.get('/canvas/:id/versions/:vid', async (c) => {
   try {
     const id = c.req.param('id');
     const vid = c.req.param('vid');
-    const result = await service.getVersion(resolveTenantContext(c), id, vid);
+    const result = await service.getVersion(resolveBackendContext(c), id, vid);
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -294,7 +294,7 @@ canvasRoutes.get('/canvas/:id/components/:cid/input-form', async (c) => {
   try {
     const id = c.req.param('id');
     const cid = c.req.param('cid');
-    const result = await service.getInputForm(resolveTenantContext(c), id, cid);
+    const result = await service.getInputForm(resolveBackendContext(c), id, cid);
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -307,7 +307,7 @@ canvasRoutes.post('/canvas/:id/components/:cid/debug', async (c) => {
     const id = c.req.param('id');
     const cid = c.req.param('cid');
     const body = await c.req.json().catch(() => ({}));
-    const result = await service.debugComponent(resolveTenantContext(c), id, cid, body);
+    const result = await service.debugComponent(resolveBackendContext(c), id, cid, body);
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -319,7 +319,7 @@ canvasRoutes.get('/canvas/:id/logs/:messageId', async (c) => {
   try {
     const id = c.req.param('id');
     const messageId = c.req.param('messageId');
-    const result = await service.trace(resolveTenantContext(c), id, messageId);
+    const result = await service.trace(resolveBackendContext(c), id, messageId);
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -331,7 +331,7 @@ canvasRoutes.post('/canvas/:id/webhook/test', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json().catch(() => ({}));
-    const result = await service.testWebhook(resolveTenantContext(c), id, body);
+    const result = await service.testWebhook(resolveBackendContext(c), id, body);
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -342,7 +342,7 @@ canvasRoutes.get('/canvas/:id/webhook/logs', async (c) => {
   const service = getCanvasService(c);
   try {
     const id = c.req.param('id');
-    const result = await service.fetchWebhookLogs(resolveTenantContext(c), id);
+    const result = await service.fetchWebhookLogs(resolveBackendContext(c), id);
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -353,7 +353,7 @@ canvasRoutes.get('/canvas/:id/external-inputs', async (c) => {
   const service = getCanvasService(c);
   try {
     const id = c.req.param('id');
-    const result = await service.fetchExternalInputs(resolveTenantContext(c), id);
+    const result = await service.fetchExternalInputs(resolveBackendContext(c), id);
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -366,7 +366,7 @@ canvasRoutes.post('/canvas/:id/upload', async (c) => {
   try {
     const id = c.req.param('id');
     const query = c.req.url.includes('?') ? '?' + c.req.url.split('?')[1] : '';
-    const upstream = await service.uploadAttachment(resolveTenantContext(c), id, {
+    const upstream = await service.uploadAttachment(resolveBackendContext(c), id, {
       headers: c.req.raw.headers,
       body: c.req.raw.body,
       query,

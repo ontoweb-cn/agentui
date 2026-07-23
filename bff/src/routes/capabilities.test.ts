@@ -5,9 +5,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Hono } from 'hono';
 import { capabilitiesRoutes } from './capabilities';
-import { tenantContextMiddleware } from '../middleware/tenant-context';
+import { backendContextMiddleware } from '../middleware/backend-context';
 import type { HarnessStore } from '../types/stores';
-import type { TenantStore } from '../types/stores';
+import type { BackendStore } from '../types/stores';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
 import type { IHarnessAdapter } from '../types/adapter';
 import type { HarnessBackend, HarnessCapabilities } from '../types/harness';
@@ -70,7 +70,7 @@ function createFakeAdapter(backend: HarnessBackend): IHarnessAdapter {
 
 interface MockSetup {
   harnessStore: HarnessStore;
-  tenantStore: TenantStore;
+  backendStore: BackendStore;
   registry: IAdapterRegistry;
   adapter: IHarnessAdapter;
 }
@@ -95,11 +95,11 @@ function createMocks(
     saveConfig: vi.fn(),
   };
 
-  const tenantStore: TenantStore = {
+  const backendStore: BackendStore = {
     load: vi.fn().mockResolvedValue(undefined),
-    getTenant: vi.fn((id: string) => (id === tenant.id ? tenant : undefined)),
-    listTenants: vi.fn(() => (tenant ? [tenant] : [])),
-    createTenant: vi.fn(),
+    getBackend: vi.fn((id: string) => (id === tenant.id ? tenant : undefined)),
+    listBackends: vi.fn(() => (tenant ? [tenant] : [])),
+    createBackend: vi.fn(),
     setHarnessBinding: vi.fn(),
     getHarnessBinding: vi.fn(),
     setCanvasBinding: vi.fn(),
@@ -110,34 +110,33 @@ function createMocks(
   };
 
   const registry: IAdapterRegistry = {
-    getAdapterForTenant: vi.fn(() => adapter),
     getAdapterForBackend: vi.fn(() => adapter),
     registerFactory: vi.fn(),
     isReady: vi.fn(() => ready),
     invalidate: vi.fn(),
-    getCanvasBackendForTenant: vi.fn(() => adapter) as unknown as IAdapterRegistry['getCanvasBackendForTenant'],
+    getCanvasBackendForBackend: vi.fn(() => adapter) as unknown as IAdapterRegistry['getCanvasBackendForBackend'],
   };
 
-  return { harnessStore, tenantStore, registry, adapter };
+  return { harnessStore, backendStore, registry, adapter };
 }
 
 interface TestVariables {
   harnessStore: HarnessStore;
-  tenantStore: TenantStore;
+  backendStore: BackendStore;
   adapterRegistry: IAdapterRegistry;
-  tenantContext?: { tenantId: string; userId: string };
+  backendContext?: { backendId: string; userId: string };
 }
 
 function createApp(mocks: MockSetup): Hono<{ Variables: TestVariables }> {
   const app = new Hono<{ Variables: TestVariables }>();
-  // 模拟 index.ts 的中间件链:context 注入 → authMiddleware → tenantContextMiddleware → route
+  // 模拟 index.ts 的中间件链:context 注入 → authMiddleware → backendContextMiddleware → route
   app.use('*', async (c, next) => {
     c.set('harnessStore', mocks.harnessStore);
-    c.set('tenantStore', mocks.tenantStore);
+    c.set('backendStore', mocks.backendStore);
     c.set('adapterRegistry', mocks.registry);
     await next();
   });
-  app.use('/capabilities/*', tenantContextMiddleware);
+  app.use('/capabilities/*', backendContextMiddleware);
   // Cast:route 模块自带的 Variables 类型与测试 app 不完全一致(测试只读不写)。
   app.route('/', capabilitiesRoutes as unknown as Hono<{ Variables: TestVariables }>);
   return app;
@@ -162,7 +161,7 @@ describe('capabilities 路由 (P2 US2)', () => {
       const res = await app.request('/capabilities', {
         headers: {
           Authorization: 'Bearer test',
-          'X-Tenant-Id': 'tenant-1',
+          'X-Backend-Id': 'tenant-1',
           'X-User-Id': 'user-1',
         },
       });
@@ -175,31 +174,31 @@ describe('capabilities 路由 (P2 US2)', () => {
         backendType: 'intellect-rag',
         capabilities: ragCapabilities,
       });
-      // Registry.getAdapterForTenant 被调用
-      expect(mocks.registry.getAdapterForTenant).toHaveBeenCalledWith('tenant-1');
+      // Registry.getAdapterForBackend 被调用
+      expect(mocks.registry.getAdapterForBackend).toHaveBeenCalledWith('tenant-1');
       // adapter.discoverCapabilities 被调用
       expect(mocks.adapter.discoverCapabilities).toHaveBeenCalled();
     });
 
-    it('缺失 X-Tenant-Id header 返回 400', async () => {
+    it('缺失 X-Backend-Id header 返回 400', async () => {
       const res = await app.request('/capabilities', {
         headers: {
           Authorization: 'Bearer test',
           'X-User-Id': 'user-1',
-          // 缺 X-Tenant-Id
+          // 缺 X-Backend-Id
         },
       });
       expect(res.status).toBe(400);
       const body = await res.json();
       expect(body.code).toBe(400);
-      expect(body.message).toContain('X-Tenant-Id');
+      expect(body.message).toContain('X-Backend-Id');
     });
 
     it('缺失 X-User-Id header 返回 400', async () => {
       const res = await app.request('/capabilities', {
         headers: {
           Authorization: 'Bearer test',
-          'X-Tenant-Id': 'tenant-1',
+          'X-Backend-Id': 'tenant-1',
           // 缺 X-User-Id
         },
       });
@@ -210,8 +209,8 @@ describe('capabilities 路由 (P2 US2)', () => {
     });
 
     it('tenant 不存在返回 404', async () => {
-      // 让 registry.getAdapterForTenant 在 tenantId='nonexistent' 时抛 TenantNotFoundError
-      mocks.registry.getAdapterForTenant = vi.fn((tid: string) => {
+      // 让 registry.getAdapterForBackend 在 tenantId='nonexistent' 时抛 TenantNotFoundError
+      mocks.registry.getAdapterForBackend = vi.fn((tid: string) => {
         if (tid === 'nonexistent') {
           throw new TenantNotFoundError(tid);
         }
@@ -222,7 +221,7 @@ describe('capabilities 路由 (P2 US2)', () => {
       const res = await app.request('/capabilities', {
         headers: {
           Authorization: 'Bearer test',
-          'X-Tenant-Id': 'nonexistent',
+          'X-Backend-Id': 'nonexistent',
           'X-User-Id': 'user-1',
         },
       });
@@ -240,7 +239,7 @@ describe('capabilities 路由 (P2 US2)', () => {
       const res = await app.request('/capabilities', {
         headers: {
           Authorization: 'Bearer test',
-          'X-Tenant-Id': 'tenant-1',
+          'X-Backend-Id': 'tenant-1',
           'X-User-Id': 'user-1',
         },
       });
@@ -257,8 +256,8 @@ describe('capabilities 路由 (P2 US2)', () => {
         intellectBackendId: 'missing-backend',
       };
       mocks = createMocks({ tenant: tenantWithBadBackend });
-      // getAdapterForTenant 抛 BackendNotConfiguredError(实际错误类)
-      mocks.registry.getAdapterForTenant = vi.fn(() => {
+      // getAdapterForBackend 抛 BackendNotConfiguredError(实际错误类)
+      mocks.registry.getAdapterForBackend = vi.fn(() => {
         throw new BackendNotConfiguredError('missing-backend');
       });
       app = createApp(mocks);
@@ -266,7 +265,7 @@ describe('capabilities 路由 (P2 US2)', () => {
       const res = await app.request('/capabilities', {
         headers: {
           Authorization: 'Bearer test',
-          'X-Tenant-Id': 'tenant-1',
+          'X-Backend-Id': 'tenant-1',
           'X-User-Id': 'user-1',
         },
       });

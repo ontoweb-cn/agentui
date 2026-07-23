@@ -1,11 +1,11 @@
 // Multi-Harness P5 (US1):Team CRUD 路由单元测试
 // 对齐 intellect-team 实际契约:slug/display_name/created_by 字段,DELETE 软删除,无 PUT。
-// Mock fetch(intellect-team API)+ TenantStore,隔离路由层逻辑。
+// Mock fetch(intellect-team API)+ BackendStore,隔离路由层逻辑。
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Hono } from 'hono';
 import { teamRoutes } from './teams';
-import type { TenantStore } from '../types/stores';
+import type { BackendStore } from '../types/stores';
 import type { BffTenant } from '../types/tenant';
 import type { AuthSession } from '../types/auth';
 import { AUTH_SESSION_KEY } from '../middleware/auth-session';
@@ -36,17 +36,17 @@ const tenantUnbound: BffTenant = {
 
 const memberSession: AuthSession = {
   token: 'imt_test_token',
-  tenantId: 'tenant-unbound',
+  backendId: 'tenant-unbound',
   authMode: 'intellect-enterprise',
   memberId: 'm-creator-001',
 };
 
-function createMockTenantStore(tenants: BffTenant[]): TenantStore {
+function createMockBackendStore(tenants: BffTenant[]): BackendStore {
   return {
     load: vi.fn().mockResolvedValue(undefined),
-    getTenant: vi.fn((id: string) => tenants.find((t) => t.id === id)),
-    listTenants: vi.fn(() => tenants),
-    createTenant: vi.fn(),
+    getBackend: vi.fn((id: string) => tenants.find((t) => t.id === id)),
+    listBackends: vi.fn(() => tenants),
+    createBackend: vi.fn(),
     setHarnessBinding: vi.fn(),
     getHarnessBinding: vi.fn(),
     setCanvasBinding: vi.fn(),
@@ -58,17 +58,17 @@ function createMockTenantStore(tenants: BffTenant[]): TenantStore {
 }
 
 interface TestVariables {
-  tenantStore: TenantStore;
+  backendStore: BackendStore;
   [AUTH_SESSION_KEY]?: AuthSession;
 }
 
 function createApp(
-  tenantStore: TenantStore,
+  backendStore: BackendStore,
   session?: AuthSession,
 ): Hono<{ Variables: TestVariables }> {
   const app = new Hono<{ Variables: TestVariables }>();
   app.use('*', async (c, next) => {
-    c.set('tenantStore', tenantStore);
+    c.set('backendStore', backendStore);
     if (session) {
       c.set(AUTH_SESSION_KEY, session);
     }
@@ -94,8 +94,8 @@ describe('Team CRUD 路由 (P5 US1, 对齐 intellect-team 实际契约)', () => 
   // -------------------------------------------------------------------------
 
   it('创建 Team 成功 → 201,传 slug/display_name/created_by', async () => {
-    const tenantStore = createMockTenantStore([tenantUnbound]);
-    const app = createApp(tenantStore, memberSession);
+    const backendStore = createMockBackendStore([tenantUnbound]);
+    const app = createApp(backendStore, memberSession);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -130,8 +130,8 @@ describe('Team CRUD 路由 (P5 US1, 对齐 intellect-team 实际契约)', () => 
   });
 
   it('前端显式传 created_by 时优先使用', async () => {
-    const tenantStore = createMockTenantStore([tenantUnbound]);
-    const app = createApp(tenantStore, memberSession);
+    const backendStore = createMockBackendStore([tenantUnbound]);
+    const app = createApp(backendStore, memberSession);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -155,8 +155,8 @@ describe('Team CRUD 路由 (P5 US1, 对齐 intellect-team 实际契约)', () => 
   });
 
   it('无 session 且 body 无 created_by → 400', async () => {
-    const tenantStore = createMockTenantStore([tenantUnbound]);
-    const app = createApp(tenantStore); // 无 session
+    const backendStore = createMockBackendStore([tenantUnbound]);
+    const app = createApp(backendStore); // 无 session
 
     const resp = await app.request('/admin/teams', {
       method: 'POST',
@@ -168,8 +168,8 @@ describe('Team CRUD 路由 (P5 US1, 对齐 intellect-team 实际契约)', () => 
   });
 
   it('创建 Team 缺 slug → 400', async () => {
-    const tenantStore = createMockTenantStore([tenantUnbound]);
-    const app = createApp(tenantStore, memberSession);
+    const backendStore = createMockBackendStore([tenantUnbound]);
+    const app = createApp(backendStore, memberSession);
 
     const resp = await app.request('/admin/teams', {
       method: 'POST',
@@ -181,8 +181,8 @@ describe('Team CRUD 路由 (P5 US1, 对齐 intellect-team 实际契约)', () => 
   });
 
   it('创建 Team slug 重复 → 409', async () => {
-    const tenantStore = createMockTenantStore([tenantUnbound]);
-    const app = createApp(tenantStore, memberSession);
+    const backendStore = createMockBackendStore([tenantUnbound]);
+    const app = createApp(backendStore, memberSession);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ error: { code: 'slug_taken' } }), { status: 409 }),
@@ -198,8 +198,8 @@ describe('Team CRUD 路由 (P5 US1, 对齐 intellect-team 实际契约)', () => 
   });
 
   it('创建 Team intellect-team 不可达 → 502', async () => {
-    const tenantStore = createMockTenantStore([tenantUnbound]);
-    const app = createApp(tenantStore, memberSession);
+    const backendStore = createMockBackendStore([tenantUnbound]);
+    const app = createApp(backendStore, memberSession);
 
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
@@ -217,8 +217,8 @@ describe('Team CRUD 路由 (P5 US1, 对齐 intellect-team 实际契约)', () => 
   // -------------------------------------------------------------------------
 
   it('列出 Team 成功 → 200, intellect-team 返回 {data: [...]}, BFF 提取数组', async () => {
-    const tenantStore = createMockTenantStore([tenantUnbound]);
-    const app = createApp(tenantStore, memberSession);
+    const backendStore = createMockBackendStore([tenantUnbound]);
+    const app = createApp(backendStore, memberSession);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -245,8 +245,8 @@ describe('Team CRUD 路由 (P5 US1, 对齐 intellect-team 实际契约)', () => 
   // -------------------------------------------------------------------------
 
   it('获取单个 Team(用 slug)→ 200', async () => {
-    const tenantStore = createMockTenantStore([tenantUnbound]);
-    const app = createApp(tenantStore, memberSession);
+    const backendStore = createMockBackendStore([tenantUnbound]);
+    const app = createApp(backendStore, memberSession);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -266,8 +266,8 @@ describe('Team CRUD 路由 (P5 US1, 对齐 intellect-team 实际契约)', () => 
   });
 
   it('获取不存在的 Team → 404', async () => {
-    const tenantStore = createMockTenantStore([tenantUnbound]);
-    const app = createApp(tenantStore, memberSession);
+    const backendStore = createMockBackendStore([tenantUnbound]);
+    const app = createApp(backendStore, memberSession);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ error: { code: 'team_not_found' } }), { status: 404 }),
@@ -283,8 +283,8 @@ describe('Team CRUD 路由 (P5 US1, 对齐 intellect-team 实际契约)', () => 
   // -------------------------------------------------------------------------
 
   it('归档未被绑定的 Team → 200 + {archived: true}', async () => {
-    const tenantStore = createMockTenantStore([tenantUnbound]);
-    const app = createApp(tenantStore, memberSession);
+    const backendStore = createMockBackendStore([tenantUnbound]);
+    const app = createApp(backendStore, memberSession);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ ok: true }), { status: 200 }),
@@ -302,8 +302,8 @@ describe('Team CRUD 路由 (P5 US1, 对齐 intellect-team 实际契约)', () => 
   });
 
   it('归档被 BffTenant 绑定的 Team → 409(FR-011)', async () => {
-    const tenantStore = createMockTenantStore([tenantBoundToTeam]);
-    const app = createApp(tenantStore, memberSession);
+    const backendStore = createMockBackendStore([tenantBoundToTeam]);
+    const app = createApp(backendStore, memberSession);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch');
 
@@ -318,8 +318,8 @@ describe('Team CRUD 路由 (P5 US1, 对齐 intellect-team 实际契约)', () => 
   });
 
   it('归档 Team intellect-team 返回 403(非 profile key)→ 403', async () => {
-    const tenantStore = createMockTenantStore([tenantUnbound]);
-    const app = createApp(tenantStore, memberSession);
+    const backendStore = createMockBackendStore([tenantUnbound]);
+    const app = createApp(backendStore, memberSession);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ error: 'profile_key_required' }), { status: 403 }),

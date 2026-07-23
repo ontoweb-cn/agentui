@@ -8,7 +8,7 @@ import {
   IntellectBackendError,
 } from './http-client';
 import type { HarnessBackend } from '../../../types/harness';
-import type { TenantContext } from '../../../types/tenant';
+import type { BackendContext } from '../../../types/tenant';
 
 // Mock httpClient 工厂方法
 const httpClientMock = {
@@ -52,8 +52,8 @@ const backend: HarnessBackend = {
   adminToken: 'test-api-server-key',
 };
 
-const ctx: TenantContext = {
-  tenantId: 'tenant-001',
+const ctx: BackendContext = {
+  backendId: 'tenant-001',
   userId: 'user-001',
   intellectTeamId: 'team-abc',
   intellectProjectId: 'project-xyz',

@@ -11,7 +11,7 @@
  * - Principle IV (SSE Dual-Protocol): sendMessage 用 parseIntellectEnterpriseSSE
  *   (企业版自定义事件,不复用 parseCanvasWorkflowSSE/parseOpenAISSE)
  * - Principle V (Tenant Isolation): 注入 X-Intellect-Team / X-Intellect-Project 头
- *   (通过 httpClient 统一注入,BffTenant.intellectTenantId 映射到 TenantContext.intellectTeamId)
+ *   (通过 httpClient 统一注入,BffTenant.intellectTenantId 映射到 BackendContext.intellectTeamId)
  * - Principle VIII (BFF ↔ Intellect Enterprise Access Contract):
  *   主通道 POST /api/sessions/{id}/chat/stream,鉴权 API_SERVER_KEY,禁用 /v1/chat/completions
  *
@@ -26,7 +26,7 @@ import type {
 } from '../../../types/domain';
 import type { StreamIterable } from '../../../types/stream';
 import type { HarnessCapabilities, HarnessBackend } from '../../../types/harness';
-import type { TenantContext } from '../../../types/tenant';
+import type { BackendContext } from '../../../types/tenant';
 import {
   IntellectEnterpriseHttpClient,
   IntellectNotFoundError,
@@ -70,7 +70,7 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
   // Agent methods (US1)
   // -----------------------------------------------------------------------
 
-  async listAgents(ctx: TenantContext): Promise<AgentSummary[]> {
+  async listAgents(ctx: BackendContext): Promise<AgentSummary[]> {
     try {
       const data = await this.httpClient.request<{ data: unknown[] } | unknown[]>(
         'GET',
@@ -95,7 +95,7 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
     }
   }
 
-  async getAgent(ctx: TenantContext, agentId: string): Promise<AgentSummary> {
+  async getAgent(ctx: BackendContext, agentId: string): Promise<AgentSummary> {
     const data = await this.httpClient.request<unknown>(
       'GET',
       `/v1/models/${encodeURIComponent(agentId)}`,
@@ -109,7 +109,7 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
   // -----------------------------------------------------------------------
 
   async createSession(
-    ctx: TenantContext,
+    ctx: BackendContext,
     _agentId: string,
     title?: string,
   ): Promise<Session> {
@@ -123,7 +123,7 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
     return this.normalizeSession(data, _agentId);
   }
 
-  async listSessions(ctx: TenantContext, agentId: string): Promise<Session[]> {
+  async listSessions(ctx: BackendContext, agentId: string): Promise<Session[]> {
     const data = await this.httpClient.request<{ data?: unknown[] } | unknown[]>(
       'GET',
       '/api/sessions',
@@ -134,7 +134,7 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
   }
 
   async getSession(
-    ctx: TenantContext,
+    ctx: BackendContext,
     agentId: string,
     sessionId: string,
   ): Promise<Session> {
@@ -147,7 +147,7 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
   }
 
   async deleteSession(
-    ctx: TenantContext,
+    ctx: BackendContext,
     _agentId: string,
     sessionId: string,
   ): Promise<void> {
@@ -163,7 +163,7 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
   // -----------------------------------------------------------------------
 
   async sendMessage(
-    ctx: TenantContext,
+    ctx: BackendContext,
     req: SendMessageRequest,
   ): Promise<StreamIterable> {
     const path = `/api/sessions/${encodeURIComponent(req.sessionId)}/chat/stream`;
@@ -176,7 +176,7 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
     return parseIntellectEnterpriseSSE(stream);
   }
 
-  async cancelMessage(_ctx: TenantContext, _sessionId: string): Promise<void> {
+  async cancelMessage(_ctx: BackendContext, _sessionId: string): Promise<void> {
     // P3 stub: no-op,前端通过 AbortController 取消流
   }
 
@@ -187,7 +187,7 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
   async healthCheck(): Promise<boolean> {
     try {
       await this.httpClient.request('GET', '/health', {
-        tenantId: '',
+        backendId: '',
         userId: '',
       });
       return true;
@@ -202,7 +202,7 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
       const data = await this.httpClient.request<Partial<HarnessCapabilities>>(
         'GET',
         '/v1/capabilities',
-        { tenantId: '', userId: '' },
+        { backendId: '', userId: '' },
       );
       // 合并默认能力(确保所有字段存在)
       return { ...DEFAULT_ENTERPRISE_CAPABILITIES, ...data };

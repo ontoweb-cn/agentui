@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { IntellectRagAdapter } from './intellect-rag-adapter';
 import type { HarnessBackend } from '../../../types/harness';
-import type { TenantContext } from '../../../types/tenant';
+import type { BackendContext } from '../../../types/tenant';
 import type { AgentSummary, Session } from '../../../types/domain';
 
 // Mock global fetch
@@ -35,8 +35,8 @@ const baseBackend: HarnessBackend = {
   adminToken: 'test-admin-token',
 };
 
-const ctx: TenantContext = {
-  tenantId: 'tenant-001',
+const ctx: BackendContext = {
+  backendId: 'tenant-001',
   userId: 'user-001',
 };
 

@@ -7,20 +7,20 @@ import {
   IntellectNotFoundError,
   IntellectBackendError,
 } from './http-client';
-import type { TenantContext } from '../../../types/tenant';
+import type { BackendContext } from '../../../types/tenant';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-const ctx: TenantContext = {
-  tenantId: 'tenant-001',
+const ctx: BackendContext = {
+  backendId: 'tenant-001',
   userId: 'user-001',
   intellectTeamId: 'team-abc',
   intellectProjectId: 'project-xyz',
 };
 
-const ctxMinimal: TenantContext = {
-  tenantId: 'tenant-001',
+const ctxMinimal: BackendContext = {
+  backendId: 'tenant-001',
   userId: 'user-001',
 };
 
@@ -69,7 +69,7 @@ describe('IntellectEnterpriseHttpClient', () => {
       expect(init.headers['Content-Type']).toBe('application/json');
     });
 
-    it('TenantContext 无 team/project 时不注入 Team/Project 组织隔离头', async () => {
+    it('BackendContext 无 team/project 时不注入 Team/Project 组织隔离头', async () => {
       mockFetch.mockResolvedValueOnce(makeJsonResponse({ ok: true }));
       await client.request('GET', '/health', ctxMinimal);
       const [, init] = mockFetch.mock.calls[0];

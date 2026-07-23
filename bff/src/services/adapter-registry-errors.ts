@@ -11,7 +11,7 @@
  */
 
 /**
- * tenantId 在 TenantStore 中不存在。
+ * tenantId 在 BackendStore 中不存在。
  */
 export class TenantNotFoundError extends Error {
   constructor(tenantId: string) {

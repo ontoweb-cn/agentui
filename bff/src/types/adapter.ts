@@ -22,7 +22,7 @@
 import type { AgentSummary, Session, SendMessageRequest } from './domain';
 import type { StreamChunk, StreamIterable } from './stream';
 import type { HarnessCapabilities, HarnessBackend } from './harness';
-import type { TenantContext } from './tenant';
+import type { BackendContext } from './tenant';
 import type {
   Team,
   Project,
@@ -44,7 +44,7 @@ import type {
  * - P3: IntellectEnterpriseAdapter implements this + IMultiTenantAdapter
  *
  * Selection:
- * - AdapterRegistry.getAdapterForTenant(tenantId) returns IHarnessAdapter
+ * - AdapterRegistry.getAdapterForBackend(tenantId) returns IHarnessAdapter
  * - BFF route layer does NOT know concrete adapter type
  */
 export interface IHarnessAdapter {
@@ -59,14 +59,14 @@ export interface IHarnessAdapter {
    * 列出所有 Agent。
    * @param ctx 租户上下文
    */
-  listAgents(ctx: TenantContext): Promise<AgentSummary[]>;
+  listAgents(ctx: BackendContext): Promise<AgentSummary[]>;
 
   /**
    * 获取单个 Agent 详情。
    * @param ctx 租户上下文
    * @param agentId Agent ID
    */
-  getAgent(ctx: TenantContext, agentId: string): Promise<AgentSummary>;
+  getAgent(ctx: BackendContext, agentId: string): Promise<AgentSummary>;
 
   // -----------------------------------------------------------------------
   // Session methods
@@ -78,14 +78,14 @@ export interface IHarnessAdapter {
    * @param agentId 关联 Agent ID
    * @param title 会话标题(可选)
    */
-  createSession(ctx: TenantContext, agentId: string, title?: string): Promise<Session>;
+  createSession(ctx: BackendContext, agentId: string, title?: string): Promise<Session>;
 
   /**
    * 列出指定 Agent 下的所有会话。
    * @param ctx 租户上下文
    * @param agentId 关联 Agent ID(P1 v1.2.0 调整:适配 Intellect RAG 嵌套结构 /agents/{agentId}/sessions)
    */
-  listSessions(ctx: TenantContext, agentId: string): Promise<Session[]>;
+  listSessions(ctx: BackendContext, agentId: string): Promise<Session[]>;
 
   /**
    * 获取单个会话详情。
@@ -93,7 +93,7 @@ export interface IHarnessAdapter {
    * @param agentId 关联 Agent ID(P1 v1.2.0 调整)
    * @param sessionId Session ID
    */
-  getSession(ctx: TenantContext, agentId: string, sessionId: string): Promise<Session>;
+  getSession(ctx: BackendContext, agentId: string, sessionId: string): Promise<Session>;
 
   /**
    * 删除会话。
@@ -101,7 +101,7 @@ export interface IHarnessAdapter {
    * @param agentId 关联 Agent ID(P1 v1.2.0 调整)
    * @param sessionId Session ID
    */
-  deleteSession(ctx: TenantContext, agentId: string, sessionId: string): Promise<void>;
+  deleteSession(ctx: BackendContext, agentId: string, sessionId: string): Promise<void>;
 
   // -----------------------------------------------------------------------
   // Message streaming methods
@@ -118,14 +118,14 @@ export interface IHarnessAdapter {
    * @param req 发送消息请求
    * @returns 流式 chunk 迭代器,以 done 或 error chunk 终止
    */
-  sendMessage(ctx: TenantContext, req: SendMessageRequest): Promise<StreamIterable>;
+  sendMessage(ctx: BackendContext, req: SendMessageRequest): Promise<StreamIterable>;
 
   /**
    * 取消进行中的消息流。
    * @param ctx 租户上下文
    * @param sessionId Session ID
    */
-  cancelMessage(ctx: TenantContext, sessionId: string): Promise<void>;
+  cancelMessage(ctx: BackendContext, sessionId: string): Promise<void>;
 
   // -----------------------------------------------------------------------
   // Health & discovery
@@ -176,39 +176,39 @@ export interface IMultiTenantAdapter extends IHarnessAdapter {
   // -----------------------------------------------------------------------
 
   /** 列出当前租户下的所有 Team。 */
-  listTeams(ctx: TenantContext): Promise<Team[]>;
+  listTeams(ctx: BackendContext): Promise<Team[]>;
 
   /** 创建 Team。 */
   createTeam(
-    ctx: TenantContext,
+    ctx: BackendContext,
     name: string,
     slug: string,
     description?: string,
   ): Promise<Team>;
 
   /** 获取单个 Team 详情。 */
-  getTeam(ctx: TenantContext, teamId: string): Promise<Team>;
+  getTeam(ctx: BackendContext, teamId: string): Promise<Team>;
 
   /** 更新 Team。 */
   updateTeam(
-    ctx: TenantContext,
+    ctx: BackendContext,
     teamId: string,
     patch: Partial<Pick<Team, 'name' | 'slug' | 'description'>>,
   ): Promise<Team>;
 
   /** 删除 Team。 */
-  deleteTeam(ctx: TenantContext, teamId: string): Promise<void>;
+  deleteTeam(ctx: BackendContext, teamId: string): Promise<void>;
 
   // -----------------------------------------------------------------------
   // Team Member management
   // -----------------------------------------------------------------------
 
   /** 列出 Team 成员。 */
-  listTeamMembers(ctx: TenantContext, teamId: string): Promise<TeamMember[]>;
+  listTeamMembers(ctx: BackendContext, teamId: string): Promise<TeamMember[]>;
 
   /** 添加 Team 成员。 */
   addTeamMember(
-    ctx: TenantContext,
+    ctx: BackendContext,
     teamId: string,
     userId: string,
     role: TeamMember['role'],
@@ -216,25 +216,25 @@ export interface IMultiTenantAdapter extends IHarnessAdapter {
 
   /** 更新 Team 成员角色。 */
   updateTeamMemberRole(
-    ctx: TenantContext,
+    ctx: BackendContext,
     teamId: string,
     userId: string,
     role: TeamMember['role'],
   ): Promise<TeamMember>;
 
   /** 移除 Team 成员。 */
-  removeTeamMember(ctx: TenantContext, teamId: string, userId: string): Promise<void>;
+  removeTeamMember(ctx: BackendContext, teamId: string, userId: string): Promise<void>;
 
   // -----------------------------------------------------------------------
   // Project CRUD
   // -----------------------------------------------------------------------
 
   /** 列出 Team 下的所有 Project。 */
-  listProjects(ctx: TenantContext, teamId: string): Promise<Project[]>;
+  listProjects(ctx: BackendContext, teamId: string): Promise<Project[]>;
 
   /** 创建 Project。 */
   createProject(
-    ctx: TenantContext,
+    ctx: BackendContext,
     teamId: string,
     name: string,
     slug: string,
@@ -242,18 +242,18 @@ export interface IMultiTenantAdapter extends IHarnessAdapter {
   ): Promise<Project>;
 
   /** 获取单个 Project 详情。 */
-  getProject(ctx: TenantContext, teamId: string, projectId: string): Promise<Project>;
+  getProject(ctx: BackendContext, teamId: string, projectId: string): Promise<Project>;
 
   /** 更新 Project。 */
   updateProject(
-    ctx: TenantContext,
+    ctx: BackendContext,
     teamId: string,
     projectId: string,
     patch: Partial<Pick<Project, 'name' | 'slug' | 'description'>>,
   ): Promise<Project>;
 
   /** 删除 Project。 */
-  deleteProject(ctx: TenantContext, teamId: string, projectId: string): Promise<void>;
+  deleteProject(ctx: BackendContext, teamId: string, projectId: string): Promise<void>;
 
   // -----------------------------------------------------------------------
   // Project Member management
@@ -261,14 +261,14 @@ export interface IMultiTenantAdapter extends IHarnessAdapter {
 
   /** 列出 Project 成员。 */
   listProjectMembers(
-    ctx: TenantContext,
+    ctx: BackendContext,
     teamId: string,
     projectId: string,
   ): Promise<ProjectMember[]>;
 
   /** 添加 Project 成员。 */
   addProjectMember(
-    ctx: TenantContext,
+    ctx: BackendContext,
     teamId: string,
     projectId: string,
     userId: string,
@@ -277,7 +277,7 @@ export interface IMultiTenantAdapter extends IHarnessAdapter {
 
   /** 更新 Project 成员角色。 */
   updateProjectMemberRole(
-    ctx: TenantContext,
+    ctx: BackendContext,
     teamId: string,
     projectId: string,
     userId: string,
@@ -286,7 +286,7 @@ export interface IMultiTenantAdapter extends IHarnessAdapter {
 
   /** 移除 Project 成员。 */
   removeProjectMember(
-    ctx: TenantContext,
+    ctx: BackendContext,
     teamId: string,
     projectId: string,
     userId: string,
@@ -317,7 +317,7 @@ export function isMultiTenantAdapter(
 
 /**
  * Adapter 工厂函数签名。
- * P1 AdapterRegistry.getAdapterForTenant() 调用此工厂创建/复用 Adapter 实例。
+ * P1 AdapterRegistry.getAdapterForBackend() 调用此工厂创建/复用 Adapter 实例。
  *
  * @param backend 运行时后端对象(含 token)
  * @returns Adapter 实例

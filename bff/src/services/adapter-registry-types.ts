@@ -23,7 +23,7 @@ export type HarnessAdapterFactory = (backend: HarnessBackend) => IHarnessAdapter
 
 /**
  * Adapter 注册中心契约。
- * 根据 tenantId 查询 TenantStore 绑定关系,从 HarnessStore 获取后端配置,创建/复用 Adapter 实例。
+ * 根据 tenantId 查询 BackendStore 绑定关系,从 HarnessStore 获取后端配置,创建/复用 Adapter 实例。
  *
  * P1: 单后端(intellect-rag)场景
  * P2: 新增 invalidate 方法,后端配置变更后失效缓存
@@ -32,14 +32,14 @@ export type HarnessAdapterFactory = (backend: HarnessBackend) => IHarnessAdapter
 export interface IAdapterRegistry {
   /**
    * 按 tenantId 获取 Adapter。
-   * 查 TenantStore → intellectBackendId → HarnessStore → backend → Adapter
+   * 查 BackendStore → intellectBackendId → HarnessStore → backend → Adapter
    *
    * @throws TenantNotFoundError tenantId 不存在
    * @throws BackendNotConfiguredError tenant 绑定的 backendId 不存在
    * @throws AdapterFactoryNotRegisteredError backendType 无对应 factory
    * @throws RegistryNotReadyError Store 未加载完成
    */
-  getAdapterForTenant(tenantId: string): IHarnessAdapter;
+  getAdapterForBackend(tenantId: string): IHarnessAdapter;
 
   /**
    * 按 backendId 直接获取 Adapter(用于 canvas 硬绑定场景,Constitution Principle III)。
@@ -59,7 +59,7 @@ export interface IAdapterRegistry {
   /**
    * P2 新增:失效缓存的 Adapter 实例。
    *
-   * 后端配置变更(CRUD)后调用,下次 getAdapterForTenant/getAdapterForBackend
+   * 后端配置变更(CRUD)后调用,下次 getAdapterForBackend/getAdapterForBackend
    * 创建新实例(用最新 HarnessBackend 配置)。
    *
    * @param backendId 可选,不传清空整个缓存,传则只移除该条目
@@ -73,7 +73,7 @@ export interface IAdapterRegistry {
    * 返回类型 IntellectRagAdapter(非 IHarnessAdapter),类型签名落实 hard-bound。
    *
    * Resolution flow (research.md R3):
-   * 1. tenant = tenantStore.getTenant(tenantId)
+   * 1. tenant = backendStore.getBackend(tenantId)
    * 2. if tenant.canvasBackendId: getAdapterForBackend + instanceof 断言
    * 3. if !canvasBackendId:
    *      if tenantId === 'default': 回退首个 intellect-rag backend
@@ -84,5 +84,5 @@ export interface IAdapterRegistry {
    * @throws BackendNotConfiguredError canvasBackendId 在 HarnessStore 不存在
    * @throws RegistryNotReadyError Store 未加载完成
    */
-  getCanvasBackendForTenant(tenantId: string): IntellectRagAdapter;
+  getCanvasBackendForBackend(tenantId: string): IntellectRagAdapter;
 }

@@ -10,7 +10,7 @@ import type { IAdapterRegistry } from '../services/adapter-registry-types';
 import type { IntellectRagAdapter } from '../services/adapters/intellect-rag/intellect-rag-adapter';
 import { CanvasBackendNotBoundError } from '../services/adapter-registry-errors';
 
-const ctx = { tenantId: 'tenant-001', userId: 'user-001' };
+const ctx = { backendId: 'tenant-001', userId: 'user-001' };
 
 function createMockCanvasService(): CanvasService {
   const mockRequest = vi.fn();
@@ -21,7 +21,7 @@ function createMockCanvasService(): CanvasService {
     proxy: mockProxy,
   } as unknown as IntellectRagAdapter;
   const mockRegistry = {
-    getCanvasBackendForTenant: vi.fn().mockReturnValue(mockAdapter),
+    getCanvasBackendForBackend: vi.fn().mockReturnValue(mockAdapter),
   } as unknown as IAdapterRegistry;
   const svc = new CanvasService(mockRegistry);
   // Hang mockAdapter off the service for test introspection
@@ -36,7 +36,7 @@ function createTestApp(svc: CanvasService) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   app.use('*', async (c: any, next: any) => {
     c.set('canvasService', svc);
-    c.set('tenantContext', ctx);
+    c.set('backendContext', ctx);
     await next();
   });
   app.route('/', canvasRoutes);
@@ -250,7 +250,7 @@ describe('Canvas Routes (spec-008)', () => {
     it('CanvasBackendNotBoundError → 503', async () => {
       // Create a service whose adapter throws CanvasBackendNotBoundError
       const mockReg = {
-        getCanvasBackendForTenant: vi.fn().mockImplementation(() => {
+        getCanvasBackendForBackend: vi.fn().mockImplementation(() => {
           throw new CanvasBackendNotBoundError('tenant-404');
         }),
       } as unknown as IAdapterRegistry;

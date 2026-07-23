@@ -18,22 +18,22 @@
  * spec-008: 画布 DSL 创建/编辑/删除(POST/PUT/DELETE /agents)已迁到 /canvas/* 路由。
  *
  * P1 占位 Registry:从 HarnessStore 获取首个 intellect-rag backend,直接 new IntellectRagAdapter。
- * US3 替换为 AdapterRegistry.getAdapterForTenant(tenantId)。
+ * US3 替换为 AdapterRegistry.getAdapterForBackend(tenantId)。
  */
 
 import { Hono, type Context } from 'hono';
 import { IntellectRagAdapter } from '../services/adapters/intellect-rag/intellect-rag-adapter';
-import type { HarnessStore, TenantStore } from '../types';
-import type { TenantContext } from '../types/tenant';
+import type { HarnessStore, BackendStore } from '../types';
+import type { BackendContext } from '../types/tenant';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
-import { getTenantContext, resolveTenantContext } from '../middleware/tenant-context';
+import { getBackendContext, resolveBackendContext } from '../middleware/backend-context';
 
 // Hono context variables for BFF agent routes
 interface BffAgentVariables {
   harnessStore: HarnessStore;
-  tenantStore: TenantStore;
+  backendStore: BackendStore;
   adapterRegistry: IAdapterRegistry;
-  tenantContext?: TenantContext;
+  backendContext?: BackendContext;
 }
 
 export const bffAgentRoutes = new Hono<{ Variables: BffAgentVariables }>();
@@ -42,23 +42,23 @@ export const bffAgentRoutes = new Hono<{ Variables: BffAgentVariables }>();
  * US3:从 AdapterRegistry 按 tenantId 获取 Adapter(替换 US1 占位直接 new IntellectRagAdapter)。
  *
  * Constitution Principle II:Registry 按 tenantId 选择 Adapter,路由层不感知后端。
- * Constitution Principle V:tenantId 从 TenantContext 中间件注入的 ctx 提取。
+ * Constitution Principle V:tenantId 从 BackendContext 中间件注入的 ctx 提取。
  *
  * 兜底:若 tenantId 缺失或 Registry 未就绪,回退到占位逻辑(首个 intellect-rag backend),
- * 保持 US1 行为兼容,避免阻塞 P1 验收。P3 强制要求 TenantContext。
+ * 保持 US1 行为兼容,避免阻塞 P1 验收。P3 强制要求 BackendContext。
  */
 function getAdapter(c: Context): IntellectRagAdapter | null {
-  // US3 主路径:经 AdapterRegistry + TenantContext
+  // US3 主路径:经 AdapterRegistry + BackendContext
   const registry = c.get('adapterRegistry');
-  const ctx = getTenantContext(c);
+  const ctx = getBackendContext(c);
   if (registry && ctx && registry.isReady()) {
     try {
-      const adapter = registry.getAdapterForTenant(ctx.tenantId);
+      const adapter = registry.getAdapterForBackend(ctx.backendId);
       // P1 阶段返回的 adapter 一定是 IntellectRagAdapter(仅注册了该 factory)
       return adapter as IntellectRagAdapter;
     } catch (err) {
       console.warn(
-        `[bff-agents] Registry lookup failed for tenant ${ctx.tenantId}:`,
+        `[bff-agents] Registry lookup failed for tenant ${ctx.backendId}:`,
         (err as Error).message,
       );
       // 落入兜底逻辑
@@ -83,7 +83,7 @@ bffAgentRoutes.get('/agents', async (c) => {
     return c.json({ code: 503, message: 'No intellect-rag backend configured' }, 503);
   }
   try {
-    const agents = await adapter.listAgents(resolveTenantContext(c));
+    const agents = await adapter.listAgents(resolveBackendContext(c));
     return c.json(agents);
   } catch (err) {
     return c.json(
@@ -100,7 +100,7 @@ bffAgentRoutes.get('/agents/:id', async (c) => {
   }
   const id = c.req.param('id');
   try {
-    const agent = await adapter.getAgent(resolveTenantContext(c), id);
+    const agent = await adapter.getAgent(resolveBackendContext(c), id);
     return c.json(agent);
   } catch (err) {
     const msg = (err as Error).message;
@@ -118,7 +118,7 @@ bffAgentRoutes.get('/agents/:agentId/sessions', async (c) => {
   }
   const agentId = c.req.param('agentId');
   try {
-    const sessions = await adapter.listSessions(resolveTenantContext(c), agentId);
+    const sessions = await adapter.listSessions(resolveBackendContext(c), agentId);
     return c.json(sessions);
   } catch (err) {
     return c.json(
@@ -138,7 +138,7 @@ bffAgentRoutes.post('/agents/:agentId/sessions', async (c) => {
   const title = typeof body?.name === 'string' ? body.name : body?.title;
   try {
     const session = await adapter.createSession(
-      resolveTenantContext(c),
+      resolveBackendContext(c),
       agentId,
       title,
     );
@@ -160,7 +160,7 @@ bffAgentRoutes.get('/agents/:agentId/sessions/:sessionId', async (c) => {
   const sessionId = c.req.param('sessionId');
   try {
     const session = await adapter.getSession(
-      resolveTenantContext(c),
+      resolveBackendContext(c),
       agentId,
       sessionId,
     );
@@ -180,7 +180,7 @@ bffAgentRoutes.delete('/agents/:agentId/sessions/:sessionId', async (c) => {
   const agentId = c.req.param('agentId');
   const sessionId = c.req.param('sessionId');
   try {
-    await adapter.deleteSession(resolveTenantContext(c), agentId, sessionId);
+    await adapter.deleteSession(resolveBackendContext(c), agentId, sessionId);
     return c.json({ code: 0, message: 'ok' });
   } catch (err) {
     return c.json(
@@ -205,7 +205,7 @@ bffAgentRoutes.post('/agents/chat/completions', async (c) => {
     modelId: body?.model_id ?? body?.modelId,
   };
   try {
-    const iterable = await adapter.sendMessage(resolveTenantContext(c), req);
+    const iterable = await adapter.sendMessage(resolveBackendContext(c), req);
     // 用 SSE 透传 StreamChunk 序列到前端
     return streamChunksAsSSE(c, iterable);
   } catch (err) {

@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Hono } from 'hono';
 import { tenantBindingRoutes } from './tenant-bindings';
-import type { TenantStore } from '../types/stores';
+import type { BackendStore } from '../types/stores';
 import type { BffTenant } from '../types/tenant';
 
 const tenantDefault: BffTenant = {
@@ -28,14 +28,14 @@ const tenantBound: BffTenant = {
   updatedAt: '2026-06-26T00:00:00Z',
 };
 
-function createMockTenantStore(tenants: BffTenant[]): TenantStore {
+function createMockBackendStore(tenants: BffTenant[]): BackendStore {
   // 可变副本,模拟 setIntellectBinding 后的状态
   const store: BffTenant[] = tenants.map((t) => ({ ...t }));
   return {
     load: vi.fn().mockResolvedValue(undefined),
-    getTenant: vi.fn((id: string) => store.find((t) => t.id === id)),
-    listTenants: vi.fn(() => store),
-    createTenant: vi.fn(),
+    getBackend: vi.fn((id: string) => store.find((t) => t.id === id)),
+    listBackends: vi.fn(() => store),
+    createBackend: vi.fn(),
     setHarnessBinding: vi.fn(),
     getHarnessBinding: vi.fn(),
     setCanvasBinding: vi.fn(),
@@ -57,13 +57,13 @@ function createMockTenantStore(tenants: BffTenant[]): TenantStore {
 }
 
 interface TestVariables {
-  tenantStore: TenantStore;
+  backendStore: BackendStore;
 }
 
-function createApp(tenantStore: TenantStore): Hono<{ Variables: TestVariables }> {
+function createApp(backendStore: BackendStore): Hono<{ Variables: TestVariables }> {
   const app = new Hono<{ Variables: TestVariables }>();
   app.use('*', async (c, next) => {
-    c.set('tenantStore', tenantStore);
+    c.set('backendStore', backendStore);
     await next();
   });
   app.route('/', tenantBindingRoutes as unknown as Hono<{ Variables: TestVariables }>);
@@ -80,8 +80,8 @@ describe('Tenant 绑定路由 (P5 US3)', () => {
   // -------------------------------------------------------------------------
 
   it('获取缺省 tenant 绑定状态 → is_default=true', async () => {
-    const tenantStore = createMockTenantStore([tenantDefault]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([tenantDefault]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/admin/tenants/tenant-default/binding', { method: 'GET' });
 
@@ -93,8 +93,8 @@ describe('Tenant 绑定路由 (P5 US3)', () => {
   });
 
   it('获取已绑定 tenant 状态 → is_default=false', async () => {
-    const tenantStore = createMockTenantStore([tenantBound]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([tenantBound]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/admin/tenants/tenant-bound/binding', { method: 'GET' });
 
@@ -106,8 +106,8 @@ describe('Tenant 绑定路由 (P5 US3)', () => {
   });
 
   it('获取不存在的 tenant → 404', async () => {
-    const tenantStore = createMockTenantStore([tenantDefault]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([tenantDefault]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/admin/tenants/non-existent/binding', { method: 'GET' });
 
@@ -119,8 +119,8 @@ describe('Tenant 绑定路由 (P5 US3)', () => {
   // -------------------------------------------------------------------------
 
   it('绑定真实 team_id + project_id → 200, is_default=false', async () => {
-    const tenantStore = createMockTenantStore([tenantDefault]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([tenantDefault]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/admin/tenants/tenant-default/binding', {
       method: 'PUT',
@@ -129,7 +129,7 @@ describe('Tenant 绑定路由 (P5 US3)', () => {
     });
 
     expect(resp.status).toBe(200);
-    expect(tenantStore.setIntellectBinding).toHaveBeenCalledWith(
+    expect(backendStore.setIntellectBinding).toHaveBeenCalledWith(
       'tenant-default',
       'team-new',
       'project-new',
@@ -139,8 +139,8 @@ describe('Tenant 绑定路由 (P5 US3)', () => {
   });
 
   it('intellect_tenant_id="0" → 回退缺省, is_default=true', async () => {
-    const tenantStore = createMockTenantStore([tenantBound]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([tenantBound]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/admin/tenants/tenant-bound/binding', {
       method: 'PUT',
@@ -150,7 +150,7 @@ describe('Tenant 绑定路由 (P5 US3)', () => {
 
     expect(resp.status).toBe(200);
     // setIntellectBinding 用 undefined(回退缺省)
-    expect(tenantStore.setIntellectBinding).toHaveBeenCalledWith(
+    expect(backendStore.setIntellectBinding).toHaveBeenCalledWith(
       'tenant-bound',
       undefined,
       undefined,
@@ -158,8 +158,8 @@ describe('Tenant 绑定路由 (P5 US3)', () => {
   });
 
   it('intellect_tenant_id 省略 → 回退缺省', async () => {
-    const tenantStore = createMockTenantStore([tenantBound]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([tenantBound]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/admin/tenants/tenant-bound/binding', {
       method: 'PUT',
@@ -168,7 +168,7 @@ describe('Tenant 绑定路由 (P5 US3)', () => {
     });
 
     expect(resp.status).toBe(200);
-    expect(tenantStore.setIntellectBinding).toHaveBeenCalledWith(
+    expect(backendStore.setIntellectBinding).toHaveBeenCalledWith(
       'tenant-bound',
       undefined,
       undefined,
@@ -176,8 +176,8 @@ describe('Tenant 绑定路由 (P5 US3)', () => {
   });
 
   it('仅绑定 team_id(无 project)→ project 解绑', async () => {
-    const tenantStore = createMockTenantStore([tenantBound]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([tenantBound]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/admin/tenants/tenant-bound/binding', {
       method: 'PUT',
@@ -186,7 +186,7 @@ describe('Tenant 绑定路由 (P5 US3)', () => {
     });
 
     expect(resp.status).toBe(200);
-    expect(tenantStore.setIntellectBinding).toHaveBeenCalledWith(
+    expect(backendStore.setIntellectBinding).toHaveBeenCalledWith(
       'tenant-bound',
       'team-002',
       undefined,
@@ -194,8 +194,8 @@ describe('Tenant 绑定路由 (P5 US3)', () => {
   });
 
   it('绑定不存在的 tenant → 404', async () => {
-    const tenantStore = createMockTenantStore([tenantDefault]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([tenantDefault]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/admin/tenants/non-existent/binding', {
       method: 'PUT',
@@ -204,12 +204,12 @@ describe('Tenant 绑定路由 (P5 US3)', () => {
     });
 
     expect(resp.status).toBe(404);
-    expect(tenantStore.setIntellectBinding).not.toHaveBeenCalled();
+    expect(backendStore.setIntellectBinding).not.toHaveBeenCalled();
   });
 
   it('非 JSON body → 400', async () => {
-    const tenantStore = createMockTenantStore([tenantDefault]);
-    const app = createApp(tenantStore);
+    const backendStore = createMockBackendStore([tenantDefault]);
+    const app = createApp(backendStore);
 
     const resp = await app.request('/admin/tenants/tenant-default/binding', {
       method: 'PUT',

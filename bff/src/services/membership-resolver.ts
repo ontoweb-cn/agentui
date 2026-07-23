@@ -18,7 +18,7 @@
 // - 成功但用户无团队/项目 → 返回 { teamIds: [], projectIds: [] }(明确无成员关系)
 
 import { membershipCache, type Memberships } from './membership-cache';
-import type { TenantStore, HarnessStore } from '../types';
+import type { BackendStore, HarnessStore } from '../types';
 import { getAuthSession } from '../middleware/auth-session';
 
 interface TeamListItem {
@@ -173,7 +173,7 @@ function extractIds(items: TeamListItem[] | ProjectListItem[] | undefined): stri
  *
  * 流程:
  * 1. 从 authSession 取 token
- * 2. 用 tenantStore + harnessStore 解析 intellect-team endpoint
+ * 2. 用 backendStore + harnessStore 解析 intellect-team endpoint
  * 3. 调 resolveMemberships(token, endpoint) 获取成员关系
  *
  * @returns 成员关系,或 undefined(无 session/后端配置缺失/解析失败)
@@ -189,13 +189,13 @@ export async function resolveMembershipsFromContext(c: {
 
   // v7:authMode 已固定为企业版,无需检查 session.authMode
 
-  const tenantStore = c.get('tenantStore') as TenantStore | undefined;
+  const backendStore = c.get('backendStore') as BackendStore | undefined;
   const harnessStore = c.get('harnessStore') as HarnessStore | undefined;
-  if (!tenantStore || !harnessStore) {
+  if (!backendStore || !harnessStore) {
     return undefined;
   }
 
-  const backendConfig = tenantStore.getTenant(session.tenantId);
+  const backendConfig = backendStore.getBackend(session.backendId);
   if (!backendConfig) {
     return undefined;
   }
@@ -205,5 +205,5 @@ export async function resolveMembershipsFromContext(c: {
     return undefined;
   }
 
-  return resolveMemberships(session.tenantId, session.token, backend.endpoint);
+  return resolveMemberships(session.backendId, session.token, backend.endpoint);
 }

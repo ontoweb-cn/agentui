@@ -1,4 +1,4 @@
-// Multi-Harness P1:TenantStore 单元测试(research.md §4 P1 硬前置)
+// Multi-Harness P1:BackendStore 单元测试(research.md §4 P1 硬前置)
 // 覆盖 load() 边界 + createTenant/setHarnessBinding/setCanvasBinding 校验逻辑。
 // 重点关注 Constitution Principle III:canvasBackendId 必须是 intellect-rag 类型。
 // 用 mock HarnessStore(实现 interface)避免真实 fs 依赖耦合。
@@ -19,7 +19,7 @@ const { mockFs } = vi.hoisted(() => ({
 
 vi.mock('node:fs', () => mockFs);
 
-import { JSONFileTenantStore } from './tenant-store';
+import { JSONFileBackendStore } from './backend-store';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -82,7 +82,7 @@ function setTenantsFile(content: unknown): void {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('JSONFileTenantStore', () => {
+describe('JSONFileBackendStore', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // mock 全局 console(Store 用全局 console,不是 node:console 模块)
@@ -103,10 +103,10 @@ describe('JSONFileTenantStore', () => {
     it('文件不存在时返回空数组,不抛异常', async () => {
       mockFs.existsSync.mockReturnValue(false);
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       await expect(store.load()).resolves.toBeUndefined();
-      expect(store.listTenants()).toEqual([]);
+      expect(store.listBackends()).toEqual([]);
       expect(console.warn).toHaveBeenCalledWith(
         expect.stringContaining('Tenants file not found'),
       );
@@ -115,10 +115,10 @@ describe('JSONFileTenantStore', () => {
     it('JSON 解析失败时返回空数组,不抛异常', async () => {
       setTenantsFile('not a valid json {{{');
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       await expect(store.load()).resolves.toBeUndefined();
-      expect(store.listTenants()).toEqual([]);
+      expect(store.listBackends()).toEqual([]);
       expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('Failed to parse JSON'),
       );
@@ -130,10 +130,10 @@ describe('JSONFileTenantStore', () => {
         tenants: [{ id: 't1', name: 'T1', createdAt: 'x', updatedAt: 'x' }],
       });
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       await store.load();
-      expect(store.listTenants()).toEqual([]);
+      expect(store.listBackends()).toEqual([]);
       expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('Invalid tenants schema'),
       );
@@ -158,7 +158,7 @@ describe('JSONFileTenantStore', () => {
         ],
       });
       const harnessStore = createMockHarnessStore([ragBackend]); // 只有 rag,没有 non-existent
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       await expect(store.load()).rejects.toThrow(
         /references unknown intellectBackendId "non-existent-backend"/,
@@ -179,7 +179,7 @@ describe('JSONFileTenantStore', () => {
         ],
       });
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       await expect(store.load()).rejects.toThrow(
         /references unknown canvasBackendId "non-existent-canvas"/,
@@ -200,7 +200,7 @@ describe('JSONFileTenantStore', () => {
         ],
       });
       const harnessStore = createMockHarnessStore([ragBackend, enterpriseBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       await expect(store.load()).rejects.toThrow(
         /canvasBackendId must be intellect-rag type, got: intellect-enterprise/,
@@ -221,11 +221,11 @@ describe('JSONFileTenantStore', () => {
         ],
       });
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       await store.load();
-      expect(store.listTenants()).toHaveLength(1);
-      expect(store.getTenant('t1')?.canvasBackendId).toBe('intellect-rag-default');
+      expect(store.listBackends()).toHaveLength(1);
+      expect(store.getBackend('t1')?.canvasBackendId).toBe('intellect-rag-default');
     });
   });
 
@@ -255,11 +255,11 @@ describe('JSONFileTenantStore', () => {
         ],
       });
       const harnessStore = createMockHarnessStore([ragBackend, enterpriseBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       await store.load();
 
-      const tenants = store.listTenants();
+      const tenants = store.listBackends();
       expect(tenants).toHaveLength(2);
       expect(tenants[0].name).toBe('Tenant 1');
       expect(tenants[1].intellectTenantId).toBe('intellect-tenant-xyz');
@@ -274,10 +274,10 @@ describe('JSONFileTenantStore', () => {
     it('backendId 不存在时抛出错误', async () => {
       mockFs.existsSync.mockReturnValue(false); // load 不读文件
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       await expect(
-        store.createTenant('New Tenant', 'non-existent-backend'),
+        store.createBackend('New Tenant', 'non-existent-backend'),
       ).rejects.toThrow(
         /intellectBackendId "non-existent-backend" not found/,
       );
@@ -286,10 +286,10 @@ describe('JSONFileTenantStore', () => {
     it('正常创建 tenant,生成 UUID + 时间戳 + 持久化', async () => {
       mockFs.existsSync.mockReturnValue(true); // DATA_DIR 已存在
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       const before = new Date().toISOString();
-      const tenant = await store.createTenant(
+      const tenant = await store.createBackend(
         'New Tenant',
         'intellect-rag-default',
         'intellect-tenant-001',
@@ -307,15 +307,15 @@ describe('JSONFileTenantStore', () => {
       // 持久化被调用
       expect(mockFs.writeFileSync).toHaveBeenCalledTimes(1);
       // 新 tenant 已在内存中
-      expect(store.getTenant(tenant.id)?.name).toBe('New Tenant');
+      expect(store.getBackend(tenant.id)?.name).toBe('New Tenant');
     });
 
     it('不传 intellectTenantId 时该字段为 undefined', async () => {
       mockFs.existsSync.mockReturnValue(true);
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
-      const tenant = await store.createTenant('T', 'intellect-rag-default');
+      const tenant = await store.createBackend('T', 'intellect-rag-default');
 
       expect(tenant.intellectTenantId).toBeUndefined();
     });
@@ -328,7 +328,7 @@ describe('JSONFileTenantStore', () => {
   describe('setHarnessBinding()', () => {
     it('tenant 不存在时抛出错误', async () => {
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       await expect(
         store.setHarnessBinding('non-existent-tenant', 'intellect-rag-default'),
@@ -338,8 +338,8 @@ describe('JSONFileTenantStore', () => {
     it('backend 不存在时抛出错误', async () => {
       mockFs.existsSync.mockReturnValue(true);
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
-      const tenant = await store.createTenant('T', 'intellect-rag-default');
+      const store = new JSONFileBackendStore(harnessStore);
+      const tenant = await store.createBackend('T', 'intellect-rag-default');
 
       await expect(
         store.setHarnessBinding(tenant.id, 'non-existent-backend'),
@@ -349,8 +349,8 @@ describe('JSONFileTenantStore', () => {
     it('正常更新 binding 并刷新 updatedAt', async () => {
       mockFs.existsSync.mockReturnValue(true);
       const harnessStore = createMockHarnessStore([ragBackend, enterpriseBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
-      const tenant = await store.createTenant('T', 'intellect-rag-default');
+      const store = new JSONFileBackendStore(harnessStore);
+      const tenant = await store.createBackend('T', 'intellect-rag-default');
       const originalUpdatedAt = tenant.updatedAt;
 
       // 等待时间戳精度
@@ -358,7 +358,7 @@ describe('JSONFileTenantStore', () => {
 
       await store.setHarnessBinding(tenant.id, 'intellect-enterprise-1');
 
-      const updated = store.getTenant(tenant.id);
+      const updated = store.getBackend(tenant.id);
       expect(updated?.intellectBackendId).toBe('intellect-enterprise-1');
       expect(updated?.updatedAt).not.toBe(originalUpdatedAt);
       expect(mockFs.writeFileSync).toHaveBeenCalled(); // persist 被调用
@@ -372,7 +372,7 @@ describe('JSONFileTenantStore', () => {
   describe('setCanvasBinding() Principle III 强制校验', () => {
     it('tenant 不存在时抛出错误', async () => {
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       await expect(
         store.setCanvasBinding('non-existent-tenant', 'intellect-rag-default'),
@@ -382,8 +382,8 @@ describe('JSONFileTenantStore', () => {
     it('backend 不存在时抛出错误', async () => {
       mockFs.existsSync.mockReturnValue(true);
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
-      const tenant = await store.createTenant('T', 'intellect-rag-default');
+      const store = new JSONFileBackendStore(harnessStore);
+      const tenant = await store.createBackend('T', 'intellect-rag-default');
 
       await expect(
         store.setCanvasBinding(tenant.id, 'non-existent-canvas'),
@@ -393,8 +393,8 @@ describe('JSONFileTenantStore', () => {
     it('backend 类型非 intellect-rag 时抛出错误(Principle III)', async () => {
       mockFs.existsSync.mockReturnValue(true);
       const harnessStore = createMockHarnessStore([ragBackend, enterpriseBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
-      const tenant = await store.createTenant('T', 'intellect-rag-default');
+      const store = new JSONFileBackendStore(harnessStore);
+      const tenant = await store.createBackend('T', 'intellect-rag-default');
 
       await expect(
         store.setCanvasBinding(tenant.id, 'intellect-enterprise-1'),
@@ -406,8 +406,8 @@ describe('JSONFileTenantStore', () => {
     it('backend 类型是 intellect-rag 时正常更新 canvas binding', async () => {
       mockFs.existsSync.mockReturnValue(true);
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
-      const tenant = await store.createTenant('T', 'intellect-rag-default');
+      const store = new JSONFileBackendStore(harnessStore);
+      const tenant = await store.createBackend('T', 'intellect-rag-default');
 
       await store.setCanvasBinding(tenant.id, 'intellect-rag-default');
 
@@ -422,7 +422,7 @@ describe('JSONFileTenantStore', () => {
   describe('setIntellectBinding() P5 Team/Project 绑定', () => {
     it('tenant 不存在时抛出错误', async () => {
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       await expect(
         store.setIntellectBinding('non-existent-tenant', 'team-1'),
@@ -432,8 +432,8 @@ describe('JSONFileTenantStore', () => {
     it('设置真实 team_id + project_id 正常更新绑定', async () => {
       mockFs.existsSync.mockReturnValue(true);
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
-      const tenant = await store.createTenant('T', 'intellect-rag-default');
+      const store = new JSONFileBackendStore(harnessStore);
+      const tenant = await store.createBackend('T', 'intellect-rag-default');
 
       await store.setIntellectBinding(tenant.id, 'team-abc', 'project-xyz');
 
@@ -444,8 +444,8 @@ describe('JSONFileTenantStore', () => {
     it('intellectTenantId=undefined → 回退缺省 "0"(不注入 X-Intellect-Team)', async () => {
       mockFs.existsSync.mockReturnValue(true);
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
-      const tenant = await store.createTenant('T', 'intellect-rag-default', 'team-old');
+      const store = new JSONFileBackendStore(harnessStore);
+      const tenant = await store.createBackend('T', 'intellect-rag-default', 'team-old');
 
       await store.setIntellectBinding(tenant.id, undefined);
 
@@ -456,8 +456,8 @@ describe('JSONFileTenantStore', () => {
     it('intellectProjectId=undefined → 清除 project 绑定', async () => {
       mockFs.existsSync.mockReturnValue(true);
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
-      const tenant = await store.createTenant('T', 'intellect-rag-default');
+      const store = new JSONFileBackendStore(harnessStore);
+      const tenant = await store.createBackend('T', 'intellect-rag-default');
       await store.setIntellectBinding(tenant.id, 'team-1', 'project-1');
 
       // 解绑 project
@@ -468,7 +468,7 @@ describe('JSONFileTenantStore', () => {
 
     it('getIntellectTeamId 对未绑定 tenant 返回 undefined', () => {
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       expect(store.getIntellectTeamId('non-existent')).toBeUndefined();
       expect(store.getIntellectProjectId('non-existent')).toBeUndefined();
@@ -483,8 +483,8 @@ describe('JSONFileTenantStore', () => {
     it('getHarnessBinding 返回 tenant.intellectBackendId', async () => {
       mockFs.existsSync.mockReturnValue(true);
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
-      const tenant = await store.createTenant('T', 'intellect-rag-default');
+      const store = new JSONFileBackendStore(harnessStore);
+      const tenant = await store.createBackend('T', 'intellect-rag-default');
 
       expect(store.getHarnessBinding(tenant.id)).toBe('intellect-rag-default');
     });
@@ -492,25 +492,25 @@ describe('JSONFileTenantStore', () => {
     it('未设置 canvas binding 时 getCanvasBinding 返回 undefined', async () => {
       mockFs.existsSync.mockReturnValue(true);
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
-      const tenant = await store.createTenant('T', 'intellect-rag-default');
+      const store = new JSONFileBackendStore(harnessStore);
+      const tenant = await store.createBackend('T', 'intellect-rag-default');
 
       expect(store.getCanvasBinding(tenant.id)).toBeUndefined();
     });
 
     it('tenant 不存在时 getHarnessBinding/getCanvasBinding 返回 undefined', () => {
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
       expect(store.getHarnessBinding('non-existent')).toBeUndefined();
       expect(store.getCanvasBinding('non-existent')).toBeUndefined();
     });
 
-    it('未调用 load() 时 listTenants 返回空数组', () => {
+    it('未调用 load() 时 listBackends 返回空数组', () => {
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
-      expect(store.listTenants()).toEqual([]);
+      expect(store.listBackends()).toEqual([]);
     });
   });
 
@@ -522,9 +522,9 @@ describe('JSONFileTenantStore', () => {
     it('DATA_DIR 不存在时先创建目录再写文件', async () => {
       mockFs.existsSync.mockReturnValue(false); // DATA_DIR 不存在
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
-      await store.createTenant('T', 'intellect-rag-default');
+      await store.createBackend('T', 'intellect-rag-default');
 
       expect(mockFs.mkdirSync).toHaveBeenCalledWith(
         expect.any(String),
@@ -536,9 +536,9 @@ describe('JSONFileTenantStore', () => {
     it('持久化内容包含 tenants 数组结构', async () => {
       mockFs.existsSync.mockReturnValue(true);
       const harnessStore = createMockHarnessStore([ragBackend]);
-      const store = new JSONFileTenantStore(harnessStore);
+      const store = new JSONFileBackendStore(harnessStore);
 
-      await store.createTenant('T', 'intellect-rag-default');
+      await store.createBackend('T', 'intellect-rag-default');
 
       const [, content] = (mockFs.writeFileSync as Mock).mock.calls[0];
       const parsed = JSON.parse(content as string);

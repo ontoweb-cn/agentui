@@ -9,7 +9,7 @@
  *
  * 行为:
  * - 从 cookie 提取 imt_token(AUTH_COOKIE_NAME)
- * - 结合 X-Tenant-Id header + BffTenant.authMode 构造 AuthSession
+ * - 结合 X-Backend-Id header + BffTenant.authMode 构造 AuthSession
  * - 无 cookie 时不阻塞(仅 /auth/me 等需认证端点自行检查)
  * - cookie 格式错误(空值)忽略,等同于无 cookie
  */
@@ -37,13 +37,13 @@ export const authSessionMiddleware: MiddlewareHandler = async (c, next) => {
   }
 
   // 缺省 TenantID="0"(与 auth.ts 公开端点策略一致,未传 header 时用缺省租户)
-  const tenantId = c.req.header('X-Tenant-Id') || '0';
+  const backendId = c.req.header('X-Backend-Id') || '0';
 
-  // 从 TenantStore 读取 BffTenant.authMode(默认 intellect-rag,向后兼容)
-  const tenantStore = c.get('tenantStore');
+  // 从 BackendStore 读取 BffTenant.authMode(默认 intellect-rag,向后兼容)
+  const backendStore = c.get('backendStore');
   let authMode: 'intellect-rag' | 'intellect-enterprise' = 'intellect-rag';
-  if (tenantStore) {
-    const bffTenant = tenantStore.getTenant(tenantId);
+  if (backendStore) {
+    const bffTenant = backendStore.getBackend(backendId);
     if (bffTenant?.authMode) {
       authMode = bffTenant.authMode;
     }
@@ -51,7 +51,7 @@ export const authSessionMiddleware: MiddlewareHandler = async (c, next) => {
 
   const session: AuthSession = {
     token,
-    tenantId,
+    backendId,
     authMode,
   };
 

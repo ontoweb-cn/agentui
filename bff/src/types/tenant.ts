@@ -41,7 +41,7 @@ export interface BffTenant {
   intellectTenantId?: string;
   /**
    * 可选绑定的 Intellect 企业版 Project ID(P5 新增)。
-   * 设置后 TenantContext 注入 X-Intellect-Project 头(intellect-team 按 project 隔离)。
+   * 设置后 BackendContext 注入 X-Intellect-Project 头(intellect-team 按 project 隔离)。
    * 未设置则不注入 X-Intellect-Project(intellect-team 用全局 project)。
    */
   intellectProjectId?: string;
@@ -83,16 +83,16 @@ export interface BffTenant {
  *
  * Lifecycle:
  * 1. BFF 路由层从请求(JWT/Session)提取 userId
- * 2. BFF 路由层从 TenantStore.getTenant(tenantId) 查询绑定关系
- * 3. 构造 TenantContext
+ * 2. BFF 路由层从 BackendStore.getBackend(tenantId) 查询绑定关系
+ * 3. 构造 BackendContext
  * 4. 传给 IHarnessAdapter / IMultiTenantAdapter 方法
  *
  * Constitution Principle V (v1.1.0): 头名以 intellect-team
  * `_resolve_member_context` 实际实现为准,禁用臆造的 X-Team-Slug / X-Project-Slug。
  */
-export interface TenantContext {
+export interface BackendContext {
   /** BFF Tenant ID */
-  tenantId: string;
+  backendId: string;
   /** 当前用户 ID */
   userId: string;
   /**
@@ -122,11 +122,11 @@ export interface TenantContext {
 }
 
 // ---------------------------------------------------------------------------
-// Validation Rules (enforced by TenantStore)
+// Validation Rules (enforced by BackendStore)
 // ---------------------------------------------------------------------------
 
 /**
- * TenantStore.setCanvasBinding 的校验规则:
+ * BackendStore.setCanvasBinding 的校验规则:
  * 1. tenantId 必须存在
  * 2. canvasBackendId 必须在 HarnessStore 中存在
  * 3. 对应 HarnessBackend.type 必须是 'intellect-rag' (Constitution Principle III)

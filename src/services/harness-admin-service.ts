@@ -1,7 +1,7 @@
 // Multi-Harness P2 (US3):Harness Backend Admin 服务层封装。
 // Constitution Principle I (BFF-Mediated Frontend) + V (非租户隔离) + Token Security。
 // 前端 Admin 页面通过此 service 调 BFF `/api/bff/admin/harness-backends` CRUD 接口。
-// 不带 X-Tenant-Id(运维全局操作),响应不含 adminToken 明文。
+// 不带 X-Backend-Id(运维全局操作),响应不含 adminToken 明文。
 
 import api from '@/utils/api';
 import request from '@/utils/next-request';
@@ -93,10 +93,10 @@ export const deleteHarnessBackend = (id: string) =>
 /**
  * 查询当前 tenant 绑定后端的能力(US2)。
  * GET /api/bff/capabilities
- * 需 X-Tenant-Id / X-User-Id header(由调用方传入)。
+ * 需 X-Backend-Id / X-User-Id header(由调用方传入)。
  */
 export const fetchHarnessCapabilities = (headers: {
-  'X-Tenant-Id': string;
+  'X-Backend-Id': string;
   'X-User-Id': string;
 }) =>
   request.get<ApiResponse<CapabilitiesResponse>>(api.harnessCapabilities, {

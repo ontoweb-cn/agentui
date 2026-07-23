@@ -20,10 +20,10 @@
  */
 
 import { Hono } from 'hono';
-import type { TenantStore } from '../types/stores';
+import type { BackendStore } from '../types/stores';
 
 interface BindingAppVariables {
-  tenantStore?: TenantStore;
+  backendStore?: BackendStore;
 }
 
 export const tenantBindingRoutes = new Hono<{ Variables: BindingAppVariables }>();
@@ -42,12 +42,12 @@ function fail(code: number, message: string) {
 
 tenantBindingRoutes.get('/admin/tenants/:id/binding', async (c) => {
   const id = c.req.param('id');
-  const tenantStore = c.get('tenantStore');
-  if (!tenantStore) {
-    return c.json(fail(500, 'TenantStore not available'), 500);
+  const backendStore = c.get('backendStore');
+  if (!backendStore) {
+    return c.json(fail(500, 'BackendStore not available'), 500);
   }
 
-  const tenant = tenantStore.getTenant(id);
+  const tenant = backendStore.getBackend(id);
   if (!tenant) {
     return c.json(fail(404, `Tenant not found: ${id}`), 404);
   }
@@ -69,9 +69,9 @@ tenantBindingRoutes.get('/admin/tenants/:id/binding', async (c) => {
 
 tenantBindingRoutes.put('/admin/tenants/:id/binding', async (c) => {
   const id = c.req.param('id');
-  const tenantStore = c.get('tenantStore');
-  if (!tenantStore) {
-    return c.json(fail(500, 'TenantStore not available'), 500);
+  const backendStore = c.get('backendStore');
+  if (!backendStore) {
+    return c.json(fail(500, 'BackendStore not available'), 500);
   }
 
   const body = await c.req.json().catch(() => null);
@@ -85,7 +85,7 @@ tenantBindingRoutes.put('/admin/tenants/:id/binding', async (c) => {
   };
 
   // 校验 tenant 存在
-  const tenant = tenantStore.getTenant(id);
+  const tenant = backendStore.getBackend(id);
   if (!tenant) {
     return c.json(fail(404, `Tenant not found: ${id}`), 404);
   }
@@ -98,13 +98,13 @@ tenantBindingRoutes.put('/admin/tenants/:id/binding', async (c) => {
   const resolvedProjectId = intellect_project_id || undefined;
 
   try {
-    await tenantStore.setIntellectBinding(id, resolvedTeamId, resolvedProjectId);
+    await backendStore.setIntellectBinding(id, resolvedTeamId, resolvedProjectId);
   } catch (err) {
     return c.json(fail(500, `Failed to update binding: ${(err as Error).message}`), 500);
   }
 
   // 返回更新后的绑定状态
-  const updated = tenantStore.getTenant(id);
+  const updated = backendStore.getBackend(id);
   return c.json(
     ok({
       tenant_id: updated!.id,

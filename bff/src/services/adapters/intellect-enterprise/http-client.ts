@@ -11,7 +11,7 @@
  * - Principle VII (YAGNI + Test-First): 错误转换集中在此,Adapter 方法不重复处理
  */
 
-import type { TenantContext } from '../../../types/tenant';
+import type { BackendContext } from '../../../types/tenant';
 
 // ---------------------------------------------------------------------------
 // 错误类型
@@ -65,7 +65,7 @@ export class IntellectEnterpriseHttpClient {
   async request<T>(
     method: string,
     path: string,
-    ctx: TenantContext,
+    ctx: BackendContext,
     body?: unknown,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
@@ -124,7 +124,7 @@ export class IntellectEnterpriseHttpClient {
    */
   async requestStream(
     path: string,
-    ctx: TenantContext,
+    ctx: BackendContext,
     body: unknown,
   ): Promise<ReadableStream<Uint8Array>> {
     const url = `${this.baseUrl}${path}`;
@@ -148,14 +148,14 @@ export class IntellectEnterpriseHttpClient {
    * 构建请求头(Constitution Principle V + VIII)。
    * 注入:Authorization(API_SERVER_KEY)+ X-Intellect-Team/Project(可选)+ Content-Type。
    */
-  private buildHeaders(ctx: TenantContext): Record<string, string> {
+  private buildHeaders(ctx: BackendContext): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
     if (this.apiServerKey) {
       headers['Authorization'] = `Bearer ${this.apiServerKey}`;
     }
-    // Principle V:Team/Project 组织隔离头,仅在 TenantContext 提供时注入
+    // Principle V:Team/Project 组织隔离头,仅在 BackendContext 提供时注入
     // (注意:真正的租户隔离通过多实例部署实现,非此头)
     if (ctx.intellectTeamId) {
       headers['X-Intellect-Team'] = ctx.intellectTeamId;

@@ -9,7 +9,7 @@ import { AUTH_SESSION_KEY } from '../middleware/auth-session';
 
 const memberSession: AuthSession = {
   token: 'imt_test_token',
-  tenantId: 'tenant-1',
+  backendId: 'tenant-1',
   authMode: 'intellect-enterprise',
   memberId: 'm-creator-001',
 };
