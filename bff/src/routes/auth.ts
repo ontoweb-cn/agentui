@@ -107,6 +107,25 @@ function getEnterpriseBackend(
   };
 }
 
+/**
+ * 向 intellect-team 后端发起请求,自动注入 Authorization header。
+ * 消除各路由中重复的 header 构造和 URL 拼接。
+ */
+async function enterpriseFetch(
+  backend: { baseUrl: string; apiServerKey: string },
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  return fetch(`${backend.baseUrl}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${backend.apiServerKey}`,
+      ...init?.headers,
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/bff/auth/config — 认证与运行时配置(公开,无需登录)
 // ---------------------------------------------------------------------------
@@ -148,16 +167,11 @@ authRoutes.post('/auth/login', async (c) => {
   if (!backend) {
     return c.json(fail(502, 'Enterprise backend not configured for tenant'));
   }
-  const { baseUrl, apiServerKey } = backend;
 
   let resp: Response;
   try {
-    resp = await fetch(`${baseUrl}/api/members/login`, {
+    resp = await enterpriseFetch(backend, '/api/members/login', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiServerKey}`,
-      },
       body: JSON.stringify({ login_name, password }),
     });
   } catch (err) {
@@ -292,16 +306,11 @@ authRoutes.post('/auth/register', async (c) => {
   if (!backend) {
     return c.json(fail(502, 'Enterprise backend not configured for tenant'));
   }
-  const { baseUrl, apiServerKey } = backend;
 
   let resp: Response;
   try {
-    resp = await fetch(`${baseUrl}/api/members/register`, {
+    resp = await enterpriseFetch(backend, '/api/members/register', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiServerKey}`,
-      },
       body: JSON.stringify({
         login_name,
         password,
@@ -360,7 +369,8 @@ authRoutes.post('/auth/logout', async (c) => {
   // v9 BFF-P2-4:复合 key 含 backendId,需传 session.backendId 才能精确失效
   memberIdCache.invalidate(session.backendId, enterpriseToken);
   // v6-followup-3:登出时主动失效成员关系缓存,防止 token 复用
-  membershipCache.invalidate(enterpriseToken);
+  // v9 BFF-P2-4-align:复合 key 含 backendId,需传 session.backendId 才能精确失效
+  membershipCache.invalidate(session.backendId, enterpriseToken);
 
   const backend = getEnterpriseBackend(backendStore, c.get('harnessStore'), backendId);
   if (!backend) {
@@ -428,15 +438,11 @@ authRoutes.get('/auth/login/channels', async (c) => {
   if (!backend) {
     return c.json(fail(502, 'Enterprise backend not configured for tenant'));
   }
-  const { baseUrl, apiServerKey } = backend;
 
   let resp: Response;
   try {
-    resp = await fetch(`${baseUrl}/api/oauth/providers`, {
+    resp = await enterpriseFetch(backend, '/api/oauth/providers', {
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${apiServerKey}`,
-      },
     });
   } catch (err) {
     console.error('[auth] intellect-team /oauth/providers fetch error:', (err as Error).message);
@@ -490,18 +496,13 @@ authRoutes.get('/auth/login/:channel', async (c) => {
   if (!backend) {
     return c.json(fail(502, 'Enterprise backend not configured for tenant'));
   }
-  const { baseUrl, apiServerKey } = backend;
-  const targetUrl = `${baseUrl}/api/oauth/login/${encodeURIComponent(channel)}?usage=login`;
-
   let resp: Response;
   try {
-    resp = await fetch(targetUrl, {
-      method: 'GET',
-      redirect: 'manual', // 不自动跟随,获取 302 Location 透传
-      headers: {
-        Authorization: `Bearer ${apiServerKey}`,
-      },
-    });
+    resp = await enterpriseFetch(
+      backend,
+      `/api/oauth/login/${encodeURIComponent(channel)}?usage=login`,
+      { method: 'GET', redirect: 'manual' },
+    );
   } catch (err) {
     console.error('[auth] intellect-team /oauth/login fetch error:', (err as Error).message);
     return c.json(fail(502, 'intellect-team unreachable'));
@@ -595,14 +596,10 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
   // Step 1: 调 intellect-team GET /api/oauth/callback?code=&state=
   let cbResp: Response;
   try {
-    cbResp = await fetch(
-      `${baseUrl}/api/oauth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${apiServerKey}`,
-        },
-      },
+    cbResp = await enterpriseFetch(
+      backend,
+      `/api/oauth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+      { method: 'GET' },
     );
   } catch (err) {
     console.error('[auth] intellect-team callback fetch error:', (err as Error).message);
