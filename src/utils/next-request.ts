@@ -94,9 +94,12 @@ request.interceptors.request.use(
 
     const newConfig = { ...config, data: dataWithTenantParams, params };
 
-    // Skip token if explicitly requested
+    // Skip token if explicitly requested, or if no token available (enterprise mode)
     if (!(newConfig as any).skipToken) {
-      newConfig.headers.set(Authorization, getAuthorization());
+      const auth = getAuthorization();
+      if (auth) {
+        newConfig.headers.set(Authorization, auth);
+      }
     }
 
     return newConfig;

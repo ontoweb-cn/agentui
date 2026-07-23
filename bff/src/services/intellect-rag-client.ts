@@ -82,6 +82,15 @@ export async function proxy(path: string, req: ProxyRequest): Promise<Response> 
   // 删除 host 头避免上游冲突(fetch 会自动设置)
   headers.delete('host');
 
+  // 企业版兜底:前端无 Authorization header 时(非 JWT 模式),
+  // 使用 BFF admin token 鉴权,确保企业版用户也能访问 RAG 功能
+  if (!headers.has('Authorization') || !headers.get('Authorization')) {
+    const adminToken = process.env.HARNESS_INTELLECT_RAG_ADMIN_TOKEN;
+    if (adminToken) {
+      headers.set('Authorization', `Bearer ${adminToken}`);
+    }
+  }
+
   const response = await fetch(url, {
     method: req.method,
     headers,

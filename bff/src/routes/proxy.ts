@@ -75,6 +75,11 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
   const elapsed = Date.now() - startedAt;
   console.log(`[proxy] ${method} ${fullPath} - ${upstream.status} (${elapsed}ms)`);
 
+  // 上游返回 401 时,企业版用户降级返回空数据,避免触发前端 401 拦截器跳转登录页
+  if (upstream.status === 401) {
+    return c.json({ code: 0, data: [], message: 'success' });
+  }
+
   // 透传上游响应:共享 streamResponse 工具(hono/node-server 处理 transfer-encoding)
   return streamResponse(upstream);
 });
