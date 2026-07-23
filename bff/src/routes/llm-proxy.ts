@@ -24,6 +24,7 @@ const llmPaths = [
 
 for (const p of llmPaths) {
   llmProxyRoutes.all(p, async (c) => {
+    const start = Date.now();
     const method = c.req.method;
     // 路径映射:/proxy/v1/providers... → /v1/admin/providers...
     // intellect-team LLM Gateway 的 admin 端点均在 /v1/admin/ 下
@@ -31,20 +32,76 @@ for (const p of llmPaths) {
     const query = c.req.url.includes('?') ? '?' + c.req.url.split('?')[1] : '';
     const url = `${LLM_BASE}${upstreamPath}${query}`;
 
-    const headers = new Headers(c.req.raw.headers);
-    headers.delete('host');
-    if (!headers.has('Authorization') || !headers.get('Authorization')) {
-      if (LLM_API_KEY) {
-        headers.set('Authorization', `Bearer ${LLM_API_KEY}`);
-      }
+    // 始终使用 BFF 的 admin token 与 Rust gateway 通信，不透传前端的 JWT/cookie。
+    // Rust gateway 的 auth 体系独立(intellect-team profile token / imt_* member token)，
+    // 不认识 intellect-rag 签发的 JWT。
+    const headers = new Headers();
+    if (LLM_API_KEY) {
+      headers.set('Authorization', `Bearer ${LLM_API_KEY}`);
     }
 
     let body: BodyInit | undefined;
     if (method !== 'GET' && method !== 'HEAD') {
+      headers.set('Content-Type', 'application/json');
       body = await c.req.arrayBuffer();
     }
 
-    const upstream = await fetch(url, { method, headers, body });
-    return new Response(upstream.body, upstream);
+    try {
+      const upstream = await fetch(url, { method, headers, body });
+      if (!upstream.ok) {
+        // 错误响应不透明传 — 改为标准 {code, data, message} 信封格式，
+        // 避免前端 axios 拦截器收到 {error:{code,message}} 时 data.code === undefined。
+        let errorMessage = `Upstream returned ${upstream.status}`;
+        try {
+          const errData = await upstream.json() as Record<string, unknown>;
+          const err = (errData.error as Record<string, unknown> | undefined);
+          if (err?.message) errorMessage = String(err.message);
+        } catch {
+          // 非 JSON 响应体：尝试读文本
+          try { errorMessage = await upstream.text().catch(() => ''); } catch { /**/ }
+        }
+        return c.json(
+          { code: upstream.status, data: null, message: errorMessage },
+          upstream.status as any,
+        );
+      }
+
+      // 安全解析 JSON body:空 body(204)或非 JSON 响应会在这里安全降级
+      let upstreamData: unknown = null;
+      const contentLength = upstream.headers.get('content-length');
+      if (contentLength !== '0') {
+        try {
+          upstreamData = await upstream.json();
+        } catch {
+          // 非 JSON 成功响应视为 null data
+        }
+      }
+      // intellect-team Rust gateway 返回 {providers:[...], models:[...]} 等扁平对象，
+      // 但前端 hooks 期望 data 直接是数组（与 intellect-rag {code:0,data:[...]} 对齐）。
+      // 对 GET 列表类端点，按路径提取公认 key:路径含 /providers → providers, 含 /models → models。
+      let data: unknown = upstreamData;
+      if (method === 'GET' && typeof upstreamData === 'object' && upstreamData !== null) {
+        for (const key of ['providers', 'models']) {
+          if (Array.isArray((upstreamData as Record<string, unknown>)[key])) {
+            data = (upstreamData as Record<string, unknown>)[key];
+            break;
+          }
+        }
+      }
+      return c.json({ code: 0, data, message: 'success' });
+    } catch (err) {
+      const elapsed = Date.now() - start;
+      console.error(
+        `[llm-proxy] ERROR ${method} ${upstreamPath} → ${url} - ${(err as Error).message} ` +
+        `(req ${c.req.path})`,
+      );
+      return c.json(
+        {
+          code: 502,
+          message: `LLM gateway upstream error: ${(err as Error).message}`,
+        },
+        502,
+      );
+    }
   });
 }

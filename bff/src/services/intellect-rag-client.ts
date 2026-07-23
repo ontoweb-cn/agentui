@@ -1,3 +1,5 @@
+import { ragTokenProvider } from './rag-token-provider';
+
 const INTELLECT_RAG_HOST = process.env.INTELLECT_RAG_HOST || 'localhost';
 const INTELLECT_PORT = process.env.PYTHON_API_PORT || '9380';
 const BASE_URL = `http://${INTELLECT_RAG_HOST}:${INTELLECT_PORT}`;
@@ -83,22 +85,71 @@ export async function proxy(path: string, req: ProxyRequest): Promise<Response> 
   headers.delete('host');
 
   // 企业版兜底:前端无 Authorization header 时(非 JWT 模式),
-  // 使用 BFF admin token 鉴权,确保企业版用户也能访问 RAG 功能
+  // 使用 BFF 自动登录获取的动态 token 鉴权,确保企业版用户也能访问 RAG 功能
   if (!headers.has('Authorization') || !headers.get('Authorization')) {
-    const adminToken = process.env.HARNESS_INTELLECT_RAG_ADMIN_TOKEN;
-    if (adminToken) {
-      headers.set('Authorization', `Bearer ${adminToken}`);
+    const token = await resolveRagToken();
+    if (token) {
+      headers.set('Authorization', token);
     }
   }
 
-  const response = await fetch(url, {
+  // Buffer the request body upfront so the 401 retry can safely re-send it.
+  // ReadableStream is single-consumption; buffering avoids "body already
+  // disturbed" errors on retry for POST/PUT/PATCH/DELETE requests.
+  let bodyBuffer: Buffer | undefined;
+  if (req.body) {
+    const chunks: Uint8Array[] = [];
+    const reader = req.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    bodyBuffer = Buffer.concat(chunks);
+  }
+
+  let response = await fetch(url, {
     method: req.method,
     headers,
-    body: req.body ?? undefined,
+    body: bodyBuffer,
     // @ts-expect-error Node fetch 支持 duplex:'half' 用于 stream body
     duplex: 'half',
   });
 
+  // token 过期时自动重新登录重试一次。
+  // 仅当 token 是由自动登录产生的(非 env var 降级)且不是由 find-env-token 路径提供的过期静态 token 时才重试。
+  if (response.status === 401 && ragTokenProvider.getToken()) {
+    ragTokenProvider.invalidate();
+    const newToken = await resolveRagToken();
+    if (newToken) {
+      headers.set('Authorization', newToken);
+      response = await fetch(url, {
+        method: req.method,
+        headers,
+        body: bodyBuffer,  // 使用缓冲的 body,不再消费 req.body stream
+        // @ts-expect-error Node fetch 支持 duplex:'half' 用于 stream body
+        duplex: 'half',
+      });
+    }
+  }
+
   return response;
+}
+
+/**
+ * 解析 RAG token:优先用自动登录的动态 token,
+ * 降级到环境变量 HARNESS_INTELLECT_RAG_ADMIN_TOKEN(向后兼容)。
+ */
+async function resolveRagToken(): Promise<string | null> {
+  try {
+    return await ragTokenProvider.login();
+  } catch {
+    // 自动登录失败,尝试环境变量降级
+    const adminToken = process.env.HARNESS_INTELLECT_RAG_ADMIN_TOKEN;
+    if (adminToken) {
+      return `Bearer ${adminToken}`;
+    }
+    return null;
+  }
 }
 
