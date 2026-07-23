@@ -299,11 +299,8 @@ authRoutes.post('/auth/login', async (c) => {
 // ---------------------------------------------------------------------------
 
 authRoutes.get('/auth/me', async (c) => {
-  // 需认证端点:严格校验 X-Backend-Id(登录后前端必然知道 tenantId)
-  const tenantId = c.req.header('X-Backend-Id');
-  if (!tenantId) {
-    return c.json(fail(400, 'Missing X-Backend-Id header'), 400);
-  }
+  // 缺省 X-Backend-Id 默认为 '0'(向后兼容,与其他端点一致)
+  const tenantId = c.req.header('X-Backend-Id') || '0';
 
   const backendStore = c.get('backendStore');
   const authMode = getAuthMode(backendStore, tenantId);
@@ -496,11 +493,8 @@ authRoutes.post('/auth/register', async (c) => {
 // ---------------------------------------------------------------------------
 
 authRoutes.post('/auth/logout', async (c) => {
-  // 需认证端点:严格校验 X-Backend-Id(登录后前端必然知道 tenantId)
-  const tenantId = c.req.header('X-Backend-Id');
-  if (!tenantId) {
-    return c.json(fail(400, 'Missing X-Backend-Id header'), 400);
-  }
+  // 缺省 X-Backend-Id 默认为 '0'(向后兼容,与其他端点一致)
+  const tenantId = c.req.header('X-Backend-Id') || '0';
 
   const backendStore = c.get('backendStore');
   const authMode = getAuthMode(backendStore, tenantId);
