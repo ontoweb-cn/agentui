@@ -1,14 +1,14 @@
 import {
   Authorization,
   AuthMode,
-  TenantId,
+  BackendId,
   Token,
   UserInfo,
 } from '@/constants/authorization';
 import { getSearchValue } from './common-util';
 // P2 Cookie 模式:KeySet 含 authMode + tenantId 标记,removeAll 时一并清除,
 // 避免 401 拦截或登出后企业版标记残留导致 isLogin 误判或状态不一致
-const KeySet = [Authorization, Token, UserInfo, AuthMode, TenantId];
+const KeySet = [Authorization, Token, UserInfo, AuthMode, BackendId];
 
 const storage = {
   getAuthorization: () => {

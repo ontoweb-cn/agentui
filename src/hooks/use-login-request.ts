@@ -2,7 +2,7 @@ import message from '@/components/ui/message';
 import {
   Authorization,
   AuthMode,
-  TenantId,
+  BackendId,
   UserInfo,
 } from '@/constants/authorization';
 import userService, {
@@ -92,7 +92,7 @@ export const useLogin = () => {
           };
           authorizationUtil.setItems({
             [AuthMode]: 'intellect-enterprise',
-            [TenantId]: '0', // 当前阶段固定缺省租户,P5 多租户阶段扩展
+            [BackendId]: '0', // 当前阶段固定缺省后端,P5 多租户阶段扩展
             [UserInfo]: JSON.stringify(userInfo),
           });
         } else {

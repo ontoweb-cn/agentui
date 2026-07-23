@@ -1,5 +1,5 @@
 import message from '@/components/ui/message';
-import { BackendId } from '@/constants/authorization';
+import { AuthMode, BackendId, UserInfo } from '@/constants/authorization';
 import api from '@/utils/api';
 import authorizationUtil from '@/utils/authorization-util';
 import { useQuery } from '@tanstack/react-query';
@@ -98,7 +98,7 @@ const useEnterpriseCookieProbe = () => {
           };
           authorizationUtil.setItems({
             [AuthMode]: 'intellect-enterprise',
-            [TenantId]: '0',
+            [BackendId]: '0',
             [UserInfo]: JSON.stringify(userInfo),
           });
           return true;
