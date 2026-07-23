@@ -1,4 +1,5 @@
-import { IconFontFill } from '@/components/icon-font';
+// Temporarily hidden: Discord & GitHub logos
+// import { IconFontFill } from '@/components/icon-font';
 import { IntellectAvatar } from '@/components/intellect-avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -63,7 +64,7 @@ export function Header({
           to={Routes.Root}
           aria-current={pathname === Routes.Root ? 'page' : undefined}
         >
-          <img src={'/logo.svg'} alt="Intellect logo" className="size-10" />
+          <img src={'/logo-96.png'} alt="Intellect logo" className="size-10" />
         </Link>
       </div>
 
@@ -73,7 +74,8 @@ export function Header({
         className="flex items-center justify-end gap-4 text-text-badge"
         data-testid="auth-status"
       >
-        <a
+        {/* Temporarily hidden: Discord & GitHub logos */}
+        {/* <a
           className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
           target="_blank"
           href="https://discord.com/invite/NjYzJD3GM3"
@@ -89,7 +91,7 @@ export function Header({
           rel="noreferrer noopener"
         >
           <IconFontFill name="GitHub" />
-        </a>
+        </a> */}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

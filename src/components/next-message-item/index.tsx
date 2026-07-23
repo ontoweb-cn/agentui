@@ -189,7 +189,7 @@ function MessageItem({
           {visibleAvatar &&
             (item.role === MessageType.User ? (
               <IntellectAvatar
-                avatar={avatar ?? '/logo.svg'}
+                avatar={avatar ?? '/logo-96.png'}
                 name={nickname}
                 isPerson
               />

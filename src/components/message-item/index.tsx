@@ -99,7 +99,7 @@ const MessageItem = ({
             (item.role === MessageType.User ? (
               <IntellectAvatar
                 className="size-10"
-                avatar={avatar ?? '/logo.svg'}
+                avatar={avatar ?? '/logo-96.png'}
                 isPerson
                 name={nickname}
               />
