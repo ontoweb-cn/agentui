@@ -178,6 +178,8 @@ export default {
         'Algoritmo a utilizar para el análisis de PaddleOCR',
       paddleocrSelectAlgorithm: 'Seleccionar algoritmo',
       paddleocrModelNamePlaceholder: 'ej: paddleocr-desde-env-1',
+      private: 'Solo yo',
+      tenant: 'Inquilino',
     },
 
     // Otros bloques de traducción

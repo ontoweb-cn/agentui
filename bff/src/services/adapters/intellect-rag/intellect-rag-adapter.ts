@@ -10,7 +10,9 @@
  * - Principle II (Adapter Abstraction): Layer 1 所有后端必选实现
  * - Principle IV (SSE Dual-Protocol): sendMessage 返回 AsyncIterable<StreamChunk>,
  *   Intellect RAG 用 parseCanvasWorkflowSSE(P1 主通道,US2 实现)
- * - Principle V (Tenant Isolation): Intellect RAG 单租户,不注入 X-Intellect-Team/X-Intellect-Project 头
+ * - Principle V (Tenant Isolation): Intellect RAG 单租户。D1.2 B 起注入
+ *   X-Intellect-Team/X-Intellect-Project 头(intellect-rag-app 已消费这些头
+ *   用于 KB ownership 字段写入)。仅在 BackendContext 提供非空值时注入。
  * - Principle VIII: 仅企业版用 API_SERVER_KEY,Intellect RAG 用 admin token(Bearer)
  *
  * Naming: 类名 IntellectRagAdapter,目录 intellect-rag/(Constitution 命名规范)
@@ -226,14 +228,32 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     method: string,
     path: string,
     req: { headers: Headers; body?: ReadableStream<Uint8Array> | null; query: string },
+    ctx?: BackendContext,
   ): Promise<Response> {
     const url = `${this.baseUrl}${path}${req.query}`;
 
     // 复制请求头,覆盖 Authorization 为 adapter 的 admin token
     const headers = new Headers(req.headers);
     headers.delete('host');
+    // 安全(S1.1 修复):强制删除客户端可能注入的 X-Intellect-* 头,
+    // 仅由 BFF 注入可信值。防止客户端伪造 team/project 头导致 KB ownership
+    // 字段被写入恶意值(跨 team/project 越权访问)。
+    headers.delete('X-Intellect-User');
+    headers.delete('X-Intellect-Team');
+    headers.delete('X-Intellect-Project');
     if (this.adminToken) {
       headers.set('Authorization', `Bearer ${this.adminToken}`);
+    }
+    // D1.2 B: proxy 路径(canvas 上传/下载)也注入身份头,
+    // 与 buildHeaders() 保持一致。
+    if (ctx?.intellectUserId) {
+      headers.set('X-Intellect-User', ctx.intellectUserId);
+    }
+    if (ctx?.intellectTeamId) {
+      headers.set('X-Intellect-Team', ctx.intellectTeamId);
+    }
+    if (ctx?.intellectProjectId) {
+      headers.set('X-Intellect-Project', ctx.intellectProjectId);
     }
 
     const fetchInit: Record<string, unknown> = {
@@ -262,13 +282,23 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     if (this.adminToken) {
       headers['Authorization'] = `Bearer ${this.adminToken}`;
     }
-    // Constitution Principle V: Intellect RAG 单租户,不注入 X-Intellect-Team/X-Intellect-Project
     // BFF-P0-1: 注入解析后的 member_id 为 X-Intellect-User header。
     // 让 intellect-rag-app 在 KB/Chunk 创建时设置正确的 owner_user_id,
     // 替代之前的 current_user.id (RAG UUID) 回退。
     // 安全: member_id 来自服务端 token→/api/members/me 解析,非客户端 X-User-Id header。
     if (ctx?.intellectUserId) {
       headers['X-Intellect-User'] = ctx.intellectUserId;
+    }
+    // D1.2 B (identity-model-migration): intellect-rag-app 已开始消费
+    // X-Intellect-Team / X-Intellect-Project 头(visibility=team/project)。
+    // 注入这些头让 KB ownership 字段能正确写入,避免静默降级为 private。
+    // 仅在 BackendContext 提供非空值时注入(缺省租户 '0' 已被 backend-context
+    // 中间件过滤,不会到达此处)。
+    if (ctx?.intellectTeamId) {
+      headers['X-Intellect-Team'] = ctx.intellectTeamId;
+    }
+    if (ctx?.intellectProjectId) {
+      headers['X-Intellect-Project'] = ctx.intellectProjectId;
     }
     return headers;
   }

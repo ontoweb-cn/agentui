@@ -1,4 +1,5 @@
 import { ParseType } from '@/constants/knowledge';
+import { PermissionRole } from '@/constants/permission';
 import { t } from 'i18next';
 import { z } from 'zod';
 
@@ -11,7 +12,7 @@ export const formSchema = z
     description: z.string().optional(),
     // avatar: z.instanceof(File),
     avatar: z.any().nullish(),
-    permission: z.string().optional(),
+    visibility: z.nativeEnum(PermissionRole).optional(),
     language: z.string().optional(),
     chunk_method: z.string(),
     pipeline_id: z.string().optional(),

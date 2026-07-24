@@ -33,7 +33,8 @@ export interface IDataset {
   nickname: string;
   pagerank: number;
   parser_config: Parserconfig;
-  permission: string;
+  permission: string; // legacy field, kept for backward compat; new field is `visibility`
+  visibility?: string; // tenant|team|project|private, aligned with backend
   pipeline_id: string;
   raptor_task_finish_at: string;
   raptor_task_id: string;

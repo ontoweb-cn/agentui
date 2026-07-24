@@ -54,7 +54,7 @@ export const useFetchKnowledgeConfigurationOnMount = (
       ...pick({ ...knowledgeDetails, parser_config: parser_config }, [
         'description',
         'name',
-        'permission',
+        'visibility',
         'language',
         'parser_config',
         'connectors',

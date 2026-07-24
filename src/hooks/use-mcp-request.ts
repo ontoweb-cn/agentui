@@ -55,7 +55,9 @@ export const useListMcpServer = () => {
         page_size: pagination.pageSize,
         page: pagination.current,
       });
-      return data?.data;
+      // BFF proxy 对上游 401 降级返回 { code:0, data:null },需 fallback 到空列表
+      // 避免 data:null 覆盖 initialData 后触发 null.mcp_servers 崩溃
+      return data?.data ?? { total: 0, mcp_servers: [] };
     },
   });
 

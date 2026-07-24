@@ -215,7 +215,7 @@ export class CanvasService {
     req: { headers: Headers; body?: ReadableStream<Uint8Array> | null; query: string },
   ): Promise<Response> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.proxy('POST', `/api/v1/agents/${encodeURIComponent(id)}/upload`, req);
+    return adapter.proxy('POST', `/api/v1/agents/${encodeURIComponent(id)}/upload`, req, ctx);
   }
 
   async downloadAttachment(
@@ -227,7 +227,7 @@ export class CanvasService {
     return adapter.proxy('GET', `/api/v1/agents/attachments/${encodeURIComponent(docId)}/download`, {
       headers: new Headers(),
       query,
-    });
+    }, ctx);
   }
 
   async downloadFile(
@@ -235,6 +235,6 @@ export class CanvasService {
     req: { headers: Headers; body?: ReadableStream<Uint8Array> | null; query: string },
   ): Promise<Response> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.proxy('GET', '/api/v1/agents/download', req);
+    return adapter.proxy('GET', '/api/v1/agents/download', req, ctx);
   }
 }

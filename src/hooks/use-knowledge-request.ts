@@ -255,6 +255,7 @@ export const useUpdateKnowledge = (shouldFetchList = false) => {
       avatar?: string | null;
       description?: string;
       permission?: string;
+      visibility?: string;
       pagerank?: number;
       parser_config?: Record<string, any>;
       [key: string]: any;
@@ -267,6 +268,7 @@ export const useUpdateKnowledge = (shouldFetchList = false) => {
         avatar,
         description,
         permission,
+        visibility,
         pagerank,
         parser_config,
         ...ext
@@ -279,6 +281,7 @@ export const useUpdateKnowledge = (shouldFetchList = false) => {
         avatar,
         description,
         permission,
+        visibility,
         pagerank,
         parser_config: extractParserConfigExt(parser_config),
         ...omit(ext, ['kb_id']),
@@ -334,7 +337,8 @@ export function useFetchKnowledgeGraph() {
     gcTime: 0,
     queryFn: async () => {
       const { data } = await getKnowledgeGraph(knowledgeBaseId);
-      return data?.data;
+      // BFF proxy 对上游 401 降级返回 { code:0, data:null },需 fallback 到空结构
+      return data?.data ?? ({ graph: {}, mind_map: {} } as IKnowledgeGraph);
     },
   });
 

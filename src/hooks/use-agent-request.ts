@@ -175,7 +175,8 @@ export const useFetchAgentListByPage = () => {
         true,
       );
 
-      return data?.data;
+      // BFF proxy 对上游 401 降级返回 { code:0, data:null },需 fallback 到空列表
+      return data?.data ?? { canvas: [], total: 0 };
     },
   });
 

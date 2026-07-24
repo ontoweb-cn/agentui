@@ -288,7 +288,9 @@ export const useFetchSessionList = () => {
         { url: api.listSessions(id!) },
         true,
       );
-      return data?.data;
+      // BFF proxy 对上游 401 降级返回 { code:0, data:null },需 fallback 到空数组
+      // 避免 select 内 data.filter() 对 null 崩溃
+      return data?.data ?? [];
     },
   });
 

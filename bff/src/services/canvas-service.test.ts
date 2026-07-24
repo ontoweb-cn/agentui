@@ -272,6 +272,7 @@ describe('CanvasService', () => {
         'POST',
         '/api/v1/agents/a1/upload',
         req,
+        ctx,
       );
       expect(result).toBe(mockRes);
     });
@@ -288,6 +289,7 @@ describe('CanvasService', () => {
         'GET',
         '/api/v1/agents/attachments/doc1/download',
         { headers: expect.any(Headers), query: '?v=1' },
+        ctx,
       );
       expect(result).toBe(mockRes);
     });

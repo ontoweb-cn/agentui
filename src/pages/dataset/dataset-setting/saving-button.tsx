@@ -27,7 +27,7 @@ export function GeneralSavingButton() {
       onClick={() => {
         (async () => {
           const isValidate = await form.trigger('name');
-          const { name, description, permission, avatar } = form.getValues();
+          const { name, description, visibility, avatar } = form.getValues();
 
           if (isValidate) {
             saveKnowledgeConfiguration({
@@ -36,7 +36,7 @@ export function GeneralSavingButton() {
               name,
               description,
               avatar,
-              permission,
+              visibility,
             });
           }
         })();

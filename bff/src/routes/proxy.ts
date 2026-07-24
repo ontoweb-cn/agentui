@@ -2,6 +2,11 @@ import { Hono } from 'hono';
 import { proxy as proxyToUpstream, type ProxyRequest } from '../services/intellect-rag-client';
 import { streamResponse } from '../utils/response';
 import { resolveMemberIdFromContext } from '../services/member-id-resolver';
+import type { BackendStore } from '../types';
+
+interface ProxyVariables {
+  backendStore: BackendStore;
+}
 
 // ---------------------------------------------------------------------------
 // BFF 透明反向代理路由 (Multi-Harness P0-前置, Constitution Principle I)
@@ -18,7 +23,7 @@ import { resolveMemberIdFromContext } from '../services/member-id-resolver';
 //
 // 日志:每条请求记录 method/path/status/耗时(SC-003)
 
-export const proxyRoutes = new Hono();
+export const proxyRoutes = new Hono<{ Variables: ProxyVariables }>();
 
 // Hono catch-all:匹配 /proxy/v1/* 任意子路径(含多段,如 /proxy/v1/agents/123/sessions)
 proxyRoutes.all('/proxy/v1/*', async (c) => {
@@ -56,6 +61,14 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
     // 解析失败静默跳过(intellect-rag 单租户场景不需要 member_id)
   }
 
+  // D1.2 B (identity-model-migration): 从 BackendStore 读取 team/project 绑定。
+  // proxy 路由未挂载 backendContextMiddleware,此处内联解析(与 backend-context.ts 同逻辑)。
+  // getIntellectTeamId 已过滤缺省值 "0"(intellect-team 走全局默认上下文)。
+  const backendStore = c.get('backendStore');
+  const backendId = c.req.header('X-Backend-Id') || 'default';
+  const intellectTeamId = backendStore?.getIntellectTeamId(backendId);
+  const intellectProjectId = backendStore?.getIntellectProjectId(backendId);
+
   // 构造透传请求
   const proxyReq: ProxyRequest = {
     method,
@@ -63,6 +76,8 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
     body: c.req.raw.body,
     query: queryString,
     intellectUserId,
+    intellectTeamId,
+    intellectProjectId,
   };
 
   let upstream: Response;

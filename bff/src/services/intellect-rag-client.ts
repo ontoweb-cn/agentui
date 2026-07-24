@@ -72,6 +72,19 @@ export interface ProxyRequest {
    * 仅企业版 (authMode=intellect-enterprise) 下传入,RAG 版为 undefined。
    */
   intellectUserId?: string;
+  /**
+   * D1.2 B (identity-model-migration): 实例内 Team 组织隔离 ID。
+   * 来自 BffTenant.intellectTenantId(经 backend-context 中间件过滤 "0" 缺省值)。
+   * 设置后注入 X-Intellect-Team header,让 intellect-rag-app 在 KB ownership
+   * 字段写入时使用正确的 team_id(visibility=team)。
+   */
+  intellectTeamId?: string;
+  /**
+   * D1.2 B (identity-model-migration): 实例内 Project 组织隔离 ID。
+   * 来自 BffTenant.intellectProjectId(可选,project 隶属于 team)。
+   * 设置后注入 X-Intellect-Project header。
+   */
+  intellectProjectId?: string;
 }
 
 /**
@@ -90,12 +103,29 @@ export async function proxy(path: string, req: ProxyRequest): Promise<Response> 
   // 删除 host 头避免上游冲突(fetch 会自动设置)
   headers.delete('host');
 
+  // 安全(S1.1 修复):强制删除客户端可能注入的 X-Intellect-* 头,
+  // 仅由 BFF 注入可信值。防止客户端伪造 team/project 头导致 KB ownership
+  // 字段被写入恶意值(跨 team/project 越权访问)。
+  headers.delete('X-Intellect-User');
+  headers.delete('X-Intellect-Team');
+  headers.delete('X-Intellect-Project');
+
   // BFF-P0-1: 注入解析后的 member_id 为 X-Intellect-User header。
   // intellect-rag-app 据此设置 KB/Chunk ownership 的 owner_user_id,
   // 替代之前的 current_user.id (RAG UUID) 回退。
   // 安全: member_id 来自服务端 token→/api/members/me 解析,非客户端 X-User-Id header。
   if (req.intellectUserId) {
     headers.set('X-Intellect-User', req.intellectUserId);
+  }
+  // D1.2 B (identity-model-migration): intellect-rag-app 已消费
+  // X-Intellect-Team / X-Intellect-Project 头(visibility=team/project)。
+  // 注入这些头让 KB ownership 字段能正确写入,避免静默降级为 private。
+  // 仅在 ProxyRequest 提供非空值时注入(缺省租户 "0" 已被路由层过滤)。
+  if (req.intellectTeamId) {
+    headers.set('X-Intellect-Team', req.intellectTeamId);
+  }
+  if (req.intellectProjectId) {
+    headers.set('X-Intellect-Project', req.intellectProjectId);
   }
 
   // 企业版兜底:前端无 Authorization header 时(非 JWT 模式),

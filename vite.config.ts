@@ -109,6 +109,7 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, './src'),
         '@agentui/canvas-plugin': path.resolve(__dirname, 'packages/canvas-plugin/src'),
+        '@intellect-docs': path.resolve(__dirname, '../intellect/docs'),
       },
     },
     css: {
@@ -136,6 +137,12 @@ export default defineConfig(({ mode }) => {
         overlay: false,
       },
       proxy,
+      fs: {
+        allow: [
+          path.resolve(__dirname),
+          path.resolve(__dirname, '../intellect'),
+        ],
+      },
     },
     assetsInclude: ['**/*.md'],
     base: env.VITE_BASE_URL,

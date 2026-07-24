@@ -141,6 +141,7 @@ describe('Canvas Routes (spec-008)', () => {
         'GET',
         '/api/v1/agents/attachments/doc1/download',
         expect.any(Object),
+        expect.any(Object),
       );
     });
   });

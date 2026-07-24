@@ -1,4 +1,3 @@
-const webAPI = `/v1`;
 // Multi-Harness P0-前置 (Constitution Principle I):前端所有 /api/v1/* 改经 BFF 透明反向代理。
 // 改回 `/api/v1` 可瞬时回滚(FR-006),无需 BFF 配合。
 const restAPIv1 = `/api/bff/proxy/v1`;
@@ -27,7 +26,7 @@ const bffAuth = `/api/bff/auth`;
 // Constitution Principle I + III: 前端画布操作经 BFF /canvas/*
 const bffCanvas = '/api/bff/canvas';
 
-export { restAPIv1, webAPI, bffAgents, bffCapabilities, bffHarnessAdmin, bffAuth, bffCanvas };
+export { restAPIv1, bffAgents, bffCapabilities, bffHarnessAdmin, bffAuth, bffCanvas };
 
 export default {
   // user
@@ -216,7 +215,7 @@ export default {
   webCrawl: (datasetId: string) =>
     `${restAPIv1}/datasets/${datasetId}/documents?type=web`,
   documentInfoUpload: `${restAPIv1}/documents/upload`,
-  setMeta: `${webAPI}/document/set_meta`,
+  setMeta: `${restAPIv1}/document/set_meta`,
   getDatasetFilter: (datasetId: string) =>
     `${restAPIv1}/datasets/${datasetId}/documents?type=filter`,
 
@@ -278,7 +277,7 @@ export default {
   agentChatCompletion: `${bffAgents}/chat/completions`,
   resetAgent: (agentId: string) => `${bffCanvas}/${agentId}/reset`,
   testDbConnect: `${bffCanvas}/test_db_connection`,
-  getInputElements: `${webAPI}/canvas/input_elements`,
+  getInputElements: `${restAPIv1}/canvas/input_elements`,
   debug: (agentId: string, componentId: string) =>
     `${bffCanvas}/${agentId}/components/${componentId}/debug`,
   trace: (agentId: string, messageId: string) =>
@@ -293,7 +292,7 @@ export default {
   getAgent: (id: string) => `${bffAgents}/${id}`,
   uploadAgentFile: (id?: string) => `${bffCanvas}/${id}/upload`,
   createAgentSession: (agentId: string) => `${bffAgents}/${agentId}/sessions`,
-  fetchAgentLogs: (canvasId: string) => `${webAPI}/canvas/${canvasId}/sessions`,
+  fetchAgentLogs: (canvasId: string) => `${restAPIv1}/canvas/${canvasId}/sessions`,
   fetchAgentSessions: (agentId: string) => `${bffAgents}/${agentId}/sessions`,
   fetchAgentSessionById: (agentId: string, sessionId: string) =>
     `${bffAgents}/${agentId}/sessions/${sessionId}`,
@@ -350,11 +349,11 @@ export default {
     `${restAPIv1}/messages/${data.memory_id}:${data.message_id}`,
 
   // data pipeline
-  fetchDataflow: (id: string) => `${webAPI}/dataflow/get/${id}`,
-  setDataflow: `${webAPI}/dataflow/set`,
-  removeDataflow: `${webAPI}/dataflow/rm`,
-  listDataflow: `${webAPI}/dataflow/list`,
-  runDataflow: `${webAPI}/dataflow/run`,
+  fetchDataflow: (id: string) => `${restAPIv1}/dataflow/get/${id}`,
+  setDataflow: `${restAPIv1}/dataflow/set`,
+  removeDataflow: `${restAPIv1}/dataflow/rm`,
+  listDataflow: `${restAPIv1}/dataflow/list`,
+  runDataflow: `${restAPIv1}/dataflow/run`,
 
   // admin
   adminLogin: `${restAPIv1}/admin/login`,
