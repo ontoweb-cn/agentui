@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { proxy as proxyToUpstream, type ProxyRequest } from '../services/intellect-rag-client';
 import { streamResponse } from '../utils/response';
+import { resolveMemberIdFromContext } from '../services/member-id-resolver';
 
 // ---------------------------------------------------------------------------
 // BFF 透明反向代理路由 (Multi-Harness P0-前置, Constitution Principle I)
@@ -47,12 +48,21 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
     ? '?' + c.req.url.split('?')[1]
     : '';
 
+  // BFF-P0-1: 解析 member_id (仅企业版,解析失败不阻塞)
+  let intellectUserId: string | undefined;
+  try {
+    intellectUserId = await resolveMemberIdFromContext(c);
+  } catch (_err) {
+    // 解析失败静默跳过(intellect-rag 单租户场景不需要 member_id)
+  }
+
   // 构造透传请求
   const proxyReq: ProxyRequest = {
     method,
     headers: c.req.raw.headers,
     body: c.req.raw.body,
     query: queryString,
+    intellectUserId,
   };
 
   let upstream: Response;

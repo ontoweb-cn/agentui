@@ -96,6 +96,13 @@ export interface BackendContext {
   /** 当前用户 ID */
   userId: string;
   /**
+   * Intellect 企业版解析后的 member_id (来自 token → /api/members/me 解析)。
+   * BFF-P0-1: 由 backendContextMiddleware 注入,Adapter 据此设置 X-Intellect-User header。
+   * 仅在企业版 (authMode=intellect-enterprise) 下解析,RAG 版为 undefined。
+   * 安全要求:绝不信任客户端 X-User-Id header,必须经服务端 token 解析。
+   */
+  intellectUserId?: string;
+  /**
    * Intellect 企业版实例内 Team ID(组织隔离场景必填)。
    * Adapter 用此值注入 `X-Intellect-Team` 头。
    * 注意:intellect-team 接受 team_id(而非 slug),值为 intellect-team DB 中 teams.id。

@@ -50,6 +50,19 @@ export const backendContextMiddleware: MiddlewareHandler = async (c, next) => {
     );
   }
 
+  // BFF-P0-1: 从 AuthSession 解析 member_id (token → /api/members/me)。
+  // 仅企业版 (authMode=intellect-enterprise) 下解析,RAG 版不调用。
+  // 解析失败不阻塞(留空),由下游 adapter 按需处理。
+  try {
+    const { resolveMemberIdFromContext } = await import('../services/member-id-resolver');
+    const memberId = await resolveMemberIdFromContext(c);
+    if (memberId) {
+      ctx.intellectUserId = memberId;
+    }
+  } catch (_err) {
+    // member-id-resolver 不可用时静默跳过(intellect-rag 单租户场景)
+  }
+
   // P3:从 BackendStore 读取 BffTenant 绑定,注入企业版实例内 Team/Project 组织隔离字段(Principle V)。
   // store 注入由 index.ts 的 context middleware 完成;此处防御性获取。
   const backendStore = c.get('backendStore');

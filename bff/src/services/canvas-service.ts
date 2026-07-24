@@ -51,32 +51,32 @@ export class CanvasService {
 
   async listCanvas(ctx: BackendContext): Promise<CanvasAgent[]> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.request<CanvasAgent[]>('GET', '/api/v1/agents');
+    return adapter.request<CanvasAgent[]>('GET', '/api/v1/agents', undefined, ctx);
   }
 
   async getCanvas(ctx: BackendContext, id: string): Promise<CanvasAgent> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.request<CanvasAgent>('GET', `/api/v1/agents/${encodeURIComponent(id)}`);
+    return adapter.request<CanvasAgent>('GET', `/api/v1/agents/${encodeURIComponent(id)}`, undefined, ctx);
   }
 
   async createCanvas(ctx: BackendContext, body: CreateCanvasBody): Promise<CanvasAgent> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.request<CanvasAgent>('POST', '/api/v1/agents', body);
+    return adapter.request<CanvasAgent>('POST', '/api/v1/agents', body, ctx);
   }
 
   async saveCanvas(ctx: BackendContext, id: string, body: SaveCanvasBody): Promise<CanvasAgent> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.request<CanvasAgent>('PUT', `/api/v1/agents/${encodeURIComponent(id)}`, body);
+    return adapter.request<CanvasAgent>('PUT', `/api/v1/agents/${encodeURIComponent(id)}`, body, ctx);
   }
 
   async deleteCanvas(ctx: BackendContext, id: string): Promise<void> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.request<void>('DELETE', `/api/v1/agents/${encodeURIComponent(id)}`);
+    return adapter.request<void>('DELETE', `/api/v1/agents/${encodeURIComponent(id)}`, undefined, ctx);
   }
 
   async resetCanvas(ctx: BackendContext, id: string): Promise<void> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.request<void>('POST', `/api/v1/agents/${encodeURIComponent(id)}/reset`);
+    return adapter.request<void>('POST', `/api/v1/agents/${encodeURIComponent(id)}/reset`, undefined, ctx);
   }
 
   // -------------------------------------------------------------------------
@@ -85,17 +85,17 @@ export class CanvasService {
 
   async listTemplates(ctx: BackendContext): Promise<CanvasTemplate[]> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.request<CanvasTemplate[]>('GET', '/api/v1/agents/templates');
+    return adapter.request<CanvasTemplate[]>('GET', '/api/v1/agents/templates', undefined, ctx);
   }
 
   async listTags(ctx: BackendContext): Promise<CanvasTag[]> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.request<CanvasTag[]>('GET', '/api/v1/agents/tags');
+    return adapter.request<CanvasTag[]>('GET', '/api/v1/agents/tags', undefined, ctx);
   }
 
   async updateTags(ctx: BackendContext, id: string, body: UpdateTagsBody): Promise<void> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.request<void>('PUT', `/api/v1/agents/${encodeURIComponent(id)}/tags`, body);
+    return adapter.request<void>('PUT', `/api/v1/agents/${encodeURIComponent(id)}/tags`, body, ctx);
   }
 
   // -------------------------------------------------------------------------
@@ -104,7 +104,7 @@ export class CanvasService {
 
   async listVersions(ctx: BackendContext, id: string): Promise<CanvasVersion[]> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.request<CanvasVersion[]>('GET', `/api/v1/agents/${encodeURIComponent(id)}/versions`);
+    return adapter.request<CanvasVersion[]>('GET', `/api/v1/agents/${encodeURIComponent(id)}/versions`, undefined, ctx);
   }
 
   async getVersion(ctx: BackendContext, id: string, vid: string): Promise<CanvasVersion> {
@@ -112,6 +112,8 @@ export class CanvasService {
     return adapter.request<CanvasVersion>(
       'GET',
       `/api/v1/agents/${encodeURIComponent(id)}/versions/${encodeURIComponent(vid)}`,
+      undefined,
+      ctx,
     );
   }
 
@@ -124,6 +126,8 @@ export class CanvasService {
     return adapter.request<unknown>(
       'GET',
       `/api/v1/agents/${encodeURIComponent(id)}/components/${encodeURIComponent(cid)}/input-form`,
+      undefined,
+      ctx,
     );
   }
 
@@ -133,6 +137,7 @@ export class CanvasService {
       'POST',
       `/api/v1/agents/${encodeURIComponent(id)}/components/${encodeURIComponent(cid)}/debug`,
       body,
+      ctx,
     );
   }
 
@@ -145,17 +150,19 @@ export class CanvasService {
     return adapter.request<unknown>(
       'GET',
       `/api/v1/agents/${encodeURIComponent(id)}/logs/${encodeURIComponent(messageId)}`,
+      undefined,
+      ctx,
     );
   }
 
   async listPrompts(ctx: BackendContext): Promise<unknown> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.request<unknown>('GET', '/api/v1/agents/prompts');
+    return adapter.request<unknown>('GET', '/api/v1/agents/prompts', undefined, ctx);
   }
 
   async testDbConnection(ctx: BackendContext, body: unknown): Promise<unknown> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.request<unknown>('POST', '/api/v1/agents/test_db_connection', body);
+    return adapter.request<unknown>('POST', '/api/v1/agents/test_db_connection', body, ctx);
   }
 
   async testWebhook(ctx: BackendContext, id: string, body: unknown): Promise<unknown> {
@@ -164,6 +171,7 @@ export class CanvasService {
       'POST',
       `/api/v1/agents/${encodeURIComponent(id)}/webhook/test`,
       body,
+      ctx,
     );
   }
 
@@ -172,17 +180,19 @@ export class CanvasService {
     return adapter.request<unknown>(
       'GET',
       `/api/v1/agents/${encodeURIComponent(id)}/webhook/logs`,
+      undefined,
+      ctx,
     );
   }
 
   async rerun(ctx: BackendContext, body: unknown): Promise<unknown> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.request<unknown>('POST', '/api/v1/agents/rerun', body);
+    return adapter.request<unknown>('POST', '/api/v1/agents/rerun', body, ctx);
   }
 
   async cancelTask(ctx: BackendContext, taskId: string): Promise<void> {
     const adapter = this.resolveAdapter(ctx);
-    return adapter.request<void>('POST', `/api/v1/tasks/${encodeURIComponent(taskId)}/cancel`);
+    return adapter.request<void>('POST', `/api/v1/tasks/${encodeURIComponent(taskId)}/cancel`, undefined, ctx);
   }
 
   async fetchExternalInputs(ctx: BackendContext, canvasId: string): Promise<unknown> {
@@ -190,6 +200,8 @@ export class CanvasService {
     return adapter.request<unknown>(
       'GET',
       `/api/v1/agentbots/${encodeURIComponent(canvasId)}/inputs`,
+      undefined,
+      ctx,
     );
   }
 

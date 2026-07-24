@@ -47,12 +47,12 @@ export class IntellectRagAdapter implements IHarnessAdapter {
   // -----------------------------------------------------------------------
 
   async listAgents(_ctx: BackendContext): Promise<AgentSummary[]> {
-    const data = await this.request<AgentSummary[]>('GET', '/api/v1/agents');
+    const data = await this.request<AgentSummary[]>('GET', '/api/v1/agents', undefined, _ctx);
     return data;
   }
 
   async getAgent(_ctx: BackendContext, agentId: string): Promise<AgentSummary> {
-    return this.request<AgentSummary>('GET', `/api/v1/agents/${encodeURIComponent(agentId)}`);
+    return this.request<AgentSummary>('GET', `/api/v1/agents/${encodeURIComponent(agentId)}`, undefined, _ctx);
   }
 
   // -----------------------------------------------------------------------
@@ -68,6 +68,7 @@ export class IntellectRagAdapter implements IHarnessAdapter {
       'POST',
       `/api/v1/agents/${encodeURIComponent(agentId)}/sessions`,
       { name: title },
+      _ctx,
     );
   }
 
@@ -75,6 +76,8 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     return this.request<Session[]>(
       'GET',
       `/api/v1/agents/${encodeURIComponent(agentId)}/sessions`,
+      undefined,
+      _ctx,
     );
   }
 
@@ -86,6 +89,8 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     return this.request<Session>(
       'GET',
       `/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}`,
+      undefined,
+      _ctx,
     );
   }
 
@@ -97,6 +102,8 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     await this.request<void>(
       'DELETE',
       `/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}`,
+      undefined,
+      _ctx,
     );
   }
 
@@ -128,7 +135,7 @@ export class IntellectRagAdapter implements IHarnessAdapter {
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: this.buildHeaders(),
+      headers: this.buildHeaders(_ctx),
       body: JSON.stringify(body),
     });
 
@@ -181,11 +188,12 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     method: string,
     path: string,
     body?: unknown,
+    ctx?: BackendContext,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const response = await fetch(url, {
       method,
-      headers: this.buildHeaders(),
+      headers: this.buildHeaders(ctx),
       body: body != null ? JSON.stringify(body) : undefined,
     });
 
@@ -247,7 +255,7 @@ export class IntellectRagAdapter implements IHarnessAdapter {
   // Private helpers
   // -----------------------------------------------------------------------
 
-  private buildHeaders(): Record<string, string> {
+  private buildHeaders(ctx?: BackendContext): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -255,6 +263,13 @@ export class IntellectRagAdapter implements IHarnessAdapter {
       headers['Authorization'] = `Bearer ${this.adminToken}`;
     }
     // Constitution Principle V: Intellect RAG 单租户,不注入 X-Intellect-Team/X-Intellect-Project
+    // BFF-P0-1: 注入解析后的 member_id 为 X-Intellect-User header。
+    // 让 intellect-rag-app 在 KB/Chunk 创建时设置正确的 owner_user_id,
+    // 替代之前的 current_user.id (RAG UUID) 回退。
+    // 安全: member_id 来自服务端 token→/api/members/me 解析,非客户端 X-User-Id header。
+    if (ctx?.intellectUserId) {
+      headers['X-Intellect-User'] = ctx.intellectUserId;
+    }
     return headers;
   }
 

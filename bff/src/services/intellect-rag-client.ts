@@ -66,13 +66,19 @@ export interface ProxyRequest {
   body?: ReadableStream<Uint8Array> | null;
   /** 原始 query string(已含 ?,如 "?page=1&size=10") */
   query: string;
+  /**
+   * BFF-P0-1: 解析后的 member_id (来自 token → /api/members/me 解析)。
+   * 设置后注入 X-Intellect-User header,让 intellect-rag-app 获知调用方身份。
+   * 仅企业版 (authMode=intellect-enterprise) 下传入,RAG 版为 undefined。
+   */
+  intellectUserId?: string;
 }
 
 /**
  * 透明代理到 Intellect RAG /api/v1/${path}。
  *
  * @param path 已剥离 /api/bff/proxy/v1 前缀的相对路径,如 "agents" 或 "agents/123"
- * @param req 请求组成部分(method/headers/body/query)
+ * @param req 请求组成部分(method/headers/body/query/intellectUserId)
  * @returns 上游 fetch Response(不调用 .json()/.text(),保留 body ReadableStream)
  */
 export async function proxy(path: string, req: ProxyRequest): Promise<Response> {
@@ -83,6 +89,14 @@ export async function proxy(path: string, req: ProxyRequest): Promise<Response> 
   const headers = new Headers(req.headers);
   // 删除 host 头避免上游冲突(fetch 会自动设置)
   headers.delete('host');
+
+  // BFF-P0-1: 注入解析后的 member_id 为 X-Intellect-User header。
+  // intellect-rag-app 据此设置 KB/Chunk ownership 的 owner_user_id,
+  // 替代之前的 current_user.id (RAG UUID) 回退。
+  // 安全: member_id 来自服务端 token→/api/members/me 解析,非客户端 X-User-Id header。
+  if (req.intellectUserId) {
+    headers.set('X-Intellect-User', req.intellectUserId);
+  }
 
   // 企业版兜底:前端无 Authorization header 时(非 JWT 模式),
   // 使用 BFF 自动登录获取的动态 token 鉴权,确保企业版用户也能访问 RAG 功能
