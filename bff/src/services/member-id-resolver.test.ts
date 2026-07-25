@@ -31,7 +31,7 @@ describe('resolveMemberId', () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => ({ member_id: 'resolved-member', role: 'member' }),
+      json: async () => ({ id: 'resolved-member', role: 'member' }),
     });
 
     const result = await resolveMemberId(BACKEND_ID, 'new-token', 'http://localhost:9381');
@@ -102,7 +102,7 @@ describe('resolveMemberId', () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => ({ member_id: '', role: 'member' }),
+      json: async () => ({ id: '', role: 'member' }),
     });
 
     const result = await resolveMemberId(BACKEND_ID, 'empty-id-token', 'http://localhost:9381');
@@ -134,7 +134,7 @@ describe('resolveMemberId', () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => ({ member_id: 'member-B', role: 'admin' }),
+      json: async () => ({ id: 'member-B', role: 'admin' }),
     });
 
     const result = await resolveMemberId('backend-B', 'shared-token', 'http://localhost:9381');
@@ -170,7 +170,7 @@ describe('resolveMemberInfo (v9 新增)', () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => ({ member_id: 'member-1', role: 'admin' }),
+      json: async () => ({ id: 'member-1', role: 'admin' }),
     });
 
     const result = await resolveMemberInfo(BACKEND_ID, 'new-token', 'http://localhost:9381');
@@ -183,7 +183,7 @@ describe('resolveMemberInfo (v9 新增)', () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => ({ member_id: 'member-2' }), // 无 role
+      json: async () => ({ id: 'member-2' }), // 无 role
     });
 
     const result = await resolveMemberInfo(BACKEND_ID, 'no-role-token', 'http://localhost:9381');
@@ -225,7 +225,7 @@ describe('resolveMemberIdFromContext', () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => ({ member_id: 'ent-member-001', role: 'member' }),
+      json: async () => ({ id: 'ent-member-001', role: 'member' }),
     });
 
     const ctx = {
@@ -255,11 +255,11 @@ describe('resolveMemberIdFromContext', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       'http://ent:9381/api/members/me',
       expect.objectContaining({
-        headers: { Authorization: 'Bearer ent-token', 'Content-Type': 'application/json' },
+        headers: { Authorization: 'Bearer shared-token', 'Content-Type': 'application/json' },
       }),
     );
     // v9 BFF-P2-4:缓存以 (backendId, token) 为复合 key
-    expect(memberIdCache.get('b1', 'ent-token')?.memberId).toBe('ent-member-001');
+    expect(memberIdCache.get('b1', 'shared-token')?.memberId).toBe('ent-member-001');
   });
 
   it('BFF-P2-4:同一 token 在不同 backend session 下独立缓存', async () => {
@@ -267,12 +267,12 @@ describe('resolveMemberIdFromContext', () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => ({ member_id: 'member-in-b1', role: 'member' }),
+      json: async () => ({ id: 'member-in-b1', role: 'member' }),
     });
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => ({ member_id: 'member-in-b2', role: 'admin' }),
+      json: async () => ({ id: 'member-in-b2', role: 'admin' }),
     });
 
     const ctxB1 = {
@@ -285,7 +285,7 @@ describe('resolveMemberIdFromContext', () => {
     };
     const ctxB2 = {
       get: (key: string) => {
-        if (key === 'authSession') return { token: 'ent-token', backendId: 'b2' };
+        if (key === 'authSession') return { token: 'shared-token', backendId: 'b2' };
         if (key === 'backendStore') return { getBackend: () => ({ intellectBackendId: 'h1' }) };
         if (key === 'harnessStore') return { get: () => ({ endpoint: 'http://ent:9381' }) };
         return undefined;

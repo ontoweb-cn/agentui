@@ -4,6 +4,16 @@ import type { HarnessBackend } from '../../../types/harness';
 import type { BackendContext } from '../../../types/tenant';
 import type { AgentSummary, Session } from '../../../types/domain';
 
+// Mock ragTokenProvider:避免测试中触发真实 login 流程(会 console.warn 污染输出)
+// fetchWithRagToken 会降级到 fallbackStaticToken(即 backend.adminToken)
+vi.mock('../../../services/rag-token-provider', () => ({
+  ragTokenProvider: {
+    login: vi.fn().mockRejectedValue(new Error('not configured in test')),
+    getToken: vi.fn().mockReturnValue(null),
+    invalidate: vi.fn(),
+  },
+}));
+
 // Mock global fetch
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -81,7 +91,9 @@ describe('IntellectRagAdapter', () => {
       const [url, init] = mockFetch.mock.calls[0];
       expect(url).toBe('http://localhost:9380/api/v1/agents');
       expect(init.method).toBe('GET');
-      expect(init.headers.Authorization).toBe('Bearer test-admin-token');
+      // fetchWithRagToken 内部用 Headers 实例,需用 .get() 访问
+      // token 优先级:动态 token(ragTokenProvider,被 mock 抛错)→ fallbackStaticToken(test-admin-token)
+      expect(init.headers.get('Authorization')).toBe('Bearer test-admin-token');
       expect(result).toEqual(agents);
     });
 
@@ -89,8 +101,8 @@ describe('IntellectRagAdapter', () => {
       mockFetch.mockResolvedValueOnce(makeJsonResponse([]));
       await adapter.listAgents(ctx);
       const [, init] = mockFetch.mock.calls[0];
-      expect(init.headers['X-Intellect-Team']).toBeUndefined();
-      expect(init.headers['X-Intellect-Project']).toBeUndefined();
+      expect(init.headers.get('X-Intellect-Team')).toBeNull();
+      expect(init.headers.get('X-Intellect-Project')).toBeNull();
     });
 
     it('上游 404 时抛错含 URL 与 status', async () => {

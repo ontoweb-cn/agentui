@@ -180,32 +180,37 @@ describe('capabilities 路由 (P2 US2)', () => {
       expect(mocks.adapter.discoverCapabilities).toHaveBeenCalled();
     });
 
-    it('缺失 X-Backend-Id header 返回 400', async () => {
+    it('缺失 X-Backend-Id header 降级使用默认 tenant 并返回 200(P1 兼容)', async () => {
       const res = await app.request('/capabilities', {
         headers: {
           Authorization: 'Bearer test',
           'X-User-Id': 'user-1',
-          // 缺 X-Backend-Id
+          // 缺 X-Backend-Id → 中间件降级到 'default'
         },
       });
-      expect(res.status).toBe(400);
+      // P1 兼容:backendContextMiddleware 降级到默认 backendId='default',
+      // mock registry 对任意 tenantId 返回 adapter,故返回 200。
+      // 实际生产中 'default' tenant 不存在会返回 404,但中间件不阻断是设计意图。
+      expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.code).toBe(400);
-      expect(body.message).toContain('X-Backend-Id');
+      expect(body.code).toBe(0);
+      // registry 传入降级后的 'default'(非 'tenant-1')
+      expect(mocks.registry.getAdapterForBackend).toHaveBeenCalledWith('default');
     });
 
-    it('缺失 X-User-Id header 返回 400', async () => {
+    it('缺失 X-User-Id header 降级使用默认 user 并返回 200(P1 兼容)', async () => {
       const res = await app.request('/capabilities', {
         headers: {
           Authorization: 'Bearer test',
           'X-Backend-Id': 'tenant-1',
-          // 缺 X-User-Id
+          // 缺 X-User-Id → 中间件降级到 'bff-default'
         },
       });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.code).toBe(400);
-      expect(body.message).toContain('X-User-Id');
+      expect(body.code).toBe(0);
+      // tenantId 仍为 'tenant-1'(X-Backend-Id 已传)
+      expect(mocks.registry.getAdapterForBackend).toHaveBeenCalledWith('tenant-1');
     });
 
     it('tenant 不存在返回 404', async () => {

@@ -7,8 +7,10 @@ import {
 } from 'react-router';
 import FallbackComponent from './components/fallback-component';
 import { collectRoutes } from './features/_registry';
+import type { LazyRouteConfig } from './features/_types';
 import { IS_ENTERPRISE } from './pages/admin/utils';
 import authorizationUtil from './utils/authorization-util';
+import AuthWrapper from './wrappers/auth';
 
 export enum Routes {
   Root = '/',
@@ -90,11 +92,6 @@ const defaultRouteFallback = (
   </div>
 );
 
-type LazyRouteConfig = Omit<RouteObject, 'Component' | 'children'> & {
-  Component?: () => Promise<{ default: React.ComponentType<any> }>;
-  children?: LazyRouteConfig[];
-};
-
 const withLazyRoute = (
   importer: () => Promise<{ default: React.ComponentType<any> }>,
   fallback: React.ReactNode = defaultRouteFallback,
@@ -110,7 +107,13 @@ const withLazyRoute = (
     LazyComponent.name ||
     'Component'
   })`;
-  return process.env.NODE_ENV === 'development' ? LazyComponent : memo(Wrapped);
+  // 始终返回带 Suspense 边界的 Wrapped 组件。
+  // 之前开发模式下返回裸 LazyComponent 是为了 why-did-you-render 兼容,
+  // 但 why-did-you-render 已禁用(与 React Router 7 不兼容),且裸 lazy
+  // 组件在 AuthWrapper(element 方式)中挂起时无 Suspense 兜底,导致
+  // React Router 抛出 "component suspended during synchronous input
+  // response" 错误并回退导航。
+  return memo(Wrapped);
 };
 
 const routeConfigOptions = [
@@ -152,12 +155,14 @@ const routeConfigOptions = [
       {
         path: Routes.Root,
         Component: () => import('@/pages/home'),
+        authRequired: true,
       },
     ],
   },
   {
     path: Routes.Root,
     Component: () => import('@/layouts/root-layout'),
+    authRequired: true,
     children: [
       {
         path: Routes.UserSetting,
@@ -218,9 +223,11 @@ const routeConfigOptions = [
   {
     path: `${Routes.DataflowResult}`,
     Component: () => import('@/pages/dataflow-result'),
+    authRequired: true,
   },
   {
     path: Routes.Chunk,
+    authRequired: true,
     children: [
       {
         path: `${Routes.Chunk}`,
@@ -315,23 +322,104 @@ const routeConfigOptions = [
   } satisfies LazyRouteConfig,
 ];
 
-const wrapRoutes = (routes: LazyRouteConfig[]): RouteObject[] =>
+const wrapRoutes = (
+  routes: LazyRouteConfig[],
+  parentAuthRequired?: boolean,
+  parentHasAuthWrapper = false,
+): RouteObject[] =>
   routes.map((item) => {
-    const { Component, children, ...rest } = item;
+    const { Component, children, authRequired, ...rest } = item;
     const next: RouteObject = { ...rest, errorElement: <FallbackComponent /> };
+    // 子路由继承父路由的 authRequired(除非显式覆盖)
+    const needAuth = authRequired ?? parentAuthRequired;
+    // 父路由已有 AuthWrapper 时,子路由渲染在父 Outlet 中已被守卫,无需重复包裹。
+    // 避免嵌套 AuthWrapper 导致额外的 useAuth/probe 订阅与冗余渲染。
+    const shouldWrap = needAuth && !parentHasAuthWrapper;
     if (Component) {
-      next.Component = withLazyRoute(Component);
+      const LazyComp = withLazyRoute(Component);
+      if (shouldWrap) {
+        // 用 AuthWrapper 包裹:未登录跳转,探测中渲染空白,已登录渲染组件
+        next.element = <AuthWrapper><LazyComp /></AuthWrapper>;
+      } else {
+        next.Component = LazyComp;
+      }
     }
     if (children) {
-      next.children = wrapRoutes(children);
+      // 仅当本路由实际被 AuthWrapper 包裹(有 Component + shouldWrap)时,
+      // 才告知子路由父已有守卫,避免子路由重复包裹
+      next.children = wrapRoutes(
+        children,
+        needAuth,
+        shouldWrap && !!Component,
+      );
     }
     return next;
   });
 
-const routeConfig = wrapRoutes([
-  ...routeConfigOptions,
-  ...collectRoutes(),
-]);
+const featureRoutes = collectRoutes().map((route) => ({
+  ...route,
+  authRequired: true,
+}));
+
+/**
+ * 合并所有 path: '/' 的根路由为单个路由,避免多模块各自定义根路由导致子路由无法匹配。
+ *
+ * React Router 匹配 URL 时,对于多个同 path 的父路由只会查找第一个匹配父路由的
+ * children。6 个 feature 模块(agents/memories/files/chats/datasets/searches)
+ * 各自定义 path: '/' 父路由,导致后续模块的子路由(如 /agents)无法被匹配,
+ * 回退到 /* 404 兜底。
+ *
+ * 合并策略:保留首个根路由的 loader(处理 ?auth= query param),将所有根路由的
+ * children 合并;authRequired 取真值优先(任意根路由需要认证则合并后也需要)。
+ */
+function mergeRootRoutes(routes: LazyRouteConfig[]): LazyRouteConfig[] {
+  const rootIndices: number[] = [];
+  for (let i = 0; i < routes.length; i++) {
+    if (routes[i].path === Routes.Root) {
+      rootIndices.push(i);
+    }
+  }
+
+  if (rootIndices.length <= 1) {
+    return routes;
+  }
+
+  const firstRoot = routes[rootIndices[0]];
+  const mergedChildren: LazyRouteConfig[] = [];
+  let authRequired = false;
+
+  for (const idx of rootIndices) {
+    const route = routes[idx];
+    if (route.children) {
+      mergedChildren.push(...route.children);
+    }
+    if (route.authRequired) {
+      authRequired = true;
+    }
+  }
+
+  const result: LazyRouteConfig[] = [];
+  let mergedInserted = false;
+  for (let i = 0; i < routes.length; i++) {
+    if (rootIndices.includes(i)) {
+      if (!mergedInserted) {
+        result.push({
+          ...firstRoot,
+          children: mergedChildren,
+          authRequired: authRequired || firstRoot.authRequired,
+        });
+        mergedInserted = true;
+      }
+    } else {
+      result.push(routes[i]);
+    }
+  }
+
+  return result;
+}
+
+const mergedRouteInput = mergeRootRoutes([...routeConfigOptions, ...featureRoutes]);
+const routeConfig = wrapRoutes(mergedRouteInput);
 
 const routers = createBrowserRouter(routeConfig, {
   basename: import.meta.env.VITE_BASE_URL || '/',

@@ -69,7 +69,7 @@ describe('Canvas Routes (spec-008)', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/templates');
+      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/templates', undefined, ctx);
     });
 
     it('GET /canvas/tags 不匹配 /:id', async () => {
@@ -81,7 +81,7 @@ describe('Canvas Routes (spec-008)', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/tags');
+      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/tags', undefined, ctx);
     });
 
     it('GET /canvas/prompts 不匹配 /:id', async () => {
@@ -93,7 +93,7 @@ describe('Canvas Routes (spec-008)', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/prompts');
+      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/prompts', undefined, ctx);
     });
 
     it('POST /canvas/test_db_connection 不匹配 /:id', async () => {
@@ -106,7 +106,7 @@ describe('Canvas Routes (spec-008)', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/agents/test_db_connection', expect.any(Object));
+      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/agents/test_db_connection', expect.any(Object), ctx);
     });
 
     it('POST /canvas/tasks/:taskId/cancel 不匹配 /:id', async () => {
@@ -118,7 +118,7 @@ describe('Canvas Routes (spec-008)', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/tasks/task-123/cancel');
+      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/tasks/task-123/cancel', undefined, ctx);
     });
 
     it('GET /canvas/attachments/:docId/download 不匹配 /:id', async () => {
@@ -176,7 +176,7 @@ describe('Canvas Routes (spec-008)', () => {
       });
 
       expect(res.status).toBe(201);
-      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/agents', expect.any(Object));
+      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/agents', expect.any(Object), ctx);
     });
   });
 
@@ -191,7 +191,7 @@ describe('Canvas Routes (spec-008)', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockAdapter.request).toHaveBeenCalledWith('PUT', '/api/v1/agents/a1', expect.any(Object));
+      expect(mockAdapter.request).toHaveBeenCalledWith('PUT', '/api/v1/agents/a1', expect.any(Object), ctx);
     });
   });
 
@@ -239,6 +239,8 @@ describe('Canvas Routes (spec-008)', () => {
       expect(mockAdapter.request).toHaveBeenCalledWith(
         'GET',
         '/api/v1/agents/a1/components/c1/input-form',
+        undefined,
+        ctx,
       );
     });
   });
@@ -306,7 +308,7 @@ describe('Canvas Routes (spec-008)', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/a1/versions');
+      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/a1/versions', undefined, ctx);
     });
   });
 
@@ -320,7 +322,7 @@ describe('Canvas Routes (spec-008)', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/a1/versions/v1');
+      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/a1/versions/v1', undefined, ctx);
     });
   });
 

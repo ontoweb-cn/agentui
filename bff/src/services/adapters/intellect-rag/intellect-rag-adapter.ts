@@ -23,6 +23,7 @@ import type { AgentSummary, Session, SendMessageRequest } from '../../../types/d
 import type { StreamChunk, StreamIterable } from '../../../types/stream';
 import type { HarnessCapabilities, HarnessBackend } from '../../../types/harness';
 import type { BackendContext } from '../../../types/tenant';
+import { fetchWithRagToken } from '../../rag-fetch';
 import { parseCanvasWorkflowSSE } from './parse-canvas-workflow-sse';
 
 /**
@@ -135,11 +136,11 @@ export class IntellectRagAdapter implements IHarnessAdapter {
       model_id: req.modelId,
     };
 
-    const response = await fetch(url, {
+    const response = await fetchWithRagToken(url, {
       method: 'POST',
       headers: this.buildHeaders(_ctx),
       body: JSON.stringify(body),
-    });
+    }, { fallbackStaticToken: this.adminToken });
 
     if (!response.ok || !response.body) {
       const text = await response.text().catch(() => '');
@@ -165,10 +166,10 @@ export class IntellectRagAdapter implements IHarnessAdapter {
 
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/health`, {
+      const response = await fetchWithRagToken(`${this.baseUrl}/health`, {
         method: 'GET',
         headers: this.buildHeaders(),
-      });
+      }, { fallbackStaticToken: this.adminToken });
       return response.ok;
     } catch {
       return false;
@@ -193,11 +194,11 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     ctx?: BackendContext,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const response = await fetch(url, {
+    const response = await fetchWithRagToken(url, {
       method,
       headers: this.buildHeaders(ctx),
       body: body != null ? JSON.stringify(body) : undefined,
-    });
+    }, { fallbackStaticToken: this.adminToken });
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');
@@ -232,7 +233,8 @@ export class IntellectRagAdapter implements IHarnessAdapter {
   ): Promise<Response> {
     const url = `${this.baseUrl}${path}${req.query}`;
 
-    // 复制请求头,覆盖 Authorization 为 adapter 的 admin token
+    // 复制请求头,删除 host 与客户端可能注入的 X-Intellect-* / Authorization 头。
+    // Authorization 由 fetchWithRagToken 统一注入(动态 token 优先,降级到 adminToken)。
     const headers = new Headers(req.headers);
     headers.delete('host');
     // 安全(S1.1 修复):强制删除客户端可能注入的 X-Intellect-* 头,
@@ -241,9 +243,8 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     headers.delete('X-Intellect-User');
     headers.delete('X-Intellect-Team');
     headers.delete('X-Intellect-Project');
-    if (this.adminToken) {
-      headers.set('Authorization', `Bearer ${this.adminToken}`);
-    }
+    // 删除客户端 Authorization,统一由 fetchWithRagToken 注入(动态 token > adminToken)
+    headers.delete('Authorization');
     // D1.2 B: proxy 路径(canvas 上传/下载)也注入身份头,
     // 与 buildHeaders() 保持一致。
     if (ctx?.intellectUserId) {
@@ -256,32 +257,32 @@ export class IntellectRagAdapter implements IHarnessAdapter {
       headers.set('X-Intellect-Project', ctx.intellectProjectId);
     }
 
-    const fetchInit: Record<string, unknown> = {
+    // fetchWithRagToken 处理:token 注入(动态优先,降级 adminToken)+ 401 重试。
+    // bufferBody:false 保持原流式透传语义,避免大文件上传(如 100MB 附件)
+    // 被完整读入内存导致内存压力与敏感数据驻留。
+    // 代价:上传场景下 401 不重试(由调用方自行处理,或重发请求)。
+    return fetchWithRagToken(url, {
       method,
       headers,
       body: req.body ?? undefined,
-    };
-    // duplex 仅在 body 为 ReadableStream 时需要(Node fetch stream body 要求)
-    if (req.body) {
-      fetchInit.duplex = 'half';
-    }
-
-    const response = await fetch(url, fetchInit as RequestInit);
-
-    return response;
+    }, { fallbackStaticToken: this.adminToken, bufferBody: false });
   }
 
   // -----------------------------------------------------------------------
   // Private helpers
   // -----------------------------------------------------------------------
 
+  /**
+   * 构造请求头(Content-Type + X-Intellect-* 身份头)。
+   *
+   * 不注入 Authorization — 由 fetchWithRagToken 统一处理:
+   * 优先动态 token(ragTokenProvider),降级到 backend.adminToken(fallbackStaticToken)。
+   * 401 时自动重新登录重试(仅动态 token 场景)。
+   */
   private buildHeaders(ctx?: BackendContext): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    if (this.adminToken) {
-      headers['Authorization'] = `Bearer ${this.adminToken}`;
-    }
     // BFF-P0-1: 注入解析后的 member_id 为 X-Intellect-User header。
     // 让 intellect-rag-app 在 KB/Chunk 创建时设置正确的 owner_user_id,
     // 替代之前的 current_user.id (RAG UUID) 回退。

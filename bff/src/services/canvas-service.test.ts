@@ -65,7 +65,7 @@ describe('CanvasService', () => {
 
       const result = await service.listCanvas(ctx);
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents');
+      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents', undefined, ctx);
       expect(result).toEqual(agents);
     });
   });
@@ -77,7 +77,7 @@ describe('CanvasService', () => {
 
       const result = await service.getCanvas(ctx, 'a1');
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/a1');
+      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/a1', undefined, ctx);
       expect(result).toEqual(agent);
     });
   });
@@ -90,7 +90,7 @@ describe('CanvasService', () => {
 
       const result = await service.createCanvas(ctx, body);
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/agents', body);
+      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/agents', body, ctx);
       expect(result).toEqual(created);
     });
   });
@@ -103,7 +103,7 @@ describe('CanvasService', () => {
 
       const result = await service.saveCanvas(ctx, 'a1', body);
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('PUT', '/api/v1/agents/a1', body);
+      expect(mockAdapter.request).toHaveBeenCalledWith('PUT', '/api/v1/agents/a1', body, ctx);
       expect(result).toEqual(saved);
     });
   });
@@ -114,7 +114,7 @@ describe('CanvasService', () => {
 
       await service.deleteCanvas(ctx, 'a1');
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('DELETE', '/api/v1/agents/a1');
+      expect(mockAdapter.request).toHaveBeenCalledWith('DELETE', '/api/v1/agents/a1', undefined, ctx);
     });
   });
 
@@ -124,7 +124,7 @@ describe('CanvasService', () => {
 
       await service.resetCanvas(ctx, 'a1');
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/agents/a1/reset');
+      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/agents/a1/reset', undefined, ctx);
     });
   });
 
@@ -139,7 +139,7 @@ describe('CanvasService', () => {
 
       const result = await service.listTemplates(ctx);
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/templates');
+      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/templates', undefined, ctx);
       expect(result).toEqual(templates);
     });
   });
@@ -151,7 +151,7 @@ describe('CanvasService', () => {
 
       const result = await service.listTags(ctx);
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/tags');
+      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/tags', undefined, ctx);
       expect(result).toEqual(tags);
     });
   });
@@ -163,7 +163,7 @@ describe('CanvasService', () => {
 
       await service.updateTags(ctx, 'a1', body);
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('PUT', '/api/v1/agents/a1/tags', body);
+      expect(mockAdapter.request).toHaveBeenCalledWith('PUT', '/api/v1/agents/a1/tags', body, ctx);
     });
   });
 
@@ -178,7 +178,7 @@ describe('CanvasService', () => {
 
       const result = await service.listVersions(ctx, 'a1');
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/a1/versions');
+      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/a1/versions', undefined, ctx);
       expect(result).toEqual(versions);
     });
   });
@@ -190,7 +190,7 @@ describe('CanvasService', () => {
 
       const result = await service.getVersion(ctx, 'a1', 'v1');
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/a1/versions/v1');
+      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/a1/versions/v1', undefined, ctx);
       expect(result).toEqual(version);
     });
   });
@@ -208,6 +208,8 @@ describe('CanvasService', () => {
       expect(mockAdapter.request).toHaveBeenCalledWith(
         'GET',
         '/api/v1/agents/a1/components/c1/input-form',
+        undefined,
+        ctx,
       );
     });
   });
@@ -223,6 +225,7 @@ describe('CanvasService', () => {
         'POST',
         '/api/v1/agents/a1/components/c1/debug',
         body,
+        ctx,
       );
     });
   });
@@ -237,7 +240,7 @@ describe('CanvasService', () => {
 
       await service.cancelTask(ctx, 'task-123');
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/tasks/task-123/cancel');
+      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/tasks/task-123/cancel', undefined, ctx);
     });
   });
 
@@ -252,6 +255,7 @@ describe('CanvasService', () => {
         'POST',
         '/api/v1/agents/a1/webhook/test',
         body,
+        ctx,
       );
     });
   });

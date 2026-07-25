@@ -21,7 +21,8 @@ import type { BackendStore, HarnessStore } from '../types';
 import { getAuthSession } from '../middleware/auth-session';
 
 interface MemberInfoResponse {
-  member_id: string;
+  // intellect-team /api/members/me 返回 id(不是 member_id)
+  id: string;
   role?: string;
   team_id?: string;
 }
@@ -92,10 +93,10 @@ export async function resolveMemberInfo(
     return undefined;
   }
 
-  // 3. 校验 member_id 非空
-  if (!data.member_id || typeof data.member_id !== 'string') {
+  // 3. 校验 id 非空(intellect-team /api/members/me 返回 id 字段)
+  if (!data.id || typeof data.id !== 'string') {
     console.error(
-      '[member-id-resolver] intellect-team /me returned invalid response: missing or invalid member_id',
+      '[member-id-resolver] intellect-team /me returned invalid response: missing or invalid id',
       data,
     );
     return undefined;
@@ -103,9 +104,9 @@ export async function resolveMemberInfo(
 
   // 4. 写入缓存(role 缺失时兜底为 'member')
   const role = data.role || 'member';
-  memberIdCache.set(backendId, token, data.member_id, role);
+  memberIdCache.set(backendId, token, data.id, role);
 
-  return { memberId: data.member_id, role };
+  return { memberId: data.id, role };
 }
 
 /**

@@ -37,20 +37,25 @@ const OAUTH_STATE_COOKIE_MAX_AGE = 600;
 // ---------------------------------------------------------------------------
 
 interface MemberLoginResponse {
-  member_id: string;
-  display_name: string;
-  role: string;
-  email?: string | null;
+  // intellect-team /api/members/login 返回嵌套 member 对象
+  // (不是扁平的 member_id/display_name/role)
   token: string;
-  permissions: string[];
+  member: {
+    id: string;
+    display_name: string;
+    enabled: number;
+    role: string;
+  };
+  email?: string | null;
 }
 
 interface MemberInfoResponse {
-  member_id: string;
+  // intellect-team /api/members/me 返回扁平字段,id 即 member id
+  id: string;
   display_name: string;
   role: string;
-  email?: string;
-  permissions: string[];
+  enabled?: number;
+  email?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,14 +64,6 @@ interface MemberInfoResponse {
 
 interface RagLoginResponse {
   access_token?: string;
-  email?: string;
-  nickname?: string;
-  avatar?: string;
-  role?: string;
-}
-
-interface RagUserInfoResponse {
-  id?: string;
   email?: string;
   nickname?: string;
   avatar?: string;
@@ -239,13 +236,13 @@ authRoutes.post('/auth/login', async (c) => {
     });
 
     // 返回不含 token 的 body(token 只在 cookie)
-    // intellect-team /api/members/login 响应已包含 email 字段(P1 改进),
-    // 透传给前端,减少后续 /auth/me probe 请求。
+    // intellect-team /api/members/login 响应格式:{token, member:{id,...}, email}
+    // 扁平化为前端期望的 {member_id, display_name, role, email} 结构。
     return c.json(
       ok({
-        member_id: data.member_id,
-        display_name: data.display_name,
-        role: data.role,
+        member_id: data.member?.id,
+        display_name: data.member?.display_name,
+        role: data.member?.role,
         email: data.email ?? null,
       }),
     );
@@ -375,9 +372,11 @@ authRoutes.get('/auth/me', async (c) => {
   }
 
   const data = (await resp.json()) as MemberInfoResponse;
+  // intellect-team /api/members/me 返回 {id, display_name, role, email}
+  // 映射为前端期望的 {member_id, display_name, role, email}
   return c.json(
     ok({
-      member_id: data.member_id,
+      member_id: data.id,
       display_name: data.display_name,
       role: data.role,
       email: data.email,

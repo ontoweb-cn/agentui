@@ -6,7 +6,6 @@ import { authMiddleware } from './middleware/auth';
 import { backendContextMiddleware } from './middleware/backend-context';
 import { errorHandler } from './middleware/error';
 import { adminRoutes } from './routes/admin';
-import { agentRoutes } from './routes/agent';
 import { authRoutes } from './routes/auth';
 import { bffAgentRoutes } from './routes/bff-agents';
 import { capabilitiesRoutes } from './routes/capabilities';
@@ -93,7 +92,6 @@ app.route('/health', healthRoutes);
 
 // Auth-protected routes
 app.use('/api/*', authMiddleware);
-app.route('/api/agent', agentRoutes);
 app.route('/api/session', sessionRoutes);
 // Admin routes (BFF-owned: whitelist, roles, resources — migrated from
 // Intellect RAG Admin stubs/missing routes). Strongly-coupled admin features

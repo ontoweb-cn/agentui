@@ -13,6 +13,7 @@ import {
   useFetchUserInfo,
   useListTenant,
 } from '@/hooks/use-user-setting-request';
+import type { IUserInfo } from '@/interfaces/database/user-setting';
 import { cn } from '@/lib/utils';
 import { TenantRole } from '@/pages/user-setting/constants';
 import { Routes } from '@/routes';
@@ -33,9 +34,11 @@ export function Header({
 
   const changeLanguage = useChangeLanguage();
 
-  const {
-    data: { language = 'en', avatar, nickname },
-  } = useFetchUserInfo();
+  // 防御性解构:useFetchUserInfo 虽然 initialData:{} 保证 data 非空,
+  // 但在极端时序(如 query 被 gcTime:0 回收后重置)下可能为 undefined,
+  // 此处给 data 默认值避免解构报错 "Cannot read properties of undefined"
+  const { data: userInfo = {} as IUserInfo } = useFetchUserInfo();
+  const { language = 'en', avatar, nickname } = userInfo;
 
   const { data: tenantData } = useListTenant();
   const hasNotification = useMemo(

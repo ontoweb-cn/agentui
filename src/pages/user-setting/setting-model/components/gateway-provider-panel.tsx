@@ -10,19 +10,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { IntellectTooltip } from '@/components/ui/tooltip';
 import {
-  IntellectLlmAdapter,
-  Provider,
-} from '@/../bff/src/services/adapters/intellect-llm/intellect-llm-adapter';
+  gatewayAdmin,
+  type Provider,
+} from '@/services/gateway-admin';
 import { cn } from '@/lib/utils';
 import { CheckCircle, Key, Plus, RefreshCw, Trash2, XCircle } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-interface GatewayProviderPanelProps {
-  adapter: IntellectLlmAdapter;
-}
-
-export function GatewayProviderPanel({ adapter }: GatewayProviderPanelProps) {
+export function GatewayProviderPanel() {
   const { t } = useTranslation();
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(false);
@@ -36,14 +32,14 @@ export function GatewayProviderPanel({ adapter }: GatewayProviderPanelProps) {
     setLoading(true);
     setError(null);
     try {
-      const data = await adapter.listProviders();
+      const data = await gatewayAdmin.listProviders();
       setProviders(data.providers);
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [adapter]);
+  }, []);
 
   useEffect(() => {
     loadProviders();
@@ -52,7 +48,7 @@ export function GatewayProviderPanel({ adapter }: GatewayProviderPanelProps) {
   const handleAddProvider = async () => {
     if (!newProvider.id) return;
     try {
-      await adapter.createProvider({
+      await gatewayAdmin.createProvider({
         id: newProvider.id,
         base_url: newProvider.base_url || undefined,
         default_model: newProvider.default_model || undefined,
@@ -67,7 +63,7 @@ export function GatewayProviderPanel({ adapter }: GatewayProviderPanelProps) {
 
   const handleDeleteProvider = async (id: string) => {
     try {
-      await adapter.deleteProvider(id);
+      await gatewayAdmin.deleteProvider(id);
       await loadProviders();
     } catch (e) {
       setError(String(e));
@@ -78,7 +74,7 @@ export function GatewayProviderPanel({ adapter }: GatewayProviderPanelProps) {
     const key = keyInputs[providerId];
     if (!key) return;
     try {
-      await adapter.setKey(providerId, key);
+      await gatewayAdmin.setKey(providerId, key);
       setKeyInputs(prev => ({ ...prev, [providerId]: '' }));
       await loadProviders(); // refresh to show updated key status
     } catch (e) {
@@ -88,16 +84,16 @@ export function GatewayProviderPanel({ adapter }: GatewayProviderPanelProps) {
 
   const handleVerify = async (providerId: string) => {
     try {
-      const result = await adapter.verifyConnection(providerId);
+      const result = await gatewayAdmin.verifyConnection(providerId);
       setVerifyStatus(prev => ({ ...prev, [providerId]: result.status }));
-    } catch (e) {
+    } catch {
       setVerifyStatus(prev => ({ ...prev, [providerId]: 'unknown' }));
     }
   };
 
   const getKeyHealth = async () => {
     try {
-      const health = await adapter.keyHealthSummary();
+      const health = await gatewayAdmin.keyHealthSummary();
       alert(
         `Keys: ${health.total_keys} total, ${health.healthy} healthy, ${health.exhausted} exhausted, ${health.dead} dead`,
       );

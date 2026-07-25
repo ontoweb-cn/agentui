@@ -175,11 +175,14 @@ describe('auth 路由 (P4b US1)', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          member_id: 'm-001',
-          display_name: 'Alice',
-          role: 'member',
           token: 'imt_abc123',
-          permissions: ['chat', 'read'],
+          member: {
+            id: 'm-001',
+            display_name: 'Alice',
+            enabled: 1,
+            role: 'member',
+          },
+          email: null,
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),
@@ -229,11 +232,14 @@ describe('auth 路由 (P4b US1)', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          member_id: 'm-002',
-          display_name: 'Bob',
-          role: 'member',
           token: 'imt_xyz',
-          permissions: [],
+          member: {
+            id: 'm-002',
+            display_name: 'Bob',
+            enabled: 1,
+            role: 'member',
+          },
+          email: null,
         }),
         { status: 200 },
       ),
@@ -443,11 +449,11 @@ describe('auth 路由 (P4b US1)', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          member_id: 'm-001',
+          id: 'm-001',
           display_name: 'Alice',
           role: 'member',
+          enabled: 1,
           email: 'alice@enterprise.com',
-          permissions: ['chat'],
         }),
         { status: 200 },
       ),

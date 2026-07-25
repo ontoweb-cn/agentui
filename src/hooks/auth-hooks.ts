@@ -120,16 +120,50 @@ export const useAuth = () => {
   // T006:企业版 cookie 探测。探测成功会写入 localStorage 标记,
   // probe.data 变化触发下方 useEffect 重新计算 isLogin。
   const probe = useEnterpriseCookieProbe();
+  // authMode 加载状态:加载中时 isLogin 保持 null,避免页面渲染触发 API 请求
+  // 与 401 拦截器形成竞态跳转。
+  const { authMode, loading: authModeLoading } = useAuthMode();
   const [isLogin, setIsLogin] = useState<Nullable<boolean>>(null);
 
   useEffect(() => {
-    // P2 Cookie 模式:企业版 token 在 HttpOnly cookie 中,前端 JS 不可读。
-    // 通过 localStorage authMode 标记判断登录态,真实有效性由后续 /auth/me 请求验证。
-    // 401 拦截器调用 removeAll 会清除 authMode 标记,自动跳登录页。
-    const isEnterprise =
-      localStorage.getItem(AuthMode) === 'intellect-enterprise';
-    setIsLogin(!!authorizationUtil.getAuthorization() || !!auth || isEnterprise);
-  }, [auth, probe.data]);
+    const hasAuthorization = !!authorizationUtil.getAuthorization();
+    const hasMarker = localStorage.getItem(AuthMode) === 'intellect-enterprise';
+
+    // 1. 已有 Authorization(社区版 token)或 OAuth callback auth,直接登录
+    if (hasAuthorization || auth) {
+      setIsLogin(true);
+      return;
+    }
+
+    // 2. 已有企业版 localStorage 标记,视为登录(cookie 真实有效性由后续请求验证)
+    if (hasMarker) {
+      setIsLogin(true);
+      return;
+    }
+
+    // 3. authMode 还在加载中,保持 null 等待(避免竞态:此时无法判断
+    //    是否需要启用 probe,提前返回 false 会导致页面渲染触发 401 跳转)
+    if (authModeLoading) {
+      setIsLogin(null);
+      return;
+    }
+
+    // 4. 社区版模式,无 Authorization,未登录
+    if (authMode !== 'intellect-enterprise') {
+      setIsLogin(false);
+      return;
+    }
+
+    // 5. 企业版 cookie 模式:probe 进行中保持 null,探测完成按结果设置
+    //    probe.isLoading=true 时 probe.data===undefined,保持 null 等待
+    if (probe.isLoading && probe.data === undefined) {
+      setIsLogin(null);
+      return;
+    }
+
+    // 6. 企业版探测完成,根据结果设置
+    setIsLogin(probe.data === true);
+  }, [auth, probe.data, probe.isLoading, authMode, authModeLoading]);
 
   return { isLogin };
 };

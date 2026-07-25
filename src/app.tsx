@@ -40,19 +40,26 @@ dayjs.extend(localeData);
 dayjs.extend(weekOfYear);
 dayjs.extend(weekYear);
 
-if (process.env.NODE_ENV === 'development') {
-  import('@welldone-software/why-did-you-render').then(
-    (whyDidYouRenderModule) => {
-      const whyDidYouRender = whyDidYouRenderModule.default;
-      whyDidYouRender(React, {
-        trackAllPureComponents: true,
-        trackExtraHooks: [],
-        logOnDifferentValues: false,
-        exclude: [/^RouterProvider$/],
-      });
-    },
-  );
-}
+// why-did-you-render 8.0.3 monkey-patch React.useCallback 后,
+// 与 React Router 7 的 useNavigateStable 内部 useCallback 调用不兼容,
+// 导致 areHookInputsEqual 收到 undefined deps,抛出
+// "Cannot read properties of undefined (reading 'length')" 错误,
+// 并触发 AuthWrapper 渲染期错误边界兜底。彻底禁用该开发工具
+// 以避免破坏 React Router 7 的 hook 调用链。
+// 如需启用,需先升级 why-did-you-render 至支持 React Router 7 的版本。
+// if (process.env.NODE_ENV === 'development') {
+//   import('@welldone-software/why-did-you-render').then(
+//     (whyDidYouRenderModule) => {
+//       const whyDidYouRender = whyDidYouRenderModule.default;
+//       whyDidYouRender(React, {
+//         trackAllPureComponents: true,
+//         trackExtraHooks: [],
+//         logOnDifferentValues: false,
+//         exclude: [/^RouterProvider$/],
+//       });
+//     },
+//   );
+// }
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -102,7 +109,6 @@ const RouterProviderWrapper: React.FC<{ router: typeof routers }> = ({
 }) => {
   return <RouterProvider router={router}></RouterProvider>;
 };
-RouterProviderWrapper.whyDidYouRender = false;
 
 export default function AppContainer() {
   return (

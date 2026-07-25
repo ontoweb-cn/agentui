@@ -55,53 +55,41 @@ describe('backendContextMiddleware', () => {
     });
   });
 
-  it('缺失 X-Backend-Id 返回 400,不调用 next', async () => {
+  it('缺失 X-Backend-Id 降级使用默认值 default 并调用 next(P1 兼容)', async () => {
     const ctx = createMockContext({
       'X-User-Id': 'user-001',
     });
     const next = vi.fn().mockResolvedValue(undefined);
 
-    const result = await backendContextMiddleware(ctx as never, next);
+    await backendContextMiddleware(ctx as never, next);
 
-    expect(next).not.toHaveBeenCalled();
-    expect(result).toEqual({
-      body: expect.objectContaining({
-        code: 400,
-        message: expect.stringContaining('X-Backend-Id'),
-      }),
-      status: 400,
-    });
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(ctx.storedContext?.backendId).toBe('default');
+    expect(ctx.storedContext?.userId).toBe('user-001');
   });
 
-  it('缺失 X-User-Id 返回 400', async () => {
+  it('缺失 X-User-Id 降级使用默认值 bff-default 并调用 next(P1 兼容)', async () => {
     const ctx = createMockContext({
       'X-Backend-Id': 'tenant-001',
     });
     const next = vi.fn().mockResolvedValue(undefined);
 
-    const result = await backendContextMiddleware(ctx as never, next);
+    await backendContextMiddleware(ctx as never, next);
 
-    expect(next).not.toHaveBeenCalled();
-    expect(result).toEqual({
-      body: expect.objectContaining({
-        code: 400,
-        message: expect.stringContaining('X-User-Id'),
-      }),
-      status: 400,
-    });
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(ctx.storedContext?.backendId).toBe('tenant-001');
+    expect(ctx.storedContext?.userId).toBe('bff-default');
   });
 
-  it('两个 header 都缺失返回 400', async () => {
+  it('两个 header 都缺失降级使用默认值并调用 next(P1 兼容)', async () => {
     const ctx = createMockContext({});
     const next = vi.fn().mockResolvedValue(undefined);
 
-    const result = await backendContextMiddleware(ctx as never, next);
+    await backendContextMiddleware(ctx as never, next);
 
-    expect(next).not.toHaveBeenCalled();
-    expect(result).toEqual({
-      body: expect.objectContaining({ code: 400 }),
-      status: 400,
-    });
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(ctx.storedContext?.backendId).toBe('default');
+    expect(ctx.storedContext?.userId).toBe('bff-default');
   });
 
   it('P3:store 无 BffTenant 绑定时不注入 intellectTeamId(单租户场景兼容)', async () => {

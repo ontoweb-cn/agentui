@@ -17,9 +17,12 @@ export const llmProxyRoutes = new Hono();
 
 // 匹配 LLM 专用路径,转发到 intellect-team :8642
 // 路径前缀 /proxy/v1 映射到 intellect-team /v1
+// /proxy/v1/providers/* 覆盖 providers CRUD + key + verify + models
+// /proxy/v1/health/keys 覆盖 key 健康摘要(GatewayProviderPanel 使用)
 const llmPaths = [
   '/proxy/v1/providers',
   '/proxy/v1/providers/*',
+  '/proxy/v1/health/keys',
 ];
 
 for (const p of llmPaths) {
@@ -78,9 +81,13 @@ for (const p of llmPaths) {
       }
       // intellect-team Rust gateway 返回 {providers:[...], models:[...]} 等扁平对象，
       // 但前端 hooks 期望 data 直接是数组（与 intellect-rag {code:0,data:[...]} 对齐）。
-      // 对 GET 列表类端点，按路径提取公认 key:路径含 /providers → providers, 含 /models → models。
+      // 仅对列表端点提取数组(避免 /health/keys 等含 providers 字段的非列表响应被误提取)。
       let data: unknown = upstreamData;
-      if (method === 'GET' && typeof upstreamData === 'object' && upstreamData !== null) {
+      const isListEndpoint =
+        method === 'GET' &&
+        (upstreamPath === '/v1/admin/providers' ||
+          upstreamPath.endsWith('/models'));
+      if (isListEndpoint && typeof upstreamData === 'object' && upstreamData !== null) {
         for (const key of ['providers', 'models']) {
           if (Array.isArray((upstreamData as Record<string, unknown>)[key])) {
             data = (upstreamData as Record<string, unknown>)[key];
@@ -93,7 +100,7 @@ for (const p of llmPaths) {
       const elapsed = Date.now() - start;
       console.error(
         `[llm-proxy] ERROR ${method} ${upstreamPath} → ${url} - ${(err as Error).message} ` +
-        `(req ${c.req.path})`,
+        `(${elapsed}ms, req ${c.req.path})`,
       );
       return c.json(
         {
