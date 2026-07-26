@@ -52,6 +52,13 @@ export interface FetchWithRagTokenOptions {
    * 设为 false 时仅适用于 GET/HEAD 等无 body 请求,或调用方明确不需要重试的场景。
    */
   bufferBody?: boolean;
+  /**
+   * 用户会话 token (imt_ 前缀,来自 cookie)。
+   * 优先于动态 admin token 和静态 token,实现真实身份透传。
+   * 仅企业版有值;RAG 版为 undefined(走 dynamic/static fallback)。
+   * 用此 token 时 401 不重试(会话 token 过期由前端拦截器处理登出)。
+   */
+  sessionToken?: string;
 }
 
 /**
@@ -80,12 +87,21 @@ export async function fetchWithRagToken(
   const headers = new Headers(init.headers);
   headers.delete('host');
 
-  // token 优先级:显式 > 动态 > 静态
+  // token 优先级:显式 > 会话 > 动态 > 静态
+  // - explicit: 调用方显式设置 Authorization,不覆盖
+  // - session: 用户会话 token (imt_*),优先于 admin JWT 实现真实身份透传
+  // - dynamic: ragTokenProvider 动态登录的 admin JWT
+  // - static: env var HARNESS_INTELLECT_RAG_ADMIN_TOKEN
   // 仅当调用方未显式设置 Authorization 时才注入
-  let tokenSource: 'explicit' | 'dynamic' | 'static' | 'none' = 'none';
+  let tokenSource: 'explicit' | 'session' | 'dynamic' | 'static' | 'none' = 'none';
   const existingAuth = headers.get('Authorization');
   if (existingAuth) {
     tokenSource = 'explicit';
+  } else if (options?.sessionToken) {
+    // 方案 B: 优先用用户会话 token (imt_*),让 intellect-rag 走 imt_ 路径
+    // current_user.id == member_id,消除双 ID 体系
+    headers.set('Authorization', `Bearer ${options.sessionToken}`);
+    tokenSource = 'session';
   } else {
     const dynamicToken = await resolveRagToken();
     if (dynamicToken) {

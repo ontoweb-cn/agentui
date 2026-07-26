@@ -145,6 +145,64 @@ describe('rag-fetch', () => {
       expect(init.headers.get('Authorization')).toBe('Bearer header-explicit');
       expect(mockLogin).not.toHaveBeenCalled();
     });
+
+    // 方案 B: sessionToken (imt_*) 优先级测试
+    it('sessionToken 优先于动态 admin JWT token', async () => {
+      mockLogin.mockResolvedValue('Bearer dynamic-jwt');
+      mockFetch.mockResolvedValueOnce(makeResponse(200));
+
+      await fetchWithRagToken('http://up/api/v1/agents', {
+        method: 'GET',
+        headers: {},
+      }, { sessionToken: 'imt_user_session_token' });
+
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers.get('Authorization')).toBe('Bearer imt_user_session_token');
+      // sessionToken 优先,不调用 login
+      expect(mockLogin).not.toHaveBeenCalled();
+    });
+
+    it('sessionToken 优先于 fallbackStaticToken', async () => {
+      mockLogin.mockRejectedValue(new Error('not configured'));
+      mockFetch.mockResolvedValueOnce(makeResponse(200));
+
+      await fetchWithRagToken('http://up/api/v1/agents', {
+        method: 'GET',
+        headers: {},
+      }, {
+        fallbackStaticToken: 'static-admin-token',
+        sessionToken: 'imt_user_session_token',
+      });
+
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers.get('Authorization')).toBe('Bearer imt_user_session_token');
+    });
+
+    it('显式 Authorization 仍优先于 sessionToken', async () => {
+      mockFetch.mockResolvedValueOnce(makeResponse(200));
+
+      await fetchWithRagToken('http://up/api/v1/agents', {
+        method: 'GET',
+        headers: { Authorization: 'Bearer explicit-token' },
+      }, { sessionToken: 'imt_user_session_token' });
+
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers.get('Authorization')).toBe('Bearer explicit-token');
+      expect(mockLogin).not.toHaveBeenCalled();
+    });
+
+    it('sessionToken 为空时降级到动态 token', async () => {
+      mockLogin.mockResolvedValue('Bearer dynamic-jwt');
+      mockFetch.mockResolvedValueOnce(makeResponse(200));
+
+      await fetchWithRagToken('http://up/api/v1/agents', {
+        method: 'GET',
+        headers: {},
+      }, { sessionToken: undefined });
+
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers.get('Authorization')).toBe('Bearer dynamic-jwt');
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -250,6 +308,21 @@ describe('rag-fetch', () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockInvalidate).not.toHaveBeenCalled();
+      expect(result.status).toBe(401);
+    });
+
+    // 方案 B: sessionToken 场景下 401 不重试(会话过期由前端拦截器处理登出)
+    it('sessionToken 场景下 401 不重试(会话过期由前端处理)', async () => {
+      mockFetch.mockResolvedValueOnce(makeResponse(401, 'Unauthorized'));
+
+      const result = await fetchWithRagToken('http://up/api/v1/agents', {
+        method: 'GET',
+        headers: {},
+      }, { sessionToken: 'imt_user_session_token' });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockInvalidate).not.toHaveBeenCalled();
+      expect(mockLogin).not.toHaveBeenCalled();
       expect(result.status).toBe(401);
     });
   });

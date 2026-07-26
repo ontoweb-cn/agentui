@@ -22,6 +22,7 @@ import { JSONFileHarnessStore } from './services/harness-store';
 import { JSONFileBackendStore } from './services/backend-store';
 import { AdapterRegistry } from './services/adapter-registry';
 import { CanvasService } from './services/canvas-service';
+import { validateTenantConfigs } from './services/tenant-validator';
 import { IntellectRagAdapter } from './services/adapters/intellect-rag/intellect-rag-adapter';
 import { IntellectEnterpriseAdapter } from './services/adapters/intellect-enterprise/intellect-enterprise-adapter';
 import { canvasRoutes } from './routes/canvas';
@@ -196,6 +197,28 @@ harnessStore.load()
     console.log(
       `[BFF] Stores loaded: ${harnessStore.list().length} backend(s), ${backendStore.listBackends().length} tenant(s)`,
     );
+
+    // 改进 1 (P0):启动时校验 intellectTenantId 配置一致性。
+    // 调用 intellect-team GET /api/tenant/info (改进 6 新增公开端点),
+    // 比对 HarnessBackend.intellectTenantId 与实际 INTELLECT_TENANT_ID env var。
+    // 不一致 → fail-fast (process.exit(1)),防止 TEAM/RAG 租户数据分裂。
+    const ok = await validateTenantConfigs(harnessStore);
+    if (!ok) {
+      console.error('[BFF] FATAL: Tenant config validation failed, exiting.');
+      process.exit(1);
+    }
+
+    // 方案 3 (P2):启动后台定期校验 tenant 配置(60s 周期)。
+    // 与启动校验不同:后台校验不 fail-fast,仅更新 tenant-status 状态,
+    // 由 /health/readiness 探针反映,K8s 摘除流量而非杀进程。
+    // 立即执行一次,再 setInterval。
+    const { validateTenantConfigsForStatus } = await import('./services/tenant-status-runner');
+    validateTenantConfigsForStatus(harnessStore).catch(() => {});
+    const tenantCheckTimer = setInterval(() => {
+      validateTenantConfigsForStatus(harnessStore).catch(() => {});
+    }, 60_000);
+    tenantCheckTimer.unref(); // 不阻塞进程退出
+
     // 预热 RAG token(后台异步,失败不阻塞 BFF 启动)
     const { ragTokenProvider } = await import('./services/rag-token-provider');
     ragTokenProvider.login().catch(() => {});

@@ -12,6 +12,7 @@
  */
 
 import type { BackendContext } from '../../../types/tenant';
+import { fetchTenantInfo } from '../../tenant-validator';
 
 // ---------------------------------------------------------------------------
 // 错误类型
@@ -41,21 +42,147 @@ export class IntellectBackendError extends Error {
   }
 }
 
+/**
+ * 方案 2 (P2):租户已被禁用或 tenant_id 不一致。
+ * errorHandler 转换为 403 响应。
+ */
+export class TenantDisabledError extends Error {
+  readonly status = 403;
+  constructor(tenantId: string, reason: string) {
+    super(`Tenant "${tenantId}" is not accessible: ${reason}`);
+    this.name = 'TenantDisabledError';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // HTTP 客户端
 // ---------------------------------------------------------------------------
 
 const REST_TIMEOUT_MS = 30_000;
+/** 方案 2:tenant 健康度缓存 TTL(30s),降低 P95 影响 */
+const TENANT_CACHE_TTL_MS = 30_000;
+/** P2-5:缓存条目上限,防止异常场景下内存无限增长(backend 数量有限,128 足够) */
+const TENANT_CACHE_MAX_ENTRIES = 128;
+
+interface TenantCacheEntry {
+  valid: boolean;
+  reason?: string;
+  expiresAt: number;
+}
 
 /**
  * intellect-team HTTP 客户端封装。
  * 统一注入鉴权头 + Team/Project 组织隔离头 + 错误转换。
+ *
+ * 方案 2 (P2):新增 per-request tenant 校验(带 TTL 缓存)。
+ * - 缓存 key:`${baseUrl}|${tenantId}`,避免多 backend 实例间共享
+ * - 缓存命中:O(1) 检查,不增加 P95
+ * - 缓存未命中:调 intellect-team /api/tenant/info,失败时降级放行
+ * - 租户被禁用 → 抛 TenantDisabledError,由 errorHandler 转 403
+ * - P2-5:缓存大小限制(128 条),超限时清理最早过期条目
  */
 export class IntellectEnterpriseHttpClient {
+  /** 方案 2:tenant 健康度缓存,实例级隔离 */
+  private readonly tenantCache = new Map<string, TenantCacheEntry>();
+
   constructor(
     private readonly baseUrl: string,
     private readonly apiServerKey: string,
   ) {}
+
+  /**
+   * 方案 2:校验 ctx.intellectTenantId 在 intellect-team 侧是否仍有效。
+   * - 缓存命中:直接返回/抛错
+   * - 缓存未命中:调 /api/tenant/info
+   * - endpoint 不可达:降级放行(与 tenant-validator.ts 行为一致)
+   */
+  private async ensureTenantValid(ctx: BackendContext): Promise<void> {
+    if (!ctx.intellectTenantId) return;
+
+    const cacheKey = `${this.baseUrl}|${ctx.intellectTenantId}`;
+    const now = Date.now();
+    const cached = this.tenantCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      if (!cached.valid) {
+        throw new TenantDisabledError(ctx.intellectTenantId, cached.reason ?? 'unknown');
+      }
+      return;
+    }
+
+    // 缓存未命中或已过期:调 intellect-team
+    const info = await fetchTenantInfo(this.baseUrl);
+    if (!info) {
+      // endpoint 不可达 → 降级放行(与 tenant-validator.ts:45 行为一致)
+      // 不写入缓存(避免短暂故障导致 30s 内持续拒绝)
+      return;
+    }
+
+    // tenant_id 不一致 → 拒绝
+    if (info.tenant_id && info.tenant_id !== ctx.intellectTenantId) {
+      this.setCacheEntry(cacheKey, {
+        valid: false,
+        reason: `configured="${ctx.intellectTenantId}" != actual="${info.tenant_id}"`,
+        expiresAt: now + TENANT_CACHE_TTL_MS,
+      });
+      throw new TenantDisabledError(ctx.intellectTenantId, `configured="${ctx.intellectTenantId}" != actual="${info.tenant_id}"`);
+    }
+
+    // tenant 被禁用 → 拒绝
+    if (info.enabled === false) {
+      this.setCacheEntry(cacheKey, {
+        valid: false,
+        reason: 'tenant is disabled (enabled=false)',
+        expiresAt: now + TENANT_CACHE_TTL_MS,
+      });
+      throw new TenantDisabledError(ctx.intellectTenantId, 'tenant is disabled (enabled=false)');
+    }
+
+    // 校验通过 → 写入缓存
+    this.setCacheEntry(cacheKey, {
+      valid: true,
+      expiresAt: now + TENANT_CACHE_TTL_MS,
+    });
+  }
+
+  /**
+   * P2-5:写入缓存条目,超限时清理最早过期条目。
+   * 策略:超过 MAX_ENTRIES 时,清理过期条目;若仍超限,清理 expiresAt 最小的条目(可能仍未过期)。
+   */
+  private setCacheEntry(key: string, entry: TenantCacheEntry): void {
+    // 容量检查:超限时先清理过期条目
+    if (this.tenantCache.size >= TENANT_CACHE_MAX_ENTRIES && !this.tenantCache.has(key)) {
+      const now = Date.now();
+      // 第一轮:清理已过期条目
+      for (const [k, v] of this.tenantCache) {
+        if (v.expiresAt <= now) {
+          this.tenantCache.delete(k);
+        }
+      }
+      // 第二轮:仍超限 → 清理 expiresAt 最小的条目(可能仍未过期)
+      if (this.tenantCache.size >= TENANT_CACHE_MAX_ENTRIES) {
+        let oldestKey: string | null = null;
+        let oldestExpiry = Infinity;
+        for (const [k, v] of this.tenantCache) {
+          if (v.expiresAt < oldestExpiry) {
+            oldestExpiry = v.expiresAt;
+            oldestKey = k;
+          }
+        }
+        if (oldestKey) {
+          this.tenantCache.delete(oldestKey);
+        }
+      }
+    }
+    this.tenantCache.set(key, entry);
+  }
+
+  /**
+   * 方案 2:清除 tenant 缓存。
+   * 由 AdapterRegistry.invalidate() 调用,管理操作后立即重新校验。
+   */
+  clearTenantCache(): void {
+    this.tenantCache.clear();
+  }
 
   /**
    * REST 请求(30s 超时)。
@@ -68,6 +195,9 @@ export class IntellectEnterpriseHttpClient {
     ctx: BackendContext,
     body?: unknown,
   ): Promise<T> {
+    // 方案 2:per-request tenant 校验(带 TTL 缓存)
+    await this.ensureTenantValid(ctx);
+
     const url = `${this.baseUrl}${path}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REST_TIMEOUT_MS);
@@ -127,6 +257,9 @@ export class IntellectEnterpriseHttpClient {
     ctx: BackendContext,
     body: unknown,
   ): Promise<ReadableStream<Uint8Array>> {
+    // 方案 2:per-request tenant 校验(带 TTL 缓存),覆盖 SSE 流式请求
+    await this.ensureTenantValid(ctx);
+
     const url = `${this.baseUrl}${path}`;
     const response = await fetch(url, {
       method: 'POST',

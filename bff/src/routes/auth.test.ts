@@ -287,6 +287,33 @@ describe('auth 路由 (P4b US1)', () => {
     expect(body.message).toContain('Invalid credentials');
   });
 
+  it('US1:企业版登录失败(429 brute-force 锁定)→ 429 + 透传上游 message', async () => {
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ error: 'too_many_attempts', message: 'Too many failed attempts. Try again later.' }),
+        { status: 429 },
+      ),
+    );
+
+    const resp = await app.request('/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Backend-Id': 'tenant-enterprise',
+      },
+      body: JSON.stringify({ login_name: 'alice', password: 'wrong' }),
+    });
+
+    expect(resp.status).toBe(429);
+    expect(resp.headers.get('set-cookie')).toBeNull();
+    const body = await resp.json();
+    expect(body.code).toBe(429);
+    expect(body.message).toContain('Too many failed attempts');
+  });
+
   it('US1:企业版登录 intellect-team 不可达 → 502', async () => {
     const backendStore = createMockBackendStore([enterpriseTenant]);
     const app = createApp(backendStore);

@@ -90,6 +90,15 @@ export interface HarnessBackendConfig {
   capabilities: HarnessCapabilities | LlmCapabilities;
   /** 是否作为新 Tenant 的默认主后端(可选) */
   defaultForTenant?: boolean;
+  /**
+   * Intellect 企业版实例级 Tenant ID（仅 type='intellect-enterprise' 需要）。
+   * 来源：intellect-team gateway 的 INTELLECT_TENANT_ID env var。
+   * BFF 注入到 X-Intellect-Tenant 头,让 intellect-rag 的 SubjectContext.tenant_id
+   * 正确解析(避免走 legacy current_user.id 回退导致 tenant 不一致)。
+   * 注意：与 BffTenant.intellectTenantId（实际是 team_id,命名遗留）不同,
+   * 这是实例级标识,单实例单 tenant。
+   */
+  intellectTenantId?: string;
   /** 备注(可选,如 intellect-llm 共享 endpoint 说明) */
   comment?: string;
 }

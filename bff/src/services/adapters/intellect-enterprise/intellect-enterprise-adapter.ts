@@ -66,6 +66,14 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
     this.capabilities = backend.capabilities as HarnessCapabilities;
   }
 
+  /**
+   * 方案 2 (P2):清除 tenant 健康度缓存。
+   * 由 AdapterRegistry.invalidate() 调用,管理操作后立即重新校验。
+   */
+  clearTenantCache(): void {
+    this.httpClient.clearTenantCache();
+  }
+
   // -----------------------------------------------------------------------
   // Agent methods (US1)
   // -----------------------------------------------------------------------

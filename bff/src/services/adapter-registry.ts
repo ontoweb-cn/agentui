@@ -28,6 +28,7 @@ import {
 } from './adapter-registry-errors';
 import type { HarnessAdapterFactory, IAdapterRegistry } from './adapter-registry-types';
 import { IntellectRagAdapter } from './adapters/intellect-rag/intellect-rag-adapter';
+import { IntellectEnterpriseAdapter } from './adapters/intellect-enterprise/intellect-enterprise-adapter';
 
 export class AdapterRegistry implements IAdapterRegistry {
   private readonly harnessStore: HarnessStore;
@@ -92,12 +93,26 @@ export class AdapterRegistry implements IAdapterRegistry {
    * 后端配置变更(CRUD)后调用,下次 getAdapterForBackend/getAdapterForBackend
    * 创建新实例(用最新 HarnessBackend 配置)。
    *
+   * 方案 2 (P2):同步清理 IntellectEnterpriseHttpClient 的 tenant 缓存,
+   * 确保管理操作后立即重新校验。
+   *
    * @param backendId 可选,不传清空整个缓存,传则只移除该条目
    */
   invalidate(backendId?: string): void {
     if (backendId === undefined) {
+      // 清空所有:遍历缓存,清理 enterprise adapter 的 tenant 缓存
+      for (const adapter of this.adapterCache.values()) {
+        if (adapter instanceof IntellectEnterpriseAdapter) {
+          adapter.clearTenantCache();
+        }
+      }
       this.adapterCache.clear();
     } else {
+      // 清单条:仅清理该 backendId 对应 adapter 的 tenant 缓存
+      const cached = this.adapterCache.get(backendId);
+      if (cached instanceof IntellectEnterpriseAdapter) {
+        cached.clearTenantCache();
+      }
       this.adapterCache.delete(backendId);
     }
   }

@@ -20,7 +20,7 @@
       "id": "intellect-enterprise-default",
       "name": "Intellect Enterprise (Default)",
       "type": "intellect-enterprise",
-      "endpoint": "http://localhost:8642",
+      "endpoint": "http://localhost:9091",
       "adminTokenEnvVar": "HARNESS_INTELLECT_ENTERPRISE_API_SERVER_KEY",
       "capabilities": {
         "canvas": false,
@@ -30,14 +30,15 @@
         "multiTenant": true,
         "modelManagement": false
       },
-      "defaultForTenant": false
+      "defaultForTenant": false,
+      "intellectTenantId": "default"
     },
     {
       "id": "intellect-llm-main",
       "name": "Intellect LLM Gateway (Phase 3)",
-      "comment": "Shares endpoint with intellect-enterprise (localhost:8642). Gateway serves both enterprise and LLM APIs on the same port. Distinguished by capabilities.",
+      "comment": "Shares endpoint with intellect-enterprise (localhost:9091, Rust gateway). Gateway serves both enterprise and LLM APIs on the same port. Distinguished by capabilities.",
       "type": "intellect-llm",
-      "endpoint": "http://localhost:8642",
+      "endpoint": "http://localhost:9091",
       "adminTokenEnvVar": "INTELLECT_LLM_API_KEY",
       "capabilities": {
         "chat": true,

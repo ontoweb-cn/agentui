@@ -2,10 +2,12 @@ import { Hono } from 'hono';
 import { proxy as proxyToUpstream, type ProxyRequest } from '../services/intellect-rag-client';
 import { streamResponse } from '../utils/response';
 import { resolveMemberIdFromContext } from '../services/member-id-resolver';
-import type { BackendStore } from '../types';
+import { getAuthSession } from '../middleware/auth-session';
+import type { BackendStore, HarnessStore } from '../types';
 
 interface ProxyVariables {
   backendStore: BackendStore;
+  harnessStore: HarnessStore;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,9 +67,27 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
   // proxy 路由未挂载 backendContextMiddleware,此处内联解析(与 backend-context.ts 同逻辑)。
   // getIntellectTeamId 已过滤缺省值 "0"(intellect-team 走全局默认上下文)。
   const backendStore = c.get('backendStore');
+  const harnessStore = c.get('harnessStore');
   const backendId = c.req.header('X-Backend-Id') || 'default';
   const intellectTeamId = backendStore?.getIntellectTeamId(backendId);
   const intellectProjectId = backendStore?.getIntellectProjectId(backendId);
+
+  // 方案 B: 从 HarnessBackend 读取 intellectTenantId (实例级 tenant_id)。
+  // 注入到 X-Intellect-Tenant header,让 intellect-rag 的 SubjectContext.tenant_id 正确解析。
+  let intellectTenantId: string | undefined;
+  if (backendStore && harnessStore) {
+    const bffTenant = backendStore.getBackend(backendId);
+    if (bffTenant) {
+      const harnessBackend = harnessStore.get(bffTenant.intellectBackendId);
+      if (harnessBackend?.intellectTenantId) {
+        intellectTenantId = harnessBackend.intellectTenantId;
+      }
+    }
+  }
+
+  // 方案 B: 从 AuthSession 提取会话 token (imt_*),优先于 admin JWT 传递给 intellect-rag。
+  const authSession = getAuthSession(c);
+  const sessionToken = authSession?.token;
 
   // 构造透传请求
   const proxyReq: ProxyRequest = {
@@ -78,6 +98,8 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
     intellectUserId,
     intellectTeamId,
     intellectProjectId,
+    intellectTenantId,
+    sessionToken,
   };
 
   let upstream: Response;

@@ -140,7 +140,7 @@ export class IntellectRagAdapter implements IHarnessAdapter {
       method: 'POST',
       headers: this.buildHeaders(_ctx),
       body: JSON.stringify(body),
-    }, { fallbackStaticToken: this.adminToken });
+    }, { fallbackStaticToken: this.adminToken, sessionToken: _ctx?.sessionToken });
 
     if (!response.ok || !response.body) {
       const text = await response.text().catch(() => '');
@@ -198,7 +198,7 @@ export class IntellectRagAdapter implements IHarnessAdapter {
       method,
       headers: this.buildHeaders(ctx),
       body: body != null ? JSON.stringify(body) : undefined,
-    }, { fallbackStaticToken: this.adminToken });
+    }, { fallbackStaticToken: this.adminToken, sessionToken: ctx?.sessionToken });
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');
@@ -243,6 +243,7 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     headers.delete('X-Intellect-User');
     headers.delete('X-Intellect-Team');
     headers.delete('X-Intellect-Project');
+    headers.delete('X-Intellect-Tenant');
     // 删除客户端 Authorization,统一由 fetchWithRagToken 注入(动态 token > adminToken)
     headers.delete('Authorization');
     // D1.2 B: proxy 路径(canvas 上传/下载)也注入身份头,
@@ -256,6 +257,9 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     if (ctx?.intellectProjectId) {
       headers.set('X-Intellect-Project', ctx.intellectProjectId);
     }
+    if (ctx?.intellectTenantId) {
+      headers.set('X-Intellect-Tenant', ctx.intellectTenantId);
+    }
 
     // fetchWithRagToken 处理:token 注入(动态优先,降级 adminToken)+ 401 重试。
     // bufferBody:false 保持原流式透传语义,避免大文件上传(如 100MB 附件)
@@ -265,7 +269,7 @@ export class IntellectRagAdapter implements IHarnessAdapter {
       method,
       headers,
       body: req.body ?? undefined,
-    }, { fallbackStaticToken: this.adminToken, bufferBody: false });
+    }, { fallbackStaticToken: this.adminToken, bufferBody: false, sessionToken: ctx?.sessionToken });
   }
 
   // -----------------------------------------------------------------------
@@ -300,6 +304,12 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     }
     if (ctx?.intellectProjectId) {
       headers['X-Intellect-Project'] = ctx.intellectProjectId;
+    }
+    // 方案 B: 注入实例级 tenant_id,让 intellect-rag 的 SubjectContext.tenant_id 正确解析。
+    // 优先级: X-Intellect-Tenant header > INTELLECT_TENANT_ID env > current_user.id (legacy)。
+    // 不注入时 intellect-rag 会走 legacy 回退,导致 tenant_membership 不一致。
+    if (ctx?.intellectTenantId) {
+      headers['X-Intellect-Tenant'] = ctx.intellectTenantId;
     }
     return headers;
   }

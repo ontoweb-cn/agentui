@@ -63,6 +63,19 @@ export const backendContextMiddleware: MiddlewareHandler = async (c, next) => {
     // member-id-resolver 不可用时静默跳过(intellect-rag 单租户场景)
   }
 
+  // 方案 B: 从 AuthSession 提取会话 token (imt_*),用于 intellect-rag imt_ 路径。
+  // 优先于 admin JWT 传递给 intellect-rag,实现真实身份透传。
+  // 仅企业版有值,RAG 版为 undefined(走 admin JWT fallback)。
+  try {
+    const { getAuthSession } = await import('./auth-session');
+    const session = getAuthSession(c);
+    if (session?.token) {
+      ctx.sessionToken = session.token;
+    }
+  } catch (_err) {
+    // AuthSession 中间件未挂载时静默跳过
+  }
+
   // P3:从 BackendStore 读取 BffTenant 绑定,注入企业版实例内 Team/Project 组织隔离字段(Principle V)。
   // store 注入由 index.ts 的 context middleware 完成;此处防御性获取。
   const backendStore = c.get('backendStore');
@@ -84,6 +97,20 @@ export const backendContextMiddleware: MiddlewareHandler = async (c, next) => {
     // 但此处不强制校验 team/project 依赖(intellect-team 侧校验),保持透传灵活性。
     if (bffTenant?.intellectProjectId) {
       ctx.intellectProjectId = bffTenant.intellectProjectId;
+    }
+  }
+
+  // 方案 B: 从 HarnessBackend 读取 intellectTenantId (实例级 tenant_id,非 team_id)。
+  // 注入到 X-Intellect-Tenant 头,让 intellect-rag 的 SubjectContext.tenant_id 正确解析。
+  // 与 BffTenant.intellectTenantId (实际是 team_id) 不同,这是 intellect-team 实例级标识。
+  const harnessStore = c.get('harnessStore');
+  if (backendStore && harnessStore) {
+    const bffTenant = backendStore.getBackend(backendId);
+    if (bffTenant) {
+      const harnessBackend = harnessStore.get(bffTenant.intellectBackendId);
+      if (harnessBackend?.intellectTenantId) {
+        ctx.intellectTenantId = harnessBackend.intellectTenantId;
+      }
     }
   }
 

@@ -40,6 +40,18 @@ export interface ProxyRequest {
    * 设置后注入 X-Intellect-Project header。
    */
   intellectProjectId?: string;
+  /**
+   * 方案 B: 实例级 Tenant ID (来自 HarnessBackend.intellectTenantId)。
+   * 注入到 X-Intellect-Tenant header,让 intellect-rag 的 SubjectContext.tenant_id
+   * 正确解析(避免走 legacy current_user.id 回退)。
+   * 与 intellectTeamId (实例内 Team 组织隔离) 不同,这是实例级标识。
+   */
+  intellectTenantId?: string;
+  /**
+   * 方案 B: 用户会话 token (imt_ 前缀,来自 cookie)。
+   * 优先于 admin JWT 传递给 intellect-rag,实现真实身份透传。
+   */
+  sessionToken?: string;
 }
 
 /**
@@ -61,9 +73,10 @@ export async function proxy(path: string, req: ProxyRequest): Promise<Response> 
   headers.delete('X-Intellect-User');
   headers.delete('X-Intellect-Team');
   headers.delete('X-Intellect-Project');
+  headers.delete('X-Intellect-Tenant');
   headers.delete('Authorization');
 
-  // BFF-P0-1 / D1.2 B: 注入服务端解析的 member_id / team_id / project_id
+  // BFF-P0-1 / D1.2 B / 方案 B: 注入服务端解析的 member_id / team_id / project_id / tenant_id
   // (intellect-rag-app 据此设置 KB ownership 字段,避免静默降级为 private)
   if (req.intellectUserId) {
     headers.set('X-Intellect-User', req.intellectUserId);
@@ -74,11 +87,14 @@ export async function proxy(path: string, req: ProxyRequest): Promise<Response> 
   if (req.intellectProjectId) {
     headers.set('X-Intellect-Project', req.intellectProjectId);
   }
+  if (req.intellectTenantId) {
+    headers.set('X-Intellect-Tenant', req.intellectTenantId);
+  }
 
-  // fetchWithRagToken 处理:token 注入(动态优先,降级 env var)+ 401 重试 + body 缓冲
+  // fetchWithRagToken 处理:token 注入(会话优先,降级动态/env var)+ 401 重试 + body 缓冲
   return fetchWithRagToken(url, {
     method: req.method,
     headers,
     body: req.body ?? undefined,
-  });
+  }, { sessionToken: req.sessionToken });
 }

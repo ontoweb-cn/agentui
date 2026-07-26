@@ -105,6 +105,37 @@ describe('IntellectRagAdapter', () => {
       expect(init.headers.get('X-Intellect-Project')).toBeNull();
     });
 
+    // 方案 B: intellectTenantId 注入测试
+    it('ctx.intellectTenantId 存在时注入 X-Intellect-Tenant 头', async () => {
+      mockFetch.mockResolvedValueOnce(makeJsonResponse([]));
+      const ctxWithTenant: BackendContext = {
+        ...ctx,
+        intellectTenantId: 'default',
+      };
+      await adapter.listAgents(ctxWithTenant);
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers.get('X-Intellect-Tenant')).toBe('default');
+    });
+
+    it('ctx.intellectTenantId 缺失时不注入 X-Intellect-Tenant 头', async () => {
+      mockFetch.mockResolvedValueOnce(makeJsonResponse([]));
+      await adapter.listAgents(ctx);
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers.get('X-Intellect-Tenant')).toBeNull();
+    });
+
+    it('ctx.sessionToken 存在时优先用 sessionToken 而非 adminToken', async () => {
+      mockFetch.mockResolvedValueOnce(makeJsonResponse([]));
+      const ctxWithSession: BackendContext = {
+        ...ctx,
+        sessionToken: 'imt_user_session_token',
+      };
+      await adapter.listAgents(ctxWithSession);
+      const [, init] = mockFetch.mock.calls[0];
+      // sessionToken 优先于 fallbackStaticToken(adminToken)
+      expect(init.headers.get('Authorization')).toBe('Bearer imt_user_session_token');
+    });
+
     it('上游 404 时抛错含 URL 与 status', async () => {
       mockFetch.mockResolvedValueOnce(makeJsonResponse({ message: 'not found' }, 404));
       await expect(adapter.listAgents(ctx)).rejects.toThrow(/404/);

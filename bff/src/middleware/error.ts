@@ -1,5 +1,6 @@
 import type { Context, Next } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { TenantDisabledError } from '../services/adapters/intellect-enterprise/http-client';
 
 export async function errorHandler(c: Context, next: Next) {
   try {
@@ -7,6 +8,14 @@ export async function errorHandler(c: Context, next: Next) {
   } catch (err) {
     const error = err as Error;
     console.error(`[BFF Error] ${error.message}`);
+
+    // 方案 2 (P2):租户被禁用或不一致 → 403
+    if (err instanceof TenantDisabledError) {
+      return c.json(
+        { code: 403, message: error.message },
+        403 as ContentfulStatusCode,
+      );
+    }
 
     // Intellect RAG API errors
     if (error.message.startsWith('Intellect RAG API error')) {

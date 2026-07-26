@@ -215,6 +215,11 @@ authRoutes.post('/auth/login', async (c) => {
     if (resp.status === 401) {
       return c.json(fail(401, 'Invalid credentials'), 401);
     }
+    if (resp.status === 429) {
+      // gateway brute-force 锁定:透传上游错误信息,避免前端误判为凭证错误
+      const body = await resp.json().catch(() => ({ message: 'Too many failed attempts. Try again later.' })) as { message?: string };
+      return c.json(fail(429, body.message ?? 'Too many failed attempts. Try again later.'), 429);
+    }
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
       console.error(`[auth] intellect-team login failed: ${resp.status}`, text);

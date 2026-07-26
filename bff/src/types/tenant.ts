@@ -126,6 +126,21 @@ export interface BackendContext {
    * Adapter 用此值注入 `X-Intellect-Session-Key` 头。
    */
   intellectSessionKey?: string;
+  /**
+   * Intellect 企业版实例级 Tenant ID（来自 HarnessBackend.intellectTenantId）。
+   * Adapter 注入 X-Intellect-Tenant 头,让 intellect-rag 的 SubjectContext.tenant_id
+   * 正确解析(优先级高于 env var 和 current_user.id 回退)。
+   * 这是实例级标识,与 intellectTeamId（实例内 Team 组织隔离）不同。
+   */
+  intellectTenantId?: string;
+  /**
+   * 用户会话 token（imt_ 前缀,来自 cookie,经 AuthSession 中间件提取）。
+   * 优先于 admin JWT 传递给 intellect-rag,实现真实身份透传。
+   * 仅企业版 (authMode=intellect-enterprise) 下有值,RAG 版为 undefined。
+   * 切换到 imt_ token 路径后, intellect-rag 的 current_user.id == member_id,
+   * 消除 admin JWT 路径下的双 ID 体系问题。
+   */
+  sessionToken?: string;
 }
 
 // ---------------------------------------------------------------------------

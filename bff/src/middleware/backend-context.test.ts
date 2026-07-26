@@ -15,6 +15,7 @@ interface MockContext {
 function createMockContext(
   headers: Record<string, string>,
   backendStore?: unknown,
+  harnessStore?: unknown,
 ): MockContext {
   // 模拟 Hono req.header() 大小写不敏感匹配
   const normalized: Record<string, string> = {};
@@ -28,7 +29,11 @@ function createMockContext(
     set: (_key, value) => {
       ctx.storedContext = value;
     },
-    get: (key: string) => (key === 'backendStore' ? backendStore : undefined),
+    get: (key: string) => {
+      if (key === 'backendStore') return backendStore;
+      if (key === 'harnessStore') return harnessStore;
+      return undefined;
+    },
     json: (body, status) => ({ body, status: status ?? 200 }),
   };
   return ctx;
@@ -237,5 +242,81 @@ describe('backendContextMiddleware', () => {
     // team_id="0" 不注入,但 project_id 仍注入(透传,intellect-team 侧决定是否拒绝)
     expect(ctx.storedContext?.intellectTeamId).toBeUndefined();
     expect(ctx.storedContext?.intellectProjectId).toBe('project-orphan');
+  });
+
+  // 方案 B: intellectTenantId (实例级 tenant_id) 和 sessionToken 注入测试
+  it('方案 B:HarnessBackend.intellectTenantId 存在时注入到 ctx.intellectTenantId', async () => {
+    const ctx = createMockContext(
+      {
+        'X-Backend-Id': 'tenant-enterprise',
+        'X-User-Id': 'user-001',
+      },
+      {
+        getBackend: (id: string) =>
+          id === 'tenant-enterprise'
+            ? { id, intellectBackendId: 'backend-enterprise-1' }
+            : undefined,
+      },
+      {
+        get: (id: string) =>
+          id === 'backend-enterprise-1'
+            ? { id, intellectTenantId: 'default' }
+            : undefined,
+      },
+    );
+    const next = vi.fn().mockResolvedValue(undefined);
+
+    await backendContextMiddleware(ctx as never, next);
+
+    // HarnessBackend.intellectTenantId 注入到 ctx.intellectTenantId (非 intellectTeamId)
+    expect(ctx.storedContext?.intellectTenantId).toBe('default');
+  });
+
+  it('方案 B:HarnessBackend 无 intellectTenantId 时不注入(向后兼容)', async () => {
+    const ctx = createMockContext(
+      {
+        'X-Backend-Id': 'tenant-enterprise',
+        'X-User-Id': 'user-001',
+      },
+      {
+        getBackend: (id: string) =>
+          id === 'tenant-enterprise'
+            ? { id, intellectBackendId: 'backend-enterprise-1' }
+            : undefined,
+      },
+      {
+        get: (id: string) =>
+          id === 'backend-enterprise-1'
+            ? { id }  // 无 intellectTenantId
+            : undefined,
+      },
+    );
+    const next = vi.fn().mockResolvedValue(undefined);
+
+    await backendContextMiddleware(ctx as never, next);
+
+    expect(ctx.storedContext?.intellectTenantId).toBeUndefined();
+  });
+
+  it('方案 B:harnessStore 未挂载时不阻塞,intellectTenantId 留空', async () => {
+    const ctx = createMockContext(
+      {
+        'X-Backend-Id': 'tenant-enterprise',
+        'X-User-Id': 'user-001',
+      },
+      {
+        getBackend: (id: string) =>
+          id === 'tenant-enterprise'
+            ? { id, intellectBackendId: 'backend-enterprise-1' }
+            : undefined,
+      },
+      // 不传 harnessStore
+    );
+    const next = vi.fn().mockResolvedValue(undefined);
+
+    await backendContextMiddleware(ctx as never, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(ctx.storedContext?.intellectTenantId).toBeUndefined();
   });
 });
