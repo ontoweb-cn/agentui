@@ -31,7 +31,7 @@
         "modelManagement": false
       },
       "defaultForTenant": false,
-      "intellectTenantId": "default"
+      "intellectTenantId": "00000000000000000000000000000000"
     },
     {
       "id": "intellect-llm-main",
