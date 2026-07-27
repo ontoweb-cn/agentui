@@ -2,7 +2,7 @@ import { ChatSearchParams } from '@/constants/chat';
 import { useGetChatSearchParams } from '@/hooks/use-chat-request';
 import { IMessage } from '@/interfaces/database/chat';
 import { useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router';
+import { useParams, useSearchParams } from 'react-router';
 import { useSetConversation } from './use-set-conversation';
 
 /**
@@ -57,12 +57,33 @@ export function useCreateConversationBeforeSendMessage() {
   const { conversationId, isNew } = useGetChatSearchParams();
   const { setConversation } = useSetConversation();
   const { setConversationBoth } = useChatUrlParams();
+  const { id: chatId } = useParams();
 
   // Create conversation if it doesn't exist
   const createConversationBeforeSendMessage = useCallback(
     async (value: string) => {
       let currentMessages: Array<IMessage> = [];
+
+      // 评审文档 §3.2：Gateway chat 的 session 本身就是 conversation，
+      // 无需调用 intellect-rag-app 的 createSession 接口。
+      // 直接用 chatId（URL 路由参数，即 Gateway session ID）作为 conversationId。
       if (conversationId === '' || isNew === 'true') {
+        // Gateway chat 判定：conversationId === chatId（URL 结构特征）。
+        // 不依赖 chatListData，因为 useFetchChatList 的 queryKey 含 pagination/search
+        // 参数且 gcTime=0，导致 getQueryData 恒为 undefined（与 use-send-chat-message.ts
+        // 中 isGatewayChat 判断保持一致）。
+        const isGatewayChat = conversationId === chatId;
+
+        if (isGatewayChat) {
+          // Gateway chat：session 已存在，直接复用 chatId 作为 conversationId。
+          setConversationBoth(chatId!, '');
+          return {
+            targetConversationId: chatId!,
+            currentMessages,
+          };
+        }
+
+        // intellect-rag chat：调用 createSession 创建 conversation。
         const data = await setConversation(value);
         if (!data || data.code !== 0) {
           return;
@@ -81,7 +102,13 @@ export function useCreateConversationBeforeSendMessage() {
         currentMessages,
       };
     },
-    [conversationId, isNew, setConversation, setConversationBoth],
+    [
+      conversationId,
+      isNew,
+      setConversation,
+      setConversationBoth,
+      chatId,
+    ],
   );
 
   return {

@@ -189,3 +189,135 @@ export type IntellectEnterpriseSSEMappingRule =
 export declare function parseIntellectEnterpriseSSE(
   stream: ReadableStream<Uint8Array>,
 ): AsyncIterable<StreamChunk>;
+
+// ===========================================================================
+// /v1/runs/{run_id}/events 协议 (v1.3.0 主通道, Rust api_server.rs)
+// ===========================================================================
+//
+// Authority source: intellect-team/intellect-gateway/src/platform/api_server.rs
+//
+// 与 legacy /api/sessions/{id}/chat/stream (Python adapter.py) 的关键差异:
+// 1. 帧格式: 无独立 `event:` 行, 事件名嵌入 JSON `event` 字段
+//    `data: {"event":"<name>","run_id":"...","timestamp":<f64>,...payload}\n\n`
+// 2. 事件名: `message.delta` (含内层 `type` 区分子类型) 替代 `assistant.delta`
+// 3. 字段名差异:
+//    - message.delta 内容: `text` (非 `delta`)
+//    - tool.progress 工具名: `name` (非 `tool_name`)
+//    - run.completed usage: `input_tokens`/`output_tokens` (非 `prompt_tokens`/`completion_tokens`)
+// 4. 终态事件: `run.completed`/`run.failed`/`run.cancelled` (无独立 `done` 事件)
+// 5. 新增 `approval.request`/`approval.responded` 事件
+
+/**
+ * /v1/runs events 事件名 (从 Rust api_server.rs map_event_to_sse 实证)。
+ */
+export type RunEventName =
+  | 'run.started'
+  | 'message.delta'
+  | 'tool.progress'
+  | 'approval.request'
+  | 'approval.responded'
+  | 'run.completed'
+  | 'run.failed'
+  | 'run.cancelled';
+
+/**
+ * message.delta 内层 type (区分 assistant 增量与 reasoning 增量)。
+ * Rust api_server.rs:1474-1477:
+ *   assistant.delta → {"type":"assistant.delta","text":text}
+ *   reasoning.delta → {"type":"reasoning.delta","text":text}
+ */
+export type MessageDeltaType = 'assistant.delta' | 'reasoning.delta';
+
+/**
+ * tool.progress 内层 type (区分 started/completed)。
+ * Rust api_server.rs:1484-1487:
+ *   tool.started   → {"type":"tool.started","tool_id":id,"name":name,"arguments":args}
+ *   tool.completed → {"type":"tool.completed","tool_id":id,"name":name,"result":result,"duration_s":duration_s}
+ */
+export type ToolProgressType = 'tool.started' | 'tool.completed';
+
+/**
+ * /v1/runs events 的 message.delta payload (Rust 格式)。
+ * 与 legacy AssistantDeltaPayload 的差异: 用 `text` 而非 `delta`。
+ */
+export interface RunMessageDeltaPayload {
+  type: MessageDeltaType;
+  text: string;
+}
+
+/**
+ * /v1/runs events 的 tool.progress payload (Rust 格式)。
+ * 与 legacy ToolStartedPayload/ToolCompletedPayload 的差异: 用 `name` 而非 `tool_name`。
+ */
+export interface RunToolProgressPayload {
+  type: ToolProgressType;
+  tool_id: string;
+  name: string;
+  arguments?: unknown;
+  result?: unknown;
+  duration_s?: number;
+}
+
+/**
+ * /v1/runs events 的 run.completed payload (Rust 格式)。
+ * 与 legacy RunCompletedPayload 的差异: usage 用 `input_tokens`/`output_tokens`。
+ *
+ * Rust api_server.rs:3791-3800:
+ *   usage = {"input_tokens": r.input_tokens, "output_tokens": r.output_tokens, "total_tokens": r.total_tokens}
+ *   run.completed → {"event":"run.completed","output":r.final_response,"usage":usage}
+ */
+export interface RunCompletedPayload {
+  output?: string;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+  };
+  error?: string;
+}
+
+/**
+ * /v1/runs events 映射规则表 (v1.3.0, 禁止偏离):
+ *
+ * | SSE 事件           | 条件                      | → StreamChunk type             |
+ * |-------------------|---------------------------|--------------------------------|
+ * | run.started       | (无)                      | (不产出)                        |
+ * | message.delta     | type==="reasoning.delta"  | 'reasoning'                    |
+ * | message.delta     | type==="assistant.delta"  | 'delta'                        |
+ * | tool.progress     | type==="tool.started"     | 'tool_start'                   |
+ * | tool.progress     | type==="tool.completed"   | 'tool_complete'                |
+ * | approval.request  | (无)                      | 'approval_request'             |
+ * | approval.responded| (无)                      | 'approval_responded'           |
+ * | run.completed     | error 非空                | 'usage' + 'error'              |
+ * | run.completed     | 无 delta 且 output 非空    | 'delta'(output) + 'usage' + 'done' |
+ * | run.completed     | (默认)                    | 'usage' + 'done'               |
+ * | run.failed        | (无)                      | 'error'                        |
+ * | run.cancelled     | (无)                      | 'error'                        |
+ *
+ * 字段名兼容策略 (BFF 解析器实现):
+ * - message.delta: 优先读 `text`, 回退 `delta`
+ * - tool.progress: 优先读 `name`, 回退 `tool_name`
+ * - run.completed usage: 优先读 `input_tokens`/`output_tokens`, 回退 `prompt_tokens`/`completion_tokens`
+ *
+ * output 兜底逻辑:
+ * - 当整条流未产出任何 delta chunk 时, 将 run.completed.output 作为最终 delta 产出
+ * - 场景: Gateway 缓存命中, 只发 run.completed 不发 message.delta
+ */
+
+/**
+ * 解析 intellect-team /v1/runs/{run_id}/events 的 SSE 流。
+ *
+ * @param stream intellect-team 返回的 ReadableStream<Uint8Array>(SSE 格式)
+ * @returns AsyncIterable<StreamChunk>,供 BFF 路由层转发给前端
+ *
+ * 实现要求:
+ * 1. 帧格式: `data: <json>\n\n`(json 含 `event` 字段, 无独立 event: 行)
+ * 2. 按上述映射规则产出 StreamChunk
+ * 3. 字段名兼容: 同时支持 Rust (text/name/input_tokens) 和 Python (delta/tool_name/prompt_tokens) 格式
+ * 4. output 兜底: 无 delta 时将 run.completed.output 作为最终内容产出
+ * 5. 容错: JSON 解析失败/未知事件 → console.warn + 跳过, 不中断
+ * 6. 流结束(终态事件或 ReadableStream close)→ 关闭 AsyncIterable
+ */
+export declare function parseIntellectEnterpriseRunEventsSSE(
+  stream: ReadableStream<Uint8Array>,
+): AsyncIterable<StreamChunk>;

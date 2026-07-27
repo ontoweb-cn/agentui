@@ -75,6 +75,9 @@ export default defineConfig(({ mode }) => {
   };
 
   return {
+    test: {
+      globals: true,
+    },
     define: {
       // Expose to client code via import.meta.env
       'import.meta.env.API_PROXY_SCHEME': JSON.stringify('python'),
