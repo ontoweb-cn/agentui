@@ -68,7 +68,10 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
   // getIntellectTeamId 已过滤缺省值 "0"(intellect-team 走全局默认上下文)。
   const backendStore = c.get('backendStore');
   const harnessStore = c.get('harnessStore');
-  const backendId = c.req.header('X-Backend-Id') || 'default';
+  // Fallback '0' 对应 bff-backends.json 中的 Default Enterprise Backend,
+  // 确保 X-Intellect-Tenant header 能正确解析(避免 sync_membership 用
+  // current_user.id 作为 tenant_id 创建孤儿 tenant_membership 行)。
+  const backendId = c.req.header('X-Backend-Id') || '0';
   const intellectTeamId = backendStore?.getIntellectTeamId(backendId);
   const intellectProjectId = backendStore?.getIntellectProjectId(backendId);
 
@@ -83,6 +86,35 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
         intellectTenantId = harnessBackend.intellectTenantId;
       }
     }
+  }
+
+  // R5.1: chat 路由已迁移到 Rust Gateway。企业版 backend 的 chat/agent 请求应通过
+  // bff-agents.ts 的 IntellectEnterpriseAdapter 路由，不再走 proxy 透传到 intellect-rag-app。
+  const chatPaths = ['chats', 'agents', 'runs', 'sessions'];
+  const isChatPath = chatPaths.some((p) => relativePath.startsWith(p));
+  if (isChatPath) {
+    const bffTenant = backendStore?.getBackend(backendId);
+    if (bffTenant) {
+      const harnessBackend = harnessStore?.get(bffTenant.intellectBackendId);
+      if (harnessBackend?.type === 'intellect-enterprise') {
+        console.warn(
+          `[proxy] R5.1 deprecated: ${method} /proxy/v1/${relativePath} — chat routes should use Gateway native API (POST /v1/runs, /api/sessions)`,
+        );
+        return c.json(
+          {
+            code: 410,
+            message:
+              'Chat routes have moved to the Gateway native API. Use POST /api/bff/agents/:id/sessions and /api/bff/agents/chat/completions instead.',
+            migration_doc: 'https://docs.intellect.run/gateway-chat-migration',
+          },
+          410,
+        );
+      }
+    }
+    // RAG backends: log deprecation warning but still proxy for now
+    console.warn(
+      `[proxy] R5.1 deprecated: ${method} /proxy/v1/${relativePath} — chat routes via RAG proxy will be removed. Migrate to Gateway native API.`,
+    );
   }
 
   // 方案 B: 从 AuthSession 提取会话 token (imt_*),优先于 admin JWT 传递给 intellect-rag。

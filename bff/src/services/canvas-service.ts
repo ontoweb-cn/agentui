@@ -40,7 +40,12 @@ export class CanvasService {
   // Private helper
   // -------------------------------------------------------------------------
 
-  /** 按租户上下文解析画布 Adapter(Constitution Principle III + V) */
+  /**
+   * 按租户上下文解析画布 Adapter(Constitution Principle III + V)。
+   *
+   * R5.2 note: Canvas 存储（CRUD/versions/tags/webhooks）仍经 IntellectRagAdapter。
+   * Agent 执行（rerun/debug）在未来将通过 Gateway /v1/runs + dsl_run 工具。
+   */
   private resolveAdapter(ctx: BackendContext): IntellectRagAdapter {
     return this.registry.getCanvasBackendForBackend(ctx.backendId);
   }

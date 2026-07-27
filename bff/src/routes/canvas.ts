@@ -140,6 +140,8 @@ canvasRoutes.post('/canvas/rerun', async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
     const result = await service.rerun(resolveBackendContext(c), body);
+    // R5.2: canvas agent execution is migrating to Gateway /v1/runs + dsl_run
+    c.header('X-Deprecated', 'use-gateway-dsl-run');
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
@@ -311,6 +313,7 @@ canvasRoutes.post('/canvas/:id/components/:cid/debug', async (c) => {
     const cid = c.req.param('cid');
     const body = await c.req.json().catch(() => ({}));
     const result = await service.debugComponent(resolveBackendContext(c), id, cid, body);
+    c.header('X-Deprecated', 'use-gateway-dsl-run');
     return c.json(result);
   } catch (err) {
     return handleCanvasError(c, err as Error);
