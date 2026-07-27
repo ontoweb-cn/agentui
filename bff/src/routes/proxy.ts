@@ -88,32 +88,26 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
     }
   }
 
-  // R5.1: chat 路由已迁移到 Rust Gateway。企业版 backend 的 chat/agent 请求应通过
-  // bff-agents.ts 的 IntellectEnterpriseAdapter 路由，不再走 proxy 透传到 intellect-rag-app。
-  const chatPaths = ['chats', 'agents', 'runs', 'sessions'];
-  const isChatPath = chatPaths.some((p) => relativePath.startsWith(p));
-  if (isChatPath) {
-    const bffTenant = backendStore?.getBackend(backendId);
-    if (bffTenant) {
-      const harnessBackend = harnessStore?.get(bffTenant.intellectBackendId);
-      if (harnessBackend?.type === 'intellect-enterprise') {
-        console.warn(
-          `[proxy] R5.1 deprecated: ${method} /proxy/v1/${relativePath} — chat routes should use Gateway native API (POST /v1/runs, /api/sessions)`,
-        );
-        return c.json(
-          {
-            code: 410,
-            message:
-              'Chat routes have moved to the Gateway native API. Use POST /api/bff/agents/:id/sessions and /api/bff/agents/chat/completions instead.',
-            migration_doc: 'https://docs.intellect.run/gateway-chat-migration',
-          },
-          410,
-        );
-      }
-    }
-    // RAG backends: log deprecation warning but still proxy for now
+  // R5.1: chat 路由已迁移到 Rust Gateway。前端 use-chat-request.ts 已全部转向
+  // gatewayChatService(BFF /agents/* 路由),不再调用 /proxy/v1/chats。
+  // 对 chats/sessions 路径返回 410 Gone,作为明确的废弃信号。
+  // 其他 chat 子路径(chat/audio/speech, chat/mindmap, chat/recommendation)保留透传,
+  // 因为前端 useFetchMindMap/useFetchRelatedQuestions/useSpeech 仍在使用。
+  const deprecatedChatPaths = ['chats', 'sessions'];
+  const isDeprecatedChatPath = deprecatedChatPaths.some((p) =>
+    relativePath.startsWith(p),
+  );
+  if (isDeprecatedChatPath) {
     console.warn(
-      `[proxy] R5.1 deprecated: ${method} /proxy/v1/${relativePath} — chat routes via RAG proxy will be removed. Migrate to Gateway native API.`,
+      `[proxy] R5.1 deprecated: ${method} /proxy/v1/${relativePath} — use Gateway native API (/api/bff/agents/chat/sessions) instead`,
+    );
+    return c.json(
+      {
+        code: 410,
+        message:
+          'Chat routes have migrated to Gateway native API. Use /api/bff/agents/chat/sessions instead.',
+      },
+      410,
     );
   }
 
