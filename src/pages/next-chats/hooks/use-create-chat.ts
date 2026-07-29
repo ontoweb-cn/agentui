@@ -12,8 +12,9 @@ export const useCreateChatDialog = () => {
   } = useSetModalState();
   const { createChat, loading: createLoading } = useCreateChat();
   const { t } = useTranslation();
-  const defaultModelDictionary =
-    useFetchDefaultModelDictionary(createChatVisible);
+  // CHAT 直接通过 Gateway 对接 TEAM，LLM 由 Gateway 端部署，
+  // 创建 New Chat 时无需检测本地是否配置了大模型。
+  const defaultModelDictionary = useFetchDefaultModelDictionary();
 
   const InitialData = useMemo(
     () => ({

@@ -13,7 +13,7 @@ import {
   mergeInflightTailMessages,
   saveInflight,
 } from '@/hooks/use-inflight-state';
-import { useDeleteMessage, useGetChatSearchParams, usePatchChat } from '@/hooks/use-chat-request';
+import { ChatApiAction, useDeleteMessage, useGetChatSearchParams, usePatchChat } from '@/hooks/use-chat-request';
 import { useFetchAllAddedModels } from '@/hooks/use-llm-request';
 import { ICommandContext, isSlashCommandVisible } from '@/interfaces/command';
 import { IMessage } from '@/interfaces/database/chat';
@@ -306,6 +306,9 @@ export const useSendMessage = (controller: AbortController) => {
       // v1.3.0: 透传 pendingApproval 到最新 assistant 消息,供 ApprovalCard 渲染
       // 注意:pendingApproval 为 null 时也写入(清除上一 turn 的残留状态)
       pendingApproval: gatewaySse.pendingApproval ?? undefined,
+      // clarify: 透传 pendingClarify 到最新 assistant 消息,供 ClarifyCard 渲染
+      // 注意:pendingClarify 为 null 时也写入(清除上一 turn 的残留状态)
+      pendingClarify: gatewaySse.pendingClarify ?? undefined,
     };
     // 浅比较避免无变化时无谓 setState（forceRender 触发的 render 仍会执行此 effect）
     // P2-Q7: pendingApproval 用语义比较(因 ref.current 每次读取返回新对象引用)
@@ -321,12 +324,26 @@ export const useSendMessage = (controller: AbortController) => {
         a.toolName === b.toolName
       );
     })();
+    // clarify: 同样用语义比较(因 ref.current 每次读取返回新对象引用)
+    const pendingClarifyEqual = (() => {
+      const a = lastMsg.pendingClarify;
+      const b = patch.pendingClarify;
+      if (a === b) return true;
+      if (!a || !b) return a === b; // 一方为 undefined/null
+      return (
+        a.status === b.status &&
+        a.clarifyId === b.clarifyId &&
+        a.submittedAnswer === b.submittedAnswer &&
+        a.question === b.question
+      );
+    })();
     if (
       lastMsg.toolCalls === patch.toolCalls &&
       lastMsg.reasoning === patch.reasoning &&
       lastMsg.usage === patch.usage &&
       lastMsg.errorDetails === patch.errorDetails &&
-      pendingApprovalEqual
+      pendingApprovalEqual &&
+      pendingClarifyEqual
     ) {
       return;
     }
@@ -346,6 +363,7 @@ export const useSendMessage = (controller: AbortController) => {
     gatewaySse.usage,
     gatewaySse.errorDetails,
     gatewaySse.pendingApproval,
+    gatewaySse.pendingClarify,
     derivedMessages,
     setDerivedMessages,
   ]);
@@ -377,6 +395,8 @@ export const useSendMessage = (controller: AbortController) => {
 
   // P2：流完成时立即清除 INFLIGHT 状态（server 已持久化，避免重复显示）
   // 同时兼容 RAG 路径（done 转为 true 时清除）
+  // 并触发 chat list / chat 详情缓存刷新,让 Gateway 自动生成的 session title
+  // 同步到左侧 Sessions 列表和顶部标题(useFetchSessionList 依赖 useFetchChat 缓存)。
   const prevDoneRef = useRef(done);
   useEffect(() => {
     const prevDone = prevDoneRef.current;
@@ -384,8 +404,19 @@ export const useSendMessage = (controller: AbortController) => {
     // done 从 false → true 表示流完成
     if (prevDone === false && done === true && conversationId) {
       clearInflight(conversationId);
+      // Gateway chat:刷新 chat 列表和当前 chat 详情,同步 session title。
+      // useFetchChatList 重新拉取会更新 IDialog.name(来自 Gateway session.title),
+      // useFetchChat 缓存失效后 useFetchSessionList 也会重新读取最新 title。
+      if (isGatewayChat && chatId) {
+        queryClient.invalidateQueries({
+          queryKey: [ChatApiAction.FetchChatList],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [ChatApiAction.FetchChat, chatId],
+        });
+      }
     }
-  }, [done, conversationId]);
+  }, [done, conversationId, isGatewayChat, chatId, queryClient]);
 
   // P2：会话切换时加载 INFLIGHT 状态并合并到 derivedMessages
   // 合并时序参考方案 §4.1.3：server-side messages 加载完成后，append inflight tail（用 id 去重）
@@ -619,5 +650,10 @@ export const useSendMessage = (controller: AbortController) => {
       ? gatewaySse.submitApproval
       : // RAG 路径不支持审批,返回 noop(永不 resolve,因 RAG 不产出 approval_request)
         async () => false,
+    // clarify: 澄清回答提交方法(仅 gateway 路径有效,RAG 路径为 noop)
+    // ClarifyCard 输入框/choice 按钮 onClick 调用此方法
+    submitClarify: isGatewayChat
+      ? gatewaySse.submitClarify
+      : async () => false,
   };
 };

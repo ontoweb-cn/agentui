@@ -879,6 +879,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
       chatApps: '聊天',
       createChat: '创建聊天',
       newConversation: '新会话',
+      noMessages: '此会话暂无消息，在下方输入框发送消息开始对话。',
       createAssistant: '新建助理',
       assistantSetting: '助理设置',
       promptEngine: '提示引擎',
@@ -2709,6 +2710,86 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       noCanvasFound: '未找到画布',
       deleteSelectedConfirm: '确定要删除 {{count}} 个会话吗？',
       batchDeleteSessions: '删除会话',
+    },
+    toolCall: {
+      running: '运行中',
+      completed: '已完成',
+      failed: '失败',
+    },
+    // v1.3.0: 工具审批卡片文案(key 与 intellect-team choice 值对齐)
+    approval: {
+      choiceOnce: '本次允许',
+      choiceSession: '本会话允许',
+      choiceAlways: '总是允许',
+      choiceDeny: '拒绝',
+      pending: '等待审批',
+      submitted: '已提交:{{choice}}',
+      submitFailed: '提交失败,请重试',
+      // P2-Q4 新增:submitApproval 错误场景提示
+      notSupported: '当前会话不支持工具审批',
+      forbidden: '无权审批该工具调用',
+      alreadyResolved: '审批请求已处理或失效',
+    },
+    // clarify 澄清卡片文案
+    clarify: {
+      pending: '等待回答',
+      submitted: '已回答',
+      submitFailed: '提交失败,请重试',
+      notSupported: '当前会话不支持澄清',
+      inputPlaceholder: '请输入回答...',
+      submit: '提交',
+      yourAnswer: '你的回答',
+      waiting: '等待继续执行...',
+      defaultQuestion: '需要更多信息',
+    },
+    reasoning: {
+      thinking: '思考中...',
+      show: '显示思考过程',
+      hide: '隐藏思考过程',
+    },
+    offline: {
+      browser: '网络连接已断开',
+      retry: '立即重试',
+      probing: '探测中...',
+      retryTip: '手动检测网络连接状态',
+    },
+    context: {
+      prompt: '提示词',
+      completion: '补全',
+      length: '上下文长度',
+      usage: '使用率',
+      tooltipTokens: 'Tokens: {{used}} / {{total}}',
+      tooltipCompress: '上下文接近上限，可使用 /compress 压缩',
+    },
+    // Q15: P3 Provider 错误详情移到顶层 error 命名空间，与 command/selectedReply 一致
+    error: {
+      providerDetails: 'Provider 错误详情',
+    },
+    // P3: Slash 命令面板文案
+    command: {
+      placeholder: '输入命令或搜索...',
+      noResult: '无匹配命令',
+      retry: {
+        desc: '重新生成最后一条回复',
+      },
+      undo: {
+        desc: '撤销最后一条用户消息',
+      },
+      status: {
+        desc: '查看会话状态',
+      },
+      usage: {
+        desc: '查看 token 用量',
+      },
+      model: {
+        desc: '切换模型',
+        argName: 'model_name',
+      },
+    },
+    // P3: 选中文本回复按钮文案
+    selectedReply: {
+      button: '引用回复',
+      multiChatBoxTip: '请切换到单 chat box 模式使用此功能',
     },
   },
 };

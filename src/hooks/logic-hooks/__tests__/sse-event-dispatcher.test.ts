@@ -34,6 +34,7 @@ function createMockHandlers(): SseEventHandlers & {
     onDone: push('onDone'),
     onApprovalRequest: push('onApprovalRequest'),
     onApprovalResponded: push('onApprovalResponded'),
+    onClarifyRequest: push('onClarifyRequest'),
     calls,
   };
 }

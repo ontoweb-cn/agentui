@@ -25,6 +25,10 @@ const bffAuth = `/api/bff/auth`;
 // spec-008: Canvas routes — 画布脱离 Proxy 路由
 // Constitution Principle I + III: 前端画布操作经 BFF /canvas/*
 const bffCanvas = '/api/bff/canvas';
+// spec-010 v8 B-7: Wizard routes — 首次安装向导
+// Constitution Principle I (BFF-Mediated Frontend): 前端经 BFF Wizard 路由完成首次配置。
+// 不带 X-Backend-Id(运维全局操作),首次安装场景无 admin token。
+const bffWizard = '/api/bff/admin/wizard';
 
 export { restAPIv1, bffAgents, bffCapabilities, bffHarnessAdmin, bffAuth, bffCanvas };
 
@@ -220,6 +224,12 @@ export default {
     `${restAPIv1}/datasets/${datasetId}/documents?type=filter`,
 
   // chat
+  // 双路径架构（评审文档 chat-session-gateway-migration-review.md §3.2）：
+  // - 纯 LLM 对话（kb_ids 为空）→ 走 Gateway session API（bffAgents/*）
+  // - RAG 增强对话（kb_ids 非空）→ 走 intellect-rag-app（restAPIv1/chats/*）
+  // 前端按 chat.dataset_ids 是否为空选择路径。
+  // Gateway session 复用 agent session 路径（createAgentSession/fetchAgentSessions 等），
+  // completions 路径为 agentChatCompletion。
   createChat: `${restAPIv1}/chats`,
   listChats: `${restAPIv1}/chats`,
   getChat: (chatId: string) => `${restAPIv1}/chats/${chatId}`,
@@ -275,6 +285,12 @@ export default {
   updateAgent: (agentId: string) => `${bffCanvas}/${agentId}`,
   deleteAgent: (agentId: string) => `${bffCanvas}/${agentId}`,
   agentChatCompletion: `${bffAgents}/chat/completions`,
+  // v1.3.0 工具审批:POST /api/bff/agents/:agentId/runs/:runId/approval
+  agentRunApproval: (agentId: string, runId: string) =>
+    `${bffAgents}/${agentId}/runs/${runId}/approval`,
+  // clarify 澄清:POST /api/bff/agents/:agentId/sessions/:sessionId/clarify
+  agentSessionClarify: (agentId: string, sessionId: string) =>
+    `${bffAgents}/${agentId}/sessions/${sessionId}/clarify`,
   resetAgent: (agentId: string) => `${bffCanvas}/${agentId}/reset`,
   testDbConnect: `${bffCanvas}/test_db_connection`,
   getInputElements: `${restAPIv1}/canvas/input_elements`,
@@ -295,6 +311,12 @@ export default {
   fetchAgentLogs: (canvasId: string) => `${restAPIv1}/canvas/${canvasId}/sessions`,
   fetchAgentSessions: (agentId: string) => `${bffAgents}/${agentId}/sessions`,
   fetchAgentSessionById: (agentId: string, sessionId: string) =>
+    `${bffAgents}/${agentId}/sessions/${sessionId}`,
+  patchAgentSession: (agentId: string, sessionId: string) =>
+    `${bffAgents}/${agentId}/sessions/${sessionId}`,
+  fetchAgentSessionMessages: (agentId: string, sessionId: string) =>
+    `${bffAgents}/${agentId}/sessions/${sessionId}/messages`,
+  deleteAgentSession: (agentId: string, sessionId: string) =>
     `${bffAgents}/${agentId}/sessions/${sessionId}`,
   fetchExternalAgentInputs: (canvasId: string) =>
     `${bffCanvas}/${canvasId}/external-inputs`,
@@ -415,6 +437,8 @@ export default {
   createHarnessBackend: `${bffHarnessAdmin}`,
   updateHarnessBackend: (id: string) => `${bffHarnessAdmin}/${id}`,
   deleteHarnessBackend: (id: string) => `${bffHarnessAdmin}/${id}`,
+  // spec-010 v8 B-8 (D2 软阻断): 切换为主/画布后端,校验活跃 run
+  switchHarnessBackend: (id: string) => `${bffHarnessAdmin}/${id}/switch`,
 
   // Multi-Harness P2 (US2) — Capabilities 查询(条件渲染)
   // Constitution Principle I + II + V + VIII。
@@ -432,6 +456,15 @@ export default {
   adminProject: (ref: string) => `${bffAdmin}/projects/${ref}`,
   adminTenantBinding: (tenantId: string) =>
     `${bffAdmin}/tenants/${tenantId}/binding`,
+
+  // spec-010 v8 B-7: Wizard — 首次安装向导
+  // Constitution Principle I: 前端经 BFF Wizard 路由完成首次配置。
+  wizard: {
+    status: `${bffWizard}/status`,
+    backendTypes: `${bffWizard}/backend-types`,
+    probe: `${bffWizard}/probe`,
+    setup: `${bffWizard}/setup`,
+  },
 
   // Sandbox settings
   adminListSandboxProviders: `${restAPIv1}/admin/sandbox/providers`,

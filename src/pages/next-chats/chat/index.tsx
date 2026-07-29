@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  useFetchSessionList,
+  useFetchChat,
   useFetchSessionManually,
   useGetChatSearchParams,
 } from '@/hooks/use-chat-request';
@@ -13,6 +13,7 @@ import { isEmpty } from 'lodash';
 import { LucideArrowBigLeft, LucideArrowUpRight } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useParams } from 'react-router';
 import { useHandleClickConversationCard } from '../hooks/use-click-card';
 import { ChatSettings } from './app-settings/chat-settings';
 import { MultipleChatBox } from './chat-box/next-multiple-chat-box';
@@ -36,26 +37,41 @@ export default function Chat() {
     useAddChatBox(isDebugMode);
 
   const { conversationId, isNew } = useGetChatSearchParams();
+  const { id: chatId } = useParams();
 
-  const { data: dialogList } = useFetchSessionList();
+  // 顶部标题直接使用 useFetchChat 的 name（与 sessions.tsx 共享缓存）。
+  // 不从 useFetchSessionList 间接读取，因为 useFetchSessionList 的 queryFn
+  // 从 useFetchChat 缓存读取 title，但页面首次加载时缓存可能还没准备好，
+  // 导致返回空 name。useFetchChat 自身完成请求后 React Query 会自动触发重渲染。
+  const { data: chatData } = useFetchChat();
 
   const currentConversationName = useMemo(() => {
-    return (
-      dialogList.find((x) => x.id === conversationId)?.name ||
-      t('chat.newConversation')
-    );
-  }, [conversationId, dialogList, t]);
+    return chatData?.name || t('chat.newConversation');
+  }, [chatData, t]);
 
   const fetchConversation: typeof handleConversationCardClick = useCallback(
     async (conversationId, isNew) => {
-      if (conversationId && !isNew) {
-        const conversation = await fetchSessionManually(conversationId);
-        if (!isEmpty(conversation)) {
-          setCurrentConversation(conversation);
+      // Gateway chat: conversationId === chatId (route :id), session 始终存在于服务端,
+      // 即使 URL 残留 isNew=true 也必须加载消息（isNew 是 intellect-rag 延迟创建语义,对 Gateway 无效）。
+      // 此外,刷新页面时 URL 中可能没有 conversationId 查询参数（只有路由 :id）,
+      // 此时若 chatId 存在应直接用 chatId 加载(Gateway session = chat)。
+      const effectiveConversationId = conversationId || chatId;
+      const isGatewayChat =
+        !!effectiveConversationId && effectiveConversationId === chatId;
+      if (effectiveConversationId && (!isNew || isGatewayChat)) {
+        try {
+          const conversation =
+            await fetchSessionManually(effectiveConversationId);
+          if (!isEmpty(conversation)) {
+            setCurrentConversation(conversation);
+          }
+        } catch (err) {
+          // 新建 Gateway session 首次进入可能 404,静默处理。
+          console.debug('[chat] fetchSessionManually failed:', err);
         }
       }
     },
-    [fetchSessionManually],
+    [fetchSessionManually, chatId],
   );
 
   const handleSessionClick: typeof handleConversationCardClick = useCallback(

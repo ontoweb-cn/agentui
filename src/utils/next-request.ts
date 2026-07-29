@@ -144,7 +144,10 @@ request.interceptors.response.use(
         authorizationUtil.removeAll();
         redirectToLogin();
       }
-    } else if (data?.code !== 0) {
+    } else if (data?.code !== undefined && data?.code !== 0) {
+      // 仅当响应显式包含非零 code 时才视为错误。
+      // BFF 路由(如 /api/bff/agents/chat/sessions)可能返回无 {code,data,message} 信封的原始响应,
+      // 此时 data.code 为 undefined,不应触发错误通知(否则会显示 "hint : undefined")。
       notification.error({
         message: `${i18n.t('message.hint')} : ${data?.code}`,
         description: data?.message,

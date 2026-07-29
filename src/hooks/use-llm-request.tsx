@@ -27,7 +27,6 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { buildModelValue, parseModelValue } from '@/utils/llm-util';
-import { useWarnEmptyModel } from './use-warn-empty-model';
 
 export const enum LLMApiAction {
   AllModels = 'allModels',
@@ -469,8 +468,8 @@ export const useFetchDefaultModels = () => {
   return { data, loading };
 };
 
-export const useFetchDefaultModelDictionary = (showEmptyModelWarn = false) => {
-  const { data: defaultModels, loading } = useFetchDefaultModels();
+export const useFetchDefaultModelDictionary = () => {
+  const { data: defaultModels } = useFetchDefaultModels();
 
   const result = useMemo(() => {
     const dict: Record<string, string> = {};
@@ -480,8 +479,6 @@ export const useFetchDefaultModelDictionary = (showEmptyModelWarn = false) => {
     });
     return dict;
   }, [defaultModels]);
-
-  useWarnEmptyModel(showEmptyModelWarn, result.embd_id, result.llm_id, loading);
 
   return result;
 };

@@ -976,6 +976,7 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       conversations: 'Conversations',
       chatApps: 'Chat apps',
       newConversation: 'New conversation',
+      noMessages: 'No messages in this conversation yet. Send a message below to start.',
       createAssistant: 'Create an assistant',
       assistantSetting: 'Assistant settings',
       promptEngine: 'Prompt engine',
@@ -3321,6 +3322,86 @@ Important structured information may include: names, dates, locations, events, k
       deleteSelectedConfirm:
         'Are you sure you want to delete {{count}} session(s)?',
       batchDeleteSessions: 'Delete Sessions',
+    },
+    toolCall: {
+      running: 'Running',
+      completed: 'Completed',
+      failed: 'Failed',
+    },
+    // v1.3.0: Approval card labels (keys align with intellect-team choice values)
+    approval: {
+      choiceOnce: 'Allow once',
+      choiceSession: 'Allow for session',
+      choiceAlways: 'Always allow',
+      choiceDeny: 'Deny',
+      pending: 'Awaiting approval',
+      submitted: 'Submitted: {{choice}}',
+      submitFailed: 'Submit failed, please retry',
+      // P2-Q4: submitApproval error scenario messages
+      notSupported: 'Tool approval not supported in this session',
+      forbidden: 'No permission to approve this tool call',
+      alreadyResolved: 'Approval request already resolved or invalid',
+    },
+    // Clarify card labels
+    clarify: {
+      pending: 'Awaiting answer',
+      submitted: 'Answered',
+      submitFailed: 'Submit failed, please retry',
+      notSupported: 'Clarify not supported in this session',
+      inputPlaceholder: 'Type your answer...',
+      submit: 'Submit',
+      yourAnswer: 'Your answer',
+      waiting: 'Waiting to continue...',
+      defaultQuestion: 'More information needed',
+    },
+    reasoning: {
+      thinking: 'Thinking...',
+      show: 'Show reasoning',
+      hide: 'Hide reasoning',
+    },
+    offline: {
+      browser: 'Network connection lost',
+      retry: 'Retry now',
+      probing: 'Probing...',
+      retryTip: 'Manually check network status',
+    },
+    context: {
+      prompt: 'Prompt',
+      completion: 'Completion',
+      length: 'Context length',
+      usage: 'Usage',
+      tooltipTokens: 'Tokens: {{used}} / {{total}}',
+      tooltipCompress: 'Context near limit, use /compress to compress',
+    },
+    // Q15: P3 Provider error details moved to top-level error namespace for consistency
+    error: {
+      providerDetails: 'Provider error details',
+    },
+    // P3: Slash command palette
+    command: {
+      placeholder: 'Type a command or search...',
+      noResult: 'No matching command',
+      retry: {
+        desc: 'Regenerate the last reply',
+      },
+      undo: {
+        desc: 'Undo the last user message',
+      },
+      status: {
+        desc: 'View session status',
+      },
+      usage: {
+        desc: 'View token usage',
+      },
+      model: {
+        desc: 'Switch model',
+        argName: 'model_name',
+      },
+    },
+    // P3: Selected text reply button
+    selectedReply: {
+      button: 'Quote reply',
+      multiChatBoxTip: 'Please switch to single chat box mode to use this feature',
     },
   },
 };

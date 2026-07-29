@@ -12,8 +12,11 @@ import {
   FileUploadTrigger,
   type FileUploadProps,
 } from '@/components/file-upload';
+import { ContextRing } from '@/components/context-ring';
+import { SlashCommandPalette } from '@/components/message-input/slash-command-palette';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { ICommandContext } from '@/interfaces/command';
 import { cn } from '@/lib/utils';
 import { t } from 'i18next';
 import {
@@ -34,6 +37,9 @@ export type NextMessageInputOnPressEnterParameter = {
   enableThinking: boolean;
   enableInternet: boolean;
 };
+
+// L2: 稳定的 noop 引用,避免 callback 为 undefined 时每次 render 新建箭头函数破坏 memo
+const noop = () => {};
 
 interface NextMessageInputProps {
   disabled: boolean;
@@ -57,6 +63,20 @@ interface NextMessageInputProps {
   showReasoning?: boolean;
   showInternet?: boolean;
   resize?: 'none' | 'vertical' | 'horizontal' | 'both';
+  /** P2：上一 turn 的 prompt token 数（来自 usage 事件），用于 Context ring 显示 */
+  contextPromptTokens?: number;
+  /** P2：context length，默认 128000 */
+  contextLength?: number;
+  /** P2：上一 turn 的 completion token 数 */
+  contextCompletionTokens?: number;
+  /** P3：Slash 命令面板是否可见（外层根据 value 是否以 / 开头控制） */
+  slashCommandVisible?: boolean;
+  /** P3：Slash 命令上下文（提供 retry/undo/status/usage/model 等回调） */
+  slashCommandContext?: ICommandContext;
+  /** P3：Slash 命令执行后回调（外层清空 textarea value） */
+  onSlashCommandExecuted?: () => void;
+  /** P3：Slash 命令面板关闭回调（按 Esc 或点击外部） */
+  onSlashCommandClose?: () => void;
 }
 
 export function NextMessageInput({
@@ -74,6 +94,13 @@ export function NextMessageInput({
   removeFile,
   showReasoning = false,
   showInternet = false,
+  contextPromptTokens = 0,
+  contextLength,
+  contextCompletionTokens,
+  slashCommandVisible = false,
+  slashCommandContext,
+  onSlashCommandExecuted,
+  onSlashCommandClose,
 }: NextMessageInputProps) {
   const [files, setFiles] = React.useState<File[]>([]);
   const [audioInputValue, setAudioInputValue] = React.useState<string | null>(
@@ -134,6 +161,9 @@ export function NextMessageInput({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      // 与发送按钮 disabled 条件保持一致，避免流式输出期间回车导致
+      // 乐观消息被插入但实际 sendMessage 被 if(done) 跳过
+      if (sendDisabled || isUploading || sendLoading || !value.trim()) return;
       submit();
     }
   };
@@ -187,6 +217,17 @@ export function NextMessageInput({
           has-[textarea:focus]:outline-accent-primary has-[textarea:focus]:outline-1 has-[textarea:focus]:outline-offset-2
         "
       >
+        {/* P3: Slash 命令面板（仅当 value 以 / 开头时由外层控制可见） */}
+        {/* L2: 直接传递 callback,避免新建箭头函数导致 SlashCommandPalette memo 失效 */}
+        {slashCommandVisible && slashCommandContext && (
+          <SlashCommandPalette
+            value={value}
+            visible={slashCommandVisible}
+            context={slashCommandContext}
+            onCommandExecuted={onSlashCommandExecuted ?? noop}
+            onRequestClose={onSlashCommandClose ?? noop}
+          />
+        )}
         <FileUploadList
           orientation="horizontal"
           className="overflow-x-auto px-0 py-1"
@@ -270,6 +311,14 @@ export function NextMessageInput({
               >
                 <Globe />
               </Button>
+            )}
+
+            {contextPromptTokens > 0 && (
+              <ContextRing
+                promptTokens={contextPromptTokens}
+                contextLength={contextLength}
+                completionTokens={contextCompletionTokens}
+              />
             )}
           </div>
 

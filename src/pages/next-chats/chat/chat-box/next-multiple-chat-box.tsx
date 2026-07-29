@@ -257,6 +257,9 @@ const ChatCard = forwardRef(function ChatCard(
                   regenerateMessage={regenerateMessage}
                   sendLoading={sendLoading}
                   clickDocumentButton={clickDocumentButton}
+                  // v1.3.0 Q3: MultipleChatBox 用 useSendSingleMessage(RAG 路径),
+                  // 不走 gateway SSE,pendingApproval 永远 undefined,审批功能不适用。
+                  // 若未来 MultipleChatBox 接入 gateway 路径,需从 useSendMessage 取 submitApproval 透传。
                 ></MessageItem>
               );
             })}

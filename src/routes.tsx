@@ -11,80 +11,14 @@ import type { LazyRouteConfig } from './features/_types';
 import { IS_ENTERPRISE } from './pages/admin/utils';
 import authorizationUtil from './utils/authorization-util';
 import AuthWrapper from './wrappers/auth';
+// spec-010 v8 B-6 (P3-m3):WizardGuard 路由守卫,首次安装时重定向到 /wizard
+import WizardGuard from './wrappers/wizard-guard';
+// Routes enum 抽取到无副作用模块，供 routes.tsx 内部及外部模块使用。
+// 优先从 @/constants/routes import 可避免触发 createBrowserRouter 副作用。
+import { Routes } from './constants/routes';
 
-export enum Routes {
-  Root = '/',
-  Login = '/login-next',
-  Logout = '/logout',
-  Home = '/home',
-  Datasets = '/datasets',
-  DatasetBase = '/dataset',
-  Files = '/files',
-  Dataset = `${Routes.DatasetBase}/${Routes.Files}`,
-  Agent = '/agent',
-  AgentTemplates = '/agent-templates',
-  Agents = '/agents',
-  Explore = '/explore',
-  AgentExplore = `${Routes.Agent}/:id/explore`,
-  Memories = '/memories',
-  Memory = '/memory',
-  MemoryMessage = '/memory-message',
-  MemorySetting = '/memory-setting',
-  AgentList = '/agent-list',
-  Searches = '/searches',
-  Search = '/search',
-  SearchShare = '/search/share',
-  Chats = '/chats',
-  Chat = '/chat',
-
-  Skills = '/files/skills',
-  ProfileSetting = '/profile-setting',
-  Profile = '/profile',
-  Api = '/api',
-  Mcp = '/mcp',
-  Team = '/team',
-  Plan = '/plan',
-  Model = '/model',
-  Prompt = '/prompt',
-  DataSource = '/data-source',
-  DataSourceDetailPage = '/data-source-detail-page',
-  ChatChannel = '/chat-channel',
-  ProfileMcp = `${ProfileSetting}${Mcp}`,
-  ProfileTeam = `${ProfileSetting}${Team}`,
-  ProfilePlan = `${ProfileSetting}${Plan}`,
-  ProfileModel = `${ProfileSetting}${Model}`,
-  ProfilePrompt = `${ProfileSetting}${Prompt}`,
-  ProfileProfile = `${ProfileSetting}${Profile}`,
-  DatasetTesting = '/retrieval',
-  Chunk = '/chunk',
-  ChunkResult = `${Chunk}${Chunk}`,
-  Parsed = '/parsed',
-  ParsedResult = `${Chunk}${Parsed}`,
-  Result = '/result',
-  ResultView = `${Chunk}${Result}`,
-  KnowledgeGraph = '/knowledge-graph',
-  AgentLogPage = '/agent-log-page',
-  AgentShare = '/agent/share',
-  ChatShare = `${Chats}/share`,
-  ChatWidget = `${Chats}/widget`,
-  UserSetting = '/user-setting',
-  DataSetOverview = '/logs',
-  DataSetSetting = '/configuration',
-  DataflowResult = '/dataflow-result',
-  Admin = '/admin',
-  AdminServices = `${Admin}/services`,
-  AdminUserManagement = `${Admin}/users`,
-  AdminSandboxSettings = `${Admin}/sandbox-settings`,
-  AdminWhitelist = `${Admin}/whitelist`,
-  AdminRoles = `${Admin}/roles`,
-  AdminMonitoring = `${Admin}/monitoring`,
-  // Multi-Harness P2 (US3):Harness 后端配置 Admin 页面。
-  AdminHarnessBackends = `${Admin}/harness-backends`,
-  // Multi-Harness P5 (US1/US2/US3):Team/Project/Tenant-binding Admin 页面。
-  AdminTeams = `${Admin}/teams`,
-  AdminProjects = `${Admin}/projects`,
-  AdminTenantBindings = `${Admin}/tenant-bindings`,
-}
+// Re-export 保持向后兼容：现有代码 `import { Routes } from '@/routes'` 仍可工作。
+export { Routes };
 
 const defaultRouteFallback = (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[1px]">
@@ -125,6 +59,12 @@ const routeConfigOptions = [
   {
     path: '/login-next',
     Component: () => import('@/pages/login-next'),
+    layout: false,
+  },
+  {
+    // spec-010 v8 B-6: Wizard 首次安装向导(不经过 AuthWrapper,首次安装无 admin token)。
+    path: Routes.Wizard,
+    Component: () => import('@/pages/wizard'),
     layout: false,
   },
   {
@@ -338,8 +278,15 @@ const wrapRoutes = (
     if (Component) {
       const LazyComp = withLazyRoute(Component);
       if (shouldWrap) {
-        // 用 AuthWrapper 包裹:未登录跳转,探测中渲染空白,已登录渲染组件
-        next.element = <AuthWrapper><LazyComp /></AuthWrapper>;
+        // spec-010 v8 B-6 (P3-m3):WizardGuard 在 AuthWrapper 之前执行,
+        // 首次安装(needsSetup=true)时重定向到 /wizard,不进入认证流程
+        next.element = (
+          <WizardGuard>
+            <AuthWrapper>
+              <LazyComp />
+            </AuthWrapper>
+          </WizardGuard>
+        );
       } else {
         next.Component = LazyComp;
       }

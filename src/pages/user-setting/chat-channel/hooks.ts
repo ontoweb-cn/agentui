@@ -5,7 +5,7 @@ import chatChannelService, {
   fetchChatChannelDetail,
   updateChatChannel,
 } from '@/services/chat-channel-service';
-import chatService from '@/services/next-chat-service';
+import gatewayChatService from '@/services/gateway-chat-service';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { t } from 'i18next';
 import { useCallback, useMemo, useState } from 'react';
@@ -187,16 +187,19 @@ export const useConnectChatChannelDialog = () => {
 };
 
 // Assistants (dialogs) available to connect a channel to.
+// intellect-rag chat 已废弃,改用 Gateway sessions 列表。
 export const useChatChannelDialogList = () => {
   const { data, isFetching } = useQuery<Array<{ id: string; name: string }>>({
     queryKey: ChatChannelKeys.dialogs(),
     initialData: [],
     queryFn: async () => {
-      const { data } = await chatService.listChats(
-        { params: { page_size: 100, page: 1 }, data: {} },
-        true,
-      );
-      return data?.data?.chats ?? [];
+      // BFF 返回 Session[] 数组(无 code/data 信封),每条含 { id, title }。
+      const { data: sessions } = await gatewayChatService.listGatewayChats();
+      const sessionList = Array.isArray(sessions) ? sessions : [];
+      return sessionList.map((s: any) => ({
+        id: String(s.id ?? ''),
+        name: s.title || s.name || 'New Chat',
+      }));
     },
   });
   return { dialogs: data, isFetching };

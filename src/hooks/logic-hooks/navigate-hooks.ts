@@ -1,6 +1,6 @@
 import { AgentCategory, AgentQuery } from '@/constants/agent';
+import { Routes } from '@/constants/routes';
 import { NavigateToDataflowResultProps } from '@/pages/dataflow-result/interface';
-import { Routes } from '@/routes';
 import { useCallback } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 

@@ -1,3 +1,4 @@
+import { OfflineBanner } from '@/components/offline-banner';
 import { Toaster as Sonner } from '@/components/ui/sonner';
 import { Toaster } from '@/components/ui/toaster';
 import { changeLanguageAsync } from '@/locales/config';
@@ -73,6 +74,8 @@ const queryClient = new QueryClient({
 function Root({ children }: React.PropsWithChildren) {
   return (
     <>
+      <OfflineBanner />
+
       {children}
 
       <Sonner position="top-right" expand richColors closeButton />

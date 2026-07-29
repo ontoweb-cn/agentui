@@ -1,5 +1,4 @@
 import { PromptIcon } from '@/assets/icon/next-icon';
-import CopyToClipboard from '@/components/copy-to-clipboard';
 import {
   Tooltip,
   TooltipContent,
@@ -11,6 +10,8 @@ import { useChatSheet } from './chat-sheet-context';
 import { downloadAgentFile } from '@/services/file-manager-service';
 import { downloadFileFromBlob } from '@/utils/file-util';
 import {
+  CheckOutlined,
+  CopyOutlined,
   DeleteOutlined,
   DislikeOutlined,
   LikeOutlined,
@@ -18,8 +19,9 @@ import {
   SoundOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
+import { CopyToClipboard as Clipboard } from 'react-copy-to-clipboard';
 import { Download, NotebookText } from 'lucide-react';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import FeedbackDialog from '../feedback-dialog';
 import { PromptDialog } from '../prompt-dialog';
@@ -62,6 +64,7 @@ export const AssistantGroupButton = ({
   } = useSetModalState();
   const { t } = useTranslation();
   const { handleRead, ref, isPlaying } = useSpeech(content, audioBinary);
+  const [copied, setCopied] = useState(false);
 
   const handleLike = useCallback(() => {
     onFeedbackOk({ thumbup: true });
@@ -73,6 +76,11 @@ export const AssistantGroupButton = ({
     showLogSheet(messageId);
   }, [messageId, showLogSheet]);
 
+  const handleCopy = useCallback(() => {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, []);
+
   return (
     <>
       <ToggleGroup
@@ -81,13 +89,21 @@ export const AssistantGroupButton = ({
         variant="outline"
         className="space-x-1"
       >
-        <ToggleGroupItem value="a">
-          <CopyToClipboard
-            text={content}
-            className="border-none hover:!bg-transparent"
-            avoidButtonWrapper
-          ></CopyToClipboard>
-        </ToggleGroupItem>
+        <Clipboard text={content} onCopy={handleCopy}>
+          <ToggleGroupItem
+            value="a"
+            className={copied ? '!text-state-success' : undefined}
+          >
+            <Tooltip open={copied ? true : undefined}>
+              <TooltipTrigger asChild>
+                <span>{copied ? <CheckOutlined /> : <CopyOutlined />}</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {copied ? t('common.copied') : t('common.copy')}
+              </TooltipContent>
+            </Tooltip>
+          </ToggleGroupItem>
+        </Clipboard>
         {showLoudspeaker && (
           <ToggleGroupItem value="b" onClick={handleRead}>
             <Tooltip>
@@ -181,6 +197,12 @@ export const UserGroupButton = ({
     removeMessageById,
   );
   const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, []);
 
   return (
     <ToggleGroup
@@ -189,9 +211,21 @@ export const UserGroupButton = ({
       variant="outline"
       className="space-x-1"
     >
-      <ToggleGroupItem value="a">
-        <CopyToClipboard text={content} avoidButtonWrapper></CopyToClipboard>
-      </ToggleGroupItem>
+      <Clipboard text={content} onCopy={handleCopy}>
+        <ToggleGroupItem
+          value="a"
+          className={copied ? '!text-state-success' : undefined}
+        >
+          <Tooltip open={copied ? true : undefined}>
+            <TooltipTrigger asChild>
+              <span>{copied ? <CheckOutlined /> : <CopyOutlined />}</span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {copied ? t('common.copied') : t('common.copy')}
+            </TooltipContent>
+          </Tooltip>
+        </ToggleGroupItem>
+      </Clipboard>
       {regenerateMessage && (
         <ToggleGroupItem
           value="b"

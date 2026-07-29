@@ -1,5 +1,4 @@
 import { PromptIcon } from '@/assets/icon/next-icon';
-import CopyToClipboard from '@/components/copy-to-clipboard';
 import {
   Tooltip,
   TooltipContent,
@@ -9,6 +8,8 @@ import { useSetModalState } from '@/hooks/common-hooks';
 import { IRemoveMessageById } from '@/hooks/logic-hooks';
 import { cn } from '@/lib/utils';
 import {
+  LucideCheck,
+  LucideCopy,
   LucidePauseCircle,
   LucideRefreshCw,
   LucideThumbsDown,
@@ -16,8 +17,9 @@ import {
   LucideTrash2,
   LucideVolume2,
 } from 'lucide-react';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { CopyToClipboard as Clipboard } from 'react-copy-to-clipboard';
 import FeedbackDialog from '../feedback-dialog';
 import { PromptDialog } from '../prompt-dialog';
 import { Button } from '../ui/button';
@@ -49,10 +51,16 @@ export const AssistantGroupButton = ({
   } = useSetModalState();
   const { t } = useTranslation();
   const { handleRead, ref, isPlaying } = useSpeech(content, audioBinary);
+  const [copied, setCopied] = useState(false);
 
   const handleLike = useCallback(() => {
     onFeedbackOk({ thumbup: true });
   }, [onFeedbackOk]);
+
+  const handleCopy = useCallback(() => {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, []);
 
   return (
     <>
@@ -60,12 +68,22 @@ export const AssistantGroupButton = ({
         className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100"
         role="toolbar"
       >
-        <CopyToClipboard
-          text={content}
-          className="border-0"
-          size="icon-xs"
-          avoidButtonWrapper
-        />
+        <Clipboard text={content} onCopy={handleCopy}>
+          <Tooltip open={copied ? true : undefined}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="transparent"
+                size="icon-xs"
+                className="border-0"
+              >
+                {copied ? <LucideCheck /> : <LucideCopy />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {copied ? t('common.copied') : t('common.copy')}
+            </TooltipContent>
+          </Tooltip>
+        </Clipboard>
 
         {showLoudspeaker && (
           <>
@@ -158,15 +176,31 @@ export const UserGroupButton = ({
     removeMessageById,
   );
   const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, []);
 
   return (
     <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-      <CopyToClipboard
-        text={content}
-        className="border-0"
-        size="icon-xs"
-        avoidButtonWrapper
-      />
+      <Clipboard text={content} onCopy={handleCopy}>
+        <Tooltip open={copied ? true : undefined}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="transparent"
+              size="icon-xs"
+              className="border-0"
+            >
+              {copied ? <LucideCheck /> : <LucideCopy />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {copied ? t('common.copied') : t('common.copy')}
+          </TooltipContent>
+        </Tooltip>
+      </Clipboard>
 
       {regenerateMessage && (
         <Tooltip>

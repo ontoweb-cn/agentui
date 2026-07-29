@@ -4,22 +4,23 @@ import { act, renderHook } from '@testing-library/react';
 import { useScrollToBottom } from '../logic-hooks';
 
 function createMockContainer({ atBottom = true } = {}) {
-  const scrollTop = atBottom ? 100 : 0;
-  const clientHeight = 100;
-  const scrollHeight = 200;
   const listeners: Record<string, any> = {};
-  return {
-    current: {
-      scrollTop,
-      clientHeight,
-      scrollHeight,
-      addEventListener: jest.fn((event, cb) => {
-        listeners[event] = cb;
-      }),
-      removeEventListener: jest.fn(),
-    },
-    listeners,
-  } as any;
+  // jsdom 不实现 Element.prototype.scrollTo，useScrollToBottom 内部会调用
+  // container.scrollTo({ top, behavior })，此处提供 mock 实现：
+  // 直接更新 scrollTop，模拟真实滚动行为，便于后续 isAtBottom 判断。
+  const container: any = {
+    scrollTop: atBottom ? 100 : 0,
+    clientHeight: 100,
+    scrollHeight: 200,
+    addEventListener: jest.fn((event: string, cb: any) => {
+      listeners[event] = cb;
+    }),
+    removeEventListener: jest.fn(),
+  };
+  container.scrollTo = jest.fn(({ top }: { top?: number } = {}) => {
+    if (typeof top === 'number') container.scrollTop = top;
+  });
+  return { current: container, listeners } as any;
 }
 
 // Helper to flush all timers and microtasks
@@ -54,12 +55,9 @@ describe('useScrollToBottom', () => {
 
   it('should scroll to bottom when isAtBottom is true and messages change', async () => {
     const containerRef = createMockContainer({ atBottom: true });
-    const mockScroll = jest.fn();
 
     function useTestScrollToBottom(messages: any, containerRef: any) {
-      const hook = useScrollToBottom(messages, containerRef);
-      (hook.scrollRef as any).current = { scrollIntoView: mockScroll } as any;
-      return hook;
+      return useScrollToBottom(messages, containerRef);
     }
 
     const { rerender } = renderHook(
@@ -70,18 +68,16 @@ describe('useScrollToBottom', () => {
     rerender({ messages: ['msg1'] });
     await flushAll();
 
-    expect(mockScroll).toHaveBeenCalled();
+    // hook 的 scrollToBottom 内部调用 container.scrollTo({...})，
+    // 不是 scrollRef.current.scrollIntoView（历史实现已重构）。
+    expect(containerRef.current.scrollTo).toHaveBeenCalled();
   });
 
   it('should NOT scroll to bottom when isAtBottom is false and messages change', async () => {
     const containerRef = createMockContainer({ atBottom: false });
-    const mockScroll = jest.fn();
 
     function useTestScrollToBottom(messages: any, containerRef: any) {
-      const hook = useScrollToBottom(messages, containerRef);
-      (hook.scrollRef as any).current = { scrollIntoView: mockScroll } as any;
-      console.log('HOOK: isAtBottom:', hook.isAtBottom);
-      return hook;
+      return useScrollToBottom(messages, containerRef);
     }
 
     const { result, rerender } = renderHook(
@@ -94,20 +90,14 @@ describe('useScrollToBottom', () => {
       containerRef.current.scrollTop = 0;
       containerRef.current.addEventListener.mock.calls[0][1]();
       await flushAll();
-      // Advance fake timers by 10ms instead of real setTimeout
       jest.advanceTimersByTime(10);
-      console.log('AFTER SCROLL: isAtBottom:', result.current.isAtBottom);
     });
 
     rerender({ messages: ['msg1'] });
     await flushAll();
 
-    console.log('AFTER RERENDER: isAtBottom:', result.current.isAtBottom);
-
-    expect(mockScroll).not.toHaveBeenCalled();
-
-    // Optionally, flush again after the assertion to see if it gets called late
-    await flushAll();
+    expect(result.current.isAtBottom).toBe(false);
+    expect(containerRef.current.scrollTo).not.toHaveBeenCalled();
   });
 
   it('should indicate button should appear when user is not at bottom', () => {

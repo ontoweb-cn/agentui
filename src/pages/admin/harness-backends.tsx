@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -17,10 +18,12 @@ import {
 } from '@tanstack/react-table';
 
 import {
+  LucideArrowLeftRight,
   LucidePlus,
   LucideSearch,
   LucideTrash2,
   LucideUserPen,
+  LucideWand2,
 } from 'lucide-react';
 
 import { TableEmpty } from '@/components/table-skeleton';
@@ -51,6 +54,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -74,13 +78,17 @@ import { z } from 'zod';
 import {
   createHarnessBackend,
   deleteHarnessBackend,
+  getProtocolFamily,
   listHarnessBackends,
+  switchHarnessBackend,
   updateHarnessBackend,
   type HarnessBackendWithStatus,
   type BackendType,
   type HarnessCapabilities,
+  type ProtocolFamily,
 } from '@/services/harness-admin-service';
 import { createFuzzySearchFn } from './utils';
+import { Routes } from '@/routes';
 
 // ---------------------------------------------------------------------------
 // Types & validation
@@ -113,7 +121,15 @@ const useHarnessBackendFormSchema = () => {
           .string()
           .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, t('admin.harnessBackends.idHint')),
         name: z.string().min(1, t('admin.harnessBackends.nameRequired')),
-        type: z.enum(['intellect-rag', 'intellect-enterprise']),
+        // spec-010 v8 A3-2: 支持 6 类后端表单录入(intellect-llm 不进表单)
+        type: z.enum([
+          'intellect-rag',
+          'intellect-enterprise',
+          'intellect-community',
+          'hermes',
+          'kag',
+          'agent-scope',
+        ]),
         endpoint: z.string().url(t('admin.harnessBackends.endpointHint')),
         adminTokenEnvVar: z
           .string()
@@ -187,12 +203,17 @@ function CapabilitySwitch({
 function AdminHarnessBackends() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [itemToAction, setItemToAction] =
     useState<HarnessBackendWithStatus | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  // spec-010 v8 B-8: 切换 backend 时需要 tenantId + role
+  const [switchModalOpen, setSwitchModalOpen] = useState(false);
+  const [switchRole, setSwitchRole] = useState<'primary' | 'canvas'>('primary');
+  const [switchTenantId, setSwitchTenantId] = useState('');
 
   const schema = useHarnessBackendFormSchema();
   const createForm = useForm<HarnessBackendFormValues>({
@@ -254,6 +275,41 @@ function AdminHarnessBackends() {
     retry: false,
   });
 
+  // spec-010 v8 B-8 (D2 软阻断): 切换 backend 为租户的主/画布后端
+  // P3-m5/m6 修复:清理空分支,统一处理所有非零 code
+  const switchMutation = useMutation({
+    mutationFn: ({
+      id,
+      tenantId,
+      role,
+    }: {
+      id: string;
+      tenantId: string;
+      role: 'primary' | 'canvas';
+    }) => switchHarnessBackend(id, tenantId, role),
+    onSuccess: (resp) => {
+      const code = resp?.data?.code;
+      if (code === 0) {
+        // 成功:刷新列表,关闭 modal
+        queryClient.invalidateQueries({
+          queryKey: ['admin/listHarnessBackends'],
+        });
+        setSwitchModalOpen(false);
+        setItemToAction(null);
+        setSwitchTenantId('');
+      }
+      // code === 409:软阻断,保持 modal 打开,错误消息由下方 inline 渲染
+      // 其他非零 code:同样保持 modal 打开,错误消息由下方 inline 渲染
+      // (m6 修复:不再静默吞掉非 0/409 的错误)
+    },
+    onError: (err: unknown) => {
+      // 网络错误/超时等(请求未到达 BFF 或 BFF 未返回 JSON 信封)
+      // 由 next-request 拦截器统一 toast,此处仅 log
+      console.error('[switchHarnessBackend] request failed:', err);
+    },
+    retry: false,
+  });
+
   // Edit form: load values when modal opens
   useEffect(() => {
     if (itemToAction && editModalOpen) {
@@ -288,6 +344,22 @@ function AdminHarnessBackends() {
         header: () => t('admin.harnessBackends.type'),
         cell: (info) => <Badge variant="outline">{info.getValue()}</Badge>,
       }),
+      // spec-010 v8 D-1: 协议族展示列(BackendType → ProtocolFamily 映射)
+      columnHelper.accessor('type', {
+        id: 'protocolFamily',
+        header: () =>
+          t('admin.harnessBackends.protocolFamily', {
+            defaultValue: 'Protocol Family',
+          }),
+        cell: (info) => {
+          const family: ProtocolFamily = getProtocolFamily(info.getValue());
+          return (
+            <Badge variant="secondary" className="text-xs">
+              {family}
+            </Badge>
+          );
+        },
+      }),
       columnHelper.accessor('endpoint', {
         header: () => t('admin.harnessBackends.endpoint'),
         cell: (info) => (
@@ -318,7 +390,7 @@ function AdminHarnessBackends() {
         id: 'actions',
         header: () => t('admin.harnessBackends.actions'),
         cell: (info) => (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
               variant="ghost"
               size="sm"
@@ -330,6 +402,39 @@ function AdminHarnessBackends() {
               <LucideUserPen className="size-4 mr-1" />
               {t('admin.harnessBackends.edit')}
             </Button>
+            {/* spec-010 v8 B-8: 切换为主/画布后端(D2 软阻断) */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setItemToAction(info.row.original);
+                setSwitchRole('primary');
+                setSwitchTenantId('');
+                setSwitchModalOpen(true);
+              }}
+            >
+              <LucideArrowLeftRight className="size-4 mr-1" />
+              {t('admin.harnessBackends.switchPrimary', {
+                defaultValue: 'Switch as Primary',
+              })}
+            </Button>
+            {info.row.original.type === 'intellect-rag' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setItemToAction(info.row.original);
+                  setSwitchRole('canvas');
+                  setSwitchTenantId('');
+                  setSwitchModalOpen(true);
+                }}
+              >
+                <LucideArrowLeftRight className="size-4 mr-1" />
+                {t('admin.harnessBackends.switchCanvas', {
+                  defaultValue: 'Switch as Canvas',
+                })}
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -428,6 +533,12 @@ function AdminHarnessBackends() {
                   <SelectItem value="intellect-enterprise">
                     intellect-enterprise
                   </SelectItem>
+                  <SelectItem value="intellect-community">
+                    intellect-community
+                  </SelectItem>
+                  <SelectItem value="hermes">hermes</SelectItem>
+                  <SelectItem value="kag">kag</SelectItem>
+                  <SelectItem value="agent-scope">agent-scope</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -533,15 +644,27 @@ function AdminHarnessBackends() {
     <Card>
       <CardHeader className="flex-row items-center justify-between">
         <CardTitle>{t('admin.harnessBackends.title')}</CardTitle>
-        <Button
-          onClick={() => {
-            createForm.reset(DEFAULT_FORM_VALUES);
-            setCreateModalOpen(true);
-          }}
-        >
-          <LucidePlus className="size-4 mr-1" />
-          {t('admin.harnessBackends.create')}
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* spec-010 v8 D-2: "Add Backend (Wizard)" 按钮跳转向导 */}
+          <Button
+            variant="outline"
+            onClick={() => navigate(`${Routes.Wizard}?mode=add`)}
+          >
+            <LucideWand2 className="size-4 mr-1" />
+            {t('admin.harnessBackends.addWizard', {
+              defaultValue: 'Add Backend (Wizard)',
+            })}
+          </Button>
+          <Button
+            onClick={() => {
+              createForm.reset(DEFAULT_FORM_VALUES);
+              setCreateModalOpen(true);
+            }}
+          >
+            <LucidePlus className="size-4 mr-1" />
+            {t('admin.harnessBackends.create')}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="mb-4 flex items-center gap-2">
@@ -685,6 +808,91 @@ function AdminHarnessBackends() {
               {deleteMutation.isPending
                 ? t('common.submitting')
                 : t('common.delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* spec-010 v8 B-8: Switch Backend Modal(D2 软阻断) */}
+      <Dialog open={switchModalOpen} onOpenChange={setSwitchModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {switchRole === 'primary'
+                ? t('admin.harnessBackends.switchPrimaryTitle', {
+                    defaultValue: 'Switch as Primary Backend',
+                  })
+                : t('admin.harnessBackends.switchCanvasTitle', {
+                    defaultValue: 'Switch as Canvas Backend',
+                  })}
+            </DialogTitle>
+            <DialogDescription>
+              {t('admin.harnessBackends.switchDescription', {
+                defaultValue:
+                  '将 backend "{{name}}" 绑定到指定租户(存在活跃 run 时将被软阻断)。',
+                name: itemToAction?.name,
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="switch-tenant-id">
+                {t('admin.harnessBackends.tenantId', {
+                  defaultValue: 'Tenant ID',
+                })}
+              </Label>
+              <Input
+                id="switch-tenant-id"
+                value={switchTenantId}
+                onChange={(e) => setSwitchTenantId(e.target.value)}
+                placeholder="tenant-1"
+              />
+              <p className="text-xs text-text-secondary">
+                {t('admin.harnessBackends.tenantIdHint', {
+                  defaultValue:
+                    'BffTenant.id,如 "default" 或具体租户 id',
+                })}
+              </p>
+            </div>
+            {/* P3-m5/m6 修复:统一渲染所有非零 code 的错误(含 409 软阻断) */}
+            {switchMutation.data?.data?.code !== undefined &&
+              switchMutation.data.data.code !== 0 && (
+                <p className="text-sm text-destructive">
+                  {switchMutation.data.data.message ||
+                    t('admin.harnessBackends.switchFailed', {
+                      defaultValue: 'Switch failed (code={{code}})',
+                      code: switchMutation.data.data.code,
+                    })}
+                </p>
+              )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setSwitchModalOpen(false)}
+              disabled={switchMutation.isPending}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              disabled={
+                switchMutation.isPending || !switchTenantId.trim()
+              }
+              onClick={() => {
+                if (itemToAction && switchTenantId.trim()) {
+                  switchMutation.mutate({
+                    id: itemToAction.id,
+                    tenantId: switchTenantId.trim(),
+                    role: switchRole,
+                  });
+                }
+              }}
+            >
+              {switchMutation.isPending
+                ? t('common.submitting')
+                : t('admin.harnessBackends.switchConfirm', {
+                    defaultValue: 'Switch',
+                  })}
             </Button>
           </DialogFooter>
         </DialogContent>

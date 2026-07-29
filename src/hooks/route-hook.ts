@@ -2,7 +2,7 @@ import {
   KnowledgeRouteKey,
   KnowledgeSearchParams,
 } from '@/constants/knowledge';
-import { Routes } from '@/routes';
+import { Routes } from '@/constants/routes';
 import { useCallback } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 

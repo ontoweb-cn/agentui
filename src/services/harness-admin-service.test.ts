@@ -8,7 +8,9 @@ import {
   createHarnessBackend,
   deleteHarnessBackend,
   fetchHarnessCapabilities,
+  getProtocolFamily,
   listHarnessBackends,
+  switchHarnessBackend,
   updateHarnessBackend,
 } from './harness-admin-service';
 
@@ -53,6 +55,7 @@ jest.mock('@/utils/api', () => ({
     createHarnessBackend: '/api/bff/admin/harness-backends',
     updateHarnessBackend: (id: string) => `/api/bff/admin/harness-backends/${id}`,
     deleteHarnessBackend: (id: string) => `/api/bff/admin/harness-backends/${id}`,
+    switchHarnessBackend: (id: string) => `/api/bff/admin/harness-backends/${id}/switch`,
     harnessCapabilities: '/api/bff/capabilities',
   },
 }));
@@ -253,5 +256,89 @@ describe('fetchHarnessCapabilities', () => {
       { headers: Record<string, string> },
     ];
     expect(config).toEqual({ headers: {} });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// switchHarnessBackend (spec-010 v8 B-8 D2 软阻断)
+// ---------------------------------------------------------------------------
+
+describe('switchHarnessBackend', () => {
+  it('POST 正确路径 + 请求体(tenantId + role=primary)', async () => {
+    mockedRequest.post.mockResolvedValueOnce({
+      data: { code: 0, message: '切换成功', data: null },
+    });
+
+    const res = await switchHarnessBackend(
+      'intellect-rag-default',
+      'tenant-1',
+      'primary',
+    );
+
+    expect(mockedRequest.post).toHaveBeenCalledWith(
+      api.switchHarnessBackend('intellect-rag-default'),
+      { tenantId: 'tenant-1', role: 'primary' },
+    );
+    expect(mockedRequest.post).toHaveBeenCalledTimes(1);
+    expect(res?.data?.code).toBe(0);
+  });
+
+  it('role=canvas 时请求体正确(canvasBackendId 切换)', async () => {
+    mockedRequest.post.mockResolvedValueOnce({
+      data: { code: 0, message: '切换成功', data: null },
+    });
+
+    await switchHarnessBackend('intellect-rag-default', 'tenant-1', 'canvas');
+
+    const [url, body] = mockedRequest.post.mock.calls[0] as [
+      string,
+      { tenantId: string; role: string },
+    ];
+    expect(url).toBe(api.switchHarnessBackend('intellect-rag-default'));
+    expect(body).toEqual({ tenantId: 'tenant-1', role: 'canvas' });
+  });
+
+  it('后端返回 409(活跃 run 软阻断)时透传错误码', async () => {
+    mockedRequest.post.mockResolvedValueOnce({
+      data: {
+        code: 409,
+        message: '租户有 2 个活跃 run,请等待完成或强制取消后再切换 backend',
+        data: null,
+      },
+    });
+
+    const res = await switchHarnessBackend(
+      'intellect-rag-default',
+      'tenant-1',
+      'primary',
+    );
+
+    expect(res?.data?.code).toBe(409);
+    expect(res?.data?.message).toContain('活跃 run');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getProtocolFamily (spec-010 v8 D-1 协议族展示列)
+// ---------------------------------------------------------------------------
+
+describe('getProtocolFamily', () => {
+  it('intellect-rag → canvas-workflow', () => {
+    expect(getProtocolFamily('intellect-rag')).toBe('canvas-workflow');
+  });
+
+  it('intellect-enterprise → intellect-enterprise', () => {
+    expect(getProtocolFamily('intellect-enterprise')).toBe('intellect-enterprise');
+  });
+
+  it('OpenAI 兼容后端 → openai-compatible', () => {
+    expect(getProtocolFamily('intellect-community')).toBe('openai-compatible');
+    expect(getProtocolFamily('hermes')).toBe('openai-compatible');
+    expect(getProtocolFamily('kag')).toBe('openai-compatible');
+    expect(getProtocolFamily('agent-scope')).toBe('openai-compatible');
+  });
+
+  it('intellect-llm (legacy) → openai-compatible', () => {
+    expect(getProtocolFamily('intellect-llm')).toBe('openai-compatible');
   });
 });

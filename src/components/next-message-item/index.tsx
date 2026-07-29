@@ -32,6 +32,7 @@ import { useTheme } from '../theme-provider';
 import { Button } from '../ui/button';
 import { AssistantGroupButton, UserGroupButton } from './group-button';
 import styles from './index.module.less';
+import { ProviderErrorDetails } from './provider-error-details';
 import { ReferenceDocumentList } from './reference-document-list';
 import { ReferenceImageList } from './reference-image-list';
 import { UploadedMessageFiles } from './uploaded-message-files';
@@ -56,6 +57,8 @@ interface IProps
   showLoudspeaker?: boolean;
   showLog?: boolean;
   isShare?: boolean;
+  /** 是否为连续同类消息的非首条(用于隐藏头像和缩小间距) */
+  isContinuation?: boolean;
 }
 
 function MessageItem({
@@ -79,6 +82,7 @@ function MessageItem({
   showLog,
   isShare,
   nickname,
+  isContinuation = false,
 }: IProps) {
   const { t } = useTranslation();
   const { theme } = useTheme();
@@ -145,12 +149,18 @@ function MessageItem({
         ) : sendLoading && isEmpty(messageContent) ? (
           <>{!isShare && t('common.running')}</>
         ) : (
-          <MarkdownContent
-            loading={loading}
-            content={messageContent}
-            reference={reference}
-            clickDocumentButton={clickDocumentButton}
-          ></MarkdownContent>
+          <>
+            <MarkdownContent
+              loading={loading}
+              content={messageContent}
+              reference={reference}
+              clickDocumentButton={clickDocumentButton}
+            ></MarkdownContent>
+            {/* P3: Provider 错误详情折叠区块（BFF 透传 details 后自动启用） */}
+            {item.errorDetails !== undefined && (
+              <ProviderErrorDetails details={item.errorDetails} />
+            )}
+          </>
         )}
       </div>
     );
@@ -160,6 +170,7 @@ function MessageItem({
     isAssistant,
     isShare,
     item.data,
+    item.errorDetails,
     loading,
     messageContent,
     reference,
@@ -173,6 +184,7 @@ function MessageItem({
       className={classNames(styles.messageItem, {
         [styles.messageItemLeft]: item.role === MessageType.Assistant,
         [styles.messageItemRight]: item.role === MessageType.User,
+        [styles.messageItemContinuation]: isContinuation,
       })}
     >
       <section
@@ -187,6 +199,7 @@ function MessageItem({
           })}
         >
           {visibleAvatar &&
+            !isContinuation &&
             (item.role === MessageType.User ? (
               <IntellectAvatar
                 avatar={avatar ?? '/logo-96.png'}
@@ -206,6 +219,9 @@ function MessageItem({
                 className={cn('size-10 fill-current')}
               ></SvgIcon>
             ))}
+          {visibleAvatar && isContinuation && (
+            <div className="size-10 shrink-0" aria-hidden />
+          )}
           <section className="flex-col gap-2 flex-1">
             <div className="flex justify-between items-center">
               {isShare && isAssistant && (
