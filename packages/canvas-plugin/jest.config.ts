@@ -1,7 +1,6 @@
 import type { Config } from 'jest';
 
 const config: Config = {
-  preset: 'ts-jest',
   testEnvironment: 'jsdom',
   roots: ['<rootDir>/src'],
   moduleNameMapper: {
@@ -13,11 +12,20 @@ const config: Config = {
   },
   transform: {
     '^.+\\.(ts|tsx)$': [
-      'esbuild-jest',
+      // 复用主项目的 jest-esbuild-transformer wrapper，统一处理
+      // import.meta.env 和 import.meta.glob。canvas-plugin 测试会通过
+      // @/ 别名（映射到 <rootDir>/../../src）transitively import 主项目的
+      // _registry.ts / svg-icon.tsx，这些文件使用 import.meta.glob，需要
+      // wrapper 进行静态转换。
+      '<rootDir>/../../jest-esbuild-transformer.cjs',
       {
         sourcemap: true,
         loaders: {
           '.ts': 'tsx',
+        },
+        // canvas-plugin 的 @ 别名映射到 <rootDir>/../../src（即项目根的 src/）
+        aliases: {
+          '@': '<rootDir>/../../src',
         },
       },
     ],

@@ -135,7 +135,7 @@ admin JWT 路径下：
 
 BFF 启动时调用 `/api/tenant/info`，返回的 `tenant_id` 与 `HarnessBackend.intellectTenantId` 一致，BFF 正常启动。
 
-**Independent Test**：配置 `intellectTenantId: "default"` + intellect-team `INTELLECT_TENANT_ID=default` → 启动 BFF → 日志显示 `tenant_id OK`。
+**Independent Test**：配置 `intellectTenantId: "00000000000000000000000000000000"` + intellect-team `INTELLECT_TENANT_ID=default` → 启动 BFF → 日志显示 `tenant_id OK`。
 
 **Acceptance**：
 1. 配置一致 → BFF 启动成功，log "tenant_id OK"

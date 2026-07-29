@@ -157,7 +157,10 @@ interface BffTenant {
   id: string;                    // BFF 租户 ID
   name: string;                  // 租户名称（如 "Acme Corp"）
   intellectTenantId?: string;    // intellect-team 实例内 Team ID(组织隔离,非租户隔离;"0"=缺省)
-  intellectBackendId: string;    // 绑定到哪个 intellect-team 实例(= 租户隔离锚点)
+  intellectProjectId?: string;   // intellect-team 实例内 Project ID(可选,实例内组织隔离)
+  intellectBackendId: string;    // 主后端 ID(任意类型,绑定到 intellect-team 实例=租户隔离锚点)
+  canvasBackendId?: string;      // 画布后端 ID(可选,必须是 intellect-rag 类型,Principle III)
+  authMode?: 'intellect-rag' | 'intellect-enterprise';  // 认证模式(P4b)
   createdAt: string;
   updatedAt: string;
 }
@@ -166,11 +169,36 @@ interface BffTenant {
 // 实例内已有:Member/Team/Project 表,通过 X-Intellect-Team/X-Intellect-Project 头做组织隔离
 ```
 
+#### 3.3.2a 双绑定语义(spec-010 v8 B-10)
+
+BffTenant 采用**双绑定机制**将租户连接到后端:
+
+| 字段 | 必填 | 类型约束 | 用途 |
+|------|------|---------|------|
+| `intellectBackendId` | ✅ | 任意类型(intellect-rag/intellect-enterprise) | 主后端,承载 Agent/Session/Chat 等核心能力 |
+| `canvasBackendId` | ❌ | **必须是 intellect-rag 类型**(Principle III) | 画布后端,承载画布编排能力 |
+
+**绑定规则**:
+1. **单后端场景**(Intellect RAG 单租户):`intellectBackendId` 指向 intellect-rag 后端,`canvasBackendId` 可空(画布走主后端)
+2. **双后端场景**(企业版需画布):`intellectBackendId` 指向 intellect-enterprise 后端,`canvasBackendId` 指向另一个 intellect-rag 后端
+3. **类型校验**:`BackendStore.setCanvasBinding()` 强制校验 `canvasBackendId` 对应的 `HarnessBackend.type === 'intellect-rag'`,违反时抛 `InvalidCanvasBackendError`
+
+**画布后端解析流程**(四层解析,见 §3.4):
+1. 若 `tenant.canvasBackendId` 存在 → 直接解析该 backendId(运行时 `instanceof IntellectRagAdapter` 断言,失败抛 `InvalidCanvasBackendError`)
+2. 若 `canvasBackendId` 为空且 `tenantId === 'default'` → 回退首个 intellect-rag backend(向后兼容)
+3. 若 `canvasBackendId` 为空且 `tenantId !== 'default'` 且 `tenant` 不存在 → 抛 `TenantNotFoundError`
+4. 若 `canvasBackendId` 为空且 `tenantId !== 'default'` 且 `tenant` 存在 → 抛 `CanvasBackendNotBoundError`(企业版租户未绑定画布后端)
+
+**与 Team/Project 的区别**:
+- `intellectBackendId` 实现真正的**租户隔离**(不同 BffTenant 绑定不同 intellect-team 实例)
+- `intellectTenantId`/`intellectProjectId` 仅是**实例内组织隔离**(注入 X-Intellect-Team/X-Intellect-Project 头)
+
 #### 3.3.3 核心设计
 
 - **一对一绑定**:BFF Tenant 唯一绑定到一个 intellect-team 实例(通过 `intellectBackendId`)
 - **多租户隔离**:通过不同 BffTenant 绑定不同 intellect-team 实例实现,无需 intellect-team 侧新增 Tenant 实体
 - **数据隔离**:Team/Project/Member 数据不复制到 BFF,通过 intellect-team HTTP API 透传管理
+- **双绑定机制**(spec-010 v8):主后端 `intellectBackendId`(任意类型) + 画布后端 `canvasBackendId`(可选,必须 intellect-rag),详见 §3.3.2a
 - **Team/Project 组织隔离头**(v1.1.0 已与 intellect-team `_resolve_member_context` 实际实现对齐):
   - `X-Intellect-Team` — 传递 team_id(对应 intellect-team DB teams.id,不是 slug)
   - `X-Intellect-Project` — 传递 project_id(对应 intellect-team DB projects.id,不是 slug)
@@ -178,11 +206,12 @@ interface BffTenant {
   - `X-Intellect-Session-Key` — 可选,长期记忆范围
   - BFF 调用 intellect-team 时由 Adapter 注入上述头,禁用臆造的 `X-Team-Slug` / `X-Project-Slug`
 - **鉴权**:P0-P3 用 `Authorization: Bearer ${API_SERVER_KEY}` 全局 API Key,P4+ 评估切换到 `imt_p_*` 项目级 Bearer Token
-- **画布功能**：若需画布功能，BFF Tenant 需额外绑定一个 Intellect RAG 后端（与 Intellect 企业版 Tenant 独立）
-- **绑定流程**：
-  1. BFF Admin 创建一个 BffTenant，同时在 Intellect 企业版侧创建一个 Intellect Tenant
-  2. BFF Tenant.id 与 Intellect Tenant.id 建立映射（存于 BFF tenant-store）
-  3. Team/Project 创建时自动归属到该 Intellect Tenant
+- **画布功能**:若企业版租户需画布功能,必须额外绑定一个 Intellect RAG 后端(`canvasBackendId` 字段),画布请求通过 `AdapterRegistry.getCanvasBackendForBackend(tenantId)` 路由
+- **绑定流程**(spec-010 v8 修正):
+  1. BFF Admin 创建一个 BffTenant,设置 `intellectBackendId` 指向已注册的 HarnessBackend(主后端)
+  2. (可选)若主后端非 intellect-rag 且需画布功能,设置 `canvasBackendId` 指向一个 intellect-rag 类型后端
+  3. `BackendStore.setHarnessBinding()` 校验 `intellectBackendId` 存在;`setCanvasBinding()` 校验 `canvasBackendId` 类型为 intellect-rag(Principle III)
+  4. Team/Project 组织隔离通过 `intellectTenantId`/`intellectProjectId` 字段配置,运行时注入 X-Intellect-Team/X-Intellect-Project 头
 
 ### 3.4 画布：复用 Intellect RAG 画布引擎
 
@@ -208,8 +237,30 @@ interface BffTenant {
 ```
 
 **实现方式**：
-- BFF 的画布路由**硬绑定到 Intellect RAG Adapter**，不通过 Adapter Registry 选择
-- Intellect 企业版用户若需画布功能，BFF Tenant 必须同时绑定一个 Intellect RAG 后端
+- BFF 的画布路由通过 `AdapterRegistry.getCanvasBackendForBackend(tenantId)` 解析画布后端,**不经过主后端 Adapter Registry 选择**
+- Intellect 企业版用户若需画布功能,BFF Tenant 必须同时绑定一个 Intellect RAG 后端(设置 `canvasBackendId`)
+
+**画布后端解析流程**(spec-010 v8,四层解析):
+
+```
+getCanvasBackendForBackend(tenantId) 解析逻辑:
+1. tenant = backendStore.getBackend(tenantId)
+2. if tenant.canvasBackendId 存在:
+     - 按 backendId 获取 Adapter
+     - instanceof IntellectRagAdapter 断言(Principle III 运行时双保险)
+     - 失败 → 抛 InvalidCanvasBackendError(canvasBackendId 指向非 intellect-rag)
+     - 成功 → 返回 IntellectRagAdapter 实例
+3. if tenant.canvasBackendId 为空:
+     - if tenantId === 'default': 回退首个 intellect-rag backend(向后兼容)
+     - else if !tenant: 抛 TenantNotFoundError(tenantId 不存在,非 default 租户)
+     - else: 抛 CanvasBackendNotBoundError(企业版租户存在但未绑定画布后端)
+```
+
+**错误处理**:
+- `CanvasBackendNotBoundError`:企业版租户未绑定画布后端,前端 503 + 引导绑定
+- `InvalidCanvasBackendError`:`canvasBackendId` 指向非 intellect-rag 类型后端(配置错误,启动时即被 BackendStore 校验拦截)
+- `BackendNotConfiguredError`:`canvasBackendId` 在 HarnessStore 中不存在(配置丢失)
+- `TenantNotFoundError`:非 default 租户在 BackendStore 中不存在(配置丢失)
 
 **Canvas IR 不需要**：因为画布只走 Intellect RAG，直接用 Intellect RAG 原生格式，无需中间表示。
 
@@ -670,10 +721,11 @@ BFF 侧的权限控制分为**两个层次**：
 
 ### 4.1 设计原则
 
-1. **P0-P3 先行**：本期不引入加密存储复杂度，使用环境变量 + JSON 文件存储
-2. **环境变量优先**：敏感的 admin token 通过环境变量注入，不落盘到 JSON
-3. **JSON 文件存储非敏感配置**：后端端点、类型、能力声明等存 JSON
-4. **未来演进**：预留加密存储接口，P4+ 可平滑升级
+1. **TokenVault 抽象**(spec-010 v8 已实施):引入 `ITokenVault` 接口,提供 `EnvTokenVault`(P0 默认)+ `EncryptedFileTokenVault`(P4 可选)双实现
+2. **环境变量优先**:`EnvTokenVault` 为默认实现,敏感的 admin token 通过环境变量注入,不落盘
+3. **加密存储可选**:生产环境可启用 `EncryptedFileTokenVault`,凭据以 AES-256-GCM 加密存储在 `bff/data/token-vault.json`
+4. **JSON 文件存储非敏感配置**:后端端点、类型、能力声明等存 JSON,不含 token 明文
+5. **未来演进**:预留 KMS/Vault 集成接口,P5+ 可平滑升级
 
 ### 4.2 存储分层
 
@@ -794,28 +846,62 @@ Admin 页面新增后端时：
 4. 页面提示用户将 token 添加到 `.env` 文件
 5. 重启 BFF 后生效
 
-### 4.7 未来演进（P4+）
+### 4.7 TokenVault 实现(spec-010 v8 已实施)
+
+> **状态更新**:原 P4+ 演进计划已提前在 spec-010 v8 实施,`ITokenVault` 接口 + `EnvTokenVault` + `EncryptedFileTokenVault` 已落地。详见 [bff/src/services/token-vault.ts](../../bff/src/services/token-vault.ts)。
 
 ```typescript
-// 预留接口，未来切换到加密存储
-interface TokenVault {
-  get(key: string): string | undefined;
-  set(key: string, value: string): void;
+// bff/src/services/token-vault.ts
+
+// 凭据类型
+type CredentialKind = 'bearer-token' | 'email-password';
+interface BearerTokenCredential { kind: 'bearer-token'; token: string }
+interface EmailPasswordCredential { kind: 'email-password'; email: string; password: string }
+type Credential = BearerTokenCredential | EmailPasswordCredential;
+
+// TokenVault 接口(已实施)
+interface ITokenVault {
+  getCredentials(backendId: string): Promise<Credential | null>;
+  setCredentials(backendId: string, credential: Credential): Promise<void>;
+  deleteCredentials(backendId: string): Promise<void>;
+  listBackendIds(): Promise<string[]>;
 }
 
-// 实现 1：环境变量（P0-P3）
-class EnvTokenVault implements TokenVault {
-  get(key: string) { return process.env[key]; }
-  set(key: string, value: string) { throw new Error('Env vault is read-only'); }
+// 实现 1:EnvTokenVault(P0 默认,只读,从环境变量读取)
+class EnvTokenVault implements ITokenVault {
+  // 命名规则:{BACKEND_ID_UPPER}_TOKEN / _EMAIL + _PASSWORD
+  // 优先级:email-password > bearer-token(两者同时存在时优先 email-password)
+  async getCredentials(backendId: string): Promise<Credential | null> {
+    const prefix = backendId.toUpperCase().replace(/-/g, '_');
+    const email = process.env[`${prefix}_EMAIL`];
+    const password = process.env[`${prefix}_PASSWORD`];
+    if (email && password) return { kind: 'email-password', email, password };
+    const token = process.env[`${prefix}_TOKEN`];
+    return token ? { kind: 'bearer-token', token } : null;
+  }
+  async setCredentials(backendId: string): Promise<void> {
+    throw new Error(`EnvTokenVault does not support setCredentials (backendId=${backendId}). Use EncryptedFileTokenVault or set env vars manually.`);
+  }
+  async listBackendIds(): Promise<string[]> { return []; } // env var 无法枚举
 }
 
-// 实现 2：加密文件（P4+，使用 AES-256-GCM）
-class EncryptedFileTokenVault implements TokenVault {
-  constructor(private encryptionKey: string) {}
-  get(key: string) { /* 解密读取 */ }
-  set(key: string, value: string) { /* 加密写入 */ }
+// 实现 2:EncryptedFileTokenVault(P4 可选,AES-256-GCM 加密文件)
+class EncryptedFileTokenVault implements ITokenVault {
+  // 构造函数接受可选的 vaultFile 路径,加密密钥从 process.env.HARNESS_TOKEN_ENCRYPTION_KEY 读取
+  // (非 constructor(encryptionKey: string),详见 token-vault.ts L165-L189)
+  constructor(vaultFile?: string) {}
+  // 文件位置:bff/data/token-vault.json(加入 .gitignore)
+  // 文件格式:扁平 Record<backendId, {encrypted, iv, tag}>,base64 编码,无 version/entries 包裹
+  // 加密算法:AES-256-GCM(key + iv + tag)
+  // 密钥来源:HARNESS_TOKEN_ENCRYPTION_KEY 环境变量(64 hex 或 32 raw)
+  // ⚠️ 当前限制:
+  //   - 密钥轮换(HARNESS_TOKEN_ENCRYPTION_KEY_NEW)为手动操作,P5+ 计划自动化
+  //   - 多实例共享需手动同步 token-vault.json(NFS),P5+ 计划支持
+  //   - KMS/Vault 集成为 P5+ 计划
 }
 ```
+
+**密钥管理操作详见**:[specs/010-multi-harness-wizard/quickstart.md](../specs/010-multi-harness-wizard/quickstart.md)
 
 ## 五、Adapter 接口定义
 
@@ -1130,67 +1216,86 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter, IMultiTenant
 }
 ```
 
-### 6.4 画布服务（硬绑定 Intellect）
+### 6.4 画布服务（硬绑定 Intellect RAG,按租户解析)
 
 ```typescript
 // bff/src/services/canvas-service.ts
 
 export class CanvasService {
-  constructor(private intellectAdapter: IntellectRagAdapter) {}
+  constructor(
+    private adapterRegistry: AdapterRegistry,
+    // spec-010 v8: 不再注入固定 IntellectRagAdapter,
+    // 改为按 tenantId 动态解析 getCanvasBackendForBackend(tenantId)
+  ) {}
 
-  // 画布操作永远走 Intellect，不经过 Adapter Registry
-  async listCanvas(ctx: TenantContext): Promise<Canvas[]> {
-    return this.intellectAdapter.listCanvas(ctx);
+  // 画布操作按租户解析画布后端,不经过主后端 Adapter Registry
+  async listCanvas(ctx: BackendContext): Promise<Canvas[]> {
+    // getCanvasBackendForBackend 内部执行三层解析:
+    // 1. tenant.canvasBackendId 显式绑定
+    // 2. default 租户回退首个 intellect-rag
+    // 3. 其他租户未绑定 → 抛 CanvasBackendNotBoundError
+    const adapter = this.adapterRegistry.getCanvasBackendForBackend(ctx.backendId);
+    return adapter.listCanvas(ctx);
   }
 
-  async saveCanvas(ctx: TenantContext, agentId: string, canvas: Canvas): Promise<void> {
-    return this.intellectAdapter.saveCanvas(ctx, agentId, canvas);
+  async saveCanvas(ctx: BackendContext, agentId: string, canvas: Canvas): Promise<void> {
+    const adapter = this.adapterRegistry.getCanvasBackendForBackend(ctx.backendId);
+    return adapter.saveCanvas(ctx, agentId, canvas);
   }
 
-  async *executeCanvas(ctx: TenantContext, canvasId: string, input: unknown): AsyncIterable<StreamChunk> {
-    yield* this.intellectAdapter.executeCanvas(ctx, canvasId, input);
+  async *executeCanvas(ctx: BackendContext, canvasId: string, input: unknown): AsyncIterable<StreamChunk> {
+    const adapter = this.adapterRegistry.getCanvasBackendForBackend(ctx.backendId);
+    yield* adapter.executeCanvas(ctx, canvasId, input);
   }
 }
 ```
 
+> **注**:`ctx.backendId` 在 spec-008 中实际接收 `tenantId`(BffTenant.id),方法签名沿用历史命名不重命名(spec-010 v8 D1 决策:零契约变更)。
+
 ## 七、BFF 多租户绑定模型
 
-```typescript
-// bff/src/services/harness-store.ts
+> **spec-010 v8 B-10 重写**:原 `TenantBackendBinding` 用 `roles` 数组与实际实现不符,已替换为双绑定字段模型。
 
-// BFF 租户（轻量，只存绑定关系）
+```typescript
+// bff/src/types/tenant.ts
+
+// BFF 租户(轻量,只存绑定关系 + 组织隔离配置)
 interface BffTenant {
   id: string;
   name: string;                    // "Acme Corp"
+  // 主后端绑定(必填,任意类型,承载 Agent/Session/Chat 等核心能力)
+  intellectBackendId: string;      // 绑定到 HarnessBackend.id(= 租户隔离锚点)
+  // 画布后端绑定(可选,必须 intellect-rag 类型,Principle III)
+  canvasBackendId?: string;        // 双后端场景:企业版 + 画布
+  // intellect-team 实例内组织隔离(非租户隔离,通过 X-Intellect-Team/X-Intellect-Project 头注入)
+  intellectTenantId?: string;      // Team ID("0"=缺省)
+  intellectProjectId?: string;     // Project ID(可选)
+  // 认证模式(P4b)
+  authMode?: 'intellect-rag' | 'intellect-enterprise';
   createdAt: string;
   updatedAt: string;
 }
 
-// 租户与后端的绑定（一个租户可绑定多个后端）
-interface TenantBackendBinding {
-  tenantId: string;
-  backendId: string;
-  backendType: 'intellect-rag' | 'intellect-enterprise';
-  // Intellect 侧
-  intellectTenantId?: string;
-  // Intellect 侧（admin token 用于管理操作）
-  intellectAdminToken?: string;    // imt_* admin/owner token
-  // 用途标记
-  roles: ('canvas' | 'knowledge' | 'chat' | 'coding')[];
-  isDefault: boolean;
-}
-
-// Harness 后端配置（Admin 管理端配置）
+// Harness 后端配置(Admin 管理端配置,不含 token 明文)
 interface HarnessBackend {
   id: string;
   name: string;
-  type: 'intellect-rag' | 'intellect-enterprise';
+  type: 'intellect-rag' | 'intellect-enterprise' | 'intellect-llm' | 'intellect-community' | 'hermes' | 'kag' | 'agent-scope';
   endpoint: string;                // http://localhost:9380 / http://localhost:8642
-  adminToken?: string;             // Intellect admin member token
-  status: 'active' | 'disabled';
+  adminTokenEnvVar: string;        // token 引用(环境变量名,不存明文)
+  capabilities: HarnessCapabilities;
+  credentialKind: 'bearer-token' | 'email-password';
+  intellectTenantId?: string;      // intellect-enterprise 专用:实例内 Team ID
+  defaultForTenant?: boolean;
+  ready: boolean;                  // 运行时健康状态
   createdAt: string;
   updatedAt: string;
 }
+
+// 绑定关系(通过 BffTenant 字段表达,无独立 Binding 实体)
+// - 主后端:BffTenant.intellectBackendId → HarnessBackend(任意类型)
+// - 画布后端:BffTenant.canvasBackendId → HarnessBackend(intellect-rag 类型,由 BackendStore 强制校验)
+// - 解析流程:AdapterRegistry.getCanvasBackendForBackend(tenantId) 三层解析,详见 §3.4
 ```
 
 ## 八、BFF 目录结构
