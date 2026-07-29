@@ -1,9 +1,28 @@
 # 010 — Multi-Harness 扩展 + 接入向导
 
-> **版本**: v7 评审修订
-> **状态**: 待评审
-> **依赖**: spec-001 (P0 契约) / spec-002 (P1 RAG Adapter) / spec-003 (Admin) / spec-004 (Enterprise Adapter) / spec-008 (Canvas Service)
+> **版本**: v8.3(C-P4 spec 修订:KAG 协议族改 mcp-protocol)
+> **状态**: Phase A1-A3 + B + D + Phase X 联调 + C-P1/P2/P3 已完成;C-P4 spec 修订完成,待 spec-012 设计
+> **依赖**: spec-001 (P0 契约) / spec-002 (P1 RAG Adapter) / spec-003 (Admin) / spec-004 (Enterprise Adapter) / spec-008 (Canvas Service) / spec-011 (Tenant-RAG 一致性) / spec-012 (KAG MCP Adapter,新建)
 
+> **v8.3 修订摘要**(基于 C-0 research [research.md](./research.md) R2 KAG 协议偏差发现):
+> - **M1(§3.1)**: KAG 协议族从 `openai-compatible` 改为 `mcp-protocol`(新增协议族);SSE 解析器列改为 `N/A(MCP 协议无 SSE)`
+> - **M2(§3.2)**: KAG 能力矩阵 `knowledgeBase: true → false`(无 REST KB CRUD API);`mcp: false → true`(KAG 0.8.0 全面拥抱 MCP)
+> - **M3(§4.1)**: KagAdapter 从 `OpenAICompatibleBaseAdapter` 分支移出,改继承新增的 `MCPBaseAdapter`(见 spec-012);从 `IKnowledgeBaseAdapter` 实现者列表移除
+> - **M4(§4.2/§5.2/§5.3)**: 删除 m6 注脚"KAG KB 走 IKnowledgeBaseAdapter";KagAdapter 工厂注册推迟到 spec-012 完成后
+> - **m1-m4(§3.1 端口列)**: intellect-community(默认 8642)/hermes(默认 8642,冲突提示)/agent-scope(默认 5000)/kag(MCP SSE 默认 3000)端口默认值补全
+> - **新增依赖 spec-012**: KAG MCP Adapter 设计(MCPBaseAdapter + IMCPAdapter 接口),C-P4 实施推迟到 spec-012 完成后
+> - **R11 风险处置**: spec 修订完成(本版本),R11 从"需修订 spec"降级为"待 spec-012 实施"
+>
+> **v8 修订摘要**(基于 v7 多 AgentBackend 配置与管理 TODO 方案评估 + Intellect-Team Python/Rust 两版本对齐技术评审):
+> - **修改 1(D1)**: `IHarnessAdapter` 接口对齐 Constitution v1.3.0,新增 `submitApproval?`/`submitClarify?` 可选方法
+> - **修改 2**: `HarnessBackendConfig` 新增 `intellectTenantId` 字段(spec-011 已实施),Zod schema + 向导表单 + Admin 表单同步扩展
+> - **修改 3**: 向导 `/wizard/setup` 创建 intellect-enterprise backend 后同步触发 `validateTenantConfigs` 校验
+> - **修改 4(D1)**: spec-008 `getCanvasBackendForBackend(tenantId)` 命名遗留,spec 显式标注不重命名(零契约变更)
+> - **修改 5**: §1.4 intellect-rag 项目合并改为"未来计划",§2.1 Constitution 修订依据改为"消除历史命名歧义"
+> - **修改 6(D2)**: backend 切换/删除时校验 RunRegistry 活跃 run,软阻断返回 409
+> - **修改 7(D3)**: intellect-team Python 路径全部替换为 Rust Gateway 路径;新增 Intellect-Team 两版本对齐需求(详见 [intellect-team-alignment-requirements.md](./intellect-team-alignment-requirements.md))与双版本兼容兜底方案(详见 [dual-version-fallback-plan.md](./dual-version-fallback-plan.md))
+> - **D4**: 先完成上述 7 项 spec 修订,再细化 tasks.md
+>
 > **v7 修订摘要**(基于 v6 二次评审):
 > - **B1**: `ICanvasAdapter` 接口扩展为高层语义方法 + `request()`/`proxy()` 透传方法,覆盖 CanvasService 全部 20+ 方法依赖
 > - **B2**: 明确 `getCanvasBackendForBackend(tenantId)` spec-008 契约保留,CanvasService 改造不破坏签名;§15 新增 spec-008 兼容性说明
@@ -44,11 +63,15 @@ AgentUI 已完成与 Intellect 企业版的对接，具备以下能力：
 | D5 | Principle III 是否修订? | **保持 "Hard-Bound Intellect RAG"** — 画布引擎作为 enterprise 内嵌 RAG 子系统 |
 | D6 | KAG 知识库扩展接口? | **Phase A 预留 `IKnowledgeBaseAdapter`** |
 
-### 1.4 项目合并说明(D3 + D4)
+### 1.4 项目合并说明(D3 + D4,v8 修正)
 
-intellect-rag 项目代码已合并到 intellect-enterprise 仓库,但部署上仍分两个端口:
+**v8 修正(修改 5)**:原 v7 写"intellect-rag 项目代码已合并到 intellect-enterprise 仓库",实际当前 `intellect-rag-app/` 仍是独立项目目录,RAG Server(:9380)和 Rust Gateway(:8642)是两个独立部署的服务。改为:
+
+**未来计划**:intellect-rag 项目代码计划合并到 intellect-enterprise 仓库,但当前仍独立部署。spec-010 的 BackendType 语义修订不依赖此合并,仅澄清命名。
+
+当前部署形态:
 - **intellect-rag 子系统** (:9380): 画布引擎 + 知识库,Canvas Workflow SSE
-- **intellect-enterprise 子系统** (:8642): Team/Project + multiTenant,自定义事件 SSE
+- **intellect-enterprise 子系统** (:8642): Team/Project + multiTenant,自定义事件 SSE(Rust Gateway `intellect-gateway/src/platform/api_server.rs`)
 
 BackendType 保留 `intellect-rag` / `intellect-enterprise` 两个字面量,表示两个独立部署的子系统。**BackendType 的语义是"协议/Adapter 类型",不是"项目归属"**。
 
@@ -86,14 +109,18 @@ export type BackendType =
  * 协议族(m2 修正:显式导出类型,供 Adapter 选择 SSE 解析器使用)。
  *
  * 与 BackendType 的映射见 §3.1 协议族分类表。
+ *
+ * v8.3 新增 'mcp-protocol':KAG 后端走 MCP 协议(MCP SDK 调用远程工具),
+ * 无 HTTP SSE 流,不经 parseOpenAISSE。详见 spec-012。
  */
 export type ProtocolFamily =
   | 'canvas-workflow'      // Intellect RAG 专用,parseCanvasWorkflowSSE
   | 'intellect-enterprise' // Intellect Enterprise 专用,parseIntellectEnterpriseSSE
-  | 'openai-compatible';   // 4 个新后端 + Intellect RAG OpenAI 兼容端点,parseOpenAISSE
+  | 'openai-compatible'    // 3 个新后端(intellect-community/hermes/agent-scope),parseOpenAISSE
+  | 'mcp-protocol';        // v8.3 新增:KAG 专用,MCP SDK 调用,无 SSE 解析
 ```
 
-### 2.1 Constitution 命名约束修订(B1 修正)
+### 2.1 Constitution 命名约束修订(B1 修正,v8 修正)
 
 原 [harness.ts:24](file:///Users/simon/project/agentui/bff/src/types/harness.ts#L24) 写:
 
@@ -103,6 +130,8 @@ v6 修订为:
 
 > 'intellect-community' 指 intellect-agent 社区版(纯 Agent 运行时,OpenAI 兼容)。
 > 历史误用指将 'intellect-community' 指代 intellect-rag,现已澄清。
+
+**v8 修正(修改 5)**:原 v7 修订依据"intellect-rag 项目已合并"前提不成立(见 §1.4),修订依据改为"消除历史命名歧义",不依赖合并状态。
 
 同步更新 `.specify/memory/constitution.md` 的命名约束段落。
 
@@ -116,10 +145,16 @@ v6 修订为:
 |-------------|---------------|-----------|------|
 | `intellect-rag` | canvas-workflow | `parseCanvasWorkflowSSE` (已有) | :9380 |
 | `intellect-enterprise` | intellect-enterprise | `parseIntellectEnterpriseSSE` (已有) | :8642 |
-| `intellect-community` | openai-compatible | `parseOpenAISSE` (新增) | 任意 |
-| `hermes` | openai-compatible | `parseOpenAISSE` (复用) | 任意 |
-| `kag` | openai-compatible | `parseOpenAISSE` (复用) | 任意 |
-| `agent-scope` | openai-compatible | `parseOpenAISSE` (复用) | 任意 |
+| `intellect-community` | openai-compatible | `parseOpenAISSE` (新增) | 任意(默认 :8642,与 intellect-enterprise 同源) |
+| `hermes` | openai-compatible | `parseOpenAISSE` (复用) | 任意(默认 :8642,**与 intellect-enterprise 冲突,部署需改端口**) |
+| `kag` | **mcp-protocol** (v8.3 修订) | **N/A**(MCP 协议,无 HTTP SSE 流) | 任意(MCP SSE 默认 :3000;product UI :8887) |
+| `agent-scope` | openai-compatible | `parseOpenAISSE` (复用) | 任意(默认 :5000) |
+
+**v8.3 KAG 协议族修订说明**(基于 [research.md](./research.md) R2):
+- KAG v0.8.0 **无 OpenAI 兼容 `/v1/chat/completions` 端点**,solver_server 是自有 `/process` 协议
+- KAG 通过 MCP 协议暴露 `qa_pipeline(query)` + `kb_retrieve(query)` 两个工具
+- KAG 不走 SSE 解析器,经 MCP SDK 调用远程工具,结果同步返回(非流式)
+- KagAdapter 不继承 `OpenAICompatibleBaseAdapter`,改继承新增的 `MCPBaseAdapter`(详见 spec-012)
 
 ### 3.2 能力矩阵
 
@@ -129,21 +164,23 @@ const DEFAULT_CAPABILITIES: Record<BackendType, HarnessCapabilities> = {
   'intellect-enterprise':  { canvas: false, knowledgeBase: false, memory: true, mcp: true,  multiTenant: true,  modelManagement: true  },
   'intellect-community':   { canvas: false, knowledgeBase: false, memory: false, mcp: false, multiTenant: false, modelManagement: false },
   'hermes':                { canvas: false, knowledgeBase: false, memory: true,  mcp: true,  multiTenant: false, modelManagement: false },
-  'kag':                   { canvas: false, knowledgeBase: true,  memory: false, mcp: false, multiTenant: false, modelManagement: false },
+  'kag':                   { canvas: false, knowledgeBase: false, memory: false, mcp: true,  multiTenant: false, modelManagement: false },  // v8.3: knowledgeBase true→false, mcp false→true
   'agent-scope':           { canvas: false, knowledgeBase: false, memory: true,  mcp: true,  multiTenant: false, modelManagement: false },
 };
 ```
 
 **m3 能力声明依据脚注**:
-- `mcp: true` for `hermes`/`agent-scope`:基于 OpenAI function calling 协议(工具调用),待 Phase C research 确认各后端具体实现差异
+- `mcp: true` for `hermes`/`agent-scope`:基于 OpenAI function calling 协议(工具调用),C-0 research 已确认(research.md R1)
 - `mcp: true` for `intellect-enterprise`:已确认,基于 intellect-team 自定义 tool.started/tool.completed SSE 事件(spec-004)
-- `knowledgeBase: true` for `kag`:基于 KAG 自有 KB API,Phase C P4 research 确认端点格式
-- 所有待 research 的能力在 Phase C 实施前需更新本矩阵,避免误判
+- `mcp: true` for `kag`(v8.3 修订):基于 KAG 0.8.0 全面拥抱 MCP 协议,暴露 `qa_pipeline`/`kb_retrieve` 工具(research.md R2)
+- `knowledgeBase: false` for `kag`(v8.3 修订):KAG 无 REST KB CRUD API,仅有 `kb_retrieve(query)` 检索工具(经 MCP 通道)。**不实现 `IKnowledgeBaseAdapter`**,KB 检索走 MCP 工具调用(详见 spec-012)
+- C-0 research 已完成,本矩阵为最终值,无待 research 项
 
-**m6 KAG KB 路径澄清**:
-- KAG 的 `knowledgeBase: true` 走 `IKnowledgeBaseAdapter` 接口(KagAdapter 实现)
+**m6 KAG KB 路径澄清(v8.3 修订)**:
+- ~~KAG 的 `knowledgeBase: true` 走 `IKnowledgeBaseAdapter` 接口(KagAdapter 实现)~~ — **已废弃**(KAG 无 REST KB CRUD API)
+- KAG 的 KB 检索走 MCP 通道(`kb_retrieve(query)` 工具),不实现 `IKnowledgeBaseAdapter`
 - 与 `rag.provider` 配置无关:`rag.provider` 固定为 `intellect-rag`(project_memory 约束),仅控制 Intellect RAG 子系统的 RAG 引擎选择
-- KAG KB 是独立 BackendType 的扩展能力,不参与 `rag.provider` 配置路径
+- KAG 的 `qa_pipeline`/`kb_retrieve` 工具调用见 spec-012 `IMCPAdapter` 接口设计
 
 **Constitution 约束**:
 - `canvas: true` 仅 `intellect-rag` 允许 (Principle III)
@@ -168,11 +205,12 @@ const DEFAULT_CAPABILITIES: Record<BackendType, HarnessCapabilities> = {
 
 ```
 IHarnessAdapter (Layer 1 - 核心层,所有后端必选)
-  ├─ OpenAICompatibleBaseAdapter (抽象基类,4 个新后端复用)
+  ├─ OpenAICompatibleBaseAdapter (抽象基类,3 个 OpenAI 兼容后端复用)
   │   ├─ IntellectCommunityAdapter
   │   ├─ HermesAdapter
-  │   ├─ KagAdapter (同时实现 IKnowledgeBaseAdapter)
   │   └─ AgentScopeAdapter
+  ├─ MCPBaseAdapter (抽象基类,v8.3 新增,见 spec-012)
+  │   └─ KagAdapter (MCP 协议,实现 IMCPAdapter)
   ├─ IntellectRagAdapter (独立实现,Canvas Workflow SSE + 画布 + KB)
   └─ IntellectEnterpriseAdapter (独立实现,自定义事件 SSE + multiTenant)
 
@@ -180,12 +218,21 @@ ICanvasAdapter (Layer 2 - 画布扩展,仅 intellect-rag)
   └─ IntellectRagAdapter (实现)
 
 IKnowledgeBaseAdapter (Layer 2 - KB 扩展,可选)
-  ├─ IntellectRagAdapter (实现)
-  └─ KagAdapter (实现,Phase C P4)
+  └─ IntellectRagAdapter (实现)
+  // v8.3:KagAdapter 移出 — KAG 无 REST KB CRUD API,不实现此接口
+
+IMCPAdapter (Layer 2 - MCP 扩展,v8.3 新增,见 spec-012)
+  └─ KagAdapter (实现,通过 MCP SDK 调用 qa_pipeline/kb_retrieve 工具)
 
 IMultiTenantAdapter (Layer 2 - multiTenant 扩展,仅 intellect-enterprise)
   └─ IntellectEnterpriseAdapter (实现,已有)
 ```
+
+**v8.3 KagAdapter 继承关系变更说明**:
+- 旧(v8.2):`KagAdapter extends OpenAICompatibleBaseAdapter implements IKnowledgeBaseAdapter`
+- 新(v8.3):`KagAdapter extends MCPBaseAdapter implements IMCPAdapter`
+- 原因:KAG 无 OpenAI 兼容入口,无 REST KB CRUD API,仅通过 MCP 协议暴露工具(research.md R2)
+- `MCPBaseAdapter` + `IMCPAdapter` 接口设计见 spec-012,C-P4 实施推迟到 spec-012 完成后
 
 ### 4.2 接口定义
 
@@ -198,15 +245,16 @@ IMultiTenantAdapter (Layer 2 - multiTenant 扩展,仅 intellect-enterprise)
  * - 'canvas':          额外实现 ICanvasAdapter
  * - 'knowledge-base':  额外实现 IKnowledgeBaseAdapter
  * - 'multi-tenant':    额外实现 IMultiTenantAdapter
+ * - 'mcp':             v8.3 新增,额外实现 IMCPAdapter(见 spec-012)
  *
  * 多能力 Adapter(如 IntellectRagAdapter)取主能力标识:
  * - IntellectRagAdapter:        'canvas'(主能力画布)
  * - IntellectEnterpriseAdapter: 'multi-tenant'
- * - KagAdapter:                 'knowledge-base'
+ * - KagAdapter:                 'mcp'(v8.3 修订:从 'knowledge-base' 改为 'mcp',见 spec-012)
  */
-export type AdapterKind = 'harness-core' | 'canvas' | 'knowledge-base' | 'multi-tenant';
+export type AdapterKind = 'harness-core' | 'canvas' | 'knowledge-base' | 'multi-tenant' | 'mcp';  // v8.3 新增 'mcp'
 
-// Layer 1 核心(扩展:新增 adapterKind 字段)
+// Layer 1 核心(扩展:新增 adapterKind 字段,v8 新增 submitApproval?/submitClarify?)
 export interface IHarnessAdapter {
   readonly backendId: string;
   readonly backendType: BackendType;
@@ -222,6 +270,13 @@ export interface IHarnessAdapter {
   cancelMessage(ctx: BackendContext, sessionId: string): Promise<void>;
   healthCheck(): Promise<boolean>;
   discoverCapabilities(): Promise<HarnessCapabilities>;
+  /**
+   * v8 新增(修改 1):对齐 Constitution v1.3.0。
+   * 仅 IntellectEnterpriseAdapter 实现,OpenAICompatibleBaseAdapter 不实现。
+   * OpenAI 兼容后端无审批/澄清语义。
+   */
+  submitApproval?(ctx: BackendContext, runId: string, choice: 'once'|'session'|'always'|'deny'): Promise<{ runId: string; choice: string; resolved: number }>;
+  submitClarify?(ctx: BackendContext, sessionId: string, clarifyId: string, answer: string): Promise<{ status: string }>;
 }
 
 /**
@@ -291,6 +346,10 @@ export function isKnowledgeBaseAdapter(a: IHarnessAdapter): a is IKnowledgeBaseA
 export function isMultiTenantAdapter(a: IHarnessAdapter): a is IMultiTenantAdapter {
   return a.adapterKind === 'multi-tenant';
 }
+// v8.3 新增:MCP 类型守卫(见 spec-012)
+export function isMCPAdapter(a: IHarnessAdapter): a is IMCPAdapter {
+  return a.adapterKind === 'mcp';
+}
 ```
 
 ### 4.3 IntellectEnterpriseAdapter 不实现 ICanvasAdapter(M6 修正)
@@ -305,7 +364,7 @@ export function isMultiTenantAdapter(a: IHarnessAdapter): a is IMultiTenantAdapt
 
 ### 5.0 设计原则(B3 修正)
 
-OpenAI 兼容基类虽然面向 4 个新后端(community/hermes/kag/agent-scope),仍需落实 S1.1 安全约束:
+OpenAI 兼容基类面向 3 个 OpenAI 兼容新后端(community/hermes/agent-scope),需落实 S1.1 安全约束(v8.3:KAG 移出,改继承 MCPBaseAdapter,见 spec-012):
 - **强制删除客户端可能注入的 `X-Intellect-User`/`X-Intellect-Team`/`X-Intellect-Project` 头**,防止客户端伪造身份头
 - **强制覆盖 `Authorization` 头**为 Adapter 实例的 admin token,不接受客户端传入
 - 子类(KagAdapter 等)未来若需注入身份头,在基类删除后由子类显式注入
@@ -500,18 +559,19 @@ export class HermesAdapter extends OpenAICompatibleBaseAdapter {
   };
 }
 
-// bff/src/services/adapters/kag/kag-adapter.ts (Phase C P4 实现 IKnowledgeBaseAdapter)
-export class KagAdapter extends OpenAICompatibleBaseAdapter implements IKnowledgeBaseAdapter {
-  readonly backendType = 'kag' as const;
-  protected readonly defaultCapabilities: HarnessCapabilities = {
-    canvas: false, knowledgeBase: true, memory: false, mcp: false,
-    multiTenant: false, modelManagement: false,
-  };
-
-  // IKnowledgeBaseAdapter 方法(Phase C P4 research 后实现)
-  async listDatasets(_ctx: BackendContext): Promise<Dataset[]> { throw new Error('TODO'); }
-  // ... 其他 KB 方法
-}
+// bff/src/services/adapters/kag/kag-adapter.ts
+// v8.3 修订:KAG 改继承 MCPBaseAdapter,实现 IMCPAdapter(非 IKnowledgeBaseAdapter)
+// 详见 spec-012。C-P4 实施推迟到 spec-012 完成后。
+// export class KagAdapter extends MCPBaseAdapter implements IMCPAdapter {
+//   readonly backendType = 'kag' as const;
+//   readonly adapterKind = 'mcp' as const;
+//   protected readonly defaultCapabilities: HarnessCapabilities = {
+//     canvas: false, knowledgeBase: false, memory: false, mcp: true,
+//     multiTenant: false, modelManagement: false,
+//   };
+//   // IMCPAdapter 方法:qa_pipeline(query) / kb_retrieve(query)
+//   // 详见 spec-012
+// }
 
 // bff/src/services/adapters/agent-scope/agent-scope-adapter.ts
 export class AgentScopeAdapter extends OpenAICompatibleBaseAdapter {
@@ -532,11 +592,12 @@ adapterRegistry.registerFactory('intellect-enterprise',  (b) => new IntellectEnt
 // M2 修正:intellect-llm 不注册工厂(legacy 类型,仅 JSON 配置,无 Adapter 实现)
 // 若 HarnessBackendConfig.type === 'intellect-llm' 被加载,getAdapterForBackend() 抛
 // AdapterFactoryNotRegisteredError,符合 YAGNI 原则。
-// 新增 4 类
+// 新增 3 类(v8.3:KAG 推迟到 spec-012)
 adapterRegistry.registerFactory('intellect-community',   (b) => new IntellectCommunityAdapter(b));
 adapterRegistry.registerFactory('hermes',                (b) => new HermesAdapter(b));
-adapterRegistry.registerFactory('kag',                   (b) => new KagAdapter(b));
 adapterRegistry.registerFactory('agent-scope',           (b) => new AgentScopeAdapter(b));
+// v8.3:KAG 工厂注册推迟到 spec-012 完成(MCPBaseAdapter + IMCPAdapter 设计完成后)
+// adapterRegistry.registerFactory('kag',                (b) => new KagAdapter(b));
 ```
 
 一 type 一 Adapter,无隐式判断。
@@ -891,13 +952,19 @@ Step 3: 填写连接信息
   └─ Name / Endpoint(按 BackendType 预填) / 凭据(按 credentialKind 切换表单)
      - bearer-token: 单个 token 输入框
      - email-password: email + password 输入框(intellect-rag 专用)
+  └─ v8 新增(修改 2):type='intellect-enterprise' 时显示 intellectTenantId 输入框
+     - 提示文案:"从 intellect-team INTELLECT_TENANT_ID env var 复制(Rust 版本要求 32 位 hex)"
+     - 格式校验:32 位 hex(Rust Gateway 强制要求,见 spec-011)
 Step 4: 连接探测(POST /admin/wizard/probe)
   └─ 调 healthCheck() + discoverCapabilities()
   └─ 实时反馈:✅ 能力清单 / ❌ 错误详情
+  └─ v8 新增(修改 7):探测依赖 Rust Gateway `/api/tenant/info` 端点(spec-011 已实施)
 Step 5: 确认保存(两种 token 模式)
   └─ env 模式:展示 .env 片段 → 用户复制 → 重启 BFF
   └─ runtime 模式:加密写入 → 即时生效(需 HARNESS_TOKEN_ENCRYPTION_KEY)
   └─ 创建 HarnessBackendConfig + 默认 BffTenant
+  └─ v8 新增(修改 3):若 type='intellect-enterprise',同步触发 validateTenantConfigs 校验
+     - 校验失败回滚创建,返回 400 + 错误详情
 Step 6: 完成 → 跳转 /
 ```
 
@@ -907,17 +974,15 @@ Step 6: 完成 → 跳转 /
 const DEFAULT_ENDPOINT_BY_TYPE: Partial<Record<BackendType, string>> = {
   'intellect-rag':         'http://localhost:9380',
   'intellect-enterprise':  'http://localhost:8642',
-  'intellect-community':   'http://localhost:8080',  // m1:待 Phase C P1 确认
-  'hermes':                'http://localhost:8000',  // m5:示例值,实际端口待 research
-  'kag':                   'http://localhost:8888',  // m5:示例值,实际端口待 research
-  'agent-scope':           'http://localhost:7000',  // m5:示例值,实际端口待 research
+  'intellect-community':   'http://localhost:8642',  // v8.3:R3 确认,与 intellect-enterprise 同源
+  'hermes':                'http://localhost:8642',  // v8.3:R1 确认,默认 8642(与 intellect-enterprise 冲突,部署需改端口)
+  'kag':                   'http://localhost:3000',  // v8.3:R2 确认,MCP SSE 默认端口 3000
+  'agent-scope':           'http://localhost:5000',  // v8.3:R1 确认,默认端口 5000
 };
 
-// m5:对无默认值的类型,向导展示 placeholder + 文档链接
+// v8.3:KAG endpoint 提示(MCP 协议,非 HTTP REST)
 const ENDPOINT_PLACEHOLDER_BY_TYPE: Partial<Record<BackendType, string>> = {
-  'hermes':      '如 http://your-hermes-host:8000,参考 https://...',
-  'kag':         '如 http://your-kag-host:8888,参考 https://...',
-  'agent-scope': '如 http://your-agent-scope-host:7000,参考 https://...',
+  'kag': '如 http://your-kag-host:3000(MCP SSE 端口),参考 https://github.com/OpenSPG/KAG',
 };
 ```
 
@@ -1034,6 +1099,18 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, setupHandler);
 
 async function setupHandler(ctx: Koa.Context) {
   // ... 创建 backend + tenant
+  // v8 新增(修改 3):若创建的是 intellect-enterprise backend,立即触发 spec-011 校验
+  // 注意:validateTenantConfigs 返回 Promise<boolean>(见 tenant-validator.ts:124-156)
+  if (newConfig.type === 'intellect-enterprise') {
+    const ok = await validateTenantConfigs(harnessStore);
+    if (!ok) {
+      // 回滚:删除刚创建的 config + tenant
+      await rollbackSetup(newConfig.id);
+      ctx.status = 400;
+      ctx.body = { code: 400, message: 'tenant_id mismatch: 配置的 intellectTenantId 与 intellect-team 不一致' };
+      return;
+    }
+  }
   BootstrapTokenManager.invalidate();  // 首个 backend 创建后失效
   ctx.body = { success: true };
 }
@@ -1078,6 +1155,53 @@ function WizardGuard({ children }) {
 - 列表页每行新增"Switch as Primary"操作 → 更新 BffTenant.intellectBackendId
 - 列表页每行新增"Switch as Canvas"操作(仅 intellect-rag 类型)→ 更新 BffTenant.canvasBackendId
 
+**v8 新增(修改 6,D2 决策:软阻断)**:backend 切换/删除时校验 RunRegistry 活跃 run
+
+```typescript
+// bff/src/routes/harness-admin.ts (修订)
+async function switchBackend(ctx: Koa.Context) {
+  const { tenantId, backendId, role } = ctx.request.body;
+  // v8:校验活跃 run,有活跃 run 时软阻断返回 409
+  if (runRegistry.hasActiveRuns(tenantId)) {
+    const count = runRegistry.getActiveRunCount(tenantId);
+    ctx.status = 409;
+    ctx.body = {
+      code: 409,
+      message: `租户有 ${count} 个活跃 run,请等待完成或强制取消后再切换 backend`,
+    };
+    return;
+  }
+  // ... 原切换逻辑
+}
+
+async function deleteBackend(ctx: Koa.Context) {
+  const { backendId } = ctx.params;
+  // v8:校验该 backend 是否有 run 记录(含已完成的)
+  if (runRegistry.hasRunsForBackend(backendId)) {
+    ctx.status = 409;
+    ctx.body = {
+      code: 409,
+      message: '该 backend 仍有 run 记录,请先清理或迁移后再删除',
+    };
+    return;
+  }
+  // ... 原删除逻辑(含 isBackendBound 校验)
+}
+```
+
+**RunRegistry 接口扩展**(v8 待实施,评审 F3 确认现有 RunRegistry 仅有 registerRun/verifyRunOwnership 方法):
+```typescript
+// bff/src/services/run-registry.ts (v8 新增方法)
+interface RunRegistry {
+  // ... 现有方法(registerRun/verifyRunOwnership)
+  hasActiveRuns(tenantId: string): boolean;       // v8 新增:是否有状态为 running 的 run
+  getActiveRunCount(tenantId: string): number;    // v8 新增:活跃 run 数量
+  hasRunsForBackend(backendId: string): boolean;  // v8 新增:该 backend 是否有任何 run 记录
+}
+```
+
+**⚠️ 实施约束**:现有 RunRegistry(`run-registry.ts`)仅用于审批路由校验,设计目的非"backend 切换/删除时阻断"。v8 新增方法需扩展 RunRegistry 内部数据结构(目前仅存 runId→backendId 映射,需新增 run 状态追踪)。
+
 ---
 
 ## 十、Admin 表单扩展(M2/M4 修正)
@@ -1100,7 +1224,9 @@ export const VALIDATION_RULES = {
 } as const;
 ```
 
-### 10.2 Zod schema 扩展(M3 修正)
+### 10.2 Zod schema 扩展(M3 修正,v8 新增 intellectTenantId)
+
+**v8 修正(评审 F1)**:`intellectTenantId` 是**租户级配置**(BffTenant 维度),非后端级配置(HarnessBackendConfig 维度)。spec-011 已将其放入 `tenantSchema`(见 [backend-store.ts:27](file:///Users/simon/project/agentui/bff/src/services/backend-store.ts#L27)),spec-010 v8 不重复添加到 `backendConfigSchema`。
 
 ```typescript
 // bff/src/services/harness-store.ts (修订)
@@ -1120,6 +1246,21 @@ const backendConfigSchema = z.object({
   credentialKind: z.enum(['bearer-token', 'email-password']).optional(),  // 新增
 });
 ```
+
+**intellectTenantId 的 Zod 校验**(`bff/src/services/backend-store.ts`,spec-011 已实施,待 v8 增强):
+
+```typescript
+// spec-011 现状(无 regex 约束):
+const tenantSchema = z.object({
+  // ...
+  intellectTenantId: z.string().optional(),  // spec-011 实施,无格式校验
+});
+
+// v8 待实施(需先完成 spec-011 测试用例适配,见兜底方案 4):
+// intellectTenantId: z.string().regex(/^[0-9a-fA-F]{32}$/).optional(),  // 32 位 hex
+```
+
+**⚠️ 实施约束**:32 位 hex regex 会破坏现有测试用例(`tenant-validator.test.ts` 使用 `'default'` 等非 hex 值)。必须先完成兜底方案 4 的测试用例适配(D6),再启用 regex 校验。
 
 ### 10.3 validateCapabilities 调用位置(M5 修正)
 
@@ -1162,7 +1303,7 @@ const BACKEND_TYPE_OPTIONS: { value: BackendType; label: string; description: st
   { value: 'intellect-enterprise', label: 'Intellect Enterprise',  description: 'Team/Project + multiTenant(:8642,自定义事件 SSE)' },
   { value: 'intellect-community',   label: 'Intellect Community',   description: 'intellect-agent 社区版(OpenAI 兼容)' },
   { value: 'hermes',                label: 'HERMES',                description: 'OpenAI 兼容' },
-  { value: 'kag',                   label: 'KAG',                   description: '知识库增强(OpenAI 兼容 + KB)' },
+  { value: 'kag',                   label: 'KAG',                   description: '知识图谱 + QA(MCP 协议,v8.3 修订)' },
   { value: 'agent-scope',          label: 'AgentScope',            description: '阿里达摩院(OpenAI 兼容)' },
 ];
 
@@ -1369,7 +1510,7 @@ function validateCapabilities(type: BackendType, caps: HarnessCapabilities): str
 |------|------|------|
 | Constitution 命名约束修订 | `.specify/memory/constitution.md` + `harness.ts` 注释 | 移除"禁用 intellect-community",澄清新语义 |
 | BackendType 扩展(6+1 类) + `ProtocolFamily` 类型 | `bff/src/types/harness.ts` | 新增 intellect-community/hermes/kag/agent-scope;intellect-llm 标 legacy;m2 导出 ProtocolFamily |
-| `OpenAICompatibleBaseAdapter` 基类 | `shared/openai-base-adapter.ts` | 4 个新后端复用;B3 安全约束;M6 SSRF 防护;M7 sendMessage history |
+| `OpenAICompatibleBaseAdapter` 基类 | `shared/openai-base-adapter.ts` | 3 个 OpenAI 兼容后端复用(v8.3:KAG 移出);B3 安全约束;M6 SSRF 防护(评审 S1/S2/S3 修复:doChat/healthCheck 走 safeFetch);M7 sendMessage history |
 | `parseOpenAISSE` | `shared/sse-parser.ts` | OpenAI SSE 解析器;M1 finish_reason/usage 顺序处理 |
 | `TokenVault` 接口 + `EnvTokenVault` | `token-vault.ts` | M3 异步 setCredentials;复合凭据存储(bearer-token + email-password) |
 | HarnessStore 接入 TokenVault | `harness-store.ts` | 优先 vault 回退 env;Zod schema 扩展 |
@@ -1428,7 +1569,7 @@ function validateCapabilities(type: BackendType, caps: HarnessCapabilities): str
 | VII. YAGNI + Test-First | ✅ OpenAI 基类复用;每 Adapter 必有测试 |
 | VIII. Access Contract | ✅ 非 enterprise 后端不触发 API_SERVER_KEY 契约 |
 
-### 15.1 spec-008 兼容性(新增,B2 修正)
+### 15.1 spec-008 兼容性(新增,B2 修正,v8 新增 D1 命名遗留标注)
 
 spec-010 对 spec-008 已发布契约的变更:
 
@@ -1438,6 +1579,12 @@ spec-010 对 spec-008 已发布契约的变更:
 | `CanvasService.resolveAdapter(ctx): IntellectRagAdapter` | 改为返回 `ICanvasAdapter`,新增 `isCanvasAdapter()` 运行时校验 | ⚠️ 源码兼容(类型收窄) |
 | `IntellectRagAdapter implements IHarnessAdapter` | 扩展为 `implements IHarnessAdapter, ICanvasAdapter, IKnowledgeBaseAdapter`,新增 `adapterKind = 'canvas'` | ✅ 接口扩展,向后兼容 |
 | CanvasService 20+ 方法依赖 `adapter.request()`/`adapter.proxy()` | 这两个方法纳入 `ICanvasAdapter` 接口 | ✅ 接口扩展,向后兼容 |
+
+**v8 新增(修改 4,D1 决策:不重命名)**:
+- spec-008 命名遗留:方法名 `getCanvasBackendForBackend(tenantId)` 实际接收 `ctx.backendId`(即 BffTenant.id),参数名 `tenantId` 与实际语义不符
+- spec-010 **沿用此签名不重命名**,避免破坏已发布契约(D1 决策:零契约变更)
+- 实施时在 `adapter-registry.ts` 方法签名处添加注释说明命名遗留
+- 若未来 spec-008 发布破坏性版本,可考虑重命名为 `getCanvasBackendForTenant(tenantId)` 并修正 `canvas-service.ts` 调用为 `ctx.tenantId`
 
 **迁移路径**:
 1. Phase A1:扩展 `IHarnessAdapter` 增 `adapterKind` 字段,IntellectRagAdapter/IntellectEnterpriseAdapter 声明字段
@@ -1451,12 +1598,19 @@ spec-010 对 spec-008 已发布契约的变更:
 
 | # | 风险 | 处置 |
 |---|------|------|
-| R1 | HERMES/KAG/AgentScope 特殊请求头未确认 | Phase C 各 Adapter 实现前 research 确认协议 |
-| R2 | KAG KB API 端点格式未确认 | Phase C P4 research KAG KB API 文档 |
-| R3 | intellect-community 默认端口未确认 | Phase C P1 确认 |
+| R1 | HERMES/KAG/AgentScope 特殊请求头未确认 | ✅ **已解决**(C-0 research):HERMES/AgentScope 用标准 Bearer;KAG 用 MCP(无 HTTP 头) |
+| R2 | KAG KB API 端点格式未确认 | ✅ **已解决**(C-0 research):KAG 无 REST KB API,仅 MCP 工具 `kb_retrieve(query)`;v8.3 已修订 spec §3.2/§4.1 |
+| R3 | intellect-community 默认端口未确认 | ✅ **已解决**(C-0 research):默认 8642,与 intellect-enterprise 同源 |
 | R4 | OpenAI 兼容后端无 session 持久化 | Phase A 基类默认实现,多轮对话走前端 history 方案(M7) |
 | R5 | EncryptedFileTokenVault 主密钥管理 | §13.4 密钥管理章节明确 |
-| R6 | StreamDelta metadata 字段扩展(m3) | **不修改 Constitution Principle IV**(m8 联动):metadata 走 Layer 3 透传(KAG reference),StreamChunk 8 值枚举保持锁定。若 Phase C 确需在 StreamDelta 上加 metadata 字段,需独立 RFC 修订 Principle IV,本 spec 不预设 |
+| R6 | StreamDelta metadata 字段扩展(m3) | **不修改 Constitution Principle IV**(m8 联动):metadata 走 Layer 3 透传,StreamChunk 8 值枚举保持锁定。v8.3:KAG 不再走 IKnowledgeBaseAdapter,reference 数据经 MCP `kb_retrieve` 返回,由 spec-012 设计处理 |
+| **R7** | **Intellect-Team Python/Rust 两版本不兼容**(v8 新增) | ✅ **已解决**(2026-07-29):Intellect-Team 已回复接受全部 P0+P1 对齐需求,4 周内完成(9.35 人日)。兜底方案永久归档。详见 [intellect-team-review-and-plan.md](./intellect-team-review-and-plan.md) + [intellect-team-review-critique.md](./intellect-team-review-critique.md)。AgentUI 侧 BFF 兼容性已预确认(X-3),Phase X 联调计划已加入 tasks.md |
+| **R8** | **RunRegistry 活跃 run 校验可能阻塞管理员操作**(v8 新增) | 修改 6 的软阻断策略(返回 409)可能导致管理员无法及时切换 backend。处置:未来可新增"强制切换"选项(管理员确认后批量 cancel 活跃 run),当前 YAGNI 不实现 |
+| **R9** | ~~**Intellect-Team Phase 1 延期风险**(v8.1 新增)~~ **已解除**(v8.2) | E4(`run.completed` 事件)经 AgentUI 确认为 Blocker(BFF 依赖此事件产出 usage+done chunk);B2(clarify 端点)涉及跨线程通信 + session_id 映射,工作量 2.5d。处置:监控 Intellect-Team 进度,Phase X 联调顺延不影响 AgentUI 自身 Phase A-D。**v8.2 更新:Intellect-Team Phase 1 已按时交付(含 E4),intellect-gateway v0.6.8 验证通过,R9 解除** |
+| **R10** | **B2 clarify SSE event 未携带 session_id**(v8.1 新增) | BFF `parse-intellect-enterprise-run-events-sse.ts:287-290` 优先取 `data.session_id`,缺失时从 `clarify_id` 切分(格式 `{session_id}:{timestamp_ms}`)。处置:已在 X-3 中明确要求 Intellect-Team 的 payload 必须含 `session_id` 字段或确保 `clarify_id` 格式 |
+| **R11** | **KAG 协议族分类错误**(v8.3 新增,spec §3.1 假设 OpenAI 兼容,实际 MCP) | ✅ **spec 修订完成**(v8.3):KAG 协议族改为 `mcp-protocol`,能力矩阵 `knowledgeBase=false`/`mcp=true`,KagAdapter 改继承 `MCPBaseAdapter`。待 spec-012 完成 `MCPBaseAdapter`+`IMCPAdapter` 接口设计后实施 C-P4 |
+| **R12** | **HERMES 默认端口与 intellect-enterprise 冲突**(均 8642,v8.3 新增) | quickstart 提示用户修改端口;spec §3.1 已注明默认值与冲突 |
+| **R13** | **intellect-community 与 intellect-enterprise 同源同端口**(v8.3 新增) | spec §3.1 已注明"同源,不会同时部署";Admin 表单可加交叉校验 |
 
 ---
 
@@ -1481,12 +1635,61 @@ spec-010 对 spec-008 已发布契约的变更:
   - M6: SSRF 防护强化(safeFetch + DNS rebinding 校验 + redirect: manual + timeout)
   - M7: sendMessage 多轮对话走前端 history 方案
   - m1-m8: 路径前缀统一 / ProtocolFamily 类型 / mcp 能力脚注 / adapterKind 字段 / endpoint 示例 / KAG KB 路径 / 向导状态机 / R6-Principle IV 联动
+- **v8**: 多 AgentBackend 配置与管理 TODO 方案评估 + Intellect-Team Python/Rust 两版本对齐技术评审(基于 v7 评审 S1-S10 + 决策 D1-D8):
+  - 修改 1(D1): IHarnessAdapter 接口对齐 Constitution v1.3.0,新增 submitApproval?/submitClarify? 可选方法
+  - 修改 2: HarnessBackendConfig 新增 intellectTenantId 字段(spec-011 已实施),Zod schema + 向导表单同步扩展
+  - 修改 3: 向导 /wizard/setup 创建 intellect-enterprise backend 后同步触发 validateTenantConfigs 校验
+  - 修改 4(D1): spec-008 getCanvasBackendForBackend(tenantId) 命名遗留,spec 显式标注不重命名(零契约变更)
+  - 修改 5: §1.4 intellect-rag 项目合并改为"未来计划",§2.1 Constitution 修订依据改为"消除历史命名歧义"
+  - 修改 6(D2): backend 切换/删除时校验 RunRegistry 活跃 run,软阻断返回 409
+  - 修改 7(D3): intellect-team Python 路径全部替换为 Rust Gateway 路径;新增 Intellect-Team 两版本对齐需求(详见 intellect-team-alignment-requirements.md)与双版本兼容兜底方案(详见 dual-version-fallback-plan.md)
+  - D4: 先完成上述 7 项 spec 修订,再细化 tasks.md
+  - 新增 R7/R8 风险项
+  - 新增依赖 spec-011
+- **v8.1**: Intellect-Team 回复后续修订(2026-07-29,基于 [intellect-team-review-and-plan.md](./intellect-team-review-and-plan.md) + [intellect-team-review-critique.md](./intellect-team-review-critique.md)):
+  - **R7 已解决**:Intellect-Team 接受全部 P0+P1 对齐需求,4 周内完成(9.35 人日)。兜底方案永久归档
+  - **E4 确认为 Blocker**:BFF `parse-intellect-enterprise-run-events-sse.ts:309-346` 依赖 `run.completed` 事件产出 `usage` + `done` StreamChunk。Intellect-Team 已将 E4 提升至 P0 并加入 Phase 1
+  - **E5 确认为非阻塞**:BFF 解析器无 `run.stopping` case 分支,前端"Stopping…"UI 由 BFF 内部状态机管理
+  - **B2 session_id 获取逻辑对齐**:BFF 优先取 SSE event 顶层 `session_id`,缺失时从 `clarify_id` 切分(格式 `{session_id}:{timestamp_ms}`)。要求 Intellect-Team payload 必须含 `session_id` 字段或确保 `clarify_id` 格式
+  - 新增 R9(Intellect-Team Phase 1 延期风险)、R10(B2 clarify SSE event session_id 缺失风险)
+  - 新增 Phase X 联调验证任务(X-T0~X-T4,见 tasks.md)
+  - X-1(已提交)、X-2(已决策:归档兜底)、X-3(已完成:BFF 兼容性确认)
+- **v8.2**: Phase X 联调验证完成(2026-07-29,基于 [t2-t3-t4-integration-report.md](./t2-t3-t4-integration-report.md)):
+  - **E4 Blocker 已解除**:Intellect-Team Phase 1 E4(`run.completed` 事件)已部署到 intellect-gateway v0.6.8。重启后验证 SSE 流正常发射 `run.completed` 事件,payload 含 `usage`(input_tokens/output_tokens/total_tokens)+ `output` 字段,流自然结束(curl exit code 0)
+  - **T2 集成测试全部通过**:Phase 1 REST 12/12 + Phase 2 SSE 6/6(E4/run.completed + E4-usage + E4-stream-end + B4-default + B3-old + B4-old)+ BFF 单元测试 559/559,0 回归
+  - **T3 兼容性矩阵已更新**:intellect-gateway v0.6.8 状态 → ✅ 生产就绪(完全兼容);E4 行 → ✅ 已对齐;SSE `run.completed` 事件 → ✅ 已对齐
+  - **T4 API 文档已更新**:标注 B3/B4/E4 SSE 格式变更、M1/M2/B5 REST 响应变更、B1/B2 新增端点
+  - **R9 风险已解除**:Intellect-Team Phase 1 已按时交付(含 E4),无延期
+  - **Phase X 联调任务全部完成**:X-T0(已完成)→ X-T1(已完成)→ X-T2(已完成)→ X-T3(已完成)+ X-T4(已完成)
+  - **后续可选验证**(非阻塞):B3 工具调用场景(需触发工具的 prompt)、B4 推理场景(需触发推理的模型)、B2 clarify 端到端(需 clarify_fn 在 `/v1/runs` 路径注入)
+- **v8.3**: C-P4 spec 修订(2026-07-30,基于 [research.md](./research.md) R2 KAG 协议偏差发现):
+  - **R2 重大发现**:KAG v0.8.0 无 OpenAI 兼容入口,无 REST KB CRUD API;仅通过 MCP 协议暴露 `qa_pipeline(query)` + `kb_retrieve(query)` 两个工具(MCP SSE 默认端口 3000)
+  - **§3.1 修订**:KAG 协议族 `openai-compatible → mcp-protocol`(新增协议族);端口列补全默认值(intellect-community 8642/hermes 8642 冲突/agent-scope 5000/kag 3000)
+  - **§3.2 修订**:KAG 能力矩阵 `knowledgeBase: true → false`(无 REST KB CRUD),`mcp: false → true`(全面拥抱 MCP)
+  - **§4.1 修订**:KagAdapter 从 `OpenAICompatibleBaseAdapter` 分支移出,改继承新增的 `MCPBaseAdapter`;从 `IKnowledgeBaseAdapter` 实现者列表移除,改实现新增的 `IMCPAdapter`
+  - **§4.2 修订**:AdapterKind 新增 `'mcp'` 值;新增 `isMCPAdapter` 类型守卫
+  - **§5.2/§5.3 修订**:KagAdapter stub 注释化(待 spec-012);KAG 工厂注册推迟
+  - **§16 风险表**:R1/R2/R3 标记 ✅ 已解决;新增 R11(KAG 协议族分类错误,spec 修订完成)/R12(HERMES 端口冲突)/R13(intellect-community 同源同端口)
+  - **C-P1/P2/P3 已完成**:IntellectCommunityAdapter/HermesAdapter/AgentScopeAdapter 已实施(620/620 测试通过)
+  - **C-P4 推迟**:待 spec-012 完成 `MCPBaseAdapter` + `IMCPAdapter` 接口设计后实施
 
 ---
 
 ## 十八、待办
 
-- [ ] 细化 `tasks.md`(Phase A1/A2/A3 + B + C + D 任务分解,含验收用例)
-- [ ] Phase C 各后端协议 research(HERMES/KAG/AgentScope/intellect-community)
+- [x] ~~细化 `tasks.md`(Phase A1/A2/A3 + B + C + D 任务分解,含验收用例)~~ — 已完成(v1.1 含 Phase X 联调)
+- [x] ~~Phase C 各后端协议 research(HERMES/KAG/AgentScope/intellect-community)~~ — 已完成(v8.3,C-0 research)
+- [x] ~~C-P1/P2/P3 实施(intellect-community/hermes/agent-scope Adapter)~~ — 已完成(v8.3,620/620 测试通过)
+- [x] ~~C-P4 spec 修订(§3.1/§3.2/§4.1/§4.2)~~ — 已完成(v8.3)
+- [ ] **新建 spec-012**:KAG MCP Adapter 设计(`MCPBaseAdapter` + `IMCPAdapter` 接口)— v8.3 新增
+- [ ] C-P4 实施(KagAdapter,依赖 spec-012 完成)— v8.3 推迟
 - [ ] §13.4 密钥管理实施前确认 KMS/Vault 集成方案
 - [ ] SSRF 防护的 DNS rebinding 实施细节(生产环境建议用 socket.connect 校验 IP)
+- [x] ~~v8 新增:向 Intellect-Team 提交对齐需求,等待 4 周回复(D8)~~ — 已完成:2026-07-29 提交并收到回复,Intellect-Team 接受全部 P0+P1 对齐需求
+- [x] ~~v8.1 新增:Phase X 联调验证(依赖 Intellect-Team Phase 1+2 完成)~~ — 已完成(v8.2,2026-07-29)
+  - [x] ~~X-T1:检查 BFF createSession 解包逻辑(对应 M1)~~ — 已完成
+  - [x] ~~X-T2:BFF 对接 Python 后端集成测试(P0 5 项 + E4 + P1 6 项)~~ — 已完成(Phase 1 REST 12/12 + Phase 2 SSE 6/6 + BFF 559/559)
+  - [x] ~~X-T3:BFF 兼容性矩阵更新~~ — 已完成
+  - [x] ~~X-T4:文档更新~~ — 已完成
+- [ ] v8 新增:RunRegistry 接口扩展 hasActiveRuns/getActiveRunCount/hasRunsForBackend(修改 6)
+- [ ] v8 新增:spec-011 US1 测试用例 tenant_id 改为 32 位 hex(D6)

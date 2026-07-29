@@ -17,13 +17,38 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Harness 后端类型字面量。
- * - 'intellect-rag' 指 intellect-rag 项目(画布引擎 + 知识库)
- * - 'intellect-enterprise' 指 intellect-team 项目(实例内 Team/Project 组织模型 + 编码 Agent)
- * 多租户隔离通过多实例实现:每个 intellect-team 实例 = 一个租户,不同 BffTenant 绑定不同实例。
- * 禁用历史误用 'intellect-community'。
+ * 后端类型。
+ * - 'intellect-rag': Intellect RAG 画布+知识库(P1 已实施)
+ * - 'intellect-enterprise': Intellect 企业版 Team/Project(P3 已实施)
+ * - 'intellect-llm': LLM Gateway 透传(Phase 3 引入,legacy,不注册 Adapter 工厂,走 llm-proxy 路由)
+ * - 'intellect-community' 指 intellect-agent 社区版(纯 Agent 运行时,OpenAI 兼容)。历史误用指将其指代 intellect-rag,现已澄清。spec-010 v8 修订依据:消除历史命名歧义,不依赖项目合并状态。
+ * spec-010 v8 Phase C-P1/P2/P3 已实施 Adapter: 'intellect-community'/'hermes'/'agent-scope'
+ * spec-010 v8 Phase C-P4(KAG)待 spec-012 实施: 'kag'(协议族 mcp-protocol)
+ *    类型联合已扩展(对齐 VALIDATION_RULES.type.values)。
  */
-export type BackendType = 'intellect-rag' | 'intellect-enterprise' | 'intellect-llm';
+export type BackendType =
+  | 'intellect-rag'
+  | 'intellect-enterprise'
+  | 'intellect-llm'
+  | 'intellect-community'
+  | 'hermes'
+  | 'kag'
+  | 'agent-scope';
+
+/**
+ * 协议族(spec-010 v8 A3-2 / m2 修正 / v8.3 评审 D2 修复:同步 'mcp-protocol')。
+ *
+ * 与 BackendType 的映射见 spec-010 §3.1 协议族分类表:
+ * - 'canvas-workflow':      Intellect RAG 专用,parseCanvasWorkflowSSE
+ * - 'intellect-enterprise': Intellect Enterprise 专用,parseIntellectEnterpriseSSE
+ * - 'openai-compatible':    3 个 OpenAI 兼容后端(intellect-community/hermes/agent-scope),parseOpenAISSE
+ * - 'mcp-protocol':         v8.3 新增,KAG 专用(MCP SDK 调用,无 SSE 解析,见 spec-012)
+ */
+export type ProtocolFamily =
+  | 'canvas-workflow'
+  | 'intellect-enterprise'
+  | 'openai-compatible'
+  | 'mcp-protocol';
 
 // ---------------------------------------------------------------------------
 // Harness Capabilities
@@ -90,6 +115,12 @@ export interface HarnessBackendConfig {
   capabilities: HarnessCapabilities | LlmCapabilities;
   /** 是否作为新 Tenant 的默认主后端(可选) */
   defaultForTenant?: boolean;
+  /**
+   * spec-010 v8 A3-6: 凭据类型声明(可选)。
+   * 配合 TokenVault 使用:有值时 load() 优先从 vault 读取对应类型凭据。
+   * 未设置或 vault 未命中时回退 adminTokenEnvVar(现有逻辑,向后兼容)。
+   */
+  credentialKind?: 'bearer-token' | 'email-password';
   /**
    * Intellect 企业版实例级 Tenant ID（仅 type='intellect-enterprise' 需要）。
    * 来源：intellect-team gateway 的 INTELLECT_TENANT_ID env var。

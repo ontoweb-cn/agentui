@@ -19,7 +19,7 @@
  *   BFF does NOT own this data, only forwards.
  */
 
-import type { AgentSummary, Session, SendMessageRequest } from './domain';
+import type { AgentSummary, Session, SendMessageRequest, Dataset, KbDocument } from './domain';
 import type { StreamChunk, StreamIterable } from './stream';
 import type { HarnessCapabilities, HarnessBackend } from './harness';
 import type { BackendContext } from './tenant';
@@ -29,6 +29,26 @@ import type {
   TeamMember,
   ProjectMember,
 } from './domain';
+import type { CanvasAgent, CreateCanvasBody, SaveCanvasBody } from './canvas';
+
+// ---------------------------------------------------------------------------
+// AdapterKind — 类型标识(spec-010 v8 A1-1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Adapter 类型标识(spec-010 v8 A1-1 / v8.3 评审 D1 修复:同步 'mcp' 值)。
+ * - 'harness-core':    仅实现 IHarnessAdapter(Layer 1)
+ * - 'canvas':          额外实现 ICanvasAdapter
+ * - 'knowledge-base':  额外实现 IKnowledgeBaseAdapter
+ * - 'multi-tenant':    额外实现 IMultiTenantAdapter
+ * - 'mcp':             v8.3 新增,额外实现 IMCPAdapter(见 spec-012)
+ *
+ * 多能力 Adapter(如 IntellectRagAdapter)取主能力标识:
+ * - IntellectRagAdapter:        'canvas'(主能力画布)
+ * - IntellectEnterpriseAdapter: 'multi-tenant'
+ * - KagAdapter(待 spec-012 实施): 'mcp'
+ */
+export type AdapterKind = 'harness-core' | 'canvas' | 'knowledge-base' | 'multi-tenant' | 'mcp';
 
 // ---------------------------------------------------------------------------
 // IHarnessAdapter — Core Layer (Layer 1, all backends)
@@ -50,6 +70,9 @@ import type {
 export interface IHarnessAdapter {
   /** 后端 ID(对应 HarnessBackend.id) */
   readonly backendId: string;
+
+  /** Adapter 类型标识,用于类型守卫(spec-010 v8 A1-1) */
+  readonly adapterKind: AdapterKind;
 
   // -----------------------------------------------------------------------
   // Agent methods
@@ -103,6 +126,33 @@ export interface IHarnessAdapter {
    */
   deleteSession(ctx: BackendContext, agentId: string, sessionId: string): Promise<void>;
 
+  /**
+   * 更新会话(目前仅支持 title 重命名,对应 Gateway PATCH /api/sessions/{id})。
+   * @param ctx 租户上下文
+   * @param agentId 关联 Agent ID
+   * @param sessionId Session ID
+   * @param params 更新字段 { title? }
+   */
+  updateSession(
+    ctx: BackendContext,
+    agentId: string,
+    sessionId: string,
+    params: { title?: string },
+  ): Promise<Session>;
+
+  /**
+   * 获取会话的消息历史(对应 Gateway GET /api/sessions/{id}/messages)。
+   * @param ctx 租户上下文
+   * @param agentId 关联 Agent ID
+   * @param sessionId Session ID
+   * @returns 消息数组(每条含 id/role/content/timestamp 等字段)
+   */
+  getSessionMessages(
+    ctx: BackendContext,
+    agentId: string,
+    sessionId: string,
+  ): Promise<unknown[]>;
+
   // -----------------------------------------------------------------------
   // Message streaming methods
   // -----------------------------------------------------------------------
@@ -127,6 +177,51 @@ export interface IHarnessAdapter {
    */
   cancelMessage(ctx: BackendContext, sessionId: string): Promise<void>;
 
+  /**
+   * 提交工具审批(v1.3.0 新增,仅 IntellectEnterpriseAdapter 实现)。
+   *
+   * Constitution Principle VIII v1.3.0:
+   * - 调用 intellect-team `POST /v1/runs/{run_id}/approval` 端点
+   * - 仅 /v1/runs 主通道产出的 approval_request 事件需要此方法
+   * - IntellectRagAdapter 不实现此方法(不产出 approval 事件)
+   *
+   * @param ctx 租户上下文
+   * @param runId Run ID(从 StreamApprovalRequest.runId 获取)
+   * @param choice 审批选项
+   * @returns intellect-team 审批响应
+   */
+  submitApproval?(
+    ctx: BackendContext,
+    runId: string,
+    choice: 'once' | 'session' | 'always' | 'deny',
+  ): Promise<{
+    runId: string;
+    choice: 'once' | 'session' | 'always' | 'deny';
+    resolved: number;
+  }>;
+
+  /**
+   * 提交 clarify 答案(v1.4.0 新增,仅 IntellectEnterpriseAdapter 实现)。
+   *
+   * Gateway `set_clarify_fn` 注入的 clarify 工具回调:
+   * - 调用 intellect-team `POST /v1/chat/completions/{session_id}/clarify` 端点
+   * - 请求体:`{clarify_id, answer}`
+   * - 响应体:`{status: "ok"}` / 400 缺字段 / 403 session 归属错 / 404 无活跃 clarify
+   * - 仅 clarify_request 事件触发后,用户提交答案时调用此方法
+   *
+   * @param ctx 租户上下文
+   * @param sessionId Session ID(从 StreamClarifyRequest.sessionId 获取,用于构造回调路径)
+   * @param clarifyId clarify ID(从 StreamClarifyRequest.clarifyId 获取,格式 `session_id:timestamp_ms`)
+   * @param answer 用户输入的答案文本
+   * @returns intellect-team clarify 响应(含 status 字段)
+   */
+  submitClarify?(
+    ctx: BackendContext,
+    sessionId: string,
+    clarifyId: string,
+    answer: string,
+  ): Promise<{ status: string }>;
+
   // -----------------------------------------------------------------------
   // Health & discovery
   // -----------------------------------------------------------------------
@@ -143,6 +238,91 @@ export interface IHarnessAdapter {
    * P1+ 可选实现动态探测(覆盖静态声明)。
    */
   discoverCapabilities(): Promise<HarnessCapabilities>;
+}
+
+// ---------------------------------------------------------------------------
+// ICanvasAdapter — Extension Layer (Layer 2, Canvas capability)
+// spec-010 v8 A2-1: 画布能力接口
+// ---------------------------------------------------------------------------
+
+/**
+ * 画布扩展契约。
+ * 仅 IntellectRagAdapter(capabilities.canvas = true)实现。
+ * 必须同时实现 IHarnessAdapter(Layer 1)。
+ *
+ * 设计原则:
+ * - 高层语义方法对应业务操作,便于未来跨 Adapter 复用
+ * - request<T>()/proxy() 透传方法覆盖 CanvasService 16+ 透传场景
+ *   (模板/tags/版本/组件/trace/webhook/upload/download 等),避免接口爆炸
+ * - CanvasService 通过 ICanvasAdapter 接口调用,不再依赖 IntellectRagAdapter 具体类
+ *
+ * Constitution Principle III (Canvas Hard-Bound):
+ * 路由层用 capabilities.canvas 静态判断,isCanvasAdapter() 运行时双保险。
+ */
+export interface ICanvasAdapter extends IHarnessAdapter {
+  // ── 高层语义方法(路径拼接在 Adapter 内) ──
+  listCanvas(ctx: BackendContext): Promise<CanvasAgent[]>;
+  getCanvas(ctx: BackendContext, id: string): Promise<CanvasAgent>;
+  createCanvas(ctx: BackendContext, body: CreateCanvasBody): Promise<CanvasAgent>;
+  saveCanvas(ctx: BackendContext, id: string, body: SaveCanvasBody): Promise<CanvasAgent>;
+  deleteCanvas(ctx: BackendContext, id: string): Promise<void>;
+  resetCanvas(ctx: BackendContext, id: string): Promise<void>;
+
+  // ── 透传方法(供 CanvasService 16+ 透传场景使用) ──
+  request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    ctx?: BackendContext,
+  ): Promise<T>;
+
+  proxy(
+    method: string,
+    path: string,
+    req: { headers: Headers; body?: ReadableStream<Uint8Array> | null; query: string },
+    ctx?: BackendContext,
+  ): Promise<Response>;
+}
+
+// ---------------------------------------------------------------------------
+// IKnowledgeBaseAdapter — Extension Layer (Layer 2, Knowledge Base capability)
+// spec-010 v8 A2-3: 知识库能力接口
+// ---------------------------------------------------------------------------
+
+/**
+ * 知识库扩展契约。
+ * 由 IntellectRagAdapter(capabilities.knowledgeBase = true)和未来的 KagAdapter 实现。
+ * 必须同时实现 IHarnessAdapter(Layer 1)。
+ *
+ * 设计原则(与 ICanvasAdapter 一致):
+ * - 高层语义方法对应业务操作,路径拼接在 Adapter 内
+ * - 上游返回结构透传,不纳入统一 schema(Constitution Principle VII YAGNI)
+ *
+ * Constitution Principle II: 路由层用 capabilities.knowledgeBase 静态判断,
+ * isKnowledgeBaseAdapter() 作为运行时双保险。
+ */
+export interface IKnowledgeBaseAdapter extends IHarnessAdapter {
+  /** 列出数据集。 */
+  listDatasets(ctx: BackendContext): Promise<Dataset[]>;
+  /** 创建数据集。 */
+  createDataset(ctx: BackendContext, name: string, description?: string): Promise<Dataset>;
+  /** 获取单个数据集详情。 */
+  getDataset(ctx: BackendContext, datasetId: string): Promise<Dataset>;
+  /** 更新数据集。 */
+  updateDataset(ctx: BackendContext, datasetId: string, patch: Partial<Dataset>): Promise<Dataset>;
+  /** 删除数据集。 */
+  deleteDataset(ctx: BackendContext, datasetId: string): Promise<void>;
+  /** 列出数据集下的文档。 */
+  listDocuments(ctx: BackendContext, datasetId: string): Promise<KbDocument[]>;
+  /** 上传文档(multipart 透传)。 */
+  uploadDocument(
+    ctx: BackendContext,
+    datasetId: string,
+    file: { name: string; type: string; body: ReadableStream<Uint8Array> | Blob | unknown },
+    metadata?: Record<string, unknown>,
+  ): Promise<KbDocument>;
+  /** 删除文档。 */
+  deleteDocument(ctx: BackendContext, datasetId: string, documentId: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -304,11 +484,66 @@ export interface IMultiTenantAdapter extends IHarnessAdapter {
  *
  * Constitution Principle II: 路由层用 capabilities.multiTenant 静态判断,
  * 此 guard 作为运行时双保险。
+ *
+ * spec-010 v8 A1-3: 改用 adapterKind 字段判断(替代方法名存在性判断)。
  */
 export function isMultiTenantAdapter(
   adapter: IHarnessAdapter,
 ): adapter is IMultiTenantAdapter {
-  return 'listTeams' in adapter && typeof (adapter as IMultiTenantAdapter).listTeams === 'function';
+  return adapter.adapterKind === 'multi-tenant';
+}
+
+/**
+ * 类型守卫:Adapter 是否实现 ICanvasAdapter(画布能力)。
+ * BFF 路由层(CanvasService)据此决定是否暴露画布端点。
+ *
+ * Constitution Principle III (Canvas Hard-Bound):
+ * 路由层用 capabilities.canvas 静态判断,此 guard 作为运行时双保险。
+ *
+ * spec-010 v8 A2-1: 基于 adapterKind 字段判断。
+ */
+export function isCanvasAdapter(
+  adapter: IHarnessAdapter,
+): adapter is ICanvasAdapter {
+  return adapter.adapterKind === 'canvas';
+}
+
+/**
+ * 类型守卫:Adapter 是否实现 IKnowledgeBaseAdapter(知识库能力)。
+ * BFF 路由层据此决定是否暴露知识库端点。
+ *
+ * Constitution Principle II: 路由层用 capabilities.knowledgeBase 静态判断,
+ * 此 guard 作为运行时双保险。
+ *
+ * spec-010 v8 A2-3: 基于 adapterKind 字段判断。
+ * 注意:多能力 Adapter(如 IntellectRagAdapter)主能力为 'canvas',
+ * 但同时实现 IKnowledgeBaseAdapter。因此本守卫检查 adapterKind 是否为
+ * 'canvas' 或 'knowledge-base'。
+ *
+ * spec-010 v8.3 评审 D1 修复:KagAdapter 不再实现 IKnowledgeBaseAdapter
+ * (KAG 无 REST KB CRUD API,改走 MCP 通道,见 spec-012)。
+ */
+export function isKnowledgeBaseAdapter(
+  adapter: IHarnessAdapter,
+): adapter is IKnowledgeBaseAdapter {
+  return adapter.adapterKind === 'canvas' || adapter.adapterKind === 'knowledge-base';
+}
+
+/**
+ * 类型守卫:Adapter 是否实现 IMCPAdapter(MCP 工具调用能力)。
+ *
+ * spec-010 v8.3 / spec-012 新增。KagAdapter(待实施)将使用此标识。
+ * Constitution Principle II: 路由层用 capabilities.mcp 静态判断,
+ * 此 guard 作为运行时双保险。
+ *
+ * 注意:IMCPAdapter 接口定义在 spec-012,待 spec-012 Phase 1 实施时引入。
+ * 当前仅类型守卫可用,接口未定义,因此实际匹配的 Adapter 尚不存在。
+ * 返回类型用结构化字面量,避免引用未定义的 IMCPAdapter。
+ */
+export function isMCPAdapter(
+  adapter: IHarnessAdapter,
+): adapter is IHarnessAdapter & { readonly adapterKind: 'mcp' } {
+  return adapter.adapterKind === 'mcp';
 }
 
 // ---------------------------------------------------------------------------
