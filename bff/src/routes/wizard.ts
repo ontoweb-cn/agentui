@@ -1,0 +1,436 @@
+// spec-010 v8 B-3: Wizard 路由 — 首次安装向导。
+// Constitution Principle I (BFF-Mediated Frontend): 前端经 BFF Wizard 路由完成首次配置。
+// Constitution Token Security: 请求可含 token 明文(经 HTTPS 传输),
+//   响应不含 token 明文,只含 adminTokenEnvVar 引用 + envSnippet。
+//
+// 路径映射(Vite rewrite 去掉 /api/bff):
+//   前端 /api/bff/admin/wizard/status        → BFF /admin/wizard/status
+//   前端 /api/bff/admin/wizard/backend-types  → BFF /admin/wizard/backend-types
+//   前端 /api/bff/admin/wizard/probe          → BFF /admin/wizard/probe
+//   前端 /api/bff/admin/wizard/setup          → BFF /admin/wizard/setup
+//
+// 鉴权(B1 修复):
+// - /admin/wizard/status        公开(authMiddleware.publicPrefixes)
+// - /admin/wizard/backend-types 公开(authMiddleware.publicPrefixes)
+// - /admin/wizard/probe         admin 鉴权(authMiddleware 已挂载)
+// - /admin/wizard/setup         admin OR bootstrap token(wizardSetupAuth 中间件)
+// 非租户隔离:Wizard 是运维全局操作,无 backendContextMiddleware。
+
+import { Hono, type Context } from 'hono';
+import { getCookie } from 'hono/cookie';
+import type { HarnessStore } from '../types/stores';
+import type { BackendStore } from '../types/stores';
+import type { IAdapterRegistry } from '../services/adapter-registry-types';
+import type { ITokenVault } from '../services/token-vault';
+import { safeFetch, isUrlSafe } from '../services/ssrf-guard';
+import { validateTenantConfigs, fetchTenantInfo } from '../services/tenant-validator';
+import { BootstrapTokenManager } from '../services/bootstrap-token';
+import type { HarnessStoreListConfigs } from '../types/harness-admin';
+import type { HarnessBackendConfig, BackendType, HarnessCapabilities } from '../types/harness';
+import { AUTH_COOKIE_NAME } from '../types/auth';
+import type {
+  WizardStatusResponse,
+  WizardBackendTypesResponse,
+  WizardBackendTypeOption,
+  WizardProbeRequest,
+  WizardProbeResponse,
+  WizardSetupRequest,
+  WizardSetupResponse,
+} from '../types/wizard';
+
+interface WizardVariables {
+  harnessStore: HarnessStore;
+  backendStore: BackendStore;
+  adapterRegistry: IAdapterRegistry;
+  tokenVault?: ITokenVault;
+  bootstrapTokenManager: BootstrapTokenManager;
+}
+
+export const wizardRoutes = new Hono<{ Variables: WizardVariables }>();
+
+// 共享 BootstrapTokenManager 实例(与 index.ts 共用)
+// index.ts 通过 c.set 注入;此处保留兜底实例,供单元测试独立运行
+const DEFAULT_BOOTSTRAP_MANAGER = new BootstrapTokenManager();
+
+// ---------------------------------------------------------------------------
+// Backend type options (shared by /backend-types and /setup)
+// ---------------------------------------------------------------------------
+
+const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
+  {
+    type: 'intellect-rag',
+    label: 'Intellect RAG',
+    description: '画布引擎 + 知识库',
+    defaultEndpoint: 'http://localhost:9380',
+    capabilities: { canvas: true, knowledgeBase: true, memory: true, mcp: false, multiTenant: false, modelManagement: false },
+    credentialKind: 'bearer-token',
+  },
+  {
+    type: 'intellect-enterprise',
+    label: 'Intellect 企业版',
+    description: 'Team/Project + 多租户',
+    defaultEndpoint: 'http://localhost:8642',
+    capabilities: { canvas: false, knowledgeBase: false, memory: false, mcp: false, multiTenant: true, modelManagement: true },
+    credentialKind: 'bearer-token',
+  },
+  // spec-010 v8 新增(待 Phase C 实现 Adapter)
+  {
+    type: 'intellect-community',
+    label: 'Intellect 社区版',
+    description: '纯 Agent 运行时 (OpenAI 兼容)',
+    defaultEndpoint: 'http://localhost:8080',
+    capabilities: { canvas: false, knowledgeBase: false, memory: false, mcp: false, multiTenant: false, modelManagement: false },
+    credentialKind: 'bearer-token',
+  },
+  {
+    type: 'hermes',
+    label: 'HERMES',
+    description: 'HERMES 协议后端',
+    defaultEndpoint: 'http://localhost:9000',
+    capabilities: { canvas: false, knowledgeBase: false, memory: false, mcp: false, multiTenant: false, modelManagement: false },
+    credentialKind: 'bearer-token',
+  },
+  {
+    type: 'kag',
+    label: 'KAG',
+    description: '知识增强生成',
+    defaultEndpoint: 'http://localhost:8888',
+    capabilities: { canvas: false, knowledgeBase: true, memory: false, mcp: false, multiTenant: false, modelManagement: false },
+    credentialKind: 'bearer-token',
+  },
+  {
+    type: 'agent-scope',
+    label: 'AgentScope',
+    description: 'AgentScope 多 Agent 框架',
+    defaultEndpoint: 'http://localhost:5000',
+    capabilities: { canvas: false, knowledgeBase: false, memory: false, mcp: false, multiTenant: false, modelManagement: false },
+    credentialKind: 'bearer-token',
+  },
+];
+
+function getOptionForType(type: BackendType): WizardBackendTypeOption | undefined {
+  return BACKEND_TYPE_OPTIONS.find((o) => o.type === type);
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function getStore(c: Context): HarnessStore & HarnessStoreListConfigs {
+  const store = c.get('harnessStore');
+  return store as HarnessStore & HarnessStoreListConfigs;
+}
+
+// ---------------------------------------------------------------------------
+// GET /admin/wizard/status — Wizard 状态
+// ---------------------------------------------------------------------------
+
+wizardRoutes.get('/admin/wizard/status', (c) => {
+  const store = getStore(c);
+  const configs = store.listConfigs?.() ?? [];
+  const needsSetup = configs.length === 0;
+  return c.json({
+    needsSetup,
+    bootstrapEnabled: process.env.BOOTSTRAP_ENABLED !== 'false',
+    backendCount: configs.length,
+  } satisfies WizardStatusResponse);
+});
+
+// ---------------------------------------------------------------------------
+// GET /admin/wizard/backend-types — 可用后端类型列表
+// ---------------------------------------------------------------------------
+
+wizardRoutes.get('/admin/wizard/backend-types', (c) => {
+  return c.json({ options: BACKEND_TYPE_OPTIONS } satisfies WizardBackendTypesResponse);
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/wizard/probe — 探测后端连接
+// M3 修复:按 credentialKind 区分鉴权头
+// M4 修复:intellect-enterprise 类型额外探测 /api/tenant/info
+// ---------------------------------------------------------------------------
+
+wizardRoutes.post('/admin/wizard/probe', async (c) => {
+  const body = await c.req.json<WizardProbeRequest>().catch(() => null);
+  if (!body || !body.endpoint) {
+    return c.json(
+      { healthy: false, error: 'endpoint is required' } satisfies WizardProbeResponse,
+      400,
+    );
+  }
+
+  // SSRF 预校验
+  const safe = await isUrlSafe(body.endpoint);
+  if (!safe) {
+    return c.json(
+      { healthy: false, error: 'URL 不安全(可能指向私有 IP)' } satisfies WizardProbeResponse,
+      400,
+    );
+  }
+
+  const endpoint = body.endpoint.replace(/\/$/, '');
+  const option = getOptionForType(body.type);
+
+  try {
+    // M4 修复:intellect-enterprise 类型优先探测 /api/tenant/info(spec-011 端点)
+    // 该端点公开,返回 tenant_id 用于校验配置一致性
+    if (body.type === 'intellect-enterprise') {
+      const tenantInfo = await fetchTenantInfo(endpoint);
+      if (!tenantInfo) {
+        return c.json(
+          { healthy: false, error: '无法访问 /api/tenant/info 端点' } satisfies WizardProbeResponse,
+        );
+      }
+      if (!tenantInfo.tenant_id) {
+        return c.json(
+          { healthy: false, error: '/api/tenant/info 返回空 tenant_id' } satisfies WizardProbeResponse,
+        );
+      }
+      return c.json({
+        healthy: true,
+        capabilities: option?.capabilities,
+      } satisfies WizardProbeResponse);
+    }
+
+    // 其他类型:探测 /v1/models(OpenAI 兼容端点)
+    // M3 修复:按 credentialKind 构造鉴权头
+    const headers: Record<string, string> = {};
+    if (body.token) {
+      headers['Authorization'] = `Bearer ${body.token}`;
+    }
+    // 注:email-password 模式(intellect-rag)在此处不登录获取 JWT,
+    // 仅做端口可达性探测。完整鉴权由 setup 后的 RagTokenProvider 接管。
+
+    const resp = await safeFetch(`${endpoint}/v1/models`, {
+      headers,
+      timeoutMs: 5000,
+    });
+
+    if (resp.ok) {
+      return c.json({
+        healthy: true,
+        capabilities: option?.capabilities,
+      } satisfies WizardProbeResponse);
+    }
+    return c.json(
+      { healthy: false, error: `上游返回 ${resp.status}` } satisfies WizardProbeResponse,
+    );
+  } catch (e) {
+    return c.json(
+      { healthy: false, error: (e as Error).message } satisfies WizardProbeResponse,
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// wizardSetupAuth:admin OR bootstrap token 鉴权(B1 修复)
+// ---------------------------------------------------------------------------
+
+function getBootstrapManager(c: Context): BootstrapTokenManager {
+  // 优先从 context 获取(生产路径,index.ts 注入)
+  // 兜底使用模块级实例(单元测试场景)
+  return (c.get('bootstrapTokenManager') as BootstrapTokenManager) ?? DEFAULT_BOOTSTRAP_MANAGER;
+}
+
+function isAdminAuthorized(c: Context): boolean {
+  // 社区版:Authorization header 存在即视为 admin 鉴权通过(authMiddleware 已校验)
+  if (c.req.header('Authorization')) return true;
+  // 企业版:imt_token cookie 存在即视为 admin 鉴权通过
+  if (getCookie(c, AUTH_COOKIE_NAME)) return true;
+  return false;
+}
+
+/**
+ * spec-010 v8 §9.4 (B1 修复):Wizard setup 端点鉴权中间件。
+ * 接受 admin token(JWT/cookie)或 bootstrap token(首次安装专用)。
+ */
+async function wizardSetupAuth(c: Context, next: () => Promise<void>): Promise<Response> {
+  // 1. admin 鉴权通过则放行
+  if (isAdminAuthorized(c)) {
+    await next();
+    return new Response(null, { status: 204 });
+  }
+
+  // 2. 尝试 bootstrap token 鉴权
+  const auth = c.req.header('Authorization');
+  if (auth?.startsWith('Bearer ')) {
+    const token = auth.slice(7);
+    const manager = getBootstrapManager(c);
+    if (manager.verify(token)) {
+      await next();
+      return new Response(null, { status: 204 });
+    }
+  }
+
+  return c.json(
+    { code: 401, message: 'Unauthorized: admin token or bootstrap token required' },
+    401,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// POST /admin/wizard/setup — 创建第一个 backend
+// ---------------------------------------------------------------------------
+
+wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
+  const body = await c.req.json<WizardSetupRequest>().catch(() => null);
+  if (!body) {
+    return c.json(
+      { success: false, error: 'Request body must be JSON' } satisfies WizardSetupResponse,
+      400,
+    );
+  }
+
+  // 基本校验
+  if (!body.name || !body.type || !body.endpoint || !body.credentialKind) {
+    return c.json(
+      {
+        success: false,
+        error: 'name, type, endpoint, credentialKind are required',
+      } satisfies WizardSetupResponse,
+      400,
+    );
+  }
+
+  // m4 修复(P3):intellect-enterprise 的 intellectTenantId 校验(32 位 hex)
+  if (body.type === 'intellect-enterprise') {
+    if (!body.intellectTenantId) {
+      return c.json(
+        { success: false, error: 'intellect-enterprise 类型必须提供 intellectTenantId' } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+    if (!/^[0-9a-fA-F]{32}$/.test(body.intellectTenantId)) {
+      return c.json(
+        { success: false, error: 'intellectTenantId 必须为 32 位 hex(Rust 版本要求)' } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+  }
+
+  const option = getOptionForType(body.type);
+  if (!option) {
+    return c.json(
+      { success: false, error: `Unsupported backend type: ${body.type}` } satisfies WizardSetupResponse,
+      400,
+    );
+  }
+
+  const store = getStore(c);
+  const registry = c.get('adapterRegistry');
+  const vault = c.get('tokenVault');
+
+  // 1. 生成 backendId(kebab-case) + adminTokenEnvVar
+  const backendId = body.name.toLowerCase().replace(/\s+/g, '-');
+  const adminTokenEnvVar =
+    body.adminTokenEnvVar ??
+    `${backendId.toUpperCase().replace(/-/g, '_')}_TOKEN`;
+
+  // 2. 唯一性校验
+  const existing = store.listConfigs?.() ?? [];
+  if (existing.some((cfg) => cfg.id === backendId)) {
+    return c.json(
+      { success: false, error: `Backend id "${backendId}" 已存在` } satisfies WizardSetupResponse,
+      409,
+    );
+  }
+
+  // 3. spec-010 v8 修改 3 (B2 修复):若 type='intellect-enterprise',
+  //    在持久化**之前**触发 validateTenantConfigs 校验,失败则不创建。
+  //    注:此处 store 尚未含新 backend,需构造临时校验对象。
+  if (body.type === 'intellect-enterprise' && body.intellectTenantId) {
+    // 调用 intellect-team /api/tenant/info 校验 tenant_id 一致性
+    const tenantInfo = await fetchTenantInfo(body.endpoint);
+    if (tenantInfo && tenantInfo.tenant_id) {
+      if (tenantInfo.tenant_id !== body.intellectTenantId) {
+        return c.json(
+          {
+            success: false,
+            error:
+              `tenant_id mismatch: 配置的 intellectTenantId="${body.intellectTenantId}" ` +
+              `与 intellect-team 实际 tenant_id="${tenantInfo.tenant_id}" 不一致`,
+          } satisfies WizardSetupResponse,
+          400,
+        );
+      }
+    }
+    // tenantInfo 不可达时降级放行(与启动校验行为一致),由后续运行时校验兜底
+  }
+
+  // 4. 如果有 vault 且提供了凭据,存储到 vault
+  if (vault) {
+    if (body.credentialKind === 'bearer-token' && body.token) {
+      await vault.setCredentials(backendId, { kind: 'bearer-token', token: body.token });
+    } else if (body.credentialKind === 'email-password' && body.email && body.password) {
+      await vault.setCredentials(backendId, {
+        kind: 'email-password',
+        email: body.email,
+        password: body.password,
+      });
+    }
+  }
+
+  // 5. 构造 HarnessBackendConfig(不含 token 明文)
+  const newConfig: HarnessBackendConfig = {
+    id: backendId,
+    name: body.name,
+    type: body.type,
+    endpoint: body.endpoint,
+    adminTokenEnvVar,
+    capabilities: option.capabilities,
+    credentialKind: body.credentialKind,
+    ...(body.intellectTenantId ? { intellectTenantId: body.intellectTenantId } : {}),
+    ...(body.defaultForTenant !== undefined ? { defaultForTenant: body.defaultForTenant } : {}),
+  };
+
+  // 6. 持久化 + 热加载 + 缓存失效
+  const nextConfigs = [...existing, newConfig];
+  try {
+    await store.saveConfig(nextConfigs);
+    await store.load();
+  } catch (err) {
+    return c.json(
+      {
+        success: false,
+        error: `Failed to persist config: ${(err as Error).message}`,
+      } satisfies WizardSetupResponse,
+      500,
+    );
+  }
+  registry.invalidate(backendId);
+
+  // 7. spec-010 v8 修改 3:持久化后再触发一次 validateTenantConfigs(确保 load() 后状态正确)
+  //    若校验失败,执行回滚:删除刚创建的 config(防止脏状态导致下次启动 fail-fast)
+  if (body.type === 'intellect-enterprise') {
+    const ok = await validateTenantConfigs(store);
+    if (!ok) {
+      // B2 修复:回滚持久化
+      try {
+        await store.saveConfig(existing);
+        await store.load();
+        registry.invalidate(backendId);
+      } catch (rollbackErr) {
+        console.error(
+          `[wizard] Rollback failed after tenant validation failure: ${(rollbackErr as Error).message}`,
+        );
+      }
+      return c.json(
+        {
+          success: false,
+          error:
+            'tenant_id mismatch: 配置的 intellectTenantId 与 intellect-team 实际 tenant_id 不一致,已回滚',
+        } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+  }
+
+  // 8. 首个 backend 创建成功后,失效 bootstrap token(spec §9.4)
+  const manager = getBootstrapManager(c);
+  manager.invalidate();
+
+  // 9. 生成 env snippet(展示 .env 片段,用户手动设置或作为 vault 回退参考)
+  const envSnippet = `# 添加到 .env 文件\n${adminTokenEnvVar}=${body.token ?? '<your-token>'}`;
+
+  return c.json({ success: true, backendId, envSnippet } satisfies WizardSetupResponse);
+});

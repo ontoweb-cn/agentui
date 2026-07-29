@@ -17,6 +17,12 @@ import type {
 } from '../types/harness';
 import type { BffTenant } from '../types/tenant';
 import type { HarnessStoreListConfigs } from '../types/harness-admin';
+// spec-010 v8 修改 6 (D2):测试需要操作 RunRegistry 状态
+import {
+  registerRun,
+  markRunCompleted,
+  _clearRunRegistryForTests,
+} from '../services/run-registry';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -75,6 +81,8 @@ interface MockStores {
   loadMock: Mock;
   saveConfigMock: Mock;
   invalidateMock: Mock;
+  setHarnessBindingMock: Mock;
+  setCanvasBindingMock: Mock;
 }
 
 function createMockStores(
@@ -85,6 +93,8 @@ function createMockStores(
   const loadMock = vi.fn().mockResolvedValue(undefined);
   const saveConfigMock = vi.fn().mockResolvedValue(undefined);
   const invalidateMock = vi.fn();
+  const setHarnessBindingMock = vi.fn().mockResolvedValue(undefined);
+  const setCanvasBindingMock = vi.fn().mockResolvedValue(undefined);
 
   const harnessStore: HarnessStore & HarnessStoreListConfigs = {
     load: loadMock,
@@ -99,11 +109,11 @@ function createMockStores(
     getBackend: vi.fn((id: string) => tenants.find((t) => t.id === id)),
     listBackends: vi.fn(() => tenants),
     createBackend: vi.fn(),
-    setHarnessBinding: vi.fn(),
+    setHarnessBinding: setHarnessBindingMock,
     getHarnessBinding: vi.fn((id: string) =>
       tenants.find((t) => t.id === id)?.intellectBackendId,
     ),
-    setCanvasBinding: vi.fn(),
+    setCanvasBinding: setCanvasBindingMock,
     getCanvasBinding: vi.fn(),
     setIntellectBinding: vi.fn(),
     getIntellectTeamId: vi.fn(),
@@ -118,7 +128,16 @@ function createMockStores(
     getCanvasBackendForBackend: vi.fn() as unknown as IAdapterRegistry['getCanvasBackendForBackend'],
   };
 
-  return { harnessStore, backendStore, registry, loadMock, saveConfigMock, invalidateMock };
+  return {
+    harnessStore,
+    backendStore,
+    registry,
+    loadMock,
+    saveConfigMock,
+    invalidateMock,
+    setHarnessBindingMock,
+    setCanvasBindingMock,
+  };
 }
 
 interface TestVariables {
@@ -149,6 +168,8 @@ describe('harness-admin 路由 (P2 US1)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // spec-010 v8 修改 6 (D2):清空 RunRegistry,隔离测试
+    _clearRunRegistryForTests();
     stores = createMockStores();
     app = createApp(stores);
   });
@@ -482,6 +503,188 @@ describe('harness-admin 路由 (P2 US1)', () => {
         headers: { Authorization: 'Bearer test' },
       });
       expect(res.status).toBe(409);
+    });
+
+    // spec-010 v8 修改 6 (D2):RunRegistry 活跃 run / 历史记录校验
+
+    it('backend 有活跃 run 时返回 409(spec-010 v8 D2)', async () => {
+      // 准备一个未绑定的后端
+      const unboundConfig: HarnessBackendConfig = {
+        ...ragConfig,
+        id: 'intellect-rag-unbound',
+      };
+      stores = createMockStores(
+        [ragConfig, unboundConfig],
+        [ragBackend],
+        [tenant1], // tenant1 绑定 intellect-rag-default,不绑定 unbound
+      );
+      app = createApp(stores);
+
+      // 注册一个活跃 run(status='running')
+      registerRun('run-active-1', 'intellect-rag-unbound', 'agent-1');
+
+      const res = await app.request('/admin/harness-backends/intellect-rag-unbound', {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer test' },
+      });
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.code).toBe(409);
+      expect(body.message).toContain('run 记录');
+      // 不应触发 saveConfig
+      expect(stores.saveConfigMock).not.toHaveBeenCalled();
+    });
+
+    it('backend 有历史 run 记录(已完成)时返回 409(spec-010 v8 D2)', async () => {
+      const unboundConfig: HarnessBackendConfig = {
+        ...ragConfig,
+        id: 'intellect-rag-unbound',
+      };
+      stores = createMockStores(
+        [ragConfig, unboundConfig],
+        [ragBackend],
+        [tenant1],
+      );
+      app = createApp(stores);
+
+      // 注册一个已完成的 run(历史记录)
+      registerRun('run-done-1', 'intellect-rag-unbound', 'agent-1');
+      markRunCompleted('run-done-1', 'completed');
+
+      const res = await app.request('/admin/harness-backends/intellect-rag-unbound', {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer test' },
+      });
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.code).toBe(409);
+      expect(body.message).toContain('run 记录');
+      expect(stores.saveConfigMock).not.toHaveBeenCalled();
+    });
+
+    it('backend 无 run 记录时正常删除(spec-010 v8 D2)', async () => {
+      // 准备一个未绑定的后端,且 RunRegistry 中无该 backend 的记录
+      const unboundConfig: HarnessBackendConfig = {
+        ...ragConfig,
+        id: 'intellect-rag-clean',
+      };
+      stores = createMockStores(
+        [ragConfig, unboundConfig],
+        [ragBackend],
+        [tenant1],
+      );
+      app = createApp(stores);
+
+      // 不注册任何 run,registry 为空(beforeEach 已清空)
+
+      const res = await app.request('/admin/harness-backends/intellect-rag-clean', {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer test' },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.code).toBe(0);
+      expect(stores.saveConfigMock).toHaveBeenCalledTimes(1);
+      expect(stores.invalidateMock).toHaveBeenCalledWith('intellect-rag-clean');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /admin/harness-backends/:id/switch (spec-010 v8 修改 6 D2)
+  // -------------------------------------------------------------------------
+
+  describe('POST /admin/harness-backends/:id/switch', () => {
+    it('有活跃 run 时返回 409(spec-010 v8 D2)', async () => {
+      // 注册一个活跃 run,绑定到 intellect-rag-default
+      registerRun('run-switch-active', 'intellect-rag-default', 'agent-1');
+
+      const res = await app.request('/admin/harness-backends/intellect-rag-default/switch', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tenantId: 'tenant-1', role: 'primary' }),
+      });
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.code).toBe(409);
+      expect(body.message).toContain('活跃 run');
+      // 不应触发绑定切换
+      expect(stores.setHarnessBindingMock).not.toHaveBeenCalled();
+      expect(stores.setCanvasBindingMock).not.toHaveBeenCalled();
+      // 不应触发缓存失效
+      expect(stores.invalidateMock).not.toHaveBeenCalled();
+    });
+
+    it('无活跃 run 时切换 primary 成功(spec-010 v8 D2)', async () => {
+      const res = await app.request('/admin/harness-backends/intellect-rag-default/switch', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tenantId: 'tenant-1', role: 'primary' }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.code).toBe(0);
+      expect(body.message).toBe('切换成功');
+
+      // 触发 setHarnessBinding(tenantId, backendId)
+      expect(stores.setHarnessBindingMock).toHaveBeenCalledWith('tenant-1', 'intellect-rag-default');
+      expect(stores.setCanvasBindingMock).not.toHaveBeenCalled();
+      // 失效 Adapter 缓存
+      expect(stores.invalidateMock).toHaveBeenCalled();
+    });
+
+    it('无活跃 run 时切换 canvas 成功(spec-010 v8 D2)', async () => {
+      const res = await app.request('/admin/harness-backends/intellect-rag-default/switch', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tenantId: 'tenant-1', role: 'canvas' }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.code).toBe(0);
+
+      // 触发 setCanvasBinding(tenantId, backendId)
+      expect(stores.setCanvasBindingMock).toHaveBeenCalledWith('tenant-1', 'intellect-rag-default');
+      expect(stores.setHarnessBindingMock).not.toHaveBeenCalled();
+      expect(stores.invalidateMock).toHaveBeenCalled();
+    });
+
+    it('缺少 tenantId 时返回 400', async () => {
+      const res = await app.request('/admin/harness-backends/intellect-rag-default/switch', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ role: 'primary' }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.code).toBe(400);
+      expect(body.message).toContain('tenantId');
+    });
+
+    it('role 非法时返回 400', async () => {
+      const res = await app.request('/admin/harness-backends/intellect-rag-default/switch', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tenantId: 'tenant-1', role: 'invalid' }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.code).toBe(400);
+      expect(body.message).toContain('role');
     });
   });
 });

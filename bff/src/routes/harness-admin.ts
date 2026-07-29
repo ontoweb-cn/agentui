@@ -12,7 +12,8 @@
  * - GET    /admin/harness-backends            → list 所有配置 + ready 状态
  * - POST   /admin/harness-backends            → 新增(校验 + saveConfig + load + invalidate)
  * - PUT    /admin/harness-backends/:id        → 编辑(id 只读,校验 + saveConfig + load + invalidate)
- * - DELETE /admin/harness-backends/:id        → 删除(校验绑定 + saveConfig + invalidate)
+ * - DELETE /admin/harness-backends/:id        → 删除(校验绑定 + RunRegistry + saveConfig + invalidate)
+ * - POST   /admin/harness-backends/:id/switch → 切换为主/画布后端(spec-010 v8 修改 6 D2:校验活跃 run)
  *
  * 挂载点:index.ts 注册到 `/api/bff/admin/harness-backends`(Vite rewrite 后 BFF 收到 /admin/harness-backends)。
  * 鉴权:authMiddleware(在 index.ts 全局挂载到 /admin/*,或路由内显式)
@@ -25,6 +26,12 @@ import type { IAdapterRegistry } from '../services/adapter-registry-types';
 import type { HarnessStoreListConfigs, HarnessBackendWithStatus, HarnessBackendForm } from '../types/harness-admin';
 import type { HarnessBackendConfig } from '../types/harness';
 import { validateForm, firstError } from '../services/harness-admin-validation';
+// spec-010 v8 修改 6 (D2):backend 切换/删除时校验 RunRegistry 活跃 run
+import {
+  hasActiveRuns,
+  getActiveRunCount,
+  hasRunsForBackend,
+} from '../services/run-registry';
 
 interface HarnessAdminVariables {
   harnessStore: HarnessStore;
@@ -252,6 +259,15 @@ harnessAdminRoutes.delete('/admin/harness-backends/:id', async (c) => {
     );
   }
 
+  // spec-010 v8 修改 6 (D2):校验该 backend 是否有 run 记录(含已完成的),
+  // 有任何 run 记录时软阻断删除,提示先清理或迁移。
+  if (hasRunsForBackend(id)) {
+    return c.json(
+      fail(409, '该 backend 仍有 run 记录,请先清理或迁移后再删除'),
+      409,
+    );
+  }
+
   // 持久化(过滤掉被删的)+ 缓存失效
   const nextConfigs = existing.filter((_, i) => i !== idx);
   try {
@@ -268,4 +284,59 @@ harnessAdminRoutes.delete('/admin/harness-backends/:id', async (c) => {
   registry.invalidate(id);
 
   return c.json(ok(null, `Backend "${id}" deleted`));
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/harness-backends/:id/switch — 切换为主/画布后端
+// spec-010 v8 修改 6 (D2):切换前校验活跃 run,软阻断返回 409
+// ---------------------------------------------------------------------------
+
+harnessAdminRoutes.post('/admin/harness-backends/:id/switch', async (c) => {
+  const id = c.req.param('id');
+  const backendStore = getBackendStore(c);
+  const registry = getRegistry(c);
+
+  const body = await c.req.json().catch(() => null);
+  if (!body) {
+    return c.json(fail(400, 'Request body must be JSON'), 400);
+  }
+
+  const { tenantId, role } = body as { tenantId?: string; role?: 'primary' | 'canvas' };
+
+  if (!tenantId) {
+    return c.json(fail(400, 'tenantId is required'), 400);
+  }
+  if (role !== 'primary' && role !== 'canvas') {
+    return c.json(fail(400, "role must be 'primary' or 'canvas'"), 400);
+  }
+
+  // spec-010 v8 修改 6 (D2):切换 backend 时软阻断活跃 run,
+  // 避免中断进行中的对话/审批。
+  // P2-M1 修复:语义为 backend 维度(单实例单租户模型下 backend ≡ tenant)
+  if (hasActiveRuns(id)) {
+    const count = getActiveRunCount(id);
+    return c.json(
+      fail(409, `Backend "${id}" 有 ${count} 个活跃 run,请等待完成或强制取消后再切换`),
+      409,
+    );
+  }
+
+  // 切换逻辑(更新 BffTenant.intellectBackendId 或 canvasBackendId)
+  try {
+    if (role === 'primary') {
+      await backendStore.setHarnessBinding(tenantId, id);
+    } else {
+      await backendStore.setCanvasBinding(tenantId, id);
+    }
+  } catch (err) {
+    return c.json(
+      fail(500, `Failed to switch backend: ${(err as Error).message}`),
+      500,
+    );
+  }
+
+  // 失效 Adapter 缓存(切换后下次 getAdapter 创建新实例)
+  registry.invalidate();
+
+  return c.json(ok(null, '切换成功'));
 });

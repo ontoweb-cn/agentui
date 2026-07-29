@@ -4,7 +4,7 @@
 
 import { VALIDATION_RULES } from '../types/harness-admin';
 import type { HarnessBackendForm } from '../types/harness-admin';
-import type { BackendType } from '../types/harness';
+import type { BackendType, HarnessCapabilities } from '../types/harness';
 
 /**
  * 校验结果。
@@ -63,6 +63,16 @@ export function validateField(
         !VALIDATION_RULES.adminTokenEnvVar.pattern.test(value)
       ) {
         return VALIDATION_RULES.adminTokenEnvVar.message;
+      }
+      return null;
+    }
+    case 'credentialKind': {
+      // spec-010 v8 A3-7: credentialKind 校验(可选字段,只在传了的时候校验)
+      if (
+        typeof value !== 'string' ||
+        !(VALIDATION_RULES.credentialKind.values as readonly string[]).includes(value)
+      ) {
+        return VALIDATION_RULES.credentialKind.message;
       }
       return null;
     }
@@ -136,10 +146,59 @@ export function validateForm(form: unknown): ValidationResult {
     if (err) errors.defaultForTenant = err;
   }
 
+  // spec-010 v8 A3-7: credentialKind 可选,只在传了的时候校验
+  if (f.credentialKind !== undefined) {
+    const err = validateField('credentialKind', f.credentialKind);
+    if (err) errors.credentialKind = err;
+  }
+
+  // spec-010 v8 A3-7: Constitution 约束交叉校验(M5 修正)
+  // 仅在 type 与 capabilities 均通过基础校验后执行,避免与字段级错误重复
+  if (
+    !errors.type &&
+    !errors.capabilities &&
+    f.type &&
+    f.capabilities &&
+    typeof f.capabilities === 'object'
+  ) {
+    const capsErrors = validateCapabilities(
+      f.type as BackendType,
+      f.capabilities as HarnessCapabilities,
+    );
+    if (capsErrors.length > 0) {
+      errors.capabilities = capsErrors[0];
+    }
+  }
+
   return {
     valid: Object.keys(errors).length === 0,
     errors,
   };
+}
+
+/**
+ * Constitution 约束交叉校验(spec-010 v8 A3-7 / M5 修正)。
+ *
+ * 校验 capabilities 字段是否与 type 字段匹配,违反 Constitution 约束时返回错误消息数组:
+ * - Principle III: canvas=true 仅 intellect-rag 允许
+ * - Principle V:   multiTenant=true 仅 intellect-enterprise 允许
+ *
+ * @param type 后端类型
+ * @param caps 能力声明
+ * @returns 错误消息数组(空数组表示通过)
+ */
+export function validateCapabilities(
+  type: BackendType,
+  caps: HarnessCapabilities,
+): string[] {
+  const errors: string[] = [];
+  if (type !== 'intellect-rag' && caps.canvas) {
+    errors.push('canvas=true 仅 intellect-rag 允许(Principle III)');
+  }
+  if (type !== 'intellect-enterprise' && caps.multiTenant) {
+    errors.push('multiTenant=true 仅 intellect-enterprise 允许');
+  }
+  return errors;
 }
 
 /**
