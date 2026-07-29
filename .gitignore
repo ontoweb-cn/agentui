@@ -27,3 +27,13 @@ storybook-static
 .specify/
 .agents/
 bff/node_modules/.vite/
+
+# 测试覆盖率产物
+coverage/
+
+# 临时文件
+.tmp/
+tmp_*.py
+
+# 误装到 bff/node_modules 的非依赖目录(应通过 npm install 安装,不入库)
+bff/node_modules/hono-rate-limiter/
