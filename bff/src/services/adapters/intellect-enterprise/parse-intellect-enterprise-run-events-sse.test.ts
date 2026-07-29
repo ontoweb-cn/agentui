@@ -18,6 +18,10 @@ import {
   runEventsGatewayActualFrames,
   runEventsGatewayToolCallFrames,
   runEventsOutputOnlyFrames,
+  runEventsClarifyFrames,
+  runEventsClarifySplitFrames,
+  runEventsClarifyMissingQuestionFrames,
+  runEventsClarifyMixedChoicesFrames,
   makeStream,
 } from './fixtures/sse-streams';
 
@@ -335,5 +339,57 @@ describe('parseIntellectEnterpriseRunEventsSSE', () => {
     // 确认无重复内容
     const contents = deltas.map((d) => (d as { content: string }).content);
     expect(contents).toEqual(['你好', '!']);
+  });
+
+  // -------------------------------------------------------------------------
+  // B5: clarify 事件解析测试(覆盖 session_id 提取/choices 过滤/缺失字段处理)
+  // -------------------------------------------------------------------------
+
+  it('clarify 事件(顶层 session_id)→ 产出 clarify_request chunk', async () => {
+    const stream = toReadableStream(makeStream(runEventsClarifyFrames));
+    const chunks = await collect(parseIntellectEnterpriseRunEventsSSE(stream));
+
+    const clarifyChunk = chunks.find((c) => c.type === 'clarify_request');
+    expect(clarifyChunk).toBeDefined();
+    expect(clarifyChunk).toMatchObject({
+      type: 'clarify_request',
+      question: '您想了解什么?',
+      choices: ['选项A', '选项B'],
+      clarifyId: 'sess-c1:1700000000000',
+      sessionId: 'sess-c1',
+    });
+  });
+
+  it('clarify 事件(缺失 session_id)→ 从 clarify_id 切分兜底', async () => {
+    const stream = toReadableStream(makeStream(runEventsClarifySplitFrames));
+    const chunks = await collect(parseIntellectEnterpriseRunEventsSSE(stream));
+
+    const clarifyChunk = chunks.find((c) => c.type === 'clarify_request');
+    expect(clarifyChunk).toBeDefined();
+    // session_id 缺失时,从 clarify_id "sess-c2:1700000000001" 切分首段
+    expect((clarifyChunk as { sessionId: string }).sessionId).toBe('sess-c2');
+  });
+
+  it('clarify 事件(缺失 question)→ 产出 error chunk 而非静默跳过(M11 修复)', async () => {
+    const stream = toReadableStream(makeStream(runEventsClarifyMissingQuestionFrames));
+    const chunks = await collect(parseIntellectEnterpriseRunEventsSSE(stream));
+
+    // M11 修复:缺失关键字段时产出 error chunk,让前端能清理 pending 状态
+    const errorChunk = chunks.find((c) => c.type === 'error');
+    expect(errorChunk).toBeDefined();
+    expect((errorChunk as { message: string }).message).toMatch(/missing required field/);
+    // 不应产出 clarify_request chunk
+    expect(chunks.find((c) => c.type === 'clarify_request')).toBeUndefined();
+  });
+
+  it('clarify 事件(choices 含非 string 元素)→ 过滤后仅保留有效项', async () => {
+    const stream = toReadableStream(makeStream(runEventsClarifyMixedChoicesFrames));
+    const chunks = await collect(parseIntellectEnterpriseRunEventsSSE(stream));
+
+    const clarifyChunk = chunks.find((c) => c.type === 'clarify_request');
+    expect(clarifyChunk).toBeDefined();
+    // 123 和 null 应被过滤,仅保留 2 个 string 元素
+    const choices = (clarifyChunk as { choices: string[] }).choices;
+    expect(choices).toEqual(['有效选项', '另一个有效选项']);
   });
 });

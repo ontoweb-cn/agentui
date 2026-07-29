@@ -22,10 +22,13 @@ export const BACKEND_CONTEXT_KEY = 'backendContext';
  *
  * 行为:
  * - 提取 X-Backend-Id / X-User-Id header → 构造 BackendContext → c.set('backendContext', ctx) → next()
- * - tenantId 或 userId 缺失 → 降级使用默认值('default'/'bff-default')并 console.warn,避免阻断 P1 阶段未注入 header 的调用方
+ * - tenantId 或 userId 缺失 → 降级使用默认值('0'/'bff-default')并 console.warn,避免阻断 P1 阶段未注入 header 的调用方
  * - P3 扩展:从 BackendStore 读取 BffTenant,注入 intellectTeamId/intellectProjectId
  *   (research.md R3:BffTenant.intellectTenantId 映射到 BackendContext.intellectTeamId → X-Intellect-Team 头)
  *   store 未就绪或 tenant 不存在时,头字段留空(单租户场景兼容)
+ *
+ * 默认 tenantId='0' 与 auth.ts:176 / bff-tenants.json 默认租户 ID 保持一致。
+ * 原值 'default' 会导致 backendStore.getBackend('default') 返回 undefined → 503。
  */
 export const backendContextMiddleware: MiddlewareHandler = async (c, next) => {
   const backendId = c.req.header('X-Backend-Id');
@@ -34,8 +37,9 @@ export const backendContextMiddleware: MiddlewareHandler = async (c, next) => {
   // 缺失 X-Backend-Id / X-User-Id 时使用默认值，对齐 resolveBackendContext() 的兜底策略。
   // P1 阶段前端尚未全局注入这些 header（仅部分 API 显式传递），
   // 返回 400 会阻断 agent 列表等核心功能。
+  // 默认 '0' 对齐 bff-tenants.json 中 id="0" 的默认租户。
   const ctx: BackendContext = {
-    backendId: backendId || 'default',
+    backendId: backendId || '0',
     userId: userId || 'bff-default',
   };
 
@@ -130,7 +134,9 @@ export function getBackendContext(c: Context): BackendContext | undefined {
  * 从 Hono context 解析 BackendContext,缺失时返回社区版默认租户上下文。
  *
  * 用于路由 handler:优雅降级,中间件未注入时(如测试环境或未挂载中间件的路由)
- * 回退到 { backendId: 'default', userId: 'bff-default' },避免阻塞。
+ * 回退到 { backendId: '0', userId: 'bff-default' },避免阻塞。
+ *
+ * 默认 '0' 与 bff-tenants.json 中 id="0" 的默认租户对齐。
  */
 export function resolveBackendContext(c: Context): BackendContext {
   const ctx = getBackendContext(c);
@@ -139,7 +145,7 @@ export function resolveBackendContext(c: Context): BackendContext {
   }
   // fallback:中间件未注入(如 P1 阶段未传 X-Backend-Id header)时使用默认,避免阻塞
   return {
-    backendId: 'default',
+    backendId: '0',
     userId: 'bff-default',
   };
 }

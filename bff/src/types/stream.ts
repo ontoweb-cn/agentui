@@ -74,8 +74,12 @@ export interface TokenUsage {
 /**
  * BFF 统一流式输出格式。
  *
- * type 枚举锁定为 8 个值(Constitution Principle IV v1.1.0 NON-NEGOTIABLE),
- * 禁止 P1/P3 时回头扩展枚举(向后兼容)。
+ * type 枚举 v1.2.0 锁定为 8 个值(Constitution Principle IV v1.1.0 NON-NEGOTIABLE)。
+ * v1.3.0 扩展为 10 值,新增 `approval_request`/`approval_responded`(Constitution Principle IV v1.3.0,
+ * maintainer 显式批准 NON-NEGOTIABLE 例外)。仅 IntellectEnterpriseAdapter /v1/runs 主通道产出,
+ * IntellectRagAdapter 不产出 approval 事件。
+ * v1.4.0 扩展为 11 值,新增 `clarify_request`(Gateway /v1/chat/completions 流式端点发射,
+ * BFF 解析后透传到前端 ClarifyCard 组件)。
  */
 export type StreamChunk =
   | StreamDelta
@@ -85,7 +89,10 @@ export type StreamChunk =
   | StreamToolProgress
   | StreamUsage
   | StreamDone
-  | StreamError;
+  | StreamError
+  | StreamApprovalRequest
+  | StreamApprovalResponded
+  | StreamClarifyRequest;
 
 export interface StreamDelta {
   /** 增量内容(模型输出文本) */
@@ -153,6 +160,87 @@ export interface StreamError {
   code?: string;
   /** 关联的工具调用 ID(企业版 tool.failed 时填充) */
   toolCallId?: string;
+  /**
+   * Provider 错误详情(P3 启用)。
+   * 上游 provider 返回的原始 JSON,用于前端 ProviderErrorDetails 组件渲染折叠区块。
+   * BFF 序列化时用 safeJsonSerialize 过滤不可序列化类型(function/symbol/circular)。
+   */
+  details?: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// Approval events (v1.3.0 扩展,仅 IntellectEnterpriseAdapter /v1/runs 主通道产出)
+// ---------------------------------------------------------------------------
+
+/**
+ * 工具审批请求(intellect-team /v1/runs events `approval.request` 事件)。
+ *
+ * Constitution Principle IV v1.3.0 + Principle VIII:
+ * - 当工具需人工审批时,intellect-team 发射 `approval.request` SSE 事件
+ * - BFF 解析为 StreamApprovalRequest,透传到前端 ApprovalCard 组件
+ * - `arguments` 是原始 JSON 字符串(非对象),前端按需 parse
+ * - `runId` 用于关联 run,前端提交审批时回传
+ *
+ * 注:无 toolCallId 字段(intellect-team approval.request payload 不含 tool_id),
+ * 前端按 toolName 匹配 tool_* 事件(BFF serializeChunk 过滤 tool_* 事件避免重复 UI)。
+ */
+export interface StreamApprovalRequest {
+  readonly type: 'approval_request';
+  /** 工具名称 */
+  toolName: string;
+  /** 原始 JSON 字符串(intellect-team 透传,前端按需 parse) */
+  arguments: string;
+  /** 可选审批选项(intellect-team 默认提供 4 个) */
+  choices: Array<'once' | 'session' | 'always' | 'deny'>;
+  /** 关联的 run ID(前端提交审批时回传) */
+  runId: string;
+}
+
+/**
+ * 工具审批已提交(intellect-team /v1/runs events `approval.responded` 事件)。
+ *
+ * Constitution Principle IV v1.3.0 + Principle VIII:
+ * - 用户提交审批后,intellect-team 发射 `approval.responded` SSE 事件
+ * - BFF 解析为 StreamApprovalResponded,透传到前端更新 ApprovalCard 状态
+ * - `resolved` 表示已解决的审批请求数量
+ */
+export interface StreamApprovalResponded {
+  readonly type: 'approval_responded';
+  /** 用户选择的审批选项 */
+  choice: 'once' | 'session' | 'always' | 'deny';
+  /** 已解决的审批请求数量 */
+  resolved: number;
+  /** 关联的 run ID */
+  runId: string;
+}
+
+// ---------------------------------------------------------------------------
+// Clarify events (v1.4.0 扩展,Gateway /v1/chat/completions 流式端点产出)
+// ---------------------------------------------------------------------------
+
+/**
+ * 澄清请求(Gateway `clarify` SSE 事件)。
+ *
+ * 来源:intellect-team api_server.rs `set_clarify_fn` 注入的 clarify 工具。
+ * - 当 LLM 调用 clarify 工具时,Gateway 在 /v1/chat/completions 流式端点发射 `clarify` SSE 事件
+ * - BFF 解析为 StreamClarifyRequest,透传到前端 ClarifyCard 组件
+ * - 用户提交答案后,BFF 调用 `POST /v1/chat/completions/{session_id}/clarify` 回调端点
+ * - `clarifyId` 格式为 `session_id:timestamp_ms`,前端提交时回传
+ * - `sessionId` 用于构造回调路径,前端也可用于关联会话上下文
+ *
+ * 注:clarify 是非阻塞 UI(用户可边回答边看其它事件),与 approval 的阻塞模型不同,
+ * 因此 streamChunksAsSSE 不在 clarify_request 后过滤 tool_* 事件。
+ */
+export interface StreamClarifyRequest {
+  readonly type: 'clarify_request';
+  /** 澄清问题文本 */
+  question: string;
+  /** 可选答案选项(可能为空数组,表示自由文本输入) */
+  choices: string[];
+  /** clarify ID,格式 `session_id:timestamp_ms`,提交答案时回传 */
+  clarifyId: string;
+  /** 关联的 session ID,用于构造回调路径 */
+  sessionId: string;
 }
 
 // ---------------------------------------------------------------------------

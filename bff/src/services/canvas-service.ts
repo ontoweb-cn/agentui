@@ -1,23 +1,28 @@
 // @see specs/008-explicit-canvas-service/data-model.md (实体 1)
 // @see specs/008-explicit-canvas-service/research.md (R2, R5, R6)
 /**
- * CanvasService — 画布服务层,封装画布操作对 IntellectRagAdapter 的调用。
+ * CanvasService — 画布服务层,封装画布操作对 ICanvasAdapter 的调用。
  *
  * Authority source: specs/008-explicit-canvas-service/data-model.md
  * Runtime: bff/src/services/canvas-service.ts
  *
  * Constitution references (v1.2.0):
- * - Principle III (Canvas Hard-Bound): 硬绑定 IntellectRagAdapter,不经过 Adapter Registry 选择
+ * - Principle III (Canvas Hard-Bound): 硬绑定画布后端,不经过 Adapter Registry 选择
  * - Principle V (Tenant Isolation): 经 AdapterRegistry.getCanvasBackendForBackend 按租户路由
  * - Principle VII (YAGNI): 不引入 Canvas IR,DTO 字段与上游 1:1
  *
+ * spec-010 v8 A2-4: 改用 ICanvasAdapter 接口(替代 IntellectRagAdapter 具体类),
+ * 6 个高层方法改为调 adapter 高层方法(路径下沉到 Adapter)。
+ *
  * 两类方法:
- * - JSON 方法:调 adapter.request<T>(method, path, body?),返回上游 JSON
- * - 流式方法:调 adapter.proxy(method, path, req),返回上游 Response
+ * - 高层语义方法:调 adapter.listCanvas() 等(路径拼接在 Adapter 内)
+ * - 透传方法:调 adapter.request<T>()/adapter.proxy()(路径在 CanvasService 拼接)
  */
 
 import type { BackendContext } from '../types/tenant';
 import type { IAdapterRegistry } from './adapter-registry-types';
+import type { ICanvasAdapter, IHarnessAdapter } from '../types/adapter';
+import { isCanvasAdapter } from '../types/adapter';
 import type {
   CanvasAgent,
   CanvasTemplate,
@@ -27,7 +32,17 @@ import type {
   SaveCanvasBody,
   UpdateTagsBody,
 } from '../types/canvas';
-import type { IntellectRagAdapter } from './adapters/intellect-rag/intellect-rag-adapter';
+
+/**
+ * 画布后端不支持时抛出(Constitution Principle III 运行时双保险)。
+ * spec-010 v8 A2-5: 新增异常类。
+ */
+export class CanvasNotSupportedError extends Error {
+  constructor(backendId: string) {
+    super(`Canvas not supported on backend ${backendId} (adapterKind is not 'canvas')`);
+    this.name = 'CanvasNotSupportedError';
+  }
+}
 
 export class CanvasService {
   private readonly registry: IAdapterRegistry;
@@ -43,49 +58,51 @@ export class CanvasService {
   /**
    * 按租户上下文解析画布 Adapter(Constitution Principle III + V)。
    *
-   * R5.2 note: Canvas 存储（CRUD/versions/tags/webhooks）仍经 IntellectRagAdapter。
+   * spec-010 v8 A2-4: 返回 ICanvasAdapter 接口(替代 IntellectRagAdapter 具体类),
+   * 新增 isCanvasAdapter() 运行时守卫。
+   *
+   * R5.2 note: Canvas 存储（CRUD/versions/tags/webhooks）仍经画布 Adapter。
    * Agent 执行（rerun/debug）在未来将通过 Gateway /v1/runs + dsl_run 工具。
    */
-  private resolveAdapter(ctx: BackendContext): IntellectRagAdapter {
-    return this.registry.getCanvasBackendForBackend(ctx.backendId);
+  private resolveAdapter(ctx: BackendContext): ICanvasAdapter {
+    const adapter: IHarnessAdapter = this.registry.getCanvasBackendForBackend(ctx.backendId);
+    // spec-010 v8 A2-4: 运行时双保险,确保返回的 Adapter 实现了 ICanvasAdapter
+    if (!isCanvasAdapter(adapter)) {
+      throw new CanvasNotSupportedError(adapter.backendId);
+    }
+    return adapter;
   }
 
   // -------------------------------------------------------------------------
-  // JSON 方法 — 画布 CRUD
+  // 高层语义方法 — 画布 CRUD(spec-010 v8 A2-4: 改为调 adapter 高层方法)
   // -------------------------------------------------------------------------
 
   async listCanvas(ctx: BackendContext): Promise<CanvasAgent[]> {
-    const adapter = this.resolveAdapter(ctx);
-    return adapter.request<CanvasAgent[]>('GET', '/api/v1/agents', undefined, ctx);
+    return this.resolveAdapter(ctx).listCanvas(ctx);
   }
 
   async getCanvas(ctx: BackendContext, id: string): Promise<CanvasAgent> {
-    const adapter = this.resolveAdapter(ctx);
-    return adapter.request<CanvasAgent>('GET', `/api/v1/agents/${encodeURIComponent(id)}`, undefined, ctx);
+    return this.resolveAdapter(ctx).getCanvas(ctx, id);
   }
 
   async createCanvas(ctx: BackendContext, body: CreateCanvasBody): Promise<CanvasAgent> {
-    const adapter = this.resolveAdapter(ctx);
-    return adapter.request<CanvasAgent>('POST', '/api/v1/agents', body, ctx);
+    return this.resolveAdapter(ctx).createCanvas(ctx, body);
   }
 
   async saveCanvas(ctx: BackendContext, id: string, body: SaveCanvasBody): Promise<CanvasAgent> {
-    const adapter = this.resolveAdapter(ctx);
-    return adapter.request<CanvasAgent>('PUT', `/api/v1/agents/${encodeURIComponent(id)}`, body, ctx);
+    return this.resolveAdapter(ctx).saveCanvas(ctx, id, body);
   }
 
   async deleteCanvas(ctx: BackendContext, id: string): Promise<void> {
-    const adapter = this.resolveAdapter(ctx);
-    return adapter.request<void>('DELETE', `/api/v1/agents/${encodeURIComponent(id)}`, undefined, ctx);
+    return this.resolveAdapter(ctx).deleteCanvas(ctx, id);
   }
 
   async resetCanvas(ctx: BackendContext, id: string): Promise<void> {
-    const adapter = this.resolveAdapter(ctx);
-    return adapter.request<void>('POST', `/api/v1/agents/${encodeURIComponent(id)}/reset`, undefined, ctx);
+    return this.resolveAdapter(ctx).resetCanvas(ctx, id);
   }
 
   // -------------------------------------------------------------------------
-  // JSON 方法 — 模板与 Tags
+  // 透传 JSON 方法 — 模板与 Tags
   // -------------------------------------------------------------------------
 
   async listTemplates(ctx: BackendContext): Promise<CanvasTemplate[]> {
@@ -104,7 +121,7 @@ export class CanvasService {
   }
 
   // -------------------------------------------------------------------------
-  // JSON 方法 — 版本
+  // 透传 JSON 方法 — 版本
   // -------------------------------------------------------------------------
 
   async listVersions(ctx: BackendContext, id: string): Promise<CanvasVersion[]> {
@@ -123,7 +140,7 @@ export class CanvasService {
   }
 
   // -------------------------------------------------------------------------
-  // JSON 方法 — 组件
+  // 透传 JSON 方法 — 组件
   // -------------------------------------------------------------------------
 
   async getInputForm(ctx: BackendContext, id: string, cid: string): Promise<unknown> {
@@ -147,7 +164,7 @@ export class CanvasService {
   }
 
   // -------------------------------------------------------------------------
-  // JSON 方法 — Trace / Prompts / DB / Webhook / Rerun / Cancel / External
+  // 透传 JSON 方法 — Trace / Prompts / DB / Webhook / Rerun / Cancel / External
   // -------------------------------------------------------------------------
 
   async trace(ctx: BackendContext, id: string, messageId: string): Promise<unknown> {

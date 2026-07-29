@@ -79,6 +79,12 @@ export class AdapterRegistry implements IAdapterRegistry {
 
     const factory = this.factories.get(backend.type);
     if (!factory) {
+      // spec-010 v8 A3-8: intellect-llm 特化错误信息
+      if (backend.type === 'intellect-llm') {
+        throw new AdapterFactoryNotRegisteredError(
+          `intellect-llm 不经 AdapterRegistry 解析(legacy,走 llm-proxy 透传),请检查 BffTenant.intellectBackendId 是否误绑定了 intellect-llm backend`,
+        );
+      }
       throw new AdapterFactoryNotRegisteredError(backend.type);
     }
 

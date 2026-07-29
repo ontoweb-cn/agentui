@@ -7,7 +7,7 @@ import { Hono } from 'hono';
 import { canvasRoutes } from './canvas';
 import { CanvasService } from '../services/canvas-service';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
-import type { IntellectRagAdapter } from '../services/adapters/intellect-rag/intellect-rag-adapter';
+import type { ICanvasAdapter } from '../types/adapter';
 import { CanvasBackendNotBoundError } from '../services/adapter-registry-errors';
 
 const ctx = { backendId: 'tenant-001', userId: 'user-001' };
@@ -17,9 +17,29 @@ function createMockCanvasService(): CanvasService {
   const mockProxy = vi.fn();
   const mockAdapter = {
     backendId: 'intellect-rag-default',
+    adapterKind: 'canvas' as const,
+    // 高层语义方法(spec-010 v8 A2-4)
+    listCanvas: vi.fn(),
+    getCanvas: vi.fn(),
+    createCanvas: vi.fn(),
+    saveCanvas: vi.fn(),
+    deleteCanvas: vi.fn(),
+    resetCanvas: vi.fn(),
+    // 透传方法
     request: mockRequest,
     proxy: mockProxy,
-  } as unknown as IntellectRagAdapter;
+    // IHarnessAdapter 必选方法
+    listAgents: vi.fn(),
+    getAgent: vi.fn(),
+    createSession: vi.fn(),
+    listSessions: vi.fn(),
+    getSession: vi.fn(),
+    deleteSession: vi.fn(),
+    sendMessage: vi.fn(),
+    cancelMessage: vi.fn(),
+    healthCheck: vi.fn(),
+    discoverCapabilities: vi.fn(),
+  } as unknown as ICanvasAdapter;
   const mockRegistry = {
     getCanvasBackendForBackend: vi.fn().mockReturnValue(mockAdapter),
   } as unknown as IAdapterRegistry;
@@ -46,7 +66,16 @@ function createTestApp(svc: CanvasService) {
 describe('Canvas Routes (spec-008)', () => {
   let app: ReturnType<typeof createTestApp>;
   let svc: CanvasService;
-  let mockAdapter: { request: ReturnType<typeof vi.fn>; proxy: ReturnType<typeof vi.fn> };
+  let mockAdapter: {
+    request: ReturnType<typeof vi.fn>;
+    proxy: ReturnType<typeof vi.fn>;
+    listCanvas: ReturnType<typeof vi.fn>;
+    getCanvas: ReturnType<typeof vi.fn>;
+    createCanvas: ReturnType<typeof vi.fn>;
+    saveCanvas: ReturnType<typeof vi.fn>;
+    deleteCanvas: ReturnType<typeof vi.fn>;
+    resetCanvas: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -152,7 +181,7 @@ describe('Canvas Routes (spec-008)', () => {
 
   describe('GET /canvas (list)', () => {
     it('返回 200 且调用 listCanvas', async () => {
-      mockAdapter.request.mockResolvedValue([{ id: 'a1' }]);
+      mockAdapter.listCanvas.mockResolvedValue([{ id: 'a1' }]);
 
       const res = await app.request('/canvas', {
         method: 'GET',
@@ -167,7 +196,7 @@ describe('Canvas Routes (spec-008)', () => {
 
   describe('POST /canvas (create)', () => {
     it('返回 201 且调用 createCanvas', async () => {
-      mockAdapter.request.mockResolvedValue({ id: 'new-id', name: 'New' });
+      mockAdapter.createCanvas.mockResolvedValue({ id: 'new-id', name: 'New' });
 
       const res = await app.request('/canvas', {
         method: 'POST',
@@ -176,13 +205,13 @@ describe('Canvas Routes (spec-008)', () => {
       });
 
       expect(res.status).toBe(201);
-      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/agents', expect.any(Object), ctx);
+      expect(mockAdapter.createCanvas).toHaveBeenCalledWith(ctx, expect.any(Object));
     });
   });
 
   describe('PUT /canvas/:id (save)', () => {
     it('返回 200 且调用 saveCanvas', async () => {
-      mockAdapter.request.mockResolvedValue({ id: 'a1', name: 'Updated' });
+      mockAdapter.saveCanvas.mockResolvedValue({ id: 'a1', name: 'Updated' });
 
       const res = await app.request('/canvas/a1', {
         method: 'PUT',
@@ -191,13 +220,13 @@ describe('Canvas Routes (spec-008)', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockAdapter.request).toHaveBeenCalledWith('PUT', '/api/v1/agents/a1', expect.any(Object), ctx);
+      expect(mockAdapter.saveCanvas).toHaveBeenCalledWith(ctx, 'a1', expect.any(Object));
     });
   });
 
   describe('DELETE /canvas/:id', () => {
     it('返回 200 且调用 deleteCanvas', async () => {
-      mockAdapter.request.mockResolvedValue(undefined);
+      mockAdapter.deleteCanvas.mockResolvedValue(undefined);
 
       const res = await app.request('/canvas/a1', {
         method: 'DELETE',
@@ -212,7 +241,7 @@ describe('Canvas Routes (spec-008)', () => {
 
   describe('POST /canvas/:id/reset', () => {
     it('返回 200 且调用 resetCanvas', async () => {
-      mockAdapter.request.mockResolvedValue(undefined);
+      mockAdapter.resetCanvas.mockResolvedValue(undefined);
 
       const res = await app.request('/canvas/a1/reset', {
         method: 'POST',
@@ -272,7 +301,7 @@ describe('Canvas Routes (spec-008)', () => {
     });
 
     it('adapter 抛 404 → 响应 404', async () => {
-      mockAdapter.request.mockRejectedValue(new Error('Intellect RAG API error 404'));
+      mockAdapter.listCanvas.mockRejectedValue(new Error('Intellect RAG API error 404'));
 
       const res = await app.request('/canvas', {
         method: 'GET',
@@ -283,7 +312,7 @@ describe('Canvas Routes (spec-008)', () => {
     });
 
     it('adapter 抛 500 → 响应 502', async () => {
-      mockAdapter.request.mockRejectedValue(new Error('Intellect RAG API error 500'));
+      mockAdapter.listCanvas.mockRejectedValue(new Error('Intellect RAG API error 500'));
 
       const res = await app.request('/canvas', {
         method: 'GET',

@@ -192,3 +192,55 @@ export interface SendMessageAttachment {
   /** MIME 类型(可选) */
   mimeType?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Knowledge Base (Layer 2 — IKnowledgeBaseAdapter, spec-010 v8 A2-3)
+// ---------------------------------------------------------------------------
+
+/**
+ * 知识库数据集实体。
+ * 对应 intellect-rag /api/v1/datasets 返回结构(透传,不纳入统一 schema)。
+ */
+export interface Dataset {
+  /** 数据集 ID */
+  id: string;
+  /** 数据集名称 */
+  name: string;
+  /** 数据集描述(可选) */
+  description?: string;
+  /** 文档数量(可选,上游可能返回 document_count 或 doc_num) */
+  documentCount?: number;
+  /** chunk 数量(可选,上游可能返回 chunk_count 或 chunk_num) */
+  chunkCount?: number;
+  /** ISO 8601 创建时间(可选) */
+  createdAt?: string;
+  /** ISO 8601 更新时间(可选) */
+  updatedAt?: string;
+  /** 上游专有元数据(透传,不纳入统一 schema) */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * 知识库文档实体。
+ * 对应 intellect-rag /api/v1/datasets/{id}/documents 返回结构。
+ */
+export interface KbDocument {
+  /** 文档 ID */
+  id: string;
+  /** 文档名称 */
+  name: string;
+  /** 文档 MIME 类型(可选) */
+  mimeType?: string;
+  /** 文档大小(字节,可选) */
+  size?: number;
+  /** 文档处理状态(可选,如 'pending'|'processing'|'completed'|'failed') */
+  status?: string;
+  /** chunk 数量(可选) */
+  chunkCount?: number;
+  /** ISO 8601 创建时间(可选) */
+  createdAt?: string;
+  /** ISO 8601 更新时间(可选) */
+  updatedAt?: string;
+  /** 上游专有元数据(透传) */
+  metadata?: Record<string, unknown>;
+}

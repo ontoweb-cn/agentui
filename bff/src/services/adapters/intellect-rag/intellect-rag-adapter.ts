@@ -18,20 +18,25 @@
  * Naming: 类名 IntellectRagAdapter,目录 intellect-rag/(Constitution 命名规范)
  */
 
-import type { IHarnessAdapter } from '../../../types/adapter';
-import type { AgentSummary, Session, SendMessageRequest } from '../../../types/domain';
+import type { IHarnessAdapter, ICanvasAdapter, IKnowledgeBaseAdapter } from '../../../types/adapter';
+import type { AgentSummary, Session, SendMessageRequest, Dataset, KbDocument } from '../../../types/domain';
 import type { StreamChunk, StreamIterable } from '../../../types/stream';
 import type { HarnessCapabilities, HarnessBackend } from '../../../types/harness';
 import type { BackendContext } from '../../../types/tenant';
+import type { CanvasAgent, CreateCanvasBody, SaveCanvasBody } from '../../../types/canvas';
 import { fetchWithRagToken } from '../../rag-fetch';
 import { parseCanvasWorkflowSSE } from './parse-canvas-workflow-sse';
 
 /**
  * Intellect RAG Adapter 实现。
  * 封装 Intellect RAG OpenAI 兼容 REST API 调用,baseUrl 形如 'http://localhost:9380'。
+ *
+ * spec-010 v8 A2-2: implements ICanvasAdapter,6 个高层画布方法路径拼接下沉到 Adapter。
+ * spec-010 v8 A2-3: implements IKnowledgeBaseAdapter,KB 方法路径拼接下沉到 Adapter。
  */
-export class IntellectRagAdapter implements IHarnessAdapter {
+export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKnowledgeBaseAdapter {
   readonly backendId: string;
+  readonly adapterKind = 'canvas' as const;
   private readonly baseUrl: string;
   private readonly adminToken: string;
   private readonly capabilities: HarnessCapabilities;
@@ -110,6 +115,36 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     );
   }
 
+  async updateSession(
+    _ctx: BackendContext,
+    agentId: string,
+    sessionId: string,
+    params: { title?: string },
+  ): Promise<Session> {
+    const data = await this.request<unknown>(
+      'PATCH',
+      `/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}`,
+      params,
+      _ctx,
+    );
+    return data as unknown as Session;
+  }
+
+  async getSessionMessages(
+    _ctx: BackendContext,
+    agentId: string,
+    sessionId: string,
+  ): Promise<unknown[]> {
+    const data = await this.request<unknown>(
+      'GET',
+      `/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}/messages`,
+      undefined,
+      _ctx,
+    );
+    const arr = Array.isArray(data) ? data : (data as { messages?: unknown[] })?.messages ?? [];
+    return arr;
+  }
+
   // -----------------------------------------------------------------------
   // Message streaming (US2 实现 sendMessage, parseCanvasWorkflowSSE)
   // -----------------------------------------------------------------------
@@ -181,11 +216,154 @@ export class IntellectRagAdapter implements IHarnessAdapter {
     return this.capabilities;
   }
 
+  // -----------------------------------------------------------------------
+  // Canvas 高层语义方法(spec-010 v8 A2-2: ICanvasAdapter 实现)
+  // 路径拼接下沉到 Adapter,CanvasService 改为一行转发。
+  // -----------------------------------------------------------------------
+
+  async listCanvas(ctx: BackendContext): Promise<CanvasAgent[]> {
+    return this.request<CanvasAgent[]>('GET', '/api/v1/agents', undefined, ctx);
+  }
+
+  async getCanvas(ctx: BackendContext, id: string): Promise<CanvasAgent> {
+    return this.request<CanvasAgent>('GET', `/api/v1/agents/${encodeURIComponent(id)}`, undefined, ctx);
+  }
+
+  async createCanvas(ctx: BackendContext, body: CreateCanvasBody): Promise<CanvasAgent> {
+    return this.request<CanvasAgent>('POST', '/api/v1/agents', body, ctx);
+  }
+
+  async saveCanvas(ctx: BackendContext, id: string, body: SaveCanvasBody): Promise<CanvasAgent> {
+    return this.request<CanvasAgent>('PUT', `/api/v1/agents/${encodeURIComponent(id)}`, body, ctx);
+  }
+
+  async deleteCanvas(ctx: BackendContext, id: string): Promise<void> {
+    return this.request<void>('DELETE', `/api/v1/agents/${encodeURIComponent(id)}`, undefined, ctx);
+  }
+
+  async resetCanvas(ctx: BackendContext, id: string): Promise<void> {
+    return this.request<void>('POST', `/api/v1/agents/${encodeURIComponent(id)}/reset`, undefined, ctx);
+  }
+
+  // -----------------------------------------------------------------------
+  // Knowledge Base 高层语义方法(spec-010 v8 A2-3: IKnowledgeBaseAdapter 实现)
+  // 路径拼接下沉到 Adapter,对应 intellect-rag /api/v1/datasets/* 端点。
+  // -----------------------------------------------------------------------
+
+  async listDatasets(ctx: BackendContext): Promise<Dataset[]> {
+    return this.request<Dataset[]>('GET', '/api/v1/datasets', undefined, ctx);
+  }
+
+  async createDataset(ctx: BackendContext, name: string, description?: string): Promise<Dataset> {
+    return this.request<Dataset>(
+      'POST',
+      '/api/v1/datasets',
+      { name, description },
+      ctx,
+    );
+  }
+
+  async getDataset(ctx: BackendContext, datasetId: string): Promise<Dataset> {
+    return this.request<Dataset>(
+      'GET',
+      `/api/v1/datasets/${encodeURIComponent(datasetId)}`,
+      undefined,
+      ctx,
+    );
+  }
+
+  async updateDataset(
+    ctx: BackendContext,
+    datasetId: string,
+    patch: Partial<Dataset>,
+  ): Promise<Dataset> {
+    // spec-010 v8: 显式删除 permission 字段,防止旧客户端发送废弃字段污染数据
+    // (project_memory 约束:Knowledgebase 更新接口需显式删除 permission 字段)
+    const body: Record<string, unknown> = { ...patch };
+    delete body.permission;
+    return this.request<Dataset>(
+      'PUT',
+      `/api/v1/datasets/${encodeURIComponent(datasetId)}`,
+      body,
+      ctx,
+    );
+  }
+
+  async deleteDataset(ctx: BackendContext, datasetId: string): Promise<void> {
+    // intellect-rag 批量删除端点 DELETE /api/v1/datasets,body: { ids: [datasetId] }
+    return this.request<void>(
+      'DELETE',
+      '/api/v1/datasets',
+      { ids: [datasetId] },
+      ctx,
+    );
+  }
+
+  async listDocuments(ctx: BackendContext, datasetId: string): Promise<KbDocument[]> {
+    return this.request<KbDocument[]>(
+      'GET',
+      `/api/v1/datasets/${encodeURIComponent(datasetId)}/documents`,
+      undefined,
+      ctx,
+    );
+  }
+
+  async uploadDocument(
+    ctx: BackendContext,
+    datasetId: string,
+    file: { name: string; type: string; body: ReadableStream<Uint8Array> | Blob | unknown },
+    metadata?: Record<string, unknown>,
+  ): Promise<KbDocument> {
+    // multipart 上传:不设置 Content-Type,fetch 自动加 boundary
+    const formData = new FormData();
+    const blob = new Blob([file.body as BlobPart], { type: file.type });
+    formData.append('file', blob, file.name);
+    if (metadata) {
+      formData.append('metadata', JSON.stringify(metadata));
+    }
+    // 构造 headers:身份头 + 不含 Content-Type(让 fetch 自动设 multipart boundary)
+    const headers: Record<string, string> = {};
+    if (ctx?.intellectUserId) headers['X-Intellect-User'] = ctx.intellectUserId;
+    if (ctx?.intellectTeamId) headers['X-Intellect-Team'] = ctx.intellectTeamId;
+    if (ctx?.intellectProjectId) headers['X-Intellect-Project'] = ctx.intellectProjectId;
+    if (ctx?.intellectTenantId) headers['X-Intellect-Tenant'] = ctx.intellectTenantId;
+
+    const url = `${this.baseUrl}/api/v1/datasets/${encodeURIComponent(datasetId)}/documents`;
+    const response = await fetchWithRagToken(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    }, { fallbackStaticToken: this.adminToken, sessionToken: ctx?.sessionToken });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(
+        `Intellect RAG uploadDocument error ${response.status} at ${url}: ${text}`,
+      );
+    }
+    return response.json() as Promise<KbDocument>;
+  }
+
+  async deleteDocument(
+    ctx: BackendContext,
+    datasetId: string,
+    documentId: string,
+  ): Promise<void> {
+    // intellect-rag 批量删除端点 DELETE /api/v1/datasets/{id}/documents,body: { ids: [documentId] }
+    return this.request<void>(
+      'DELETE',
+      `/api/v1/datasets/${encodeURIComponent(datasetId)}/documents`,
+      { ids: [documentId] },
+      ctx,
+    );
+  }
+
   /**
    * JSON 请求方法(供 CanvasService 等调用方直接使用)。
    *
    * spec-008 (Constitution Principle III): CanvasService 不引入 IR 层,
    * 直接调 adapter.request() 透传上游 JSON。
+   *
+   * spec-010 v8 A2-2: 纳入 ICanvasAdapter 接口契约。
    */
   async request<T>(
     method: string,

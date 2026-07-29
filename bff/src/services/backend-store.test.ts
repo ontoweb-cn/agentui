@@ -161,7 +161,7 @@ describe('JSONFileBackendStore', () => {
       const store = new JSONFileBackendStore(harnessStore);
 
       await expect(store.load()).rejects.toThrow(
-        /references unknown intellectBackendId "non-existent-backend"/,
+        /Backend not configured: non-existent-backend/,
       );
     });
 
@@ -182,7 +182,7 @@ describe('JSONFileBackendStore', () => {
       const store = new JSONFileBackendStore(harnessStore);
 
       await expect(store.load()).rejects.toThrow(
-        /references unknown canvasBackendId "non-existent-canvas"/,
+        /Backend not configured: non-existent-canvas/,
       );
     });
 
@@ -203,7 +203,7 @@ describe('JSONFileBackendStore', () => {
       const store = new JSONFileBackendStore(harnessStore);
 
       await expect(store.load()).rejects.toThrow(
-        /canvasBackendId must be intellect-rag type, got: intellect-enterprise/,
+        /has invalid type intellect-enterprise, expected intellect-rag/,
       );
     });
 
@@ -279,7 +279,7 @@ describe('JSONFileBackendStore', () => {
       await expect(
         store.createBackend('New Tenant', 'non-existent-backend'),
       ).rejects.toThrow(
-        /intellectBackendId "non-existent-backend" not found/,
+        /Backend not configured: non-existent-backend/,
       );
     });
 
@@ -343,7 +343,7 @@ describe('JSONFileBackendStore', () => {
 
       await expect(
         store.setHarnessBinding(tenant.id, 'non-existent-backend'),
-      ).rejects.toThrow(/Backend not found in HarnessStore: non-existent-backend/);
+      ).rejects.toThrow(/Backend not configured: non-existent-backend/);
     });
 
     it('正常更新 binding 并刷新 updatedAt', async () => {
@@ -387,7 +387,7 @@ describe('JSONFileBackendStore', () => {
 
       await expect(
         store.setCanvasBinding(tenant.id, 'non-existent-canvas'),
-      ).rejects.toThrow(/Backend not found in HarnessStore: non-existent-canvas/);
+      ).rejects.toThrow(/Backend not configured: non-existent-canvas/);
     });
 
     it('backend 类型非 intellect-rag 时抛出错误(Principle III)', async () => {
@@ -399,7 +399,7 @@ describe('JSONFileBackendStore', () => {
       await expect(
         store.setCanvasBinding(tenant.id, 'intellect-enterprise-1'),
       ).rejects.toThrow(
-        /canvasBackendId must be intellect-rag type, got: intellect-enterprise/,
+        /has invalid type intellect-enterprise, expected intellect-rag/,
       );
     });
 

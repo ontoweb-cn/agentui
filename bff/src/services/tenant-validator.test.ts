@@ -62,8 +62,8 @@ describe('validateTenantConfigs', () => {
   });
 
   it('配置一致时返回 true', async () => {
-    const backend = makeBackend({ intellectTenantId: 'default' });
-    mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('default', 'env'));
+    const backend = makeBackend({ intellectTenantId: '00000000000000000000000000000000' });
+    mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('00000000000000000000000000000000', 'env'));
 
     const ok = await validateTenantConfigs(makeStore([backend]));
 
@@ -77,29 +77,29 @@ describe('validateTenantConfigs', () => {
   });
 
   it('配置不一致时返回 false(fail-fast)', async () => {
-    const backend = makeBackend({ intellectTenantId: 'configured-acme' });
-    mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('actual-default', 'env'));
+    const backend = makeBackend({ intellectTenantId: '00000000000000000000000000000001' });
+    mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('00000000000000000000000000000000', 'env'));
 
     const ok = await validateTenantConfigs(makeStore([backend]));
 
     expect(ok).toBe(false);
     // 不应自动覆盖配置(配置不一致视为致命错误)
-    expect(backend.intellectTenantId).toBe('configured-acme');
+    expect(backend.intellectTenantId).toBe('00000000000000000000000000000001');
   });
 
   it('未配置 intellectTenantId 时自动从 endpoint 拉取并填充运行时对象', async () => {
     const backend = makeBackend({ intellectTenantId: undefined });
-    mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('auto-filled-tenant', 'env'));
+    mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('00000000000000000000000000000002', 'env'));
 
     const ok = await validateTenantConfigs(makeStore([backend]));
 
     expect(ok).toBe(true);
     // 自动填充到运行时对象(不修改 JSON 文件)
-    expect(backend.intellectTenantId).toBe('auto-filled-tenant');
+    expect(backend.intellectTenantId).toBe('00000000000000000000000000000002');
   });
 
   it('endpoint 不可达时返回 true(降级放行)', async () => {
-    const backend = makeBackend({ intellectTenantId: 'default' });
+    const backend = makeBackend({ intellectTenantId: '00000000000000000000000000000000' });
     mockFetch.mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
 
     const ok = await validateTenantConfigs(makeStore([backend]));
@@ -108,7 +108,7 @@ describe('validateTenantConfigs', () => {
   });
 
   it('endpoint 返回非 200 时返回 true(降级放行)', async () => {
-    const backend = makeBackend({ intellectTenantId: 'default' });
+    const backend = makeBackend({ intellectTenantId: '00000000000000000000000000000000' });
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 503,
@@ -121,7 +121,7 @@ describe('validateTenantConfigs', () => {
   });
 
   it('endpoint 返回空 tenant_id 时返回 true(降级放行)', async () => {
-    const backend = makeBackend({ intellectTenantId: 'default' });
+    const backend = makeBackend({ intellectTenantId: '00000000000000000000000000000000' });
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -139,7 +139,7 @@ describe('validateTenantConfigs', () => {
       type: 'intellect-rag' as const,
       intellectTenantId: undefined,
     });
-    mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('default'));
+    mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('00000000000000000000000000000000'));
 
     const ok = await validateTenantConfigs(makeStore([ragBackend]));
 
@@ -151,15 +151,15 @@ describe('validateTenantConfigs', () => {
   it('多个 backend,任一不一致则返回 false', async () => {
     const backend1 = makeBackend({
       id: 'enterprise-1',
-      intellectTenantId: 'default',
+      intellectTenantId: '00000000000000000000000000000000',
     });
     const backend2 = makeBackend({
       id: 'enterprise-2',
-      intellectTenantId: 'tenant-acme',
+      intellectTenantId: '00000000000000000000000000000001',
       endpoint: 'http://localhost:8643',
     });
-    mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('default'));
-    mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('actual-other'));
+    mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('00000000000000000000000000000000'));
+    mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('00000000000000000000000000000003'));
 
     const ok = await validateTenantConfigs(makeStore([backend1, backend2]));
 
@@ -170,9 +170,9 @@ describe('validateTenantConfigs', () => {
   it('endpoint 去掉尾部斜杠', async () => {
     const backend = makeBackend({
       endpoint: 'http://localhost:8642/',
-      intellectTenantId: 'default',
+      intellectTenantId: '00000000000000000000000000000000',
     });
-    mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('default'));
+    mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('00000000000000000000000000000000'));
 
     await validateTenantConfigs(makeStore([backend]));
 

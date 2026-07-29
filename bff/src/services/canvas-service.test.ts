@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CanvasService } from './canvas-service';
 import type { IAdapterRegistry } from './adapter-registry-types';
-import type { IntellectRagAdapter } from './adapters/intellect-rag/intellect-rag-adapter';
+import type { ICanvasAdapter } from '../types/adapter';
 import type { BackendContext } from '../types/tenant';
 import { CanvasBackendNotBoundError } from './adapter-registry-errors';
 
@@ -10,15 +10,24 @@ const ctx: BackendContext = {
   userId: 'user-001',
 };
 
-function createMockAdapter(): IntellectRagAdapter {
+function createMockAdapter(): ICanvasAdapter {
   // Minimal mock: only the methods CanvasService calls
   const mockRequest = vi.fn();
   const mockProxy = vi.fn();
   return {
     backendId: 'intellect-rag-default',
+    adapterKind: 'canvas' as const,
+    // 高层语义方法(spec-010 v8 A2-4: CanvasService 调这些而非 request)
+    listCanvas: vi.fn(),
+    getCanvas: vi.fn(),
+    createCanvas: vi.fn(),
+    saveCanvas: vi.fn(),
+    deleteCanvas: vi.fn(),
+    resetCanvas: vi.fn(),
+    // 透传方法
     request: mockRequest,
     proxy: mockProxy,
-    // CanvasService doesn't call these, but IntellectRagAdapter requires them
+    // IHarnessAdapter 必选方法(CanvasService 不调用,但接口要求)
     listAgents: vi.fn(),
     getAgent: vi.fn(),
     createSession: vi.fn(),
@@ -29,10 +38,10 @@ function createMockAdapter(): IntellectRagAdapter {
     cancelMessage: vi.fn(),
     healthCheck: vi.fn(),
     discoverCapabilities: vi.fn(),
-  } as unknown as IntellectRagAdapter;
+  } as unknown as ICanvasAdapter;
 }
 
-function createMockRegistry(adapter: IntellectRagAdapter): IAdapterRegistry {
+function createMockRegistry(adapter: ICanvasAdapter): IAdapterRegistry {
   return {
     getAdapterForBackend: vi.fn(),
     registerFactory: vi.fn(),
@@ -44,7 +53,7 @@ function createMockRegistry(adapter: IntellectRagAdapter): IAdapterRegistry {
 
 describe('CanvasService', () => {
   let service: CanvasService;
-  let mockAdapter: IntellectRagAdapter;
+  let mockAdapter: ICanvasAdapter;
   let mockRegistry: IAdapterRegistry;
 
   beforeEach(() => {
@@ -59,72 +68,72 @@ describe('CanvasService', () => {
   // -----------------------------------------------------------------------
 
   describe('listCanvas', () => {
-    it('调用 adapter.request GET /api/v1/agents', async () => {
+    it('调用 adapter.listCanvas(高层语义方法,spec-010 v8 A2-4)', async () => {
       const agents = [{ id: 'a1', name: 'Agent 1' }];
-      mockAdapter.request = vi.fn().mockResolvedValue(agents);
+      mockAdapter.listCanvas = vi.fn().mockResolvedValue(agents);
 
       const result = await service.listCanvas(ctx);
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents', undefined, ctx);
+      expect(mockAdapter.listCanvas).toHaveBeenCalledWith(ctx);
       expect(result).toEqual(agents);
     });
   });
 
   describe('getCanvas', () => {
-    it('调用 adapter.request GET /api/v1/agents/:id', async () => {
+    it('调用 adapter.getCanvas(高层语义方法,spec-010 v8 A2-4)', async () => {
       const agent = { id: 'a1', name: 'Agent 1' };
-      mockAdapter.request = vi.fn().mockResolvedValue(agent);
+      mockAdapter.getCanvas = vi.fn().mockResolvedValue(agent);
 
       const result = await service.getCanvas(ctx, 'a1');
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('GET', '/api/v1/agents/a1', undefined, ctx);
+      expect(mockAdapter.getCanvas).toHaveBeenCalledWith(ctx, 'a1');
       expect(result).toEqual(agent);
     });
   });
 
   describe('createCanvas', () => {
-    it('调用 adapter.request POST /api/v1/agents 并透传 body', async () => {
+    it('调用 adapter.createCanvas(高层语义方法,spec-010 v8 A2-4)', async () => {
       const body = { name: 'New Canvas', dsl: { nodes: [] } };
       const created = { id: 'new-id', ...body };
-      mockAdapter.request = vi.fn().mockResolvedValue(created);
+      mockAdapter.createCanvas = vi.fn().mockResolvedValue(created);
 
       const result = await service.createCanvas(ctx, body);
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/agents', body, ctx);
+      expect(mockAdapter.createCanvas).toHaveBeenCalledWith(ctx, body);
       expect(result).toEqual(created);
     });
   });
 
   describe('saveCanvas', () => {
-    it('调用 adapter.request PUT /api/v1/agents/:id 并透传 body', async () => {
+    it('调用 adapter.saveCanvas(高层语义方法,spec-010 v8 A2-4)', async () => {
       const body = { name: 'Updated Canvas', dsl: { nodes: [] } };
       const saved = { id: 'a1', ...body };
-      mockAdapter.request = vi.fn().mockResolvedValue(saved);
+      mockAdapter.saveCanvas = vi.fn().mockResolvedValue(saved);
 
       const result = await service.saveCanvas(ctx, 'a1', body);
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('PUT', '/api/v1/agents/a1', body, ctx);
+      expect(mockAdapter.saveCanvas).toHaveBeenCalledWith(ctx, 'a1', body);
       expect(result).toEqual(saved);
     });
   });
 
   describe('deleteCanvas', () => {
-    it('调用 adapter.request DELETE /api/v1/agents/:id', async () => {
-      mockAdapter.request = vi.fn().mockResolvedValue(undefined);
+    it('调用 adapter.deleteCanvas(高层语义方法,spec-010 v8 A2-4)', async () => {
+      mockAdapter.deleteCanvas = vi.fn().mockResolvedValue(undefined);
 
       await service.deleteCanvas(ctx, 'a1');
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('DELETE', '/api/v1/agents/a1', undefined, ctx);
+      expect(mockAdapter.deleteCanvas).toHaveBeenCalledWith(ctx, 'a1');
     });
   });
 
   describe('resetCanvas', () => {
-    it('调用 adapter.request POST /api/v1/agents/:id/reset', async () => {
-      mockAdapter.request = vi.fn().mockResolvedValue(undefined);
+    it('调用 adapter.resetCanvas(高层语义方法,spec-010 v8 A2-4)', async () => {
+      mockAdapter.resetCanvas = vi.fn().mockResolvedValue(undefined);
 
       await service.resetCanvas(ctx, 'a1');
 
-      expect(mockAdapter.request).toHaveBeenCalledWith('POST', '/api/v1/agents/a1/reset', undefined, ctx);
+      expect(mockAdapter.resetCanvas).toHaveBeenCalledWith(ctx, 'a1');
     });
   });
 
@@ -314,10 +323,16 @@ describe('CanvasService', () => {
       await expect(s.listCanvas(ctx)).rejects.toThrow(CanvasBackendNotBoundError);
     });
 
-    it('adapter.request 抛错时向上传播', async () => {
-      mockAdapter.request = vi.fn().mockRejectedValue(new Error('Upstream 500'));
+    it('adapter.listCanvas 抛错时向上传播(spec-010 v8 A2-4)', async () => {
+      mockAdapter.listCanvas = vi.fn().mockRejectedValue(new Error('Upstream 500'));
 
       await expect(service.listCanvas(ctx)).rejects.toThrow('Upstream 500');
+    });
+
+    it('adapter.request 抛错时向上传播(透传方法)', async () => {
+      mockAdapter.request = vi.fn().mockRejectedValue(new Error('Upstream 500'));
+
+      await expect(service.listTemplates(ctx)).rejects.toThrow('Upstream 500');
     });
   });
 });

@@ -25,7 +25,15 @@ import { CanvasService } from './services/canvas-service';
 import { validateTenantConfigs } from './services/tenant-validator';
 import { IntellectRagAdapter } from './services/adapters/intellect-rag/intellect-rag-adapter';
 import { IntellectEnterpriseAdapter } from './services/adapters/intellect-enterprise/intellect-enterprise-adapter';
+// spec-010 v8 Phase C-P1/P2/P3 (2026-07-30): 3 个 OpenAI 兼容后端 Adapter 工厂注册
+import { IntellectCommunityAdapter } from './services/adapters/intellect-community/intellect-community-adapter';
+import { HermesAdapter } from './services/adapters/hermes/hermes-adapter';
+import { AgentScopeAdapter } from './services/adapters/agent-scope/agent-scope-adapter';
 import { canvasRoutes } from './routes/canvas';
+import { wizardRoutes } from './routes/wizard';
+// spec-010 v8 B-1 (B1 修复): BootstrapTokenManager 单例,供 wizard setup 鉴权
+import { BootstrapTokenManager } from './services/bootstrap-token';
+const bootstrapTokenManager = new BootstrapTokenManager();
 import type { HarnessStore, BackendStore } from './types';
 import type { BackendContext } from './types/tenant';
 import type { AuthSession } from './types/auth';
@@ -48,6 +56,9 @@ const app = new Hono<{ Variables: AppVariables }>();
 const harnessStore: HarnessStore = new JSONFileHarnessStore();
 const backendStore: BackendStore = new JSONFileBackendStore(harnessStore);
 const adapterRegistry = new AdapterRegistry(harnessStore, backendStore);
+// 工厂注册:仅 intellect-rag 和 intellect-enterprise 注册 Adapter 工厂。
+// intellect-llm 故意不注册(legacy,走 llm-proxy.ts 透传路由,不经 AdapterRegistry 解析)。
+// spec-010 v8 A3-8: 防御性约束,避免后续误加。
 adapterRegistry.registerFactory(
   'intellect-rag',
   (backend) => new IntellectRagAdapter(backend),
@@ -56,6 +67,17 @@ adapterRegistry.registerFactory(
 adapterRegistry.registerFactory(
   'intellect-enterprise',
   (backend) => new IntellectEnterpriseAdapter(backend),
+);
+// spec-010 v8 Phase C-P1/P2/P3 (2026-07-30): 3 个 OpenAI 兼容后端 Adapter 工厂注册。
+// 协议族: openai-compatible;继承 OpenAICompatibleBaseAdapter;默认端口见 research.md。
+adapterRegistry.registerFactory(
+  'intellect-community',
+  (backend) => new IntellectCommunityAdapter(backend),
+);
+adapterRegistry.registerFactory('hermes', (backend) => new HermesAdapter(backend));
+adapterRegistry.registerFactory(
+  'agent-scope',
+  (backend) => new AgentScopeAdapter(backend),
 );
 
 // Global middleware
@@ -112,6 +134,10 @@ app.route('/api/admin', adminRoutes);
 // 但排除公开接口 /proxy/v1/system/config
 app.use('/proxy/v1/system/config', async (c, next) => await next());
 app.use('/proxy/*', authMiddleware);
+// authSessionMiddleware:从 cookie 提取 imt_token 注入 AuthSession,供 proxy.ts
+// 传递 sessionToken 给 fetchWithRagToken(优先于 admin JWT,实现真实身份透传)。
+// 不阻塞:无 cookie 时仅不注入 session,不影响公开接口 /proxy/v1/system/config。
+app.use('/proxy/*', authSessionMiddleware);
 // LLM Gateway 代理:模型管理 /providers /models 等 → intellect-team :8642
 // 必须在通用 proxyRoutes 之前注册,确保 LLM 路径优先匹配
 app.route('/', llmProxyRoutes);
@@ -188,6 +214,20 @@ app.route('/', teamRoutes);
 app.route('/', projectRoutes);
 app.route('/', tenantBindingRoutes);
 
+// spec-010 v8 B-3: Wizard 路由 /admin/wizard/*
+// Constitution Principle I: 前端经 BFF Wizard 路由完成首次配置。
+// 鉴权:
+// - status/backend-types 公开(authMiddleware publicPrefixes)
+// - probe/setup 走 authMiddleware(此处挂载)
+// - setup 端点额外接受 bootstrap token(wizard.ts 内 wizardSetupAuth)
+// 路径:前端 /api/bff/admin/wizard/* → Vite rewrite 去掉 /api/bff → BFF /admin/wizard/*
+app.use('/admin/wizard/*', async (c, next) => {
+  // 注入 BootstrapTokenManager 供 setup 端点使用
+  c.set('bootstrapTokenManager' as never, bootstrapTokenManager as never);
+  await authMiddleware(c, next);
+});
+app.route('/', wizardRoutes);
+
 const port = Number(process.env.BFF_PORT) || 9390;
 
 // 启动 Store 加载(异步,不阻塞 serve 启动;加载完成前 list() 返回空数组)
@@ -197,6 +237,16 @@ harnessStore.load()
     console.log(
       `[BFF] Stores loaded: ${harnessStore.list().length} backend(s), ${backendStore.listBackends().length} tenant(s)`,
     );
+
+    // spec-010 v8 B-1 (B1 修复):首次安装检测到无后端配置时,生成 Bootstrap Token。
+    // 供 /admin/wizard/setup 端点鉴权(无 admin token 时通过 bootstrap token 完成首个 backend 创建)。
+    // 多实例部署(BOOTSTRAP_ENABLED=false)时不生成,强制要求 admin 鉴权。
+    if (harnessStore.list().length === 0) {
+      bootstrapTokenManager.generate();
+    } else {
+      // 已有后端配置时清理可能残留的 bootstrap token
+      bootstrapTokenManager.invalidate();
+    }
 
     // 改进 1 (P0):启动时校验 intellectTenantId 配置一致性。
     // 调用 intellect-team GET /api/tenant/info (改进 6 新增公开端点),

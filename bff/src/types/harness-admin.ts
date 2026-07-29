@@ -69,6 +69,8 @@ export interface HarnessBackendForm {
   capabilities: HarnessCapabilities;
   /** 是否作为新 tenant 默认主后端(可选) */
   defaultForTenant?: boolean;
+  // spec-010 v8 A3-7: 新增 credentialKind
+  credentialKind?: 'bearer-token' | 'email-password';
 }
 
 // ---------------------------------------------------------------------------
@@ -85,8 +87,9 @@ export const VALIDATION_RULES = {
     message: 'name 不能为空',
   },
   type: {
-    values: ['intellect-rag', 'intellect-enterprise'] as const,
-    message: 'type 必须是 intellect-rag 或 intellect-enterprise',
+    // spec-010 v8 A3-7: 扩展为 6 类(intellect-llm 不进表单)
+    values: ['intellect-rag', 'intellect-enterprise', 'intellect-community', 'hermes', 'kag', 'agent-scope'] as const,
+    message: 'type 必须是 intellect-rag/intellect-enterprise/intellect-community/hermes/kag/agent-scope 之一',
   },
   endpoint: {
     pattern: /^https?:\/\/.+/,
@@ -95,6 +98,11 @@ export const VALIDATION_RULES = {
   adminTokenEnvVar: {
     pattern: /^[A-Z_][A-Z0-9_]*$/,
     message: 'adminTokenEnvVar 必须是合法环境变量名(大写字母+下划线)',
+  },
+  // spec-010 v8 A3-7: 新增 credentialKind 校验
+  credentialKind: {
+    values: ['bearer-token', 'email-password'] as const,
+    message: 'credentialKind 必须是 bearer-token 或 email-password',
   },
 } as const;
 

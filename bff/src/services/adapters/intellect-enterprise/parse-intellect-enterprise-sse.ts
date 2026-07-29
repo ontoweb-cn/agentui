@@ -190,11 +190,13 @@ function mapEventToChunks(
     case 'tool.failed': {
       const errorMsg = typeof data.error === 'string' ? data.error : 'tool failed';
       // Principle IV (stream.ts 注释):tool.failed → StreamError with toolCallId
+      // P3: 透传整个 data 作为 details,供前端 ProviderErrorDetails 渲染
       return [
         {
           type: 'error',
           message: `tool ${typeof data.tool_name === 'string' ? data.tool_name : ''} failed: ${errorMsg}`,
           toolCallId: typeof data.message_id === 'string' ? data.message_id : undefined,
+          details: data,
         },
       ];
     }
@@ -216,7 +218,8 @@ function mapEventToChunks(
     case 'error': {
       const message =
         typeof data.message === 'string' ? data.message : 'unknown error';
-      return [{ type: 'error', message }];
+      // P3: 透传整个 data 作为 details,供前端 ProviderErrorDetails 渲染
+      return [{ type: 'error', message, details: data }];
     }
 
     case 'done':

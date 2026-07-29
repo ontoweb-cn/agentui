@@ -96,12 +96,15 @@ function createMockBackendStore(
 function createFakeAdapter(backend: HarnessBackend): IHarnessAdapter {
   return {
     backendId: backend.id,
+    adapterKind: 'multi-tenant' as const,
     listAgents: vi.fn(),
     getAgent: vi.fn(),
     createSession: vi.fn(),
     listSessions: vi.fn(),
     getSession: vi.fn(),
     deleteSession: vi.fn(),
+    updateSession: vi.fn(),
+    getSessionMessages: vi.fn(),
     sendMessage: vi.fn(),
     cancelMessage: vi.fn(),
     healthCheck: vi.fn(),

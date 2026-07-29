@@ -402,3 +402,75 @@ export const runEventsOutputOnlyFrames = [
     usage: { input_tokens: 3, output_tokens: 2 },
   }),
 ];
+
+// ---------------------------------------------------------------------------
+// Fixture 17: clarify 事件流(顶层 session_id)
+// ---------------------------------------------------------------------------
+
+export const runEventsClarifyFrames = [
+  runEventFrame('run.started', { run_id: 'run-c1', timestamp: 1.0 }),
+  runEventFrame('clarify', {
+    run_id: 'run-c1',
+    timestamp: 1.1,
+    clarify_id: 'sess-c1:1700000000000',
+    session_id: 'sess-c1',
+    question: '您想了解什么?',
+    choices: ['选项A', '选项B'],
+  }),
+  runEventFrame('message.delta', {
+    run_id: 'run-c1',
+    timestamp: 2.0,
+    type: 'assistant.delta',
+    delta: '已收到回答',
+  }),
+  runEventFrame('run.completed', {
+    run_id: 'run-c1',
+    timestamp: 3.0,
+    output: '已收到回答',
+    usage: { input_tokens: 5, output_tokens: 3 },
+  }),
+];
+
+// ---------------------------------------------------------------------------
+// Fixture 18: clarify 事件(缺失 session_id,从 clarify_id 切分兜底)
+// ---------------------------------------------------------------------------
+
+export const runEventsClarifySplitFrames = [
+  runEventFrame('clarify', {
+    run_id: 'run-c2',
+    timestamp: 1.0,
+    clarify_id: 'sess-c2:1700000000001',
+    question: '请选择实现方式',
+    choices: [],
+  }),
+];
+
+// ---------------------------------------------------------------------------
+// Fixture 19: clarify 事件(缺失 question,产出 error chunk 而非静默跳过)
+// ---------------------------------------------------------------------------
+
+export const runEventsClarifyMissingQuestionFrames = [
+  runEventFrame('clarify', {
+    run_id: 'run-c3',
+    timestamp: 1.0,
+    clarify_id: 'sess-c3:1700000000002',
+    session_id: 'sess-c3',
+    // question 缺失
+    choices: [],
+  }),
+];
+
+// ---------------------------------------------------------------------------
+// Fixture 20: clarify 事件(choices 含非 string 元素,过滤后保留有效项)
+// ---------------------------------------------------------------------------
+
+export const runEventsClarifyMixedChoicesFrames = [
+  runEventFrame('clarify', {
+    run_id: 'run-c4',
+    timestamp: 1.0,
+    clarify_id: 'sess-c4:1700000000003',
+    session_id: 'sess-c4',
+    question: '选择?',
+    choices: ['有效选项', 123, null, '另一个有效选项'],
+  }),
+];

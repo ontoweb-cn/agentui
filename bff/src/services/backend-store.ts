@@ -9,6 +9,11 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { BffTenant, BackendStore, HarnessStore } from '../types';
+import {
+  TenantNotFoundError,
+  BackendNotConfiguredError,
+  InvalidCanvasBackendError,
+} from './adapter-registry-errors';
 
 // ---------------------------------------------------------------------------
 // File paths
@@ -85,9 +90,7 @@ export class JSONFileBackendStore implements BackendStore {
       const mainBackend = this.harnessStore.get(tenant.intellectBackendId);
       if (!mainBackend) {
         // 校验失败:抛出明确错误(不静默,spec.md Edge Cases)
-        throw new Error(
-          `\[backend-store\] Tenant "${tenant.id}" references unknown intellectBackendId "${tenant.intellectBackendId}"`,
-        );
+        throw new BackendNotConfiguredError(tenant.intellectBackendId);
       }
 
       // P4b: authMode=intellect-enterprise 时,intellectBackendId 必须指向 type='intellect-enterprise' 后端
@@ -104,14 +107,10 @@ export class JSONFileBackendStore implements BackendStore {
       if (tenant.canvasBackendId) {
         const canvasBackend = this.harnessStore.get(tenant.canvasBackendId);
         if (!canvasBackend) {
-          throw new Error(
-            `\[backend-store\] Tenant "${tenant.id}" references unknown canvasBackendId "${tenant.canvasBackendId}"`,
-          );
+          throw new BackendNotConfiguredError(tenant.canvasBackendId);
         }
         if (canvasBackend.type !== 'intellect-rag') {
-          throw new Error(
-            `\[backend-store\] Tenant "${tenant.id}" canvasBackendId must be intellect-rag type, got: ${canvasBackend.type}`,
-          );
+          throw new InvalidCanvasBackendError(tenant.id, tenant.canvasBackendId, canvasBackend.type);
         }
       }
 
@@ -130,9 +129,7 @@ export class JSONFileBackendStore implements BackendStore {
     // 校验 backendId 存在
     const backend = this.harnessStore.get(intellectBackendId);
     if (!backend) {
-      throw new Error(
-        `\[backend-store\] Cannot create tenant: intellectBackendId "${intellectBackendId}" not found in HarnessStore`,
-      );
+      throw new BackendNotConfiguredError(intellectBackendId);
     }
 
     const now = new Date().toISOString();
@@ -161,13 +158,11 @@ export class JSONFileBackendStore implements BackendStore {
   async setHarnessBinding(tenantId: string, backendId: string): Promise<void> {
     const tenant = this.getBackend(tenantId);
     if (!tenant) {
-      throw new Error(`\[backend-store\] Tenant not found: ${tenantId}`);
+      throw new TenantNotFoundError(tenantId);
     }
     const backend = this.harnessStore.get(backendId);
     if (!backend) {
-      throw new Error(
-        `\[backend-store\] Backend not found in HarnessStore: ${backendId}`,
-      );
+      throw new BackendNotConfiguredError(backendId);
     }
     tenant.intellectBackendId = backendId;
     tenant.updatedAt = new Date().toISOString();
@@ -185,7 +180,7 @@ export class JSONFileBackendStore implements BackendStore {
   ): Promise<void> {
     const tenant = this.getBackend(tenantId);
     if (!tenant) {
-      throw new Error(`\[backend-store\] Tenant not found: ${tenantId}`);
+      throw new TenantNotFoundError(tenantId);
     }
     // intellectTenantId 为 undefined 时清除绑定(回退缺省),为 "0" 也表示缺省
     tenant.intellectTenantId = intellectTenantId || '0';
@@ -214,19 +209,15 @@ export class JSONFileBackendStore implements BackendStore {
   async setCanvasBinding(tenantId: string, backendId: string): Promise<void> {
     const tenant = this.getBackend(tenantId);
     if (!tenant) {
-      throw new Error(`\[backend-store\] Tenant not found: ${tenantId}`);
+      throw new TenantNotFoundError(tenantId);
     }
     const backend = this.harnessStore.get(backendId);
     if (!backend) {
-      throw new Error(
-        `\[backend-store\] Backend not found in HarnessStore: ${backendId}`,
-      );
+      throw new BackendNotConfiguredError(backendId);
     }
     // Constitution Principle III 强制校验:canvasBackendId 必须是 intellect-rag 类型
     if (backend.type !== 'intellect-rag') {
-      throw new Error(
-        `\[backend-store\] canvasBackendId must be intellect-rag type, got: ${backend.type}`,
-      );
+      throw new InvalidCanvasBackendError(tenantId, backendId, backend.type);
     }
     tenant.canvasBackendId = backendId;
     tenant.updatedAt = new Date().toISOString();

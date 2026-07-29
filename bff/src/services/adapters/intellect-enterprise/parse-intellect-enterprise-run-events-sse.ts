@@ -15,6 +15,7 @@
  *   tool.progress + type:"tool.completed" → StreamToolComplete
  *   approval.request                      → StreamApprovalRequest
  *   approval.responded                    → StreamApprovalResponded
+ *   clarify                               → StreamClarifyRequest(v1.4.0 防御性解析,主要通道为 /v1/chat/completions)
  *   run.completed                         → StreamUsage 后接 StreamDone
  *   run.failed / run.cancelled            → StreamError(带 message)
  *   error                                 → StreamError
@@ -270,18 +271,58 @@ function mapEventToChunks(
       return [{ type: 'approval_responded', choice, resolved, runId }];
     }
 
+    case 'clarify': {
+      // v1.4.0: clarify 工具事件(Gateway set_clarify_fn 注入)。
+      // BFF 通过 /v1/runs/{run_id}/events 通道接收 SSE 流(不走 /v1/chat/completions 通道),
+      // 因此 Intellect-Team 必须在 /v1/runs handler 注入 clarify_fn,BFF 才能收到 clarify 事件。
+      // 若 clarify_fn 仅在 /v1/chat/completions handler 注入,BFF 永远收不到 clarify 事件。
+      // 字段:question / choices / clarify_id,session_id 优先取顶层,缺失时从 clarify_id 中切分。
+      const question = typeof data.question === 'string' ? data.question : '';
+      const clarifyId =
+        typeof data.clarify_id === 'string' ? data.clarify_id : '';
+      const rawChoices = Array.isArray(data.choices) ? data.choices : [];
+      const choices = rawChoices
+        .filter((c): c is string => typeof c === 'string')
+        .map((c) => c);
+      const sessionId =
+        typeof data.session_id === 'string'
+          ? data.session_id
+          : clarifyId.split(':')[0];
+      // 缺关键字段(question 或 clarify_id)时产出 error chunk,让前端能清理 pending 状态。
+      // (clarify 是需要前端交互的关键事件,不能静默跳过,否则前端会无限等待)
+      if (!question || !clarifyId) {
+        console.warn(
+          `[parseIntellectEnterpriseRunEventsSSE] clarify event missing question or clarify_id, skipping`,
+        );
+        return [
+          {
+            type: 'error',
+            message: 'clarify event missing required field (question or clarify_id)',
+          },
+        ];
+      }
+      return [
+        {
+          type: 'clarify_request',
+          question,
+          choices,
+          clarifyId,
+          sessionId,
+        },
+      ];
+    }
+
     case 'run.completed': {
       const usage = (data.usage as Record<string, unknown>) ?? {};
       const output = data.output;
       // Gateway 返回 input_tokens/output_tokens（兼容 prompt_tokens/completion_tokens）
+      // 注意:使用三元运算符而非 && 短路,避免 0 值被误判为 falsy 而跳过
       const promptTokens =
-        (typeof usage.input_tokens === 'number' && usage.input_tokens) ||
-        (typeof usage.prompt_tokens === 'number' && usage.prompt_tokens) ||
-        0;
+        typeof usage.input_tokens === 'number' ? usage.input_tokens :
+        typeof usage.prompt_tokens === 'number' ? usage.prompt_tokens : 0;
       const completionTokens =
-        (typeof usage.output_tokens === 'number' && usage.output_tokens) ||
-        (typeof usage.completion_tokens === 'number' && usage.completion_tokens) ||
-        0;
+        typeof usage.output_tokens === 'number' ? usage.output_tokens :
+        typeof usage.completion_tokens === 'number' ? usage.completion_tokens : 0;
       const usageChunk: StreamChunk = {
         type: 'usage',
         usage: {

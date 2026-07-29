@@ -83,6 +83,11 @@ export interface IAdapterRegistry {
    * @throws InvalidCanvasBackendError canvasBackendId 指向非 intellect-rag 后端
    * @throws BackendNotConfiguredError canvasBackendId 在 HarnessStore 不存在
    * @throws RegistryNotReadyError Store 未加载完成
+   *
+   * spec-010 v8 A1-4 命名遗留说明(D1 决策:不重命名):
+   * 参数名 `tenantId` 实际接收 `ctx.backendId`(即 BffTenant.id),与参数名语义不符。
+   * spec-010 v8 沿用此签名不重命名,避免破坏 spec-008 已发布契约(零契约变更)。
+   * 若未来 spec-008 发布破坏性版本,可考虑重命名为 getCanvasBackendForTenant(tenantId)。
    */
   getCanvasBackendForBackend(tenantId: string): IntellectRagAdapter;
 }

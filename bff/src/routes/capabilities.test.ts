@@ -51,12 +51,15 @@ const tenant1: BffTenant = {
 function createFakeAdapter(backend: HarnessBackend): IHarnessAdapter {
   return {
     backendId: backend.id,
+    adapterKind: 'multi-tenant' as const,
     listAgents: vi.fn(),
     getAgent: vi.fn(),
     createSession: vi.fn(),
     listSessions: vi.fn(),
     getSession: vi.fn(),
     deleteSession: vi.fn(),
+    updateSession: vi.fn(),
+    getSessionMessages: vi.fn(),
     sendMessage: vi.fn(),
     cancelMessage: vi.fn(),
     healthCheck: vi.fn().mockResolvedValue(true),
@@ -185,17 +188,17 @@ describe('capabilities 路由 (P2 US2)', () => {
         headers: {
           Authorization: 'Bearer test',
           'X-User-Id': 'user-1',
-          // 缺 X-Backend-Id → 中间件降级到 'default'
+          // 缺 X-Backend-Id → 中间件降级到 '0'
         },
       });
-      // P1 兼容:backendContextMiddleware 降级到默认 backendId='default',
+      // P1 兼容:backendContextMiddleware 降级到默认 backendId='0',
       // mock registry 对任意 tenantId 返回 adapter,故返回 200。
-      // 实际生产中 'default' tenant 不存在会返回 404,但中间件不阻断是设计意图。
+      // 实际生产中 '0' tenant 不存在会返回 404,但中间件不阻断是设计意图。
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.code).toBe(0);
-      // registry 传入降级后的 'default'(非 'tenant-1')
-      expect(mocks.registry.getAdapterForBackend).toHaveBeenCalledWith('default');
+      // registry 传入降级后的 '0'(非 'tenant-1')
+      expect(mocks.registry.getAdapterForBackend).toHaveBeenCalledWith('0');
     });
 
     it('缺失 X-User-Id header 降级使用默认 user 并返回 200(P1 兼容)', async () => {

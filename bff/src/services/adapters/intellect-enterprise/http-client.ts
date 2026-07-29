@@ -278,6 +278,38 @@ export class IntellectEnterpriseHttpClient {
   }
 
   /**
+   * GET SSE 流请求(v1.3.0 新增,用于 /v1/runs/{run_id}/events)。
+   *
+   * 与 requestStream(POST)的差异:用 GET 方法,无 body。
+   * Constitution Principle VIII v1.3.0:GET /v1/runs/{run_id}/events 订阅 SSE 流。
+   *
+   * @returns ReadableStream<Uint8Array>(SSE 格式)
+   * @throws IntellectBackendError 非 2xx
+   */
+  async requestGetStream(
+    path: string,
+    ctx: BackendContext,
+  ): Promise<ReadableStream<Uint8Array>> {
+    // 方案 2:per-request tenant 校验(带 TTL 缓存),覆盖 SSE 流式请求
+    await this.ensureTenantValid(ctx);
+
+    const url = `${this.baseUrl}${path}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: this.buildHeaders(ctx),
+    });
+
+    if (!response.ok || !response.body) {
+      const text = await response.text().catch(() => '');
+      throw new IntellectBackendError(
+        `GET ${path} → ${response.status}: ${text}`,
+        response.status,
+      );
+    }
+    return response.body;
+  }
+
+  /**
    * 构建请求头(Constitution Principle V + VIII)。
    * 注入:Authorization(API_SERVER_KEY)+ X-Intellect-Team/Project(可选)+ Content-Type。
    */

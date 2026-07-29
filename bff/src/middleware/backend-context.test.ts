@@ -60,7 +60,7 @@ describe('backendContextMiddleware', () => {
     });
   });
 
-  it('缺失 X-Backend-Id 降级使用默认值 default 并调用 next(P1 兼容)', async () => {
+  it('缺失 X-Backend-Id 降级使用默认值 0 并调用 next(P1 兼容)', async () => {
     const ctx = createMockContext({
       'X-User-Id': 'user-001',
     });
@@ -69,7 +69,7 @@ describe('backendContextMiddleware', () => {
     await backendContextMiddleware(ctx as never, next);
 
     expect(next).toHaveBeenCalledTimes(1);
-    expect(ctx.storedContext?.backendId).toBe('default');
+    expect(ctx.storedContext?.backendId).toBe('0');
     expect(ctx.storedContext?.userId).toBe('user-001');
   });
 
@@ -93,7 +93,7 @@ describe('backendContextMiddleware', () => {
     await backendContextMiddleware(ctx as never, next);
 
     expect(next).toHaveBeenCalledTimes(1);
-    expect(ctx.storedContext?.backendId).toBe('default');
+    expect(ctx.storedContext?.backendId).toBe('0');
     expect(ctx.storedContext?.userId).toBe('bff-default');
   });
 
