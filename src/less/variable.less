@@ -1,17 +1,147 @@
+// =============================================================================
+// TRAE Work Design Tokens (权威源, 2026-07-30)
+// 来源: https://docs.trae.cn/ide_trae-overview
+// spec-013 §3.2: 改造 less/variable.less,引入 CSS 变量层,向后兼容
+// =============================================================================
+
+:root {
+  // ---- 品牌色 ----
+  --trae-green: #11C566;
+  --trae-green-dim: #0e9e52;
+  --trae-green-bright: #32F08C;
+  --trae-green-glow: rgba(17, 197, 102, .5);
+  --trae-green-soft: rgba(17, 197, 102, .12);
+  --trae-green-tint: rgba(17, 197, 102, .06);
+  --trae-green-border: rgba(20, 178, 104, .28);
+
+  // ---- 中性色 (Light) ----
+  --trae-ink: #0d0f0e;
+  --trae-ink-2: #f4f5f6;
+  --trae-grey: #3a403c;
+  --trae-grey-2: #5e655f;
+  --trae-line: rgba(0, 0, 0, .18);
+  --trae-line-strong: rgba(0, 0, 0, .30);
+  --trae-card-bg: transparent;
+  --trae-card-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, .022), rgba(255, 255, 255, .004));
+  --trae-nav-bg: rgba(255, 255, 255, .72);
+  --trae-surface: #ffffff;
+
+  // ---- 字体 ----
+  --trae-font-body: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --trae-font-display: 'Outfit', 'Instrument Sans', -apple-system, "Microsoft YaHei", sans-serif;
+  --trae-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  // ---- 字号 ----
+  --trae-text-xs: 12px;
+  --trae-text-sm: 13px;
+  --trae-text-sm-2: 13.5px;
+  --trae-text-base: 14px;
+  --trae-text-md: 14.5px;
+  --trae-text-lg: 15px;
+  --trae-text-xl: 16px;
+  --trae-text-2xl: 22px;
+  --trae-text-3xl: 30px;
+  --trae-text-4xl: 32px;
+  --trae-text-5xl: 46px;
+
+  // ---- 字重 ----
+  --trae-font-normal: 400;
+  --trae-font-medium: 500;
+  --trae-font-semibold: 600;
+  --trae-font-bold: 700;
+
+  // ---- 行高 ----
+  --trae-leading-tight: 1.1;
+  --trae-leading-snug: 1.6;
+  --trae-leading-normal: 1.7;
+  --trae-leading-relaxed: 1.74;
+  --trae-leading-loose: 1.8;
+  --trae-leading-2: 1.85;
+  --trae-leading-display: 1.02;
+
+  // ---- 字间距 ----
+  --trae-tracking-tight: -.02em;
+  --trae-tracking-normal: 0;
+  --trae-tracking-wide: .02em;
+  --trae-tracking-wider: .04em;
+  --trae-tracking-widest: .32em;
+
+  // ---- 圆角 ----
+  --trae-radius-xs: 3px;
+  --trae-radius-sm: 6px;
+  --trae-radius-md: 8px;
+  --trae-radius-lg: 10px;
+  --trae-radius-xl: 12px;
+  --trae-radius-2xl: 14px;
+  --trae-radius-3xl: 16px;
+  --trae-radius-full: 999px;
+
+  // ---- 阴影 ----
+  --trae-shadow-none: 0 0 0 rgba(50, 240, 140, 0);
+  --trae-shadow-glow-sm: 0 0 14px var(--trae-green);
+  --trae-shadow-glow-md: 0 0 16px rgba(17, 197, 102, .5);
+  --trae-shadow-cta-hover: 0 10px 30px rgba(50, 240, 140, .28);
+  --trae-shadow-elev-1: 0 4px 12px rgba(0, 0, 0, .06);
+  --trae-shadow-elev-2: 0 8px 24px rgba(0, 0, 0, .08);
+
+  // ---- 间距 ----
+  --trae-space-1: 4px;
+  --trae-space-2: 8px;
+  --trae-space-3: 12px;
+  --trae-space-4: 16px;
+  --trae-space-5: 20px;
+  --trae-space-6: 24px;
+  --trae-space-8: 32px;
+  --trae-space-10: 40px;
+  --trae-space-12: 48px;
+  --trae-space-16: 64px;
+  --trae-space-20: 80px;
+
+  // ---- 过渡 ----
+  --trae-transition-fast: .2s;
+  --trae-transition-base: .25s;
+  --trae-transition-slow: .3s;
+  --trae-transition-x-slow: .35s;
+
+  // ---- 模糊 ----
+  --trae-blur-nav: blur(14px);
+}
+
+// =============================================================================
+// Dark 主题覆盖(与现有 ThemeProvider 的 .dark 选择器兼容)
+// =============================================================================
+
+.dark {
+  --trae-ink: #ffffff;
+  --trae-ink-2: #1a1d1c;      // AgentUI 补充覆盖(Light 为 #f4f5f6 次背景,Dark 需为深色)
+  --trae-grey: #c8ccc9;       // AgentUI 微调(文档原值 #fff)
+  --trae-grey-2: #9aa09c;     // AgentUI 微调(文档原值 #fff)
+  --trae-line: rgba(255, 255, 255, .18);
+  --trae-line-strong: rgba(255, 255, 255, .30);
+  --trae-nav-bg: rgba(13, 15, 14, .72);
+  --trae-surface: #1a1d1c;
+  --trae-card-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, .022), rgba(255, 255, 255, .004));
+}
+
+// =============================================================================
+// 旧 Less 变量 (@deprecated, 向后兼容, 新代码勿用)
+// 迁移指引: 使用 var(--trae-xxx) 替代 @xxx
+// =============================================================================
+
 @fontWeight600: 600;
 @fontWeight700: 700;
 
-@grayBackground: rgba(247, 248, 250, 0.1);
-@gray2: rgba(29, 25, 41, 1);
-@gray3: rgba(52, 48, 62, 1);
-@gray8: rgba(165, 163, 169, 1);
-@gray11: rgba(232, 232, 234, 1);
-@purple: rgba(127, 86, 217, 1);
-@selectedBackgroundColor: rgba(239, 248, 255, 1);
-@blurBackground: rgba(22, 119, 255, 0.5);
-@blurBackgroundHover: rgba(22, 119, 255, 0.2);
+@grayBackground: rgba(247, 248, 250, 0.1);   // @deprecated → var(--trae-card-bg-hover)
+@gray2: rgba(29, 25, 41, 1);                  // @deprecated → var(--trae-ink)
+@gray3: rgba(52, 48, 62, 1);                  // @deprecated → var(--trae-grey)
+@gray8: rgba(165, 163, 169, 1);               // @deprecated → var(--trae-grey-2)
+@gray11: rgba(232, 232, 234, 1);              // @deprecated → var(--trae-ink-2)
+@purple: rgba(127, 86, 217, 1);               // @deprecated → var(--trae-green)
+@selectedBackgroundColor: rgba(239, 248, 255, 1); // @deprecated → var(--trae-green-tint)
+@blurBackground: rgba(22, 119, 255, 0.5);     // @deprecated → var(--trae-green-glow)
+@blurBackgroundHover: rgba(22, 119, 255, 0.2); // @deprecated → var(--trae-green-soft)
 
-@fontSize12: 12px;
-@fontSize14: 14px;
-@fontSize16: 16px;
-@fontSize18: 18px;
+@fontSize12: 12px;  // @deprecated → var(--trae-text-xs)
+@fontSize14: 14px;  // @deprecated → var(--trae-text-base)
+@fontSize16: 16px;  // @deprecated → var(--trae-text-xl)
+@fontSize18: 18px;  // @deprecated → (无直接映射, 用 1.125rem)

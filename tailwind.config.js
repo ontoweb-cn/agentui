@@ -181,10 +181,39 @@ module.exports = {
           border: 'hsl(var(--sidebar-border))',
           ring: 'hsl(var(--sidebar-ring))',
         },
+        // spec-013 P0-2: TRAE Work Token 颜色映射(权威源 var(--trae-xxx))
+        trae: {
+          green: {
+            DEFAULT: 'var(--trae-green)',
+            dim: 'var(--trae-green-dim)',
+            bright: 'var(--trae-green-bright)',
+            glow: 'var(--trae-green-glow)',
+            soft: 'var(--trae-green-soft)',
+            tint: 'var(--trae-green-tint)',
+            border: 'var(--trae-green-border)',
+          },
+          ink: {
+            DEFAULT: 'var(--trae-ink)',
+            2: 'var(--trae-ink-2)',
+          },
+          grey: {
+            DEFAULT: 'var(--trae-grey)',
+            2: 'var(--trae-grey-2)',
+          },
+          line: {
+            DEFAULT: 'var(--trae-line)',
+            strong: 'var(--trae-line-strong)',
+          },
+          card: 'var(--trae-card-bg)',
+          nav: 'var(--trae-nav-bg)',
+          surface: 'var(--trae-surface)',
+        },
       },
       backgroundImage: {
         'metallic-gradient':
           'linear-gradient(104deg, rgb(var(--text-primary)) 30%, var(--metallic) 50%, rgb(var(--text-primary)) 70%)',
+        // spec-013 P2-B3: TRAE Work 卡片悬停渐变映射(替代任意值语法 bg-[image:var(--trae-card-bg-hover)])
+        'trae-card-hover': 'var(--trae-card-bg-hover)',
       },
       borderRadius: {
         px: '1px',
@@ -199,9 +228,61 @@ module.exports = {
         xs: '0.25rem' /* 4px */,
         '2xs': '0.1875rem' /* 3px */,
         '3xs': '0.125' /* 2px */,
+        // spec-013 P0-2: TRAE Work 圆角映射
+        'trae-xs': 'var(--trae-radius-xs)',
+        'trae-sm': 'var(--trae-radius-sm)',
+        'trae-md': 'var(--trae-radius-md)',
+        'trae-lg': 'var(--trae-radius-lg)',
+        'trae-xl': 'var(--trae-radius-xl)',
+        'trae-2xl': 'var(--trae-radius-2xl)',
+        'trae-3xl': 'var(--trae-radius-3xl)',
+        'trae-full': 'var(--trae-radius-full)',
+      },
+      // spec-013 P0-2: TRAE Work 字号映射(含行高)
+      fontSize: {
+        'trae-xs': ['var(--trae-text-xs)', { lineHeight: 'var(--trae-leading-normal)' }],
+        'trae-sm': ['var(--trae-text-sm)', { lineHeight: 'var(--trae-leading-normal)' }],
+        'trae-sm-2': ['var(--trae-text-sm-2)', { lineHeight: 'var(--trae-leading-normal)' }],
+        'trae-base': ['var(--trae-text-base)', { lineHeight: 'var(--trae-leading-normal)' }],
+        'trae-md': ['var(--trae-text-md)', { lineHeight: 'var(--trae-leading-relaxed)' }],
+        'trae-lg': ['var(--trae-text-lg)', { lineHeight: 'var(--trae-leading-2)' }],
+        'trae-xl': ['var(--trae-text-xl)', { lineHeight: 'var(--trae-leading-normal)' }],
+        'trae-2xl': ['var(--trae-text-2xl)', { lineHeight: 'var(--trae-leading-snug)' }],
+        'trae-3xl': ['var(--trae-text-3xl)', { lineHeight: 'var(--trae-leading-tight)' }],
+        'trae-4xl': ['var(--trae-text-4xl)', { lineHeight: 'var(--trae-leading-tight)' }],
+        'trae-5xl': ['var(--trae-text-5xl)', { lineHeight: 'var(--trae-leading-tight)' }],
+      },
+      // spec-013 P0-2: TRAE Work 阴影映射
+      boxShadow: {
+        'trae-glow-sm': 'var(--trae-shadow-glow-sm)',
+        'trae-glow-md': 'var(--trae-shadow-glow-md)',
+        'trae-cta-hover': 'var(--trae-shadow-cta-hover)',
+        'trae-elev-1': 'var(--trae-shadow-elev-1)',
+        'trae-elev-2': 'var(--trae-shadow-elev-2)',
       },
       fontFamily: {
         sans: ['var(--font-sans)', ...fontFamily.sans],
+        // spec-013 P0-2: TRAE Work 字体映射
+        display: ['var(--trae-font-display)', ...fontFamily.sans],
+        mono: ['var(--trae-font-mono)', 'ui-monospace', 'monospace'],
+      },
+      // spec-013 P0-2: TRAE Work 字间距映射
+      letterSpacing: {
+        'trae-tight': 'var(--trae-tracking-tight)',
+        'trae-wide': 'var(--trae-tracking-wide)',
+        'trae-wider': 'var(--trae-tracking-wider)',
+        'trae-widest': 'var(--trae-tracking-widest)',
+      },
+      // spec-013 P0-2: TRAE Work 过渡时长映射
+      transitionDuration: {
+        'trae-fast': 'var(--trae-transition-fast)',
+        'trae-base': 'var(--trae-transition-base)',
+        'trae-slow': 'var(--trae-transition-slow)',
+        'trae-x-slow': 'var(--trae-transition-x-slow)',
+      },
+      // spec-013 P0-2: TRAE Work 毛玻璃模糊映射
+      backdropBlur: {
+        'trae-nav': 'var(--trae-blur-nav)',
       },
       keyframes: {
         'accordion-down': {
