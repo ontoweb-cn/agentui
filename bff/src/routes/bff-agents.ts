@@ -183,11 +183,16 @@ bffAgentRoutes.post('/agents/:agentId/sessions', async (c) => {
   const agentId = c.req.param('agentId');
   const body = await c.req.json().catch(() => ({}));
   const title = typeof body?.name === 'string' ? body.name : body?.title;
+  const kbIds: string[] | undefined = Array.isArray(body?.kb_ids) ? body.kb_ids : undefined;
+  const promptConfig: Record<string, unknown> | undefined =
+    body?.prompt_config && typeof body.prompt_config === 'object' ? body.prompt_config : undefined;
   try {
     const session = await adapter.createSession(
       resolveBackendContext(c),
       agentId,
       title,
+      kbIds,
+      promptConfig,
     );
     return c.json(session);
   } catch (err) {

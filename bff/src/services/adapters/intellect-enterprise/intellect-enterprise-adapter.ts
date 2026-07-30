@@ -150,16 +150,21 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
     ctx: BackendContext,
     _agentId: string,
     title?: string,
+    kbIds?: string[],
+    promptConfig?: Record<string, unknown>,
   ): Promise<Session> {
-    // intellect-team POST /api/sessions,body 可带 title
-    // X-T1: 类型注解兼容 Python 旧版 {id} 和 Python 对齐后/Rust {session_id} 两种格式
+    // intellect-team POST /api/sessions, body 可带 title, kb_ids, prompt_config
+    const body: Record<string, unknown> = {};
+    if (title) body.title = title;
+    if (kbIds?.length) body.kb_ids = kbIds;
+    if (promptConfig) body.prompt_config = promptConfig;
     const data = await this.httpClient.request<
       { id?: string; session_id?: string; title?: string } | { session: { id?: string; session_id?: string; title?: string } }
     >(
       'POST',
       '/api/sessions',
       ctx,
-      title ? { title } : {},
+      Object.keys(body).length > 0 ? body : {},
     );
     return this.normalizeSession(data, _agentId);
   }
