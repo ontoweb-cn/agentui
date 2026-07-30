@@ -76,12 +76,12 @@ function mapGatewaySessionToDialog(s: any): IDialog {
     name: s.title || s.name || 'New Chat',
     description: '',
     icon: '',
-    dataset_ids: [],
+    dataset_ids: Array.isArray(s.kb_ids) ? s.kb_ids : (() => { try { return JSON.parse(s.kb_ids || '[]'); } catch { return []; } })(),
     kb_names: [],
     language: 'English',
     llm_id: '',
     llm_setting: {},
-    prompt_config: {
+    prompt_config: s.prompt_config || {
       empty_response: '',
       parameters: [],
       prologue: '',
@@ -230,6 +230,8 @@ export const useCreateChat = () => {
       // BFF 返回 Session 域对象 { id, agentId, title, ... },无 { code, data } 信封。
       const { data: session } = await gatewayChatService.createGatewayChat({
         name: params.name,
+        kb_ids: params.dataset_ids?.length ? params.dataset_ids : undefined,
+        prompt_config: params.prompt_config,
       });
       if (session?.id) {
         // 前端侧临时方案:将用户设置的 name 存入 localStorage。
@@ -272,12 +274,18 @@ export const useUpdateChat = () => {
       chatId: string;
       params: Record<string, any>;
     }) => {
-      // Gateway session 仅支持 title 字段更新,其余字段(LLM/dataset/prompt 配置)忽略。
-      // ChatSettings 页面已对 Gateway chat 隐藏,此 hook 仅作向后兼容保留。
+      // Gateway session 支持 title + kb_ids + prompt_config 字段更新。
+      const patchData: Record<string, any> = { name: params.name, title: params.name };
+      if (params.dataset_ids?.length) {
+        patchData.kb_ids = params.dataset_ids;
+      }
+      if (params.prompt_config) {
+        patchData.prompt_config = params.prompt_config;
+      }
       const { data } = await gatewayChatService.patchGatewayChat(
         {
           url: api.patchAgentSession(GATEWAY_CHAT_AGENT_ID, chatId),
-          data: { name: params.name, title: params.name },
+          data: patchData,
         },
         true,
       );
