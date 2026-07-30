@@ -29,6 +29,8 @@ import { IntellectEnterpriseAdapter } from './services/adapters/intellect-enterp
 import { IntellectCommunityAdapter } from './services/adapters/intellect-community/intellect-community-adapter';
 import { HermesAdapter } from './services/adapters/hermes/hermes-adapter';
 import { AgentScopeAdapter } from './services/adapters/agent-scope/agent-scope-adapter';
+// spec-012 Phase 1 (C-P4, 2026-07-30): KAG MCP Adapter 工厂注册
+import { KagAdapter } from './services/adapters/kag/kag-adapter';
 import { canvasRoutes } from './routes/canvas';
 import { wizardRoutes } from './routes/wizard';
 // spec-010 v8 B-1 (B1 修复): BootstrapTokenManager 单例,供 wizard setup 鉴权
@@ -79,6 +81,8 @@ adapterRegistry.registerFactory(
   'agent-scope',
   (backend) => new AgentScopeAdapter(backend),
 );
+// spec-012 Phase 1 (C-P4, 2026-07-30): KAG MCP Adapter 工厂注册
+adapterRegistry.registerFactory('kag', (backend) => new KagAdapter(backend));
 
 // Global middleware
 app.use('*', logger());

@@ -1681,8 +1681,8 @@ spec-010 对 spec-008 已发布契约的变更:
 - [x] ~~Phase C 各后端协议 research(HERMES/KAG/AgentScope/intellect-community)~~ — 已完成(v8.3,C-0 research)
 - [x] ~~C-P1/P2/P3 实施(intellect-community/hermes/agent-scope Adapter)~~ — 已完成(v8.3,620/620 测试通过)
 - [x] ~~C-P4 spec 修订(§3.1/§3.2/§4.1/§4.2)~~ — 已完成(v8.3)
-- [ ] **新建 spec-012**:KAG MCP Adapter 设计(`MCPBaseAdapter` + `IMCPAdapter` 接口)— v8.3 新增
-- [ ] C-P4 实施(KagAdapter,依赖 spec-012 完成)— v8.3 推迟
+- [x] ~~**新建 spec-012**:KAG MCP Adapter 设计(`MCPBaseAdapter` + `IMCPAdapter` 接口)~~ — 已完成(v8.3,2026-07-30,见 [spec-012/spec.md](../012-kag-mcp-adapter/spec.md))
+- [ ] C-P4 实施(KagAdapter,依赖 spec-012 完成)— v8.3 推迟,进行中
 - [ ] §13.4 密钥管理实施前确认 KMS/Vault 集成方案
 - [ ] SSRF 防护的 DNS rebinding 实施细节(生产环境建议用 socket.connect 校验 IP)
 - [x] ~~v8 新增:向 Intellect-Team 提交对齐需求,等待 4 周回复(D8)~~ — 已完成:2026-07-29 提交并收到回复,Intellect-Team 接受全部 P0+P1 对齐需求
@@ -1691,5 +1691,5 @@ spec-010 对 spec-008 已发布契约的变更:
   - [x] ~~X-T2:BFF 对接 Python 后端集成测试(P0 5 项 + E4 + P1 6 项)~~ — 已完成(Phase 1 REST 12/12 + Phase 2 SSE 6/6 + BFF 559/559)
   - [x] ~~X-T3:BFF 兼容性矩阵更新~~ — 已完成
   - [x] ~~X-T4:文档更新~~ — 已完成
-- [ ] v8 新增:RunRegistry 接口扩展 hasActiveRuns/getActiveRunCount/hasRunsForBackend(修改 6)
-- [ ] v8 新增:spec-011 US1 测试用例 tenant_id 改为 32 位 hex(D6)
+- [x] ~~v8 新增:RunRegistry 接口扩展 hasActiveRuns/getActiveRunCount/hasRunsForBackend(修改 6)~~ — 已完成:run-registry.ts 实现 + run-registry.test.ts 覆盖(2026-07-30 验证)
+- [x] ~~v8 新增:spec-011 US1 测试用例 tenant_id 改为 32 位 hex(D6)~~ — 已完成:tenant-validator.test.ts 全部使用 32 位 hex 格式(2026-07-30 验证)

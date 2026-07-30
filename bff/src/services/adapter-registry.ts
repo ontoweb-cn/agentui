@@ -29,6 +29,7 @@ import {
 import type { HarnessAdapterFactory, IAdapterRegistry } from './adapter-registry-types';
 import { IntellectRagAdapter } from './adapters/intellect-rag/intellect-rag-adapter';
 import { IntellectEnterpriseAdapter } from './adapters/intellect-enterprise/intellect-enterprise-adapter';
+import { MCPBaseAdapter } from './adapters/shared/mcp-base-adapter';
 
 export class AdapterRegistry implements IAdapterRegistry {
   private readonly harnessStore: HarnessStore;
@@ -102,22 +103,34 @@ export class AdapterRegistry implements IAdapterRegistry {
    * 方案 2 (P2):同步清理 IntellectEnterpriseHttpClient 的 tenant 缓存,
    * 确保管理操作后立即重新校验。
    *
+   * 评审 S2/Q3 修复:MCPBaseAdapter 的 SSE 长连接在 invalidate 时调用 dispose()
+   * 释放资源,避免连接泄露。dispose() 为 async,invalidate 保持同步签名(fire-and-forget),
+   * close 失败时 dispose 内部已捕获,不影响后续操作。
+   *
    * @param backendId 可选,不传清空整个缓存,传则只移除该条目
    */
   invalidate(backendId?: string): void {
     if (backendId === undefined) {
-      // 清空所有:遍历缓存,清理 enterprise adapter 的 tenant 缓存
+      // 清空所有:遍历缓存,清理 enterprise adapter 的 tenant 缓存 + MCP adapter 连接
       for (const adapter of this.adapterCache.values()) {
         if (adapter instanceof IntellectEnterpriseAdapter) {
           adapter.clearTenantCache();
         }
+        if (adapter instanceof MCPBaseAdapter) {
+          // fire-and-forget:dispose 内部捕获错误,不阻塞 invalidate
+          void adapter.dispose();
+        }
       }
       this.adapterCache.clear();
     } else {
-      // 清单条:仅清理该 backendId 对应 adapter 的 tenant 缓存
+      // 清单条:仅清理该 backendId 对应 adapter 的 tenant 缓存 + MCP 连接
       const cached = this.adapterCache.get(backendId);
       if (cached instanceof IntellectEnterpriseAdapter) {
         cached.clearTenantCache();
+      }
+      if (cached instanceof MCPBaseAdapter) {
+        // fire-and-forget:dispose 内部捕获错误,不阻塞 invalidate
+        void cached.dispose();
       }
       this.adapterCache.delete(backendId);
     }

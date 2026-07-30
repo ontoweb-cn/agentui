@@ -326,6 +326,57 @@ export interface IKnowledgeBaseAdapter extends IHarnessAdapter {
 }
 
 // ---------------------------------------------------------------------------
+// IMCPAdapter — Extension Layer (Layer 2, MCP capability)
+// spec-012 (v8.3 新增): MCP 工具调用能力接口
+// ---------------------------------------------------------------------------
+
+/**
+ * MCP 扩展契约(spec-012)。
+ *
+ * 由 MCPBaseAdapter 子类实现(当前仅 KagAdapter)。
+ * 必须同时实现 IHarnessAdapter(Layer 1)。
+ *
+ * 设计原则(与 ICanvasAdapter/IKnowledgeBaseAdapter 一致):
+ * - listTools/discoverTools:动态发现 MCP Server 暴露的工具
+ * - callTool:通用工具调用(供未来非 KAG 的 MCP 后端复用)
+ * - qaPipeline/kbRetrieve:KAG 专用高层语义方法(便捷调用)
+ *
+ * Constitution Principle II: 路由层用 capabilities.mcp 静态判断,
+ * isMCPAdapter() 作为运行时双保险。
+ */
+export interface IMCPAdapter extends IHarnessAdapter {
+  /** 列出 MCP Server 暴露的所有工具。 */
+  listTools(ctx: BackendContext): Promise<MCPTool[]>;
+
+  /** 通用 MCP 工具调用。 */
+  callTool(
+    ctx: BackendContext,
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<string>;
+
+  /**
+   * KAG 专用:QA 问答管道。
+   * 调用 MCP 工具 `qa_pipeline(query)`,返回 LLM 生成的答案。
+   */
+  qaPipeline(ctx: BackendContext, query: string): Promise<string>;
+
+  /**
+   * KAG 专用:知识库检索。
+   * 调用 MCP 工具 `kb_retrieve(query)`,返回 JSON:
+   * { summary: string, references: Array<{ spo: [s,p,o], chunks: string[] }> }
+   */
+  kbRetrieve(ctx: BackendContext, query: string): Promise<string>;
+}
+
+/** MCP 工具描述(spec-012)。 */
+export interface MCPTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
 // IMultiTenantAdapter — Extension Layer (Layer 2, Intellect Enterprise only)
 // ---------------------------------------------------------------------------
 
@@ -536,13 +587,9 @@ export function isKnowledgeBaseAdapter(
  * Constitution Principle II: 路由层用 capabilities.mcp 静态判断,
  * 此 guard 作为运行时双保险。
  *
- * 注意:IMCPAdapter 接口定义在 spec-012,待 spec-012 Phase 1 实施时引入。
- * 当前仅类型守卫可用,接口未定义,因此实际匹配的 Adapter 尚不存在。
- * 返回类型用结构化字面量,避免引用未定义的 IMCPAdapter。
+ * spec-012 Phase 1(T1-3)修复:IMCPAdapter 接口已定义,守卫返回类型更新。
  */
-export function isMCPAdapter(
-  adapter: IHarnessAdapter,
-): adapter is IHarnessAdapter & { readonly adapterKind: 'mcp' } {
+export function isMCPAdapter(adapter: IHarnessAdapter): adapter is IMCPAdapter {
   return adapter.adapterKind === 'mcp';
 }
 
