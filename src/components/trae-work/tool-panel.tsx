@@ -1,6 +1,6 @@
 // spec-013 P0-5: ToolPanel 工具面板组件
 // 对齐 components-api.md §2.3
-// 视觉规范:头部 40px,圆点状态色,展开/折叠 chevron 旋转,徽标数
+// 视觉规范:头部 40px,图标 + 标题 + 徽标数,展开/折叠 chevron 旋转
 
 import * as React from 'react';
 import {
@@ -34,6 +34,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
  *
  * spec-013 P1-Q2 修复:头部改为 flex 布局,trigger 与 actions 分离,
  * 避免按钮嵌套违反 HTML 规范。
+ * spec-013 评审 Q-4 修复:chevron 改用普通 button(非 CollapsibleTrigger),
+ * 加 aria-hidden + tabIndex=-1,主 trigger 独占 ARIA 语义,避免屏幕阅读器困惑。
  */
 export const ToolPanel = React.forwardRef<HTMLDivElement, ToolPanelProps>(
   function ToolPanel(
@@ -123,32 +125,32 @@ export const ToolPanel = React.forwardRef<HTMLDivElement, ToolPanelProps>(
             </CollapsibleTrigger>
 
             {/* 右侧:actions + chevron(actions 与 trigger 同级,不再嵌套) */}
+            {/* spec-013 评审 Q-4: chevron 改用普通 button(非 CollapsibleTrigger),
+                避免 Radix 自动注入 aria-expanded/aria-controls 造成重复;
+                主 trigger 独占 ARIA 语义,chevron 仅视觉辅助(tabIndex=-1) */}
             <div className="flex shrink-0 items-center gap-1">
               {actions}
-              <CollapsibleTrigger asChild>
-                <button
-                  type="button"
-                  disabled={disabled}
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => handleOpenChange(!expanded)}
+                className={cn(
+                  'inline-flex size-5 items-center justify-center rounded text-trae-grey',
+                  'transition-colors duration-trae-fast',
+                  disabled
+                    ? 'cursor-not-allowed opacity-50'
+                    : 'cursor-pointer hover:text-trae-green',
+                )}
+                tabIndex={-1}
+                aria-hidden
+              >
+                <ChevronDown
                   className={cn(
-                    'inline-flex size-5 items-center justify-center rounded text-trae-grey',
-                    'transition-colors duration-trae-fast',
-                    disabled
-                      ? 'cursor-not-allowed opacity-50'
-                      : 'cursor-pointer hover:text-trae-green',
+                    'size-4 transition-transform duration-trae-base',
+                    expanded && 'rotate-180',
                   )}
-                  aria-label={expanded ? '折叠' : '展开'}
-                  aria-expanded={expanded}
-                  aria-controls={`tool-panel-content-${id}`}
-                >
-                  <ChevronDown
-                    className={cn(
-                      'size-4 transition-transform duration-trae-base',
-                      expanded && 'rotate-180',
-                    )}
-                    aria-hidden
-                  />
-                </button>
-              </CollapsibleTrigger>
+                />
+              </button>
             </div>
           </div>
 

@@ -64,12 +64,18 @@ const enterpriseBackend: HarnessBackend = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createMockHarnessStore(backends: HarnessBackend[] = []): HarnessStore {
+function createMockHarnessStore(
+  backends: HarnessBackend[] = [],
+  configs: HarnessBackendConfig[] = [],
+): HarnessStore {
   return {
     list: vi.fn(() => backends),
     get: vi.fn((id: string) => backends.find((b) => b.id === id)),
     load: vi.fn(async () => undefined),
     saveConfig: vi.fn(async (_configs: HarnessBackendConfig[]) => undefined),
+    // listConfigs 返回所有配置(含 token 未就绪的),用于 backend-store 区分
+    // "引用完全不存在" vs "配置存在但 token 未就绪"
+    listConfigs: vi.fn(() => configs),
   };
 }
 
@@ -162,6 +168,87 @@ describe('JSONFileBackendStore', () => {
 
       await expect(store.load()).rejects.toThrow(
         /Backend not configured: non-existent-backend/,
+      );
+    });
+
+    it('intellectBackendId 配置存在但 token 未就绪时跳过该 tenant(不抛错)', async () => {
+      // 模拟 fixture 残留场景:harness-backends.json 有配置,但 env var 未设置导致 list() 为空
+      const ragConfig: HarnessBackendConfig = {
+        id: 'intellect-rag-default',
+        name: 'Default Intellect RAG',
+        type: 'intellect-rag',
+        endpoint: 'http://localhost:9380',
+        adminTokenEnvVar: 'HARNESS_INTELLECT_RAG_ADMIN_TOKEN',
+        capabilities: {
+          canvas: true,
+          knowledgeBase: true,
+          memory: true,
+          mcp: false,
+          multiTenant: false,
+          modelManagement: false,
+        },
+        defaultForTenant: true,
+      };
+      setTenantsFile({
+        tenants: [
+          {
+            id: 't1',
+            name: 'T1',
+            intellectBackendId: 'intellect-rag-default',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      });
+      // backends 为空(token 未就绪),但 configs 有该 id → 应跳过,不抛错
+      const harnessStore = createMockHarnessStore([], [ragConfig]);
+      const store = new JSONFileBackendStore(harnessStore);
+
+      await expect(store.load()).resolves.toBeUndefined();
+      expect(store.listBackends()).toEqual([]);
+      expect(store.listSkippedTenants()).toHaveLength(1);
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.stringContaining('config exists but token not ready'),
+      );
+    });
+
+    it('canvasBackendId 配置存在但 token 未就绪时跳过该 tenant(不抛错)', async () => {
+      const ragConfig: HarnessBackendConfig = {
+        id: 'intellect-rag-canvas',
+        name: 'RAG Canvas',
+        type: 'intellect-rag',
+        endpoint: 'http://localhost:9380',
+        adminTokenEnvVar: 'HARNESS_INTELLECT_RAG_CANVAS_TOKEN',
+        capabilities: {
+          canvas: true,
+          knowledgeBase: true,
+          memory: true,
+          mcp: false,
+          multiTenant: false,
+          modelManagement: false,
+        },
+      };
+      // 主 backend 就绪,canvas backend 配置存在但 token 未就绪
+      setTenantsFile({
+        tenants: [
+          {
+            id: 't1',
+            name: 'T1',
+            intellectBackendId: 'intellect-rag-default',
+            canvasBackendId: 'intellect-rag-canvas',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      });
+      const harnessStore = createMockHarnessStore([ragBackend], [ragConfig]);
+      const store = new JSONFileBackendStore(harnessStore);
+
+      await expect(store.load()).resolves.toBeUndefined();
+      expect(store.listBackends()).toEqual([]);
+      expect(store.listSkippedTenants()).toHaveLength(1);
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.stringContaining('canvas backend "intellect-rag-canvas" config exists but token not ready'),
       );
     });
 

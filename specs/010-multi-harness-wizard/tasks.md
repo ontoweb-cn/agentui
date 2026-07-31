@@ -242,6 +242,7 @@
   - **v8 修改 7**: probe 依赖 Rust Gateway `/api/tenant/info`
 - [x] **验收**: 4 端点集成测试
 - [x] **完成情况**: 4 端点已实现(/status /backend-types /probe /setup) + wizard.test.ts 单元测试
+- [x] **评审修复**: Bug 1 — needsSetup 判断从 listConfigs() 改为 list()(仅就绪后端);BACKEND_TYPE_OPTIONS 与 spec v8.3 对齐(KAG knowledgeBase/mcp、endpoint、非 KAG memory/mcp)
 
 ### B-4：Wizard DTO
 
@@ -265,12 +266,14 @@
 - [x] **实施细节**: m7 状态机、WizardGuard 路由守卫
 - [x] **验收**: 6 步流程冒烟测试
 - [x] **完成情况**: 已实现 `src/pages/wizard/index.tsx`(6 步 Stepper + localStorage 草稿持久化 + Probe 自动触发 + Setup 成功跳转);WizardGuard 路由守卫已实现(`src/wrappers/wizard-guard.tsx`),在 routes.tsx L283-289 包裹 AuthWrapper 之前执行,首次安装(needsSetup=true)时重定向到 /wizard;React Query 缓存 5 分钟;失败时降级放行
+- [x] **评审修复**: Bug 2 — isLoading 期间渲染 LoadingOverlay(避免 AuthWrapper 抢跳 /login);Bug 3 — queryFn 数据格式从 ApiResponse 包装改为裸对象;useLocation 替代 window.location;retry: 1
 
 ### B-7：前端 Wizard Service
 
 - [x] **任务**: API 调用封装
 - [x] **文件**: `src/services/wizard-service.ts`
 - [x] **验收**: API 调用正确
+- [x] **评审修复**: wizard-service.ts 四个方法类型声明从 ApiResponse<T> 改为裸对象 T(Bug 3 根治);wizard/index.tsx 四处读取同步修正(typesData/statusData/probe resp/setup resp)
 
 ### B-8：Admin 页切换/新增入口（v8 修改 6）
 

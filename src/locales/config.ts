@@ -8,9 +8,10 @@ import { upperFirst } from 'lodash';
 import { initReactI18next } from 'react-i18next';
 import translation_en from './en';
 
-//The language is based on the .ng file stored in the client's local storage.
-// The language stored in the database is for agent template resources, as these resources reside on the server.
-// When a user logs in from a different machine, the login page language is the language configured by VITE_DEFAULT_LANGUAGE_CODE.
+// 语言选择优先级:localStorage(用户已选)> 浏览器 navigator.language(手动映射)>
+// VITE_DEFAULT_LANGUAGE_CODE(默认 'en')。
+// 浏览器语言映射在 initLanguage() 中处理,因 i18next 默认不做 'zh-CN' → 'zh-Hans'
+// 的模糊匹配,会导致中文浏览器 fallback 到 'en'。
 
 const languageImports: Record<string, () => Promise<{ default: any }>> = {
   [LanguageAbbreviation.En]: () => import('./en'),
@@ -65,6 +66,8 @@ i18n
   .init({
     detection: {
       lookupLocalStorage: 'lng',
+      // 仅从 localStorage 读取用户已选语言;浏览器语言检测在 initLanguage() 中
+      // 手动处理(避免 i18next 把 'zh-CN' 误匹配为 fallbackLng 'en' 并缓存)
       order: ['localStorage'],
       caches: [],
     },
@@ -75,6 +78,32 @@ i18n
       escapeValue: false,
     },
   });
+
+/**
+ * 将浏览器 navigator.language 映射到 supportedLngs 中的 BCP-47 代码。
+ * i18next 默认不做 'zh-CN' → 'zh-Hans' 的模糊匹配,需手动映射。
+ */
+function mapBrowserLanguage(lang: string): string {
+  const lower = (lang || '').toLowerCase();
+  if (lower.startsWith('zh')) {
+    // 繁体中文:zh-TW / zh-Hant / zh-HK / zh-MO
+    if (
+      lower.includes('tw') ||
+      lower.includes('hant') ||
+      lower.includes('hk') ||
+      lower.includes('mo')
+    ) {
+      return LanguageAbbreviation.ZhTraditional;
+    }
+    // 其余 zh-* (zh-CN / zh-Hans / zh-SG / zh) 统一映射到简体中文
+    return LanguageAbbreviation.Zh;
+  }
+  // 其他语言:取主语言部分(如 'en-US' → 'en'),若不在 supportedLngs 再尝试原始值
+  const primary = lower.split('-')[0];
+  if (languageImports[primary]) return primary;
+  if (languageImports[lang]) return lang;
+  return DEFAULT_LANGUAGE_CODE;
+}
 
 export const loadLanguageAsync = async (lng: string): Promise<void> => {
   const normalizedLng = lng;
@@ -138,7 +167,16 @@ export const changeLanguageAsync = async (lng: string): Promise<void> => {
 };
 
 export const initLanguage = async (): Promise<void> => {
-  const currentLng = storage.getLanguage() || DEFAULT_LANGUAGE_CODE;
+  // 1. 优先 localStorage(用户已选语言)
+  // 2. 其次浏览器 navigator.language(手动映射到 supportedLngs)
+  // 3. 最后回退到 DEFAULT_LANGUAGE_CODE
+  // changeLanguageAsync 会将最终结果写入 localStorage,后续访问直接走 localStorage
+  const storedLng = storage.getLanguage();
+  const currentLng =
+    storedLng ||
+    (typeof navigator !== 'undefined'
+      ? mapBrowserLanguage(navigator.language)
+      : DEFAULT_LANGUAGE_CODE);
 
   await changeLanguageAsync(currentLng);
 };

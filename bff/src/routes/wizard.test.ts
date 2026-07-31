@@ -170,7 +170,7 @@ describe('wizard 路由 (B-3)', () => {
       expect(typeof body.bootstrapEnabled).toBe('boolean');
     });
 
-    it('有 backend 配置时返回 needsSetup=false', async () => {
+    it('有就绪 backend(token 已加载)时返回 needsSetup=false', async () => {
       stores = createMockStores([ragConfig], [ragBackend], [tenant1]);
       app = createApp(stores);
 
@@ -180,6 +180,20 @@ describe('wizard 路由 (B-3)', () => {
       const body = await res.json();
       expect(body.needsSetup).toBe(false);
       expect(body.backendCount).toBe(1);
+    });
+
+    // 修复回归:configs 中有条目但 token 未就绪(对应 env var 未设置)时,
+    // list() 返回空数组,needsSetup 应为 true,触发向导而非进入登录页。
+    it('configs 有条目但无就绪 backend 时返回 needsSetup=true(token 未就绪)', async () => {
+      stores = createMockStores([ragConfig], [], []);
+      app = createApp(stores);
+
+      const res = await app.request('/admin/wizard/status', {
+        headers: { Authorization: 'Bearer test' },
+      });
+      const body = await res.json();
+      expect(body.needsSetup).toBe(true);
+      expect(body.backendCount).toBe(0);
     });
   });
 
@@ -198,11 +212,11 @@ describe('wizard 路由 (B-3)', () => {
 
       const types = body.options.map((o: { type: string }) => o.type);
       expect(types).toEqual([
-        'intellect-rag',
+        'kag',
         'intellect-enterprise',
+        'intellect-rag',
         'intellect-community',
         'hermes',
-        'kag',
         'agent-scope',
       ]);
     });

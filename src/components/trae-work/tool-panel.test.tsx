@@ -37,22 +37,22 @@ describe('ToolPanel', () => {
   it('点击头部展开(非受控)', () => {
     render(<ToolPanel {...makeProps({ defaultExpanded: false })} />);
     expect(screen.queryByTestId('panel-content')).not.toBeInTheDocument();
-    // 点击 chevron 按钮(有 aria-label)切换展开
-    fireEvent.click(screen.getByRole('button', { name: '展开' }));
+    // 点击主 trigger(通过标题文本定位)切换展开
+    fireEvent.click(screen.getByRole('button', { name: /知识库检索/ }));
     expect(screen.getByTestId('panel-content')).toBeInTheDocument();
   });
 
   it('点击头部折叠(非受控,已展开)', () => {
     render(<ToolPanel {...makeProps({ defaultExpanded: true })} />);
     expect(screen.getByTestId('panel-content')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '折叠' }));
+    fireEvent.click(screen.getByRole('button', { name: /知识库检索/ }));
     expect(screen.queryByTestId('panel-content')).not.toBeInTheDocument();
   });
 
   it('非受控切换触发 onExpandedChange 回调', () => {
     const onExpandedChange = jest.fn();
     render(<ToolPanel {...makeProps({ defaultExpanded: false, onExpandedChange })} />);
-    fireEvent.click(screen.getByRole('button', { name: '展开' }));
+    fireEvent.click(screen.getByRole('button', { name: /知识库检索/ }));
     expect(onExpandedChange).toHaveBeenCalledWith(true);
   });
 
@@ -70,7 +70,7 @@ describe('ToolPanel', () => {
   it('受控模式:点击触发 onExpandedChange 但不内部更新', () => {
     const onExpandedChange = jest.fn();
     render(<ToolPanel {...makeProps({ expanded: false, onExpandedChange })} />);
-    fireEvent.click(screen.getByRole('button', { name: '展开' }));
+    fireEvent.click(screen.getByRole('button', { name: /知识库检索/ }));
     expect(onExpandedChange).toHaveBeenCalledWith(true);
     // 受控模式,内部状态不变,内容仍不显示
     expect(screen.queryByTestId('panel-content')).not.toBeInTheDocument();
@@ -123,17 +123,16 @@ describe('ToolPanel', () => {
 
   it('disabled=true 时按钮被禁用', () => {
     render(<ToolPanel {...makeProps({ defaultExpanded: false, disabled: true })} />);
-    // 两个按钮(主 trigger + chevron)都应被禁用
-    const buttons = screen.getAllByRole('button');
-    expect(buttons.length).toBeGreaterThanOrEqual(2);
-    buttons.forEach((btn) => expect(btn).toBeDisabled());
+    // 主 trigger 被禁用(chevron 有 aria-hidden,不参与 getByRole)
+    const mainTrigger = screen.getByRole('button', { name: /知识库检索/ });
+    expect(mainTrigger).toBeDisabled();
   });
 
   it('disabled=true 时点击不触发 onExpandedChange', () => {
     const onExpandedChange = jest.fn();
     render(<ToolPanel {...makeProps({ defaultExpanded: false, disabled: true, onExpandedChange })} />);
-    // 点击任一按钮都不应触发
-    screen.getAllByRole('button').forEach((btn) => fireEvent.click(btn));
+    // 点击主 trigger 不应触发
+    fireEvent.click(screen.getByRole('button', { name: /知识库检索/ }));
     expect(onExpandedChange).not.toHaveBeenCalled();
   });
 
@@ -154,18 +153,34 @@ describe('ToolPanel', () => {
 
   it('aria-expanded 反映展开状态', () => {
     render(<ToolPanel {...makeProps({ defaultExpanded: true })} />);
-    // 两个按钮都应有 aria-expanded=true
-    screen.getAllByRole('button').forEach((btn) => {
-      expect(btn).toHaveAttribute('aria-expanded', 'true');
-    });
+    // spec-013 评审 Q-4: 仅主 trigger 有 aria-expanded(chevron trigger 不重复)
+    const triggersWithAriaExpanded = screen.getAllByRole('button').filter(
+      (btn) => btn.hasAttribute('aria-expanded'),
+    );
+    expect(triggersWithAriaExpanded).toHaveLength(1);
+    expect(triggersWithAriaExpanded[0]).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('aria-controls 指向内容区 ID', () => {
     render(<ToolPanel {...makeProps({ defaultExpanded: true })} />);
-    // 两个按钮的 aria-controls 都应指向内容区
-    screen.getAllByRole('button').forEach((btn) => {
-      expect(btn.getAttribute('aria-controls')).toBe('tool-panel-content-panel-1');
-    });
+    // spec-013 评审 Q-4: 仅主 trigger 有 aria-controls(chevron trigger 不重复)
+    const triggersWithAriaControls = screen.getAllByRole('button').filter(
+      (btn) => btn.hasAttribute('aria-controls'),
+    );
+    expect(triggersWithAriaControls).toHaveLength(1);
+    expect(triggersWithAriaControls[0].getAttribute('aria-controls')).toBe('tool-panel-content-panel-1');
+  });
+
+  // spec-013 评审 Q-4: chevron 按钮 aria-hidden + tabIndex=-1,不参与 Tab 序列
+  it('chevron 按钮 aria-hidden 且 tabIndex=-1,主 trigger 独占 Tab 序列', () => {
+    const { container } = render(<ToolPanel {...makeProps({ defaultExpanded: true })} />);
+    // chevron 按钮有 aria-hidden,getByRole 查不到,通过 DOM 查询
+    const chevronBtn = container.querySelector('button[aria-hidden]') as HTMLButtonElement;
+    expect(chevronBtn).not.toBeNull();
+    expect(chevronBtn).toHaveAttribute('tabindex', '-1');
+    // 主 trigger 通过 getByRole 可查到,tabIndex 不应为 -1
+    const mainTrigger = screen.getByRole('button', { name: /知识库检索/ });
+    expect(mainTrigger).not.toHaveAttribute('tabindex', '-1');
   });
 
   it('有效 icon 渲染对应图标', () => {
@@ -198,7 +213,7 @@ describe('ToolPanel', () => {
     expect(screen.getByTestId('action-btn')).toBeInTheDocument();
   });
 
-  it('actions 点击不触发 toggle(stopPropagation)', () => {
+  it('actions 点击不触发 toggle(actions 在 trigger 外部)', () => {
     const onExpandedChange = jest.fn();
     render(
       <ToolPanel

@@ -8,7 +8,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { BffTenant, BackendStore, HarnessStore } from '../types';
+import type { BffTenant, BackendStore, HarnessBackendConfig, HarnessStore } from '../types';
 import {
   TenantNotFoundError,
   BackendNotConfiguredError,
@@ -49,14 +49,18 @@ const tenantsFileSchema = z.object({
 
 export class JSONFileBackendStore implements BackendStore {
   private tenants: BffTenant[] = [];
+  // 因 token 未就绪而被跳过的 tenant(token 补齐后需重启 BFF 重新 load 恢复)。
+  // 供运维查询降级状态,避免"静默租户丢失"。
+  private skippedTenants: BffTenant[] = [];
 
   constructor(private readonly harnessStore: HarnessStore) {}
 
   async load(): Promise<void> {
+    this.skippedTenants = [];
     // JSON 不存在:返回空数组
     if (!existsSync(TENANTS_FILE)) {
       console.warn(
-        `\[backend-store\] Tenants file not found: ${TENANTS_FILE}, loading empty tenant list`,
+        `[backend-store] Tenants file not found: ${TENANTS_FILE}, loading empty tenant list`,
       );
       this.tenants = [];
       return;
@@ -68,7 +72,7 @@ export class JSONFileBackendStore implements BackendStore {
       parsed = JSON.parse(raw);
     } catch (err) {
       console.error(
-        `\[backend-store\] Failed to parse JSON: ${(err as Error).message}, loading empty list`,
+        `[backend-store] Failed to parse JSON: ${(err as Error).message}, loading empty list`,
       );
       this.tenants = [];
       return;
@@ -77,7 +81,7 @@ export class JSONFileBackendStore implements BackendStore {
     const validationResult = tenantsFileSchema.safeParse(parsed);
     if (!validationResult.success) {
       console.error(
-        `\[backend-store\] Invalid tenants schema: ${validationResult.error.message}, loading empty list`,
+        `[backend-store] Invalid tenants schema: ${validationResult.error.message}, loading empty list`,
       );
       this.tenants = [];
       return;
@@ -89,6 +93,17 @@ export class JSONFileBackendStore implements BackendStore {
       // 校验 intellectBackendId 存在
       const mainBackend = this.harnessStore.get(tenant.intellectBackendId);
       if (!mainBackend) {
+        // 区分两种失败:
+        // (a) 配置完全不存在(引用错误)→ 抛错,数据完整性问题需人工介入
+        // (b) 配置存在但 token 未就绪(env var 未设置)→ warn + 跳过该 tenant,不崩溃
+        //     这样在 fixture 残留或 token 暂时缺失场景下 BFF 仍能启动,前端可走 wizard 重新配置
+        if (this.isBackendConfigured(tenant.intellectBackendId)) {
+          console.warn(
+            `[backend-store] Tenant "${tenant.id}" skipped: backend "${tenant.intellectBackendId}" config exists but token not ready, will be re-evaluated on next load`,
+          );
+          this.skippedTenants.push(tenant as BffTenant);
+          continue;
+        }
         // 校验失败:抛出明确错误(不静默,spec.md Edge Cases)
         throw new BackendNotConfiguredError(tenant.intellectBackendId);
       }
@@ -99,7 +114,7 @@ export class JSONFileBackendStore implements BackendStore {
         mainBackend.type !== 'intellect-enterprise'
       ) {
         throw new Error(
-          `\[backend-store\] Tenant "${tenant.id}" authMode=intellect-enterprise requires intellectBackendId to point to type='intellect-enterprise' backend, got: ${mainBackend.type}`,
+          `[backend-store] Tenant "${tenant.id}" authMode=intellect-enterprise requires intellectBackendId to point to type='intellect-enterprise' backend, got: ${mainBackend.type}`,
         );
       }
 
@@ -107,6 +122,14 @@ export class JSONFileBackendStore implements BackendStore {
       if (tenant.canvasBackendId) {
         const canvasBackend = this.harnessStore.get(tenant.canvasBackendId);
         if (!canvasBackend) {
+          // canvasBackendId 同样区分配置不存在 vs token 未就绪
+          if (this.isBackendConfigured(tenant.canvasBackendId)) {
+            console.warn(
+              `[backend-store] Tenant "${tenant.id}" skipped: canvas backend "${tenant.canvasBackendId}" config exists but token not ready`,
+            );
+            this.skippedTenants.push(tenant as BffTenant);
+            continue;
+          }
           throw new BackendNotConfiguredError(tenant.canvasBackendId);
         }
         if (canvasBackend.type !== 'intellect-rag') {
@@ -115,10 +138,38 @@ export class JSONFileBackendStore implements BackendStore {
       }
 
       loaded.push(tenant as BffTenant);
-      console.log(`\[backend-store\] Loaded tenant: ${tenant.id} (backend: ${tenant.intellectBackendId})`);
+      console.debug(`[backend-store] Loaded tenant: ${tenant.id} (backend: ${tenant.intellectBackendId})`);
     }
 
     this.tenants = loaded;
+  }
+
+  /**
+   * 列出因 token 未就绪而被跳过的 tenant(供运维查询降级状态)。
+   * token 补齐后需重启 BFF 重新 load 恢复。
+   */
+  listSkippedTenants(): BffTenant[] {
+    return this.skippedTenants;
+  }
+
+  /**
+   * 判断 backend 配置是否存在于 harnessStore(无论 token 是否就绪)。
+   * 用于区分"引用完全不存在"(数据完整性错误,需抛错)与
+   * "配置存在但 token 未就绪"(可恢复,跳过即可)两种场景。
+   *
+   * harnessStore 运行时实例通常实现 HarnessStoreListConfigs(listConfigs),
+   * 但构造函数字段类型声明为 HarnessStore(不含 listConfigs),
+   * 因此用鸭子类型检测 + 类型断言访问。
+   */
+  private isBackendConfigured(backendId: string): boolean {
+    const store = this.harnessStore as HarnessStore & {
+      listConfigs?: () => HarnessBackendConfig[];
+    };
+    if (typeof store.listConfigs !== 'function') {
+      // harnessStore 未实现 listConfigs,无法区分,按原逻辑视为"不存在"
+      return false;
+    }
+    return store.listConfigs().some((c) => c.id === backendId);
   }
 
   async createBackend(

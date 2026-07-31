@@ -181,7 +181,7 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
         <CardDescription>
           {t('wizard.welcome.description', {
             defaultValue:
-              'This wizard guides you through connecting your first harness backend. You can configure Intellect RAG, Intellect Enterprise, or other OpenAI-compatible backends.',
+              'This wizard guides you through connecting your first harness backend. You can configure Intellect Community, Intellect Enterprise, or other OpenAI-compatible backends.',
           })}
         </CardDescription>
       </CardHeader>
@@ -781,7 +781,7 @@ function WizardPage() {
     queryFn: async () => (await fetchWizardBackendTypes()).data,
     retry: false,
   });
-  const options = typesData?.data?.options ?? [];
+  const options = typesData?.options ?? [];
 
   // 当前选中类型的 option 元数据
   const selectedOption = useMemo(
@@ -799,8 +799,8 @@ function WizardPage() {
   });
 
   useEffect(() => {
-    if (step >= 5 && statusData?.data) {
-      if (!statusData.data.needsSetup) {
+    if (step >= 5 && statusData) {
+      if (!statusData.needsSetup) {
         // 后端已配置:mode=add 场景允许继续完成向导,其他场景跳走
         if (mode !== 'add') {
           navigate(Routes.Root);
@@ -864,7 +864,7 @@ function WizardPage() {
       return (await probeWizardBackend(req)).data;
     },
     onSuccess: (resp) => {
-      setProbeResult(resp.data);
+      setProbeResult(resp);
     },
     onError: (err: unknown) => {
       setProbeResult({
@@ -906,8 +906,8 @@ function WizardPage() {
       return (await setupWizardBackend(req)).data;
     },
     onSuccess: (resp) => {
-      setSetupResult(resp.data);
-      if (resp.data?.success) {
+      setSetupResult(resp);
+      if (resp.success) {
         toast.success(
           t('wizard.toast.success', {
             defaultValue: 'Backend created successfully',
@@ -917,7 +917,7 @@ function WizardPage() {
         goToStep(6);
       } else {
         toast.error(
-          resp.data?.error ??
+          resp.error ??
             t('wizard.toast.failed', {
               defaultValue: 'Setup failed',
             }),

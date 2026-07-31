@@ -58,6 +58,7 @@ export default {
       pleaseSelect: 'Please select',
       pleaseInput: 'Please input',
       submit: 'Submit',
+      submitting: 'Submitting...',
       clear: 'Clear',
       embedIntoSite: 'Embed into webpage',
       openInNewTab: 'Chat in new tab',
@@ -3402,6 +3403,90 @@ Important structured information may include: names, dates, locations, events, k
     selectedReply: {
       button: 'Quote reply',
       multiChatBoxTip: 'Please switch to single chat box mode to use this feature',
+    },
+    // spec-010 B-6: Wizard first-time setup
+    wizard: {
+      title: 'Setup Wizard',
+      subtitle: 'Connect your first harness backend',
+      step: {
+        welcome: 'Welcome',
+        selectType: 'Select Type',
+        connection: 'Connection',
+        probe: 'Probe',
+        confirm: 'Confirm',
+        done: 'Done',
+      },
+      welcome: {
+        title: 'Welcome to Setup',
+        description:
+          'This wizard guides you through connecting your first harness backend. You can configure Intellect Community, Intellect Enterprise, or other OpenAI-compatible backends.',
+        steps:
+          'You will: select a backend type → enter connection info → probe → confirm → done.',
+        note: 'Token is sent over HTTPS only. Response will not include the plaintext token; instead an .env snippet is provided for persistence.',
+        start: 'Start Setup',
+      },
+      selectType: {
+        title: 'Select Backend Type',
+        description: 'Choose the harness backend platform you want to connect to.',
+        defaultEndpoint: 'Default endpoint',
+      },
+      cap: {
+        canvas: 'Canvas',
+        knowledgeBase: 'KnowledgeBase',
+        multiTenant: 'MultiTenant',
+        modelManagement: 'ModelMgmt',
+      },
+      connection: {
+        title: 'Connection Information',
+        description:
+          'Enter the backend endpoint and credentials. Token is sent over HTTPS and not stored in plaintext.',
+        name: 'Backend Name',
+        endpoint: 'Endpoint',
+        adminTokenEnvVar: 'Admin Token Env Var',
+        adminTokenEnvVarHint:
+          'Env var name to read the token from at runtime (fallback when no vault).',
+        token: 'Bearer Token',
+        email: 'Email',
+        password: 'Password',
+        intellectTenantId: 'Intellect Tenant ID',
+        intellectTenantIdError: 'Invalid format: must be 32-char hex (0-9, a-f)',
+        intellectTenantIdHint:
+          'Copy from intellect-team INTELLECT_TENANT_ID env var (Rust version requires 32-char hex)',
+        probe: 'Probe Connection',
+      },
+      probe: {
+        title: 'Connection Probe',
+        description: 'Verifying backend reachability and discovering capabilities.',
+        probing: 'Probing...',
+        healthy: 'Backend is reachable',
+        capabilities: 'Discovered capabilities',
+        failed: 'Probe failed',
+        continue: 'Continue',
+        retry: 'Retry',
+      },
+      confirm: {
+        title: 'Confirm Setup',
+        description:
+          'Review the configuration. On confirm, a backend config will be created.',
+        name: 'Name',
+        type: 'Type',
+        endpoint: 'Endpoint',
+        envVar: 'Env Var',
+        tenantId: 'Tenant ID',
+        envSnippet: '.env snippet (copy to your .env file)',
+        error: 'Error',
+        submit: 'Create Backend',
+      },
+      done: {
+        title: 'Setup Complete',
+        description:
+          'Backend has been configured successfully. You can now start using the platform.',
+        goHome: 'Go to Home',
+      },
+      toast: {
+        success: 'Backend created successfully',
+        failed: 'Setup failed',
+      },
     },
   },
 };

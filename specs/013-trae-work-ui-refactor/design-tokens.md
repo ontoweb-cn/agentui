@@ -63,19 +63,23 @@
 
 ### 2.3 中性色 — Dark 主题
 
-| Token | 值 | 用途 |
+> **实现方式**: Dark 主题通过 `.dark` 选择器**直接覆盖** Light 主题的同名 token(如 `--trae-ink`/`--trae-grey`),
+> **不使用** `-dark` 后缀的独立 token。下表中的 token 名称为文档参考,实际实现见 §三 CSS 变量定义的 `.dark` 块。
+
+| Token(Light 同名覆盖) | Dark 值 | 用途 |
 |-------|-----|------|
-| `--trae-ink-dark` | `#ffffff` | 主文本(Dark) |
-| `--trae-grey-dark` | `#ffffff` | 次文本(Dark,文档原值) |
-| `--trae-grey-2-dark` | `#ffffff` | 弱文本(Dark,文档原值) |
-| `--trae-line-dark` | `rgba(255,255,255,.18)` | 分割线(Dark) |
-| `--trae-line-strong-dark` | `rgba(255,255,255,.30)` | 强分割线(Dark) |
-| `--trae-nav-bg-dark` | `rgba(13,15,14,.72)` | 导航栏背景(Dark) |
-| `--trae-surface-dark` | `#1a1d1c` | 命令框背景(Dark) |
+| `--trae-ink` | `#ffffff` | 主文本(Dark) |
+| `--trae-ink-2` | `#1a1d1c` | 次背景(Dark,AgentUI 补充覆盖) |
+| `--trae-grey` | `#c8ccc9` | 次文本(Dark,AgentUI 微调,文档原值 `#fff`) |
+| `--trae-grey-2` | `#9aa09c` | 弱文本(Dark,AgentUI 微调,文档原值 `#fff`) |
+| `--trae-line` | `rgba(255,255,255,.18)` | 分割线(Dark) |
+| `--trae-line-strong` | `rgba(255,255,255,.30)` | 强分割线(Dark) |
+| `--trae-nav-bg` | `rgba(13,15,14,.72)` | 导航栏背景(Dark) |
+| `--trae-surface` | `#1a1d1c` | 命令框背景(Dark) |
 
 > **注**: TRAE Work 文档中 `--grey`/`--grey-2` 在 Dark 主题下均为 `#fff`,实际使用时建议分层:
-> - `--trae-grey-dark` → `#c8ccc9`(略暗于纯白,提升层次)
-> - `--trae-grey-2-dark` → `#9aa09c`(更弱)
+> - `--trae-grey` → `#c8ccc9`(略暗于纯白,提升层次)
+> - `--trae-grey-2` → `#9aa09c`(更弱)
 > 此为 AgentUI 实施时的微调,需在 Storybook 中验证。
 
 ### 2.4 字体(Font Family)

@@ -71,7 +71,7 @@ export async function* parseCanvasWorkflowSSE(
         break;
       }
 
-      buffer += decoder.decode(value, { stream: true });
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
 
       // SSE 帧以 \n\n 分隔
       let frameEnd: number;

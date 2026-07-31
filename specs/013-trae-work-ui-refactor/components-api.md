@@ -48,8 +48,6 @@ export interface TaskCardProps {
   description?: string;
   /** 任务状态 */
   status: TaskStatus;
-  /** 任务图标(可选,Lucide icon name 或 URL) */
-  icon?: string;
   /** 创建时间 ISO 8601 */
   createdAt: string;
   /** 更新时间 ISO 8601(可选) */
@@ -105,6 +103,9 @@ export interface TaskCardProps {
 
 export type ProgressNodeType = 'tool_call' | 'thinking' | 'artifact' | 'error';
 
+// 注: 实现中提取为类型别名(见 types.ts),语义与内联联合类型一致
+export type ProgressNodeStatus = 'running' | 'completed' | 'failed' | 'skipped';
+
 export interface ProgressNode {
   /** 节点 ID */
   id: string;
@@ -113,7 +114,7 @@ export interface ProgressNode {
   /** 节点标题(如 "调用工具: kb-retrieve") */
   title: string;
   /** 节点状态 */
-  status: 'running' | 'completed' | 'failed' | 'skipped';
+  status: ProgressNodeStatus;
   /** 开始时间 ISO 8601(可选) */
   startedAt?: string;
   /** 结束时间 ISO 8601(可选) */

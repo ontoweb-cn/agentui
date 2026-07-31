@@ -4,7 +4,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { ModeSwitcher } from './mode-switcher';
-import type { ModeSwitcherProps, WorkMode } from './types';
+import type { ModeSwitcherProps } from './types';
 
 function makeProps(overrides: Partial<ModeSwitcherProps> = {}): ModeSwitcherProps {
   return {

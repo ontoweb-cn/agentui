@@ -58,52 +58,58 @@ const DEFAULT_BOOTSTRAP_MANAGER = new BootstrapTokenManager();
 
 const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
   {
-    type: 'intellect-rag',
-    label: 'Intellect RAG',
-    description: '画布引擎 + 知识库',
-    defaultEndpoint: 'http://localhost:9380',
-    capabilities: { canvas: true, knowledgeBase: true, memory: true, mcp: false, multiTenant: false, modelManagement: false },
+    type: 'kag',
+    label: 'KAG',
+    description: 'Knowledge-Augmented Generation',
+    // spec-010 v8.3:默认 endpoint 与 spec.md §9.2 对齐(MCP SSE 默认 :3000)
+    defaultEndpoint: 'http://localhost:3000',
+    // spec-010 v8.3 修订:knowledgeBase true→false, mcp false→true(基于 research.md R2)
+    capabilities: { canvas: false, knowledgeBase: false, memory: false, mcp: true, multiTenant: false, modelManagement: false },
     credentialKind: 'bearer-token',
   },
   {
     type: 'intellect-enterprise',
-    label: 'Intellect 企业版',
-    description: 'Team/Project + 多租户',
+    label: 'Intellect Enterprise',
+    description: 'Team/Project + multi-tenant',
     defaultEndpoint: 'http://localhost:8642',
-    capabilities: { canvas: false, knowledgeBase: false, memory: false, mcp: false, multiTenant: true, modelManagement: true },
+    // spec-010 v8.3:memory/mcp 能力与 spec.md §3.2 对齐
+    capabilities: { canvas: false, knowledgeBase: false, memory: true, mcp: true, multiTenant: true, modelManagement: true },
+    credentialKind: 'bearer-token',
+  },
+  {
+    type: 'intellect-rag',
+    label: 'Intellect RAG',
+    description: 'Canvas engine + knowledge base',
+    defaultEndpoint: 'http://localhost:9380',
+    capabilities: { canvas: true, knowledgeBase: true, memory: true, mcp: false, multiTenant: false, modelManagement: false },
     credentialKind: 'bearer-token',
   },
   // spec-010 v8 新增(待 Phase C 实现 Adapter)
   {
     type: 'intellect-community',
-    label: 'Intellect 社区版',
-    description: '纯 Agent 运行时 (OpenAI 兼容)',
-    defaultEndpoint: 'http://localhost:8080',
+    label: 'Intellect Community',
+    description: 'Pure Agent runtime (OpenAI-compatible)',
+    // spec-010 v8.3:默认 endpoint 与 spec.md §9.2 对齐(与 intellect-enterprise 同源)
+    defaultEndpoint: 'http://localhost:8642',
     capabilities: { canvas: false, knowledgeBase: false, memory: false, mcp: false, multiTenant: false, modelManagement: false },
     credentialKind: 'bearer-token',
   },
   {
     type: 'hermes',
     label: 'HERMES',
-    description: 'HERMES 协议后端',
-    defaultEndpoint: 'http://localhost:9000',
-    capabilities: { canvas: false, knowledgeBase: false, memory: false, mcp: false, multiTenant: false, modelManagement: false },
-    credentialKind: 'bearer-token',
-  },
-  {
-    type: 'kag',
-    label: 'KAG',
-    description: '知识增强生成',
-    defaultEndpoint: 'http://localhost:8888',
-    capabilities: { canvas: false, knowledgeBase: true, memory: false, mcp: false, multiTenant: false, modelManagement: false },
+    description: 'HERMES protocol backend',
+    // spec-010 v8.3:默认 endpoint 与 spec.md §9.2 对齐(部署时需改端口,避免与 intellect-enterprise 冲突)
+    defaultEndpoint: 'http://localhost:8642',
+    capabilities: { canvas: false, knowledgeBase: false, memory: true, mcp: true, multiTenant: false, modelManagement: false },
     credentialKind: 'bearer-token',
   },
   {
     type: 'agent-scope',
     label: 'AgentScope',
-    description: 'AgentScope 多 Agent 框架',
+    description: 'AgentScope multi-agent framework',
     defaultEndpoint: 'http://localhost:5000',
-    capabilities: { canvas: false, knowledgeBase: false, memory: false, mcp: false, multiTenant: false, modelManagement: false },
+    // spec-010 v8.3:memory/mcp 能力与 spec.md §3.2 对齐
+    capabilities: { canvas: false, knowledgeBase: false, memory: true, mcp: true, multiTenant: false, modelManagement: false },
     credentialKind: 'bearer-token',
   },
 ];
@@ -127,12 +133,15 @@ function getStore(c: Context): HarnessStore & HarnessStoreListConfigs {
 
 wizardRoutes.get('/admin/wizard/status', (c) => {
   const store = getStore(c);
-  const configs = store.listConfigs?.() ?? [];
-  const needsSetup = configs.length === 0;
+  // 修复:以"就绪后端"(token 已加载)为准判断 needsSetup,而非 listConfigs()(含 token 未就绪的纯配置条目)。
+  // 这样当 harness-backends.json 残留配置但对应 env var 未设置时,仍能正确触发向导,
+  // 避免出现"Backend 实际未配置却进入登录页"的逻辑错误。
+  const readyBackends = store.list();
+  const needsSetup = readyBackends.length === 0;
   return c.json({
     needsSetup,
     bootstrapEnabled: process.env.BOOTSTRAP_ENABLED !== 'false',
-    backendCount: configs.length,
+    backendCount: readyBackends.length,
   } satisfies WizardStatusResponse);
 });
 

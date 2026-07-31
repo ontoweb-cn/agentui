@@ -1,7 +1,7 @@
 # spec-013 AgentUI 参考 TRAE Work 设计模板重构
 
-> **版本**: v1.2 (2026-07-30 P0 实施完成,含评审修复记录)
-> **状态**: Phase 0 已实施并通过评审,Phase 1 待实施
+> **版本**: v1.3 (2026-07-31 P1 执行完成 + 评审修复完成)
+> **状态**: Phase 0 已完成,Phase 1 已完成
 > **依赖**: 无外部 spec 依赖,独立前端重构
 > **执行顺序**: P0(设计系统) → P1(三栏布局) → 评审验收
 > **验收原则**: 现有页面 0 回归 + Storybook 故事完整 + Jest 单测通过
@@ -72,6 +72,34 @@
 | P2 | B2 | `--trae-card-bg-hover` Light/Dark 相同 | 需 Storybook Dark 主题人工验证后再定值 |
 | P2 | T1 | 覆盖率工具显示 0% | esbuild-jest 已知问题,需切换测试框架 |
 | P2 | T2 | 无 Chromatic 视觉回归 | 工具未配置,留待后续 |
+
+---
+
+## 二次评审记录(2026-07-31)
+
+### 评审结论:✅ 通过(7 项已全部修复)
+
+### 评审发现的问题与处置
+
+| 优先级 | 编号 | 类型 | 问题 | 处置 |
+|--------|------|------|------|------|
+| P0 | Q-3 | 正确性 | TaskProgress 嵌套子节点 `isLatest` 硬编码 `false`,autoScroll 在嵌套场景失效 | ✅ 将 `isLatest` prop 替换为 `latestNodeId` prop,子节点递归传递,`isLatest` 由 `node.id === latestNodeId` 计算 |
+| P1 | C-1 | 一致性 | `components-api.md` §2.1 仍保留 `icon?: string`,但 types.ts 已移除(Q7) | ✅ 文档同步移除 `icon` 字段 |
+| P1 | C-4 | 一致性 | `design-tokens.md` §2.3 定义 `-dark` 后缀 token,但实际实现通过 `.dark` 选择器覆盖同名 token | ✅ 文档修正为同名覆盖说明,移除误导性 `-dark` 后缀 |
+| P1 | Q-1 | 质量 | ModeSwitcher `return` 内 `<div>` 缩进多一层 | ✅ 统一为标准 2-space 缩进 |
+| P2 | C-3 | 一致性 | `tasks.md` P0-8 字体引入路径写 `400.css`,实际用 `latin-400.css` | ✅ 文档同步为 `latin-*` 前缀 |
+| P2 | C-2 | 一致性 | `components-api.md` §2.2 `status` 内联联合类型,实现提取为 `ProgressNodeStatus` 别名 | ✅ 文档补充类型别名定义 |
+| P2 | Q-4 | 可访问性 | ToolPanel 双 trigger 重复 `aria-expanded`/`aria-controls`,屏幕阅读器困惑 | ✅ chevron 改用普通 `<button>`(非 `CollapsibleTrigger`),加 `aria-hidden` + `tabIndex=-1`;主 trigger 独占 ARIA 语义 |
+
+### 完善项(2026-07-31)
+
+| 类型 | 改动 | 说明 |
+|------|------|------|
+| 测试补充 | ToolPanel chevron trigger `tabIndex=-1` 测试 | 验证主 trigger 独占 Tab 序列 |
+| 测试补充 | TaskProgress 多层嵌套(3 层)autoScroll 测试 | 覆盖最深右下叶子的 autoScroll 行为 |
+| 注释修正 | ToolPanel 头部注释"圆点状态色"不适用 | 改为"图标 + 标题 + 徽标数" |
+| 注释补充 | ToolPanel JSDoc 补充 Q-4 修复说明 | 记录 chevron trigger ARIA 独占策略 |
+| 测试修正 | `actions 点击不触发 toggle(stopPropagation)` 测试名 | 实际无 stopPropagation,改为"actions 在 trigger 外部" |
 
 ---
 

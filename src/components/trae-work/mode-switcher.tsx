@@ -57,18 +57,18 @@ export const ModeSwitcher = React.forwardRef<HTMLDivElement, ModeSwitcherProps>(
 
     return (
       <div
-                ref={ref}
-                className={cn(
-                  'inline-flex items-center gap-0.5 rounded-trae-md',
-                  'bg-[image:var(--trae-card-bg-hover)]',
-                  disabled && 'opacity-50',
-                )}
-                role="radiogroup"
-                aria-label="工作模式切换"
-                aria-disabled={disabled}
-                data-testid="mode-switcher"
-                data-value={value}
-              >
+        ref={ref}
+        className={cn(
+          'inline-flex items-center gap-0.5 rounded-trae-md',
+          'bg-[image:var(--trae-card-bg-hover)]',
+          disabled && 'opacity-50',
+        )}
+        role="radiogroup"
+        aria-label="工作模式切换"
+        aria-disabled={disabled}
+        data-testid="mode-switcher"
+        data-value={value}
+      >
         {availableModes.map((mode) => {
           const Icon = MODE_ICON_COMPONENT[mode];
           const isActive = mode === value;

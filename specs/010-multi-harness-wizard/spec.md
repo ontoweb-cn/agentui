@@ -992,10 +992,14 @@ const ENDPOINT_PLACEHOLDER_BY_TYPE: Partial<Record<BackendType, string>> = {
 
 | 端点 | 鉴权 | 说明 |
 |------|------|------|
-| `GET /api/bff/admin/wizard/status` | 公开 | `{ needsWizard, backendCount, tenantCount }` |
+| `GET /api/bff/admin/wizard/status` | 公开 | `{ needsSetup, bootstrapEnabled, backendCount }`(needsSetup 基于就绪后端 `store.list()` 判断;配置存在但 token 未就绪时仍为 true) |
 | `GET /api/bff/admin/wizard/types` | 公开 | 支持的 BackendType 列表 + 默认配置 |
 | `POST /api/bff/admin/wizard/probe` | **admin** | `{ type, endpoint, credentials }` → `{ healthy, capabilities }` |
 | `POST /api/bff/admin/wizard/setup` | **admin OR bootstrap token** | `{ type, name, endpoint, credentials, tokenMode }` → 创建配置 + 默认 tenant |
+
+> **backend-store load() 边界行为(评审修复)**:
+> - tenant 引用的 backend **配置存在但 token 未就绪**(env var 未设置):`load()` 跳过该 tenant + warn 日志,不崩溃。被跳过的 tenant 可通过 `listSkippedTenants()` 查询。token 补齐后需重启 BFF 重新 load 恢复。
+> - tenant 引用的 backend **配置完全不存在**(引用错误):`load()` 抛出 `BackendNotConfiguredError`(数据完整性问题需人工介入)。
 
 ### 9.4 首次安装 Bootstrap Token 机制(B4 修正)
 
@@ -1143,11 +1147,35 @@ src/pages/wizard/
 
 ```typescript
 function WizardGuard({ children }) {
-  const { data } = useQuery({ queryKey: ['wizard/status'], queryFn: wizardService.getStatus });
-  if (data?.needsWizard) return <Navigate to="/wizard" />;
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['wizard/status'],
+    queryFn: () => fetchWizardStatus().then(r => r.data),
+    staleTime: 5 * 60 * 1000, // 5 分钟缓存,避免路由切换重复请求
+    retry: 1,                  // 容忍瞬时网络抖动
+  });
+  const needsSetup = data?.needsSetup === true;
+
+  useEffect(() => {
+    if (needsSetup) {
+      // mode=add 场景(用户主动从 Admin 添加 backend)跳过重定向
+      if (new URLSearchParams(location.search).get('mode') === 'add') return;
+      navigate('/wizard', { replace: true });
+    }
+  }, [needsSetup]);
+
+  // needsSetup=true:渲染 loading 占位(等待重定向)
+  // isLoading:渲染 loading 占位(避免 AuthWrapper 在未登录状态下抢先跳转 /login,
+  //   导致 wizard 重定向的 useEffect 永远没有机会执行)
+  if (needsSetup || isLoading) return <LoadingOverlay />;
+  // isError(降级放行)或 needsSetup=false:渲染 children(由 AuthWrapper 继续认证守卫)
   return children;
 }
 ```
+
+> **实现要点(P3-m3 评审修复)**:
+> - `isLoading` 期间必须渲染 loading 占位,而非直接渲染 children。否则 AuthWrapper 在社区版未登录状态下会抢先跳转 `/login`,而 `/login` 是公开路由不经过 WizardGuard,即使随后查询返回 `needsSetup=true` 也无法再触发 wizard 重定向。
+> - `isError` 时降级放行(渲染 children 由 AuthWrapper 兜底),不阻塞已配置系统的正常访问。
+> - `fetchWizardStatus` 返回 BFF 裸对象(无 `{ code, message, data }` 包装),直接读 `data.needsSetup`。
 
 ### 9.6 Admin 页"切换/新增"入口
 

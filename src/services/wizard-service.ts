@@ -84,42 +84,39 @@ export interface WizardSetupResponse {
   error?: string;
 }
 
-interface ApiResponse<T> {
-  code: number;
-  message: string;
-  data: T;
-}
-
 // ---------------------------------------------------------------------------
 // Service methods
 // ---------------------------------------------------------------------------
+//
+// 注意:BFF wizard 路由直接返回裸对象(无 ApiResponse { code, message, data } 包装),
+// 因此泛型参数使用响应体类型本身。历史遗留:原声明为 ApiResponse<T> 与 BFF 实际返回
+// 格式不符,导致消费方需用 `as unknown as` 双重断言或读 `data.data.xxx`(运行时
+// undefined,会抛 TypeError)。已在 spec-010 评审中根治。
 
 /**
  * 查询 Wizard 状态(是否需要首次安装)。
  * GET /api/bff/admin/wizard/status
  */
 export const fetchWizardStatus = () =>
-  request.get<ApiResponse<WizardStatusResponse>>(api.wizard.status);
+  request.get<WizardStatusResponse>(api.wizard.status);
 
 /**
  * 获取可用后端类型列表(Step 2)。
  * GET /api/bff/admin/wizard/backend-types
  */
 export const fetchWizardBackendTypes = () =>
-  request.get<ApiResponse<WizardBackendTypesResponse>>(
-    api.wizard.backendTypes,
-  );
+  request.get<WizardBackendTypesResponse>(api.wizard.backendTypes);
 
 /**
  * 探测后端连接(Step 4)。
  * POST /api/bff/admin/wizard/probe
  */
 export const probeWizardBackend = (req: WizardProbeRequest) =>
-  request.post<ApiResponse<WizardProbeResponse>>(api.wizard.probe, req);
+  request.post<WizardProbeResponse>(api.wizard.probe, req);
 
 /**
  * 创建第一个 backend(Step 5)。
  * POST /api/bff/admin/wizard/setup
  */
 export const setupWizardBackend = (req: WizardSetupRequest) =>
-  request.post<ApiResponse<WizardSetupResponse>>(api.wizard.setup, req);
+  request.post<WizardSetupResponse>(api.wizard.setup, req);

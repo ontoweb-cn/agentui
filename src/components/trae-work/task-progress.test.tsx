@@ -343,4 +343,45 @@ describe('TaskProgress', () => {
     render(<TaskProgress nodes={nodes} defaultExpanded={['l1', 'l2']} />);
     expect(screen.getByText('第 3 层叶子(最新)')).toBeInTheDocument();
   });
+
+  // spec-013 评审 Q-3: 嵌套子节点 autoScroll 修复测试
+  it('嵌套结构:autoScroll 滚动到最右下叶子节点(非顶层节点)', () => {
+    const nodes = [
+      makeNode({
+        id: 'parent',
+        title: '父节点',
+        children: [
+          makeNode({ id: 'child-1', title: '子节点 1', content: undefined }),
+          makeNode({ id: 'child-2', title: '子节点 2(最新)', content: undefined }),
+        ],
+      }),
+    ];
+    render(<TaskProgress nodes={nodes} defaultExpanded={['parent']} autoScroll={true} />);
+    // 修复前:子节点 isLatest 硬编码 false,latestNodeRef 不指向子节点,不会触发 scrollIntoView
+    // 修复后:child-2 是最右下叶子,应被标记为 latest 并触发 scrollIntoView
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
+  });
+
+  // spec-013 评审 Q-3: 多层嵌套 autoScroll 测试(3 层深度)
+  it('多层嵌套:autoScroll 滚动到最深右下叶子节点', () => {
+    const nodes = [
+      makeNode({
+        id: 'l1',
+        title: '第 1 层',
+        children: [
+          makeNode({
+            id: 'l2',
+            title: '第 2 层',
+            children: [
+              makeNode({ id: 'l3-leaf', title: '第 3 层叶子(最新)', content: undefined }),
+            ],
+          }),
+        ],
+      }),
+    ];
+    render(<TaskProgress nodes={nodes} defaultExpanded={['l1', 'l2']} autoScroll={true} />);
+    // 修复前:l3-leaf 是嵌套子节点,isLatest 硬编码 false,不会触发 scrollIntoView
+    // 修复后:l3-leaf 是最深右下叶子,应被标记为 latest 并触发 scrollIntoView
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
+  });
 });

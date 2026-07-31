@@ -1,3 +1,8 @@
+/**
+ * @deprecated 此组件已废弃,请使用 TopBar。legacy 模式下仍可使用。
+ * spec-013 P1-5: 由 TopBar 替代
+ */
+
 // Temporarily hidden: Discord & GitHub logos
 // import { IconFontFill } from '@/components/icon-font';
 import { IntellectAvatar } from '@/components/intellect-avatar';

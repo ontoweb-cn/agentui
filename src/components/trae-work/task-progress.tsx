@@ -16,6 +16,7 @@ import { PROGRESS_NODE_COLOR } from './constants';
  * spec-013 P1-Q3 修复:受控模式使用 ref 跟踪最新 expanded,避免闭包陷阱。
  * spec-013 P2-Q4 修复:递归查找最新节点(深度优先,最右下叶子为最新)。
  * spec-013 P1-A2 修复:节点添加 aria-label 提升可访问性。
+ * spec-013 评审 Q-3 修复:嵌套子节点 isLatest 正确传递 latestNodeId,修复 autoScroll 在嵌套场景下失效。
  */
 export const TaskProgress = React.forwardRef<HTMLDivElement, TaskProgressProps>(
   function TaskProgress(
@@ -90,7 +91,7 @@ export const TaskProgress = React.forwardRef<HTMLDivElement, TaskProgressProps>(
             key={node.id}
             node={node}
             isLast={index === nodes.length - 1}
-            isLatest={node.id === latestNodeId}
+            latestNodeId={latestNodeId}
             expanded={expanded}
             onToggle={toggleNode}
             showTimestamp={showTimestamp}
@@ -120,7 +121,8 @@ function findLatestNodeId(nodes: ProgressNode[]): string | null {
 interface ProgressNodeItemProps {
   node: ProgressNode;
   isLast: boolean;
-  isLatest: boolean;
+  /** 最新节点 ID(用于 autoScroll 标记),递归传递以修复嵌套场景 */
+  latestNodeId: string | null;
   expanded: string[];
   onToggle: (nodeId: string) => void;
   showTimestamp: boolean;
@@ -130,12 +132,14 @@ interface ProgressNodeItemProps {
 function ProgressNodeItem({
   node,
   isLast,
-  isLatest,
+  latestNodeId,
   expanded,
   onToggle,
   showTimestamp,
   latestNodeRef,
 }: ProgressNodeItemProps) {
+  // spec-013 评审 Q-3: isLatest 由 latestNodeId 计算,嵌套子节点也能正确标记
+  const isLatest = node.id === latestNodeId;
   const isExpanded = expanded.includes(node.id);
   const hasContent = node.content !== undefined && node.content !== null;
   const hasChildren = node.children && node.children.length > 0;
@@ -252,7 +256,7 @@ function ProgressNodeItem({
                       key={child.id}
                       node={child}
                       isLast={idx === node.children!.length - 1}
-                      isLatest={false}
+                      latestNodeId={latestNodeId}
                       expanded={expanded}
                       onToggle={onToggle}
                       showTimestamp={showTimestamp}
