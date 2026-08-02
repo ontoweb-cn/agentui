@@ -49,7 +49,8 @@ export const useSelectNextMessages = () => {
     // Gateway chat: conversationId === dialogId, prologue 恒为空,跳过。
     // isNew=true 是 intellect-rag 延迟创建语义,对 Gateway chat 无效,
     // 且会覆盖正在加载的服务端消息,导致 chat 内容不显示。
-    const isGatewayChat = conversationId === dialogId;
+    // conversationId 为空时回退到 dialogId（与 useSendMessage 中 isGatewayChat 一致）。
+    const isGatewayChat = (conversationId || dialogId) === dialogId;
     if (dialogId !== '' && isNew === 'true' && !isGatewayChat) {
       const nextMessage = {
         role: MessageType.Assistant,
@@ -111,7 +112,11 @@ export const useSendMessage = (controller: AbortController) => {
   // 注：曾用 chatListData?.chats.find(...)?.source === 'gateway' 判断，
   // 但 useFetchChatList 的 queryKey 含 pagination/search 参数且 gcTime=0，
   // 导致此处 getQueryData([FetchChatList]) 恒为 undefined，isGatewayChat 恒为 false。
-  const isGatewayChat = conversationId === chatId;
+  //
+  // conversationId 为空时（页面直接加载/刷新，URL 无 ?conversationId= 参数），
+  // 回退到 chatId 判断：Gateway chat 的 session 就是 chat 本身，chatId 即 session ID。
+  // 与 chat/index.tsx 的 fetchConversation 中 effectiveConversationId 模式保持一致。
+  const isGatewayChat = (conversationId || chatId) === chatId;
 
   // 根据当前 chat 来源选择对应 hook 的状态（answer/done/send）
   const activeSse = isGatewayChat ? gatewaySse : ragSse;

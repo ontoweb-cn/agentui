@@ -180,7 +180,7 @@ export function Sessions({ handleConversationCardClick }: SessionProps) {
             className="size-8"
           />
 
-          <span className="flex-1 truncate">{data.name}</span>
+          <span className="flex-1 truncate">{data.name || t('chat.newConversation')}</span>
         </div>
 
         <Tooltip>
@@ -340,7 +340,7 @@ export function Sessions({ handleConversationCardClick }: SessionProps) {
                     data-testid="chat-detail-session-item"
                     data-session-id={x.id}
                   >
-                    {x.name}
+                    {x.name || t('chat.newConversation')}
                   </button>
 
                   <ConversationDropdown

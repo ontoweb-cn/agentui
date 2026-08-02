@@ -68,11 +68,11 @@ export function useCreateConversationBeforeSendMessage() {
       // 无需调用 intellect-rag-app 的 createSession 接口。
       // 直接用 chatId（URL 路由参数，即 Gateway session ID）作为 conversationId。
       if (conversationId === '' || isNew === 'true') {
-        // Gateway chat 判定：conversationId === chatId（URL 结构特征）。
-        // 不依赖 chatListData，因为 useFetchChatList 的 queryKey 含 pagination/search
-        // 参数且 gcTime=0，导致 getQueryData 恒为 undefined（与 use-send-chat-message.ts
-        // 中 isGatewayChat 判断保持一致）。
-        const isGatewayChat = conversationId === chatId;
+        // Gateway chat 判定：(conversationId || chatId) === chatId（URL 结构特征）。
+        // conversationId 为空时（页面直接加载/刷新），回退到 chatId 判断：
+        // Gateway chat 的 session 就是 chat 本身，chatId 即 session ID。
+        // 与 use-send-chat-message.ts 和 chat/index.tsx 的判断保持一致。
+        const isGatewayChat = (conversationId || chatId) === chatId;
 
         if (isGatewayChat) {
           // Gateway chat：session 已存在，直接复用 chatId 作为 conversationId。

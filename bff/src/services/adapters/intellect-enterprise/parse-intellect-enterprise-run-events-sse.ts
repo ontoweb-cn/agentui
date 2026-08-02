@@ -129,12 +129,19 @@ function parseFrame(
 
   for (const line of lines) {
     const trimmed = line.trim();
-    // SSE 注释帧(: keepalive)跳过
+    // SSE 注释帧(`: keepalive\n\n`)跳过
     if (trimmed.startsWith(':')) {
       continue;
     }
     if (trimmed.startsWith('data:')) {
-      dataLines.push(trimmed.slice(5).trimStart());
+      const dataContent = trimmed.slice(5).trimStart();
+      // Gateway 用 axum `.data(": keepalive")` 发送 keepalive,
+      // 实际生成 `data: : keepalive\n\n`(不是注释帧 `: keepalive\n\n`)。
+      // data 内容以 ':' 开头视为 keepalive/stream closed 等控制帧,跳过。
+      if (dataContent.startsWith(':')) {
+        continue;
+      }
+      dataLines.push(dataContent);
     }
   }
 

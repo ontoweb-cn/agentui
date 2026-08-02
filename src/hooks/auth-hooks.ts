@@ -52,7 +52,11 @@ export const useOAuthCallback = () => {
  * 企业版 token 存 HttpOnly cookie,前端 JS 不可读。OAuth callback 返回 302 → 前端首页,
  * 此时 localStorage 无任何标记,isLogin=false。本 hook 通过 /auth/me 被动探测 cookie 有效性:
  *   - 200 → 存 localStorage 标记 → useAuth 中 isLogin 变 true
- *   - 401 → 不做任何操作(未登录状态,保持登录页)
+ *   - 401 → cookie 过期/无效,清除 localStorage 标记 → useAuth 中 isLogin 变 false → 跳转登录
+ *
+ * 修复:marker 存在时也启用探测,检测 cookie 过期(maxAge=86400s=1天)。
+ * 旧实现 marker 存在时跳过探测,导致 cookie 过期后前端仍认为已登录,
+ * 所有 API 请求 401 但 401 拦截器在企业模式下不跳转,用户停留空页面。
  *
  * 使用 fetch() 直接调用,绕开 request.ts 401 拦截器(避免探测 401 时弹出通知/触发跳转)。
  * 跳过 /admin 路径(admin 走 intellect-rag admin token,不涉及企业版 cookie)。
@@ -63,14 +67,13 @@ const useEnterpriseCookieProbe = () => {
   const location = useLocation();
 
   const hasAuthorization = !!authorizationUtil.getAuthorization();
-  const hasMarker = localStorage.getItem(AuthMode) === 'intellect-enterprise';
   const isAdminPath = location.pathname.startsWith('/admin');
 
-  // 仅企业版 + 无 localStorage Authorization + 无 authMode 标记 + 非 admin 路径时启用
+  // 企业版 + 无 localStorage Authorization + 非 admin 路径时启用。
+  // 不再跳过 hasMarker=true 的情况:需要验证 cookie 是否仍然有效(可能已过期)。
   const enabled =
     authMode === 'intellect-enterprise' &&
     !hasAuthorization &&
-    !hasMarker &&
     !isAdminPath;
 
   return useQuery({
@@ -85,7 +88,9 @@ const useEnterpriseCookieProbe = () => {
           headers: { 'X-Backend-Id': tenantId },
         });
         if (!resp.ok) {
-          // 401/其他错误:未登录或 cookie 过期,不做任何操作
+          // 401/其他错误:cookie 过期或无效,清除 localStorage 标记,
+          // 使 useAuth 中 isLogin 变 false → AuthWrapper 跳转登录页。
+          localStorage.removeItem(AuthMode);
           return false;
         }
         const json = await resp.json();
@@ -103,9 +108,12 @@ const useEnterpriseCookieProbe = () => {
           });
           return true;
         }
+        // 200 但无有效数据:清除标记
+        localStorage.removeItem(AuthMode);
         return false;
       } catch {
-        // 网络错误或 JSON 解析失败:视为未登录
+        // 网络错误或 JSON 解析失败:不清除标记(可能是暂时性网络问题),
+        // 保持现有登录态,由后续请求的 401 拦截器处理。
         return false;
       }
     },
@@ -135,33 +143,43 @@ export const useAuth = () => {
       return;
     }
 
-    // 2. 已有企业版 localStorage 标记,视为登录(cookie 真实有效性由后续请求验证)
-    if (hasMarker) {
-      setIsLogin(true);
-      return;
-    }
-
-    // 3. authMode 还在加载中,保持 null 等待(避免竞态:此时无法判断
+    // 2. authMode 还在加载中,保持 null 等待(避免竞态:此时无法判断
     //    是否需要启用 probe,提前返回 false 会导致页面渲染触发 401 跳转)
     if (authModeLoading) {
       setIsLogin(null);
       return;
     }
 
-    // 4. 社区版模式,无 Authorization,未登录
+    // 3. 企业版 probe 已完成:以 probe 结果为准(检测 cookie 过期)。
+    //    probe 返回 false 时 marker 已被 queryFn 清除,hasMarker 此时为 false。
+    //    probe 返回 true 时 marker 已被 queryFn 写入,hasMarker 此时为 true。
+    //    此检查必须在 hasMarker 乐观判断之前,确保 cookie 过期能被检测到。
+    if (probe.data !== undefined) {
+      setIsLogin(probe.data === true);
+      return;
+    }
+
+    // 4. 已有企业版 localStorage 标记,probe 尚未完成:乐观视为登录
+    //    (cookie 真实有效性由 probe 验证,probe 完成后 step 3 会纠正)
+    if (hasMarker) {
+      setIsLogin(true);
+      return;
+    }
+
+    // 5. 社区版模式,无 Authorization,未登录
     if (authMode !== 'intellect-enterprise') {
       setIsLogin(false);
       return;
     }
 
-    // 5. 企业版 cookie 模式:probe 进行中保持 null,探测完成按结果设置
+    // 6. 企业版 cookie 模式:probe 进行中保持 null,探测完成按结果设置
     //    probe.isLoading=true 时 probe.data===undefined,保持 null 等待
     if (probe.isLoading && probe.data === undefined) {
       setIsLogin(null);
       return;
     }
 
-    // 6. 企业版探测完成,根据结果设置
+    // 7. 企业版探测完成,根据结果设置(冗余兜底,正常流程 step 3 已处理)
     setIsLogin(probe.data === true);
   }, [auth, probe.data, probe.isLoading, authMode, authModeLoading]);
 

@@ -411,21 +411,25 @@ export const useFetchChat = () => {
  * Gateway session = chat(一对一),不存在 intellect-rag 的 chat → sessions 嵌套概念。
  * 本 hook 返回单个 conversation(基于当前 chat 构造),供前端 conversation 切换逻辑使用。
  *
- * 标题来源:复用 useFetchChat 缓存的 Gateway session title(由 mapGatewaySessionToDialog
+ * 标题来源:响应式订阅 useFetchChat 的 Gateway session title(由 mapGatewaySessionToDialog
  * 从 s.title 映射),避免硬编码 'Default'。Gateway 在 POST /v1/runs 时会自动根据首条
- * 消息更新 session title,本 hook 通过 queryClient 缓存订阅自动同步。
+ * 消息更新 session title,本 hook 将 chatData?.name 纳入 queryKey 实现自动同步。
  */
 export const useFetchSessionList = () => {
   const { id } = useParams();
   const { searchString, handleInputChange } = useHandleSearchStrChange();
-  const queryClient = useQueryClient();
+  // 响应式订阅 useFetchChat,使 session title 更新时自动重算。
+  // 修复:刷新页面时 useFetchChat 尚未完成,旧实现从缓存读取到空 name,
+  // 且 useFetchChat 完成后 useFetchSessionList 不会重新执行,导致 title 永久为空。
+  // 将 chatData?.name 纳入 queryKey,react-query 在 name 变化时自动重跑 queryFn。
+  const { data: chatData } = useFetchChat();
 
   const {
     data,
     isFetching: loading,
     refetch,
   } = useQuery<IConversation[]>({
-    queryKey: [ChatApiAction.FetchSessionList, id],
+    queryKey: [ChatApiAction.FetchSessionList, id, chatData?.name],
     initialData: [],
     gcTime: 0,
     refetchOnWindowFocus: false,
@@ -436,13 +440,7 @@ export const useFetchSessionList = () => {
         : data;
     },
     queryFn: async () => {
-      // 从 useFetchChat 缓存读取真实 session title(Gateway 自动生成/用户手动改名)。
-      // useFetchChat 的 queryKey 为 [FetchChat, id],缓存命中时返回 IDialog.name。
-      const chatCache = queryClient.getQueryData<IDialog>([
-        ChatApiAction.FetchChat,
-        id,
-      ]);
-      const sessionName = chatCache?.name || '';
+      const sessionName = chatData?.name || '';
       return [
         {
           id: id!,
@@ -561,11 +559,16 @@ export function useFetchSessionManually() {
           };
 
           // 映射 assistant 的 tool_calls 为 ToolCallRecord[]
+          // clarify 工具调用特殊处理:构建 pendingClarify 而非 ToolCallRecord,
+          // 使历史会话中的 clarify 请求也能渲染为可交互的 ClarifyCard。
           if (m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
             const timestamp = Number(m.timestamp ?? 0);
-            base.toolCalls = m.tool_calls.map((tc: any) => {
+            const toolCalls: any[] = [];
+            let pendingClarify: any = null;
+            for (const tc of m.tool_calls) {
               const callId = String(tc.call_id ?? tc.id ?? '');
               const fn = tc.function ?? {};
+              const toolName = String(fn.name ?? '');
               // 解析 arguments(可能是字符串化的 JSON)
               let args: unknown = fn.arguments;
               if (typeof args === 'string') {
@@ -577,15 +580,62 @@ export function useFetchSessionManually() {
               }
               // 合并对应的 tool 消息结果
               const toolResult = toolResultByCallId.get(callId);
-              return {
+
+              // clarify 工具调用:构建 pendingClarify,不加入 toolCalls 数组
+              // (避免同时渲染 ToolCallCard 和 ClarifyCard)
+              if (toolName === 'clarify' && args && typeof args === 'object') {
+                const clarifyArgs = args as {
+                  question?: string;
+                  choices?: string[];
+                };
+                // tool 结果存在表示 clarify 已被响应(用户提交或超时),
+                // 否则仍为 pending(等待用户输入)
+                const hasResult = !!toolResult;
+                // 从 tool 结果中提取用户回答文本
+                // intellect-team clarify tool 结果格式:
+                // {"response":"<用户回答或超时提示>"} 或 {"response":"The user did not respond..."}
+                let submittedAnswer: string | undefined;
+                if (hasResult && toolResult?.content) {
+                  const result = toolResult.content as {
+                    response?: string;
+                  };
+                  if (typeof result.response === 'string') {
+                    submittedAnswer = result.response;
+                  }
+                }
+                pendingClarify = {
+                  question: String(clarifyArgs.question ?? ''),
+                  choices: Array.isArray(clarifyArgs.choices)
+                    ? clarifyArgs.choices.map(String)
+                    : [],
+                  // clarifyId 格式 session_id:timestamp_ms(与实时 SSE 事件一致)
+                  clarifyId: `${chatId || sessionId}:${timestamp}`,
+                  sessionId: String(chatId || sessionId),
+                  status: hasResult ? 'submitted' : 'pending',
+                  ...(submittedAnswer !== undefined && {
+                    submittedAnswer,
+                  }),
+                  ...(hasResult && { submittedAt: timestamp }),
+                };
+                // 跳过加入 toolCalls
+                continue;
+              }
+
+              toolCalls.push({
                 toolCallId: callId,
                 toolName: String(fn.name ?? toolResult?.toolName ?? ''),
                 args,
                 result: toolResult?.content,
                 status: 'completed' as const,
                 startedAt: timestamp,
-              };
-            });
+              });
+            }
+            if (toolCalls.length > 0) {
+              base.toolCalls = toolCalls;
+            }
+            if (pendingClarify) {
+              base.pendingClarify = pendingClarify;
+            }
           }
 
           return base;
