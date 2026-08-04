@@ -4,6 +4,7 @@
 // 阶段 0 仅 UI 壳,onChange 回调不接业务逻辑
 
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 import { FileText, Code2, LayoutGrid, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ModeSwitcherProps, WorkMode } from './types';
@@ -32,6 +33,7 @@ export const ModeSwitcher = React.forwardRef<HTMLDivElement, ModeSwitcherProps>(
     },
     ref,
   ) {
+    const { t } = useTranslation();
     const sizePadding = MODE_SWITCHER_SIZE_PADDING[size];
     const sizeIcon = MODE_SWITCHER_SIZE_ICON[size];
 
@@ -64,7 +66,7 @@ export const ModeSwitcher = React.forwardRef<HTMLDivElement, ModeSwitcherProps>(
           disabled && 'opacity-50',
         )}
         role="radiogroup"
-        aria-label="工作模式切换"
+        aria-label={t('modeSwitcher.label')}
         aria-disabled={disabled}
         data-testid="mode-switcher"
         data-value={value}

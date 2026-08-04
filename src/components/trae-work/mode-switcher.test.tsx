@@ -175,7 +175,7 @@ describe('ModeSwitcher', () => {
   // spec-013 P2-A3: radiogroup aria-label 测试
   it('radiogroup 有 aria-label 描述用途', () => {
     render(<ModeSwitcher {...makeProps()} />);
-    expect(screen.getByRole('radiogroup')).toHaveAttribute('aria-label', '工作模式切换');
+    expect(screen.getByRole('radiogroup')).toHaveAttribute('aria-label', 'Work mode switcher');
   });
 
   it('每个段 role=radio', () => {

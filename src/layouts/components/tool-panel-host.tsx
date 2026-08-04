@@ -3,6 +3,7 @@
 // 对接 ThreeColumnLayout 右侧工具面板区
 
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 import { PanelRightClose } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ToolPanel } from '@/components/trae-work';
@@ -33,10 +34,12 @@ export function ToolPanelHost({
   expandedPanels,
   onExpandedChange,
   accordion = false,
-  title = '工具',
+  title,
   collapsed = false,
   onCollapsedChange,
 }: ToolPanelHostProps) {
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t('toolPanelHost.title');
   const [internalExpanded, setInternalExpanded] = React.useState<Set<string>>(
     () => new Set(defaultExpandedPanels ?? []),
   );
@@ -81,12 +84,12 @@ export function ToolPanelHost({
       {/* 顶部标题栏 */}
       <div className="flex h-10 items-center justify-between border-b border-[var(--trae-line)] px-4">
         <span className="text-sm font-semibold text-[var(--trae-ink)]">
-          {title}
+          {resolvedTitle}
         </span>
         <button
           type="button"
           onClick={handleToggleCollapse}
-          aria-label="折叠工具面板"
+          aria-label={t('toolPanelHost.collapse')}
           className="inline-flex size-4 items-center justify-center text-[var(--trae-grey)] transition-colors hover:text-[var(--trae-ink)]"
         >
           <PanelRightClose className="size-4" />

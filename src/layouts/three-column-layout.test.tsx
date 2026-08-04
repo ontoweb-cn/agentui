@@ -330,7 +330,7 @@ describe('ThreeColumnLayout', () => {
     );
     const sidebar = screen.getByTestId('three-column-sidebar');
     expect(sidebar).toHaveAttribute('role', 'complementary');
-    expect(sidebar).toHaveAttribute('aria-label', '任务列表');
+    expect(sidebar).toHaveAttribute('aria-label', 'Task list');
   });
 
   it('A11y:toolPanel 区域有 role=complementary 和 aria-label=工具面板', () => {
@@ -341,7 +341,7 @@ describe('ThreeColumnLayout', () => {
     );
     const toolpanel = screen.getByTestId('three-column-toolpanel');
     expect(toolpanel).toHaveAttribute('role', 'complementary');
-    expect(toolpanel).toHaveAttribute('aria-label', '工具面板');
+    expect(toolpanel).toHaveAttribute('aria-label', 'Tool panel');
   });
 
   it('A11y:main 区域有 role=main', () => {

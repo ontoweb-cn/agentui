@@ -1,6 +1,9 @@
 import '@testing-library/jest-dom';
 
 import React from 'react';
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import translation_en from './src/locales/en';
 
 // esbuild-jest transforms JSX in classic mode (it only forwards `jsxFactory`
 // / `jsxFragment` to esbuild, not `jsx: 'automatic'`). Several modules under
@@ -9,3 +12,18 @@ import React from 'react';
 // the automatic runtime supplies it; in Jest we expose it globally so classic
 // JSX evaluation can find `React` without touching every source file.
 (globalThis as unknown as { React: typeof React }).React = React;
+
+// Initialize i18n with English resources so useTranslation() returns actual
+// translations instead of raw keys in tests.
+if (!i18n.isInitialized) {
+  i18n.use(initReactI18next).init({
+    lng: 'en',
+    fallbackLng: 'en',
+    resources: {
+      en: translation_en,
+    },
+    interpolation: {
+      escapeValue: false,
+    },
+  });
+}

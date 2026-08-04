@@ -3,6 +3,7 @@
 // 视觉规范:头部 40px,图标 + 标题 + 徽标数,展开/折叠 chevron 旋转
 
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ChevronDown,
   Loader2,
@@ -55,6 +56,7 @@ export const ToolPanel = React.forwardRef<HTMLDivElement, ToolPanelProps>(
     },
     ref,
   ) {
+    const { t } = useTranslation();
     const [internalExpanded, setInternalExpanded] = React.useState(defaultExpanded);
     const isControlled = expandedProp !== undefined;
     const expanded = isControlled ? (expandedProp as boolean) : internalExpanded;
@@ -116,7 +118,7 @@ export const ToolPanel = React.forwardRef<HTMLDivElement, ToolPanelProps>(
                       backgroundColor: 'var(--trae-green-bright)',
                       color: '#000',
                     }}
-                    aria-label={`${badge} 条未读`}
+                    aria-label={t('toolPanel.unreadBadge', { count: badge })}
                   >
                     {badge > 99 ? '99+' : badge}
                   </span>
@@ -163,7 +165,7 @@ export const ToolPanel = React.forwardRef<HTMLDivElement, ToolPanelProps>(
               {loading ? (
                 <div className="flex items-center justify-center gap-2 py-6 text-trae-sm text-trae-grey-2">
                   <Loader2 className="size-3 animate-spin" />
-                  <span>加载中...</span>
+                  <span>{t('toolPanel.loading')}</span>
                 </div>
               ) : empty ? (
                 <div className="py-4 text-center text-trae-sm text-trae-grey-2">{empty}</div>

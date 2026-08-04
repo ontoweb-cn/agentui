@@ -80,7 +80,7 @@ export async function* parseIntellectEnterpriseRunEventsSSE(
         break;
       }
 
-      buffer += decoder.decode(value, { stream: true });
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
 
       let frameEnd: number;
       while ((frameEnd = buffer.indexOf('\n\n')) !== -1) {

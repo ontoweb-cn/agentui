@@ -79,7 +79,7 @@ describe('ToolPanel', () => {
   it('badge > 0 时显示徽标数', () => {
     render(<ToolPanel {...makeProps({ defaultExpanded: false, badge: 5 })} />);
     expect(screen.getByText('5')).toBeInTheDocument();
-    expect(screen.getByLabelText('5 条未读')).toBeInTheDocument();
+    expect(screen.getByLabelText('5 unread')).toBeInTheDocument();
   });
 
   it('badge > 99 显示 99+', () => {
@@ -90,22 +90,22 @@ describe('ToolPanel', () => {
   it('badge = 0 不显示徽标', () => {
     render(<ToolPanel {...makeProps({ defaultExpanded: false, badge: 0 })} />);
     expect(screen.queryByText('0')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/条未读/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/unread/)).not.toBeInTheDocument();
   });
 
   it('badge 为 undefined 不显示徽标', () => {
     render(<ToolPanel {...makeProps({ defaultExpanded: false, badge: undefined })} />);
-    expect(screen.queryByLabelText(/条未读/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/unread/)).not.toBeInTheDocument();
   });
 
   it('badge 为负数不显示徽标', () => {
     render(<ToolPanel {...makeProps({ defaultExpanded: false, badge: -5 })} />);
-    expect(screen.queryByLabelText(/条未读/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/unread/)).not.toBeInTheDocument();
   });
 
   it('loading=true 显示加载状态(替代内容)', () => {
     render(<ToolPanel {...makeProps({ defaultExpanded: true, loading: true })} />);
-    expect(screen.getByText('加载中...')).toBeInTheDocument();
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
     expect(screen.queryByTestId('panel-content')).not.toBeInTheDocument();
   });
 
@@ -117,7 +117,7 @@ describe('ToolPanel', () => {
 
   it('loading 优先于 empty', () => {
     render(<ToolPanel {...makeProps({ defaultExpanded: true, loading: true, empty: '暂无数据' })} />);
-    expect(screen.getByText('加载中...')).toBeInTheDocument();
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
     expect(screen.queryByText('暂无数据')).not.toBeInTheDocument();
   });
 

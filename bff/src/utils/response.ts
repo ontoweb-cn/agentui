@@ -22,6 +22,11 @@ export function streamResponse(upstream: Response): Response {
     }
     responseHeaders.set(key, value);
   });
+  // P2 修复:SSE 流需要禁用 Nginx 缓冲,确保 chunk 立即转发到客户端
+  const contentType = responseHeaders.get('Content-Type') ?? '';
+  if (contentType.includes('text/event-stream') && !responseHeaders.has('X-Accel-Buffering')) {
+    responseHeaders.set('X-Accel-Buffering', 'no');
+  }
   return new Response(upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,

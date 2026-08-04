@@ -94,13 +94,13 @@ describe('TaskProgress', () => {
 
   it('有 content 的节点渲染展开按钮(可交互)', () => {
     render(<TaskProgress nodes={[makeNode({ content: '内容' })]} />);
-    expect(screen.getByRole('button', { name: '展开' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Expand' })).toBeInTheDocument();
   });
 
   it('无 content 的节点不渲染展开按钮(不可交互)', () => {
     render(<TaskProgress nodes={[makeNode({ content: undefined })]} />);
-    expect(screen.queryByRole('button', { name: '展开' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '折叠' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Expand' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Collapse' })).not.toBeInTheDocument();
   });
 
   it('有子节点的节点渲染展开按钮(可交互)', () => {
@@ -109,33 +109,33 @@ describe('TaskProgress', () => {
       children: [makeNode({ id: 'child1', title: '子节点' })],
     });
     render(<TaskProgress nodes={[node]} />);
-    expect(screen.getByRole('button', { name: '展开' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Expand' })).toBeInTheDocument();
   });
 
   it('点击展开按钮切换展开状态(非受控)', () => {
     const onExpandedChange = jest.fn();
     render(<TaskProgress nodes={[makeNode()]} onExpandedChange={onExpandedChange} />);
     // 初始折叠
-    expect(screen.getByRole('button', { name: '展开' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Expand' })).toBeInTheDocument();
     // 点击展开
-    fireEvent.click(screen.getByRole('button', { name: '展开' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }));
     expect(onExpandedChange).toHaveBeenCalledWith(['n1']);
     // 展开后按钮文字变为"折叠"
-    expect(screen.getByRole('button', { name: '折叠' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Collapse' })).toBeInTheDocument();
   });
 
   it('点击展开按钮再次点击折叠(非受控)', () => {
     render(<TaskProgress nodes={[makeNode()]} defaultExpanded={['n1']} />);
     // 初始展开
-    expect(screen.getByRole('button', { name: '折叠' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Collapse' })).toBeInTheDocument();
     // 点击折叠
-    fireEvent.click(screen.getByRole('button', { name: '折叠' }));
-    expect(screen.getByRole('button', { name: '展开' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }));
+    expect(screen.getByRole('button', { name: 'Expand' })).toBeInTheDocument();
   });
 
   it('defaultExpanded 设置初始展开状态', () => {
     render(<TaskProgress nodes={[makeNode()]} defaultExpanded={['n1']} />);
-    expect(screen.getByRole('button', { name: '折叠' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Collapse' })).toBeInTheDocument();
   });
 
   it('受控模式:expanded prop 控制展开状态', () => {
@@ -143,12 +143,12 @@ describe('TaskProgress', () => {
     const { rerender } = render(
       <TaskProgress nodes={[makeNode()]} expanded={[]} onExpandedChange={onExpandedChange} />,
     );
-    expect(screen.getByRole('button', { name: '展开' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Expand' })).toBeInTheDocument();
 
     rerender(
       <TaskProgress nodes={[makeNode()]} expanded={['n1']} onExpandedChange={onExpandedChange} />,
     );
-    expect(screen.getByRole('button', { name: '折叠' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Collapse' })).toBeInTheDocument();
   });
 
   it('受控模式:点击触发 onExpandedChange 但不内部更新', () => {
@@ -156,10 +156,10 @@ describe('TaskProgress', () => {
     render(
       <TaskProgress nodes={[makeNode()]} expanded={[]} onExpandedChange={onExpandedChange} />,
     );
-    fireEvent.click(screen.getByRole('button', { name: '展开' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }));
     expect(onExpandedChange).toHaveBeenCalledWith(['n1']);
     // 受控模式,内部状态不变,按钮文字仍是"展开"
-    expect(screen.getByRole('button', { name: '展开' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Expand' })).toBeInTheDocument();
   });
 
   it('showTimestamp=false 不渲染时间戳', () => {
@@ -262,18 +262,18 @@ describe('TaskProgress', () => {
 
   it('content 为 null 时节点不可交互', () => {
     render(<TaskProgress nodes={[makeNode({ content: null as unknown as string })]} />);
-    expect(screen.queryByRole('button', { name: '展开' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Expand' })).not.toBeInTheDocument();
   });
 
   it('content 为空字符串时节点仍可交互', () => {
     // 空字符串不是 undefined/null,所以可交互
     render(<TaskProgress nodes={[makeNode({ content: '' })]} />);
-    expect(screen.getByRole('button', { name: '展开' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Expand' })).toBeInTheDocument();
   });
 
   it('children 为空数组时节点不可交互(仅 content 判断)', () => {
     render(<TaskProgress nodes={[makeNode({ content: undefined, children: [] })]} />);
-    expect(screen.queryByRole('button', { name: '展开' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Expand' })).not.toBeInTheDocument();
   });
 
   it('节点 ID 设置在 data-node-id 属性上', () => {
@@ -304,7 +304,7 @@ describe('TaskProgress', () => {
   it('节点 aria-label 包含标题和状态', () => {
     render(<TaskProgress nodes={[makeNode({ title: '检索文档', status: 'completed' })]} />);
     const node = screen.getByRole('listitem');
-    expect(node).toHaveAttribute('aria-label', '检索文档 - completed');
+    expect(node).toHaveAttribute('aria-label', '检索文档 - Completed');
   });
 
   // spec-013 P2-Q4: 递归查找最新节点测试

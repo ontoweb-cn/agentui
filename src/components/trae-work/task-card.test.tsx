@@ -27,31 +27,31 @@ describe('TaskCard', () => {
   it('running 状态:渲染 spinner + 当前步骤 + 进度条', () => {
     render(<TaskCard {...makeProps()} />);
     expect(screen.getByText('测试任务')).toBeInTheDocument();
-    expect(screen.getByText('进行中')).toBeInTheDocument();
+    expect(screen.getByText('Running')).toBeInTheDocument();
     expect(screen.getByText('调用工具: kb-retrieve')).toBeInTheDocument();
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50');
   });
 
   it('completed 状态:渲染完成色圆点 + 完成标签', () => {
     render(<TaskCard {...makeProps({ status: 'completed', currentStep: undefined, progress: undefined })} />);
-    expect(screen.getByText('已完成')).toBeInTheDocument();
+    expect(screen.getByText('Completed')).toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
   it('failed 状态:渲染失败标签 + 重试按钮', () => {
     render(<TaskCard {...makeProps({ status: 'failed', currentStep: undefined, progress: undefined })} />);
-    expect(screen.getByText('失败')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
+    expect(screen.getByText('Failed')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 
   it('cancelled 状态:渲染取消标签', () => {
     render(<TaskCard {...makeProps({ status: 'cancelled', currentStep: undefined, progress: undefined })} />);
-    expect(screen.getByText('已取消')).toBeInTheDocument();
+    expect(screen.getByText('Cancelled')).toBeInTheDocument();
   });
 
   it('pending 状态:渲染待处理标签', () => {
     render(<TaskCard {...makeProps({ status: 'pending', currentStep: undefined, progress: undefined })} />);
-    expect(screen.getByText('待处理')).toBeInTheDocument();
+    expect(screen.getByText('Pending')).toBeInTheDocument();
   });
 
   it('点击卡片触发 onClick 回调', () => {
@@ -72,7 +72,7 @@ describe('TaskCard', () => {
     const onClick = jest.fn();
     const onDelete = jest.fn();
     render(<TaskCard {...makeProps({ status: 'failed', onClick, onDelete, currentStep: undefined, progress: undefined })} />);
-    fireEvent.click(screen.getByRole('button', { name: '删除' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     expect(onDelete).toHaveBeenCalledWith('task-1');
     expect(onClick).not.toHaveBeenCalled();
   });
@@ -81,27 +81,27 @@ describe('TaskCard', () => {
     const onClick = jest.fn();
     const onRetry = jest.fn();
     render(<TaskCard {...makeProps({ status: 'failed', onClick, onRetry, currentStep: undefined, progress: undefined })} />);
-    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRetry).toHaveBeenCalledWith('task-1');
     expect(onClick).not.toHaveBeenCalled();
   });
 
   it('failed 状态无 onRetry 时不渲染重试按钮', () => {
     render(<TaskCard {...makeProps({ status: 'failed', onRetry: undefined, currentStep: undefined, progress: undefined })} />);
-    expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
   });
 
   it('无 onDelete 时不渲染删除按钮', () => {
     render(<TaskCard {...makeProps({ status: 'failed', onDelete: undefined, currentStep: undefined, progress: undefined })} />);
-    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
   it('compact 模式:不渲染描述/状态标签/时间/操作按钮,渲染右侧箭头', () => {
     render(<TaskCard {...makeProps({ compact: true })} />);
     expect(screen.queryByText('这是一个测试任务描述')).not.toBeInTheDocument();
-    expect(screen.queryByText('进行中')).not.toBeInTheDocument();
+    expect(screen.queryByText('Running')).not.toBeInTheDocument();
     expect(screen.queryByText('07-30 10:05')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
   it('selected 状态:渲染时不报错且 data-testid 存在', () => {

@@ -54,10 +54,21 @@ const resources = {
   [LanguageAbbreviation.En]: translation_en,
 };
 
-const updateDocumentLocale = (lng: string) => {
+// dayjs locale 与 BCP-47 代码映射(dayjs 使用 POSIX 风格命名)
+const DAYJS_LOCALE_MAP: Record<string, string> = {
+  'zh-Hans': 'zh-cn',
+  'zh-Hant': 'zh-tw',
+  'pt-BR': 'pt-br',
+};
+
+// RTL 语言(文本方向从右到左)
+export const RTL_LANGUAGES = ['ar', 'he', 'fa', 'ur'];
+
+export const updateDocumentLocale = (lng: string) => {
   document.documentElement.lang = lng;
-  document.documentElement.dir = 'ltr';
-  dayjs.locale(lng === 'zh' ? 'zh-cn' : lng);
+  const isRtl = RTL_LANGUAGES.some((rtl) => lng.startsWith(rtl));
+  document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
+  dayjs.locale(DAYJS_LOCALE_MAP[lng] ?? lng);
 };
 
 i18n
@@ -82,8 +93,9 @@ i18n
 /**
  * 将浏览器 navigator.language 映射到 supportedLngs 中的 BCP-47 代码。
  * i18next 默认不做 'zh-CN' → 'zh-Hans' 的模糊匹配,需手动映射。
+ * 大小写不敏感查找(languageImports 的 key 是 BCP-47 规范大小写,如 'pt-BR')。
  */
-function mapBrowserLanguage(lang: string): string {
+export function mapBrowserLanguage(lang: string): string {
   const lower = (lang || '').toLowerCase();
   if (lower.startsWith('zh')) {
     // 繁体中文:zh-TW / zh-Hant / zh-HK / zh-MO
@@ -98,21 +110,22 @@ function mapBrowserLanguage(lang: string): string {
     // 其余 zh-* (zh-CN / zh-Hans / zh-SG / zh) 统一映射到简体中文
     return LanguageAbbreviation.Zh;
   }
-  // 其他语言:取主语言部分(如 'en-US' → 'en'),若不在 supportedLngs 再尝试原始值
+  // 其他语言:大小写不敏感精确匹配,再检查 primary 是否直接支持
   const primary = lower.split('-')[0];
+  const matched = Object.keys(languageImports).find(
+    (k) => k.toLowerCase() === lower,
+  );
+  if (matched) return matched;
   if (languageImports[primary]) return primary;
-  if (languageImports[lang]) return lang;
   return DEFAULT_LANGUAGE_CODE;
 }
 
 export const loadLanguageAsync = async (lng: string): Promise<void> => {
-  const normalizedLng = lng;
-
-  if (i18n.hasResourceBundle(normalizedLng, 'translation')) {
+  if (i18n.hasResourceBundle(lng, 'translation')) {
     return;
   }
 
-  const importFn = languageImports[normalizedLng];
+  const importFn = languageImports[lng];
   if (!importFn) {
     console.warn(`Language ${lng} is not supported for lazy loading`);
     return;
@@ -121,11 +134,11 @@ export const loadLanguageAsync = async (lng: string): Promise<void> => {
   try {
     const module = await importFn();
     const translationData = module.default?.translation || module.default;
-    i18n.addResourceBundle(normalizedLng, 'translation', translationData);
+    i18n.addResourceBundle(lng, 'translation', translationData);
 
     const featureLazy = collectI18nLazy();
     const featureLoadersForLang = Object.entries(featureLazy).filter(
-      ([key]) => key.endsWith(`:${normalizedLng}`),
+      ([key]) => key.endsWith(`:${lng}`),
     );
     await Promise.all(
       featureLoadersForLang.map(async ([key, loader]) => {
@@ -133,7 +146,7 @@ export const loadLanguageAsync = async (lng: string): Promise<void> => {
           const featureModule = await loader();
           const featureData = featureModule.default ?? {};
           i18n.addResourceBundle(
-            normalizedLng,
+            lng,
             'translation',
             featureData,
             true,
@@ -150,20 +163,18 @@ export const loadLanguageAsync = async (lng: string): Promise<void> => {
 };
 
 export const changeLanguageAsync = async (lng: string): Promise<void> => {
-  const normalizedLng = lng;
-
   if (
-    normalizedLng !== LanguageAbbreviation.En &&
-    !i18n.hasResourceBundle(normalizedLng, 'translation')
+    lng !== LanguageAbbreviation.En &&
+    !i18n.hasResourceBundle(lng, 'translation')
   ) {
-    await loadLanguageAsync(normalizedLng);
+    await loadLanguageAsync(lng);
   }
 
   storage.setLanguage(lng);
 
   updateDocumentLocale(lng);
 
-  await i18n.changeLanguage(normalizedLng);
+  await i18n.changeLanguage(lng);
 };
 
 export const initLanguage = async (): Promise<void> => {

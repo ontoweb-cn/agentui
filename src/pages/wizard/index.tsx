@@ -15,7 +15,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router';
 
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   LucideCheck,
@@ -884,6 +884,7 @@ function WizardPage() {
   }, [step]);
 
   // ----- Setup mutation -----
+  const queryClient = useQueryClient();
   const setupMutation = useMutation({
     mutationFn: async () => {
       if (!draft.selectedType) {
@@ -913,6 +914,9 @@ function WizardPage() {
             defaultValue: 'Backend created successfully',
           }),
         );
+        // 失效 wizard/status 缓存,避免 WizardGuard 读到旧 needsSetup=true
+        // 导致跳转 / 时被重定向回 /wizard 形成死循环
+        queryClient.invalidateQueries({ queryKey: ['wizard/status'] });
         clearDraft();
         goToStep(6);
       } else {

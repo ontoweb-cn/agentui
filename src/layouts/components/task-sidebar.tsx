@@ -41,14 +41,13 @@ export interface TaskSidebarProps {
 const FILTER_OPTIONS: Array<{
   value: TaskStatus | 'all';
   labelKey: string;
-  fallback: string;
 }> = [
-  { value: 'all', labelKey: 'taskSidebar.filterAll', fallback: '全部' },
-  { value: 'running', labelKey: 'taskSidebar.filterRunning', fallback: '进行中' },
-  { value: 'completed', labelKey: 'taskSidebar.filterCompleted', fallback: '已完成' },
-  { value: 'failed', labelKey: 'taskSidebar.filterFailed', fallback: '失败' },
-  { value: 'cancelled', labelKey: 'taskSidebar.filterCancelled', fallback: '已取消' },
-  { value: 'pending', labelKey: 'taskSidebar.filterPending', fallback: '待处理' },
+  { value: 'all', labelKey: 'taskSidebar.filterAll' },
+  { value: 'running', labelKey: 'taskSidebar.filterRunning' },
+  { value: 'completed', labelKey: 'taskSidebar.filterCompleted' },
+  { value: 'failed', labelKey: 'taskSidebar.filterFailed' },
+  { value: 'cancelled', labelKey: 'taskSidebar.filterCancelled' },
+  { value: 'pending', labelKey: 'taskSidebar.filterPending' },
 ];
 
 /**
@@ -71,9 +70,9 @@ export function TaskSidebar({
   collapsed = false,
 }: TaskSidebarProps) {
   const { t } = useTranslation();
-  const createLabel = t('taskSidebar.create', { defaultValue: '新建任务' });
-  const searchPlaceholder = t('taskSidebar.search', { defaultValue: '搜索任务' });
-  const emptyLabel = t('taskSidebar.empty', { defaultValue: '暂无任务' });
+  const createLabel = t('taskSidebar.create');
+  const searchPlaceholder = t('taskSidebar.search');
+  const emptyLabel = t('taskSidebar.empty');
 
   // 折叠状态:仅显示新建图标按钮
   if (collapsed) {
@@ -196,7 +195,7 @@ export function TaskSidebar({
                     : 'text-[var(--trae-grey)] hover:bg-[var(--trae-card-bg-hover)]',
                 )}
               >
-                {t(option.labelKey, { defaultValue: option.fallback })}
+                {t(option.labelKey)}
               </button>
             ))}
           </div>

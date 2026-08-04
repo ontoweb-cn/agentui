@@ -4,9 +4,10 @@
 
 import * as React from 'react';
 import { Loader2, RotateCw, Trash2, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { TaskCardProps } from './types';
-import { TASK_STATUS_COLOR, TASK_STATUS_LABEL } from './constants';
+import { TASK_STATUS_COLOR, TASK_STATUS_LABEL_KEY } from './constants';
 
 /**
  * TaskCard — 任务卡片,用于任务列表。
@@ -32,8 +33,9 @@ export const TaskCard = React.forwardRef<HTMLDivElement, TaskCardProps>(
     },
     ref,
   ) {
+    const { t } = useTranslation();
     const statusColor = TASK_STATUS_COLOR[status];
-    const statusLabel = TASK_STATUS_LABEL[status];
+    const statusLabel = t(TASK_STATUS_LABEL_KEY[status]);
     const isRunning = status === 'running';
     const isFailed = status === 'failed';
 
@@ -182,8 +184,8 @@ export const TaskCard = React.forwardRef<HTMLDivElement, TaskCardProps>(
                   type="button"
                   onClick={handleRetry}
                   className="inline-flex size-6 items-center justify-center rounded-trae-sm text-trae-grey transition-colors hover:bg-trae-green-soft hover:text-trae-green"
-                  aria-label="重试"
-                  title="重试"
+                  aria-label={t('taskCard.retry')}
+                  title={t('taskCard.retry')}
                 >
                   <RotateCw className="size-3" />
                 </button>
@@ -193,8 +195,8 @@ export const TaskCard = React.forwardRef<HTMLDivElement, TaskCardProps>(
                   type="button"
                   onClick={handleDelete}
                   className="inline-flex size-6 items-center justify-center rounded-trae-sm text-trae-grey transition-colors hover:bg-[#ef4444]/10 hover:text-[#ef4444]"
-                  aria-label="删除"
-                  title="删除"
+                  aria-label={t('taskCard.delete')}
+                  title={t('taskCard.delete')}
                 >
                   <Trash2 className="size-3" />
                 </button>

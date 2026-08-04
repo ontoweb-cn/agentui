@@ -36,15 +36,15 @@ describe('ToolPanelHost', () => {
     expect(screen.getByText('面板 3')).toBeInTheDocument();
   });
 
-  it('默认标题为 "工具"', () => {
+  it('默认标题为 "Tools"', () => {
     render(<ToolPanelHost panels={makePanels(1)} />);
-    expect(screen.getByText('工具')).toBeInTheDocument();
+    expect(screen.getByText('Tools')).toBeInTheDocument();
   });
 
   it('可通过 title prop 自定义标题', () => {
     render(<ToolPanelHost panels={makePanels(1)} title="自定义标题" />);
     expect(screen.getByText('自定义标题')).toBeInTheDocument();
-    expect(screen.queryByText('工具')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tools')).not.toBeInTheDocument();
   });
 
   it('点击面板展开(非受控)', () => {
@@ -238,7 +238,7 @@ describe('ToolPanelHost', () => {
       />,
     );
 
-    fireEvent.click(screen.getByLabelText('折叠工具面板'));
+    fireEvent.click(screen.getByLabelText('Collapse tool panel'));
     expect(onCollapsedChange).toHaveBeenCalledWith(true);
   });
 
@@ -253,7 +253,7 @@ describe('ToolPanelHost', () => {
     );
 
     // collapsed=true 时整个组件 hidden,但按钮仍可查询(DOM 仍在)
-    const collapseBtn = container.querySelector('button[aria-label="折叠工具面板"]');
+    const collapseBtn = container.querySelector('button[aria-label="Collapse tool panel"]');
     expect(collapseBtn).not.toBeNull();
     fireEvent.click(collapseBtn as Element);
     expect(onCollapsedChange).toHaveBeenCalledWith(false);
@@ -279,10 +279,10 @@ describe('ToolPanelHost', () => {
 
   it('空面板列表:不渲染面板区域但保留标题栏', () => {
     render(<ToolPanelHost panels={[]} />);
-    expect(screen.getByText('工具')).toBeInTheDocument();
+    expect(screen.getByText('Tools')).toBeInTheDocument();
     expect(screen.queryAllByTestId('tool-panel')).toHaveLength(0);
     // 折叠按钮仍存在
-    expect(screen.getByLabelText('折叠工具面板')).toBeInTheDocument();
+    expect(screen.getByLabelText('Collapse tool panel')).toBeInTheDocument();
   });
 
   it('ToolPanel 的 expanded 由 host 统一注入(忽略 panels prop 中的 expanded 字段)', () => {

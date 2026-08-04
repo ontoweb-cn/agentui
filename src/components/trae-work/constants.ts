@@ -12,13 +12,13 @@ export const TASK_STATUS_COLOR: Record<TaskStatus, string> = {
   pending: 'var(--trae-grey-2)',
 };
 
-/** TaskStatus → 状态标签文案 */
-export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
-  running: '进行中',
-  completed: '已完成',
-  failed: '失败',
-  cancelled: '已取消',
-  pending: '待处理',
+/** TaskStatus → i18n key 映射(在组件中用 t() 解析) */
+export const TASK_STATUS_LABEL_KEY: Record<TaskStatus, string> = {
+  running: 'taskCard.statusRunning',
+  completed: 'taskCard.statusCompleted',
+  failed: 'taskCard.statusFailed',
+  cancelled: 'taskCard.statusCancelled',
+  pending: 'taskCard.statusPending',
 };
 
 /** ProgressNodeStatus → 圆点色 token 映射 */

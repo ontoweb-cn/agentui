@@ -349,7 +349,9 @@ describe('wizard 路由 (B-3)', () => {
       expect(body.success).toBe(true);
       expect(body.backendId).toBe('my-rag');
       expect(body.envSnippet).toContain('MY_RAG_TOKEN');
-      expect(body.envSnippet).toContain('secret-token-123');
+      // P1-3 修复:响应不含 token 明文
+      expect(body.envSnippet).not.toContain('secret-token-123');
+      expect(body.envSnippet).toContain('<your-token>');
 
       // saveConfig 被调用
       expect(stores.saveConfigMock).toHaveBeenCalledTimes(1);
@@ -371,7 +373,7 @@ describe('wizard 路由 (B-3)', () => {
       expect(credential).toEqual({ kind: 'bearer-token', token: 'secret-token-123' });
     });
 
-    it('响应不含 token 明文(仅 envSnippet 含 token,但这是预期行为)', async () => {
+    it('响应不含 token 明文(P1-3 修复)', async () => {
       vi.mocked(validateTenantConfigs).mockResolvedValue(true);
 
       const res = await app.request('/admin/wizard/setup', {
@@ -389,8 +391,9 @@ describe('wizard 路由 (B-3)', () => {
       // saveConfig 收到的 config 不含 token
       const savedConfigs = stores.saveConfigMock.mock.calls[0][0] as HarnessBackendConfig[];
       expect(JSON.stringify(savedConfigs)).not.toContain('plaintext-secret');
-      // envSnippet 含 token(这是预期:用户需要看到 .env 片段)
-      expect(text).toContain('plaintext-secret');
+      // P1-3 修复:响应体也不含 token 明文(包括 envSnippet)
+      expect(text).not.toContain('plaintext-secret');
+      expect(text).toContain('<your-token>');
     });
 
     it('id 重复时返回 409', async () => {
@@ -568,6 +571,96 @@ describe('wizard 路由 (B-3)', () => {
         email: 'admin@example.com',
         password: 'pass123',
       });
+    });
+
+    it('email-password 模式无 vault 时返回 500(P1-5 修复)', async () => {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+      // 创建无 vault 的 app
+      const appNoVault = new Hono<{ Variables: TestVariables }>();
+      appNoVault.use('*', async (c, next) => {
+        c.set('harnessStore', stores.harnessStore as HarnessStore);
+        c.set('backendStore', stores.backendStore);
+        c.set('adapterRegistry', stores.registry);
+        // 不设置 tokenVault
+        await next();
+      });
+      appNoVault.route('/', wizardRoutes as unknown as Hono<{ Variables: TestVariables }>);
+
+      const res = await appNoVault.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'RAG Email',
+          type: 'intellect-rag',
+          endpoint: 'http://localhost:9380',
+          credentialKind: 'email-password',
+          email: 'admin@example.com',
+          password: 'pass123',
+        }),
+      });
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(body.error).toContain('vault');
+      // 不应持久化
+      expect(stores.saveConfigMock).not.toHaveBeenCalled();
+    });
+
+    it('email-password 模式缺 email 或 password 返回 400(P1-5 修复)', async () => {
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'RAG Email',
+          type: 'intellect-rag',
+          endpoint: 'http://localhost:9380',
+          credentialKind: 'email-password',
+          email: 'admin@example.com',
+          // 缺 password
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(body.error).toContain('email-password');
+    });
+
+    it('backendId 清洗特殊字符(P1-4 修复)', async () => {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'My RAG! @#$% Backend/2026',
+          type: 'intellect-rag',
+          endpoint: 'http://localhost:9380',
+          credentialKind: 'bearer-token',
+          token: 'token',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      // 特殊字符被替换为 -,连续的 - 合并
+      expect(body.backendId).toBe('my-rag-backend-2026');
+    });
+
+    it('name 仅含特殊字符时返回 400(P1-4 修复)', async () => {
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: '!@#$%',
+          type: 'intellect-rag',
+          endpoint: 'http://localhost:9380',
+          credentialKind: 'bearer-token',
+          token: 'token',
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(body.error).toContain('清洗后为空');
     });
   });
 });

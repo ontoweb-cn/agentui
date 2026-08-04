@@ -3,6 +3,7 @@
 // 视觉规范:节点间竖线连接,圆点状态色,支持嵌套,自动滚动到最新节点
 
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronRight, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
@@ -138,6 +139,7 @@ function ProgressNodeItem({
   showTimestamp,
   latestNodeRef,
 }: ProgressNodeItemProps) {
+  const { t } = useTranslation();
   // spec-013 评审 Q-3: isLatest 由 latestNodeId 计算,嵌套子节点也能正确标记
   const isLatest = node.id === latestNodeId;
   const isExpanded = expanded.includes(node.id);
@@ -149,7 +151,8 @@ function ProgressNodeItem({
   const isFailed = node.status === 'failed';
 
   // spec-013 P1-A2: 节点 aria-label 提供语义描述
-  const ariaLabel = `${node.title} - ${node.status}`;
+  const statusKey = `taskProgress.status${node.status.charAt(0).toUpperCase()}${node.status.slice(1)}`;
+  const ariaLabel = `${node.title} - ${t(statusKey)}`;
 
   return (
     <div
@@ -206,7 +209,7 @@ function ProgressNodeItem({
                   <button
                     type="button"
                     className="inline-flex size-4 shrink-0 items-center justify-center rounded text-trae-grey transition-colors hover:text-trae-green"
-                    aria-label={isExpanded ? '折叠' : '展开'}
+                    aria-label={isExpanded ? t('taskProgress.collapse') : t('taskProgress.expand')}
                   >
                     <ChevronRight
                       className={cn(

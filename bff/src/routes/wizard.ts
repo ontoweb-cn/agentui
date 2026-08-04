@@ -330,7 +330,17 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   const vault = c.get('tokenVault');
 
   // 1. 生成 backendId(kebab-case) + adminTokenEnvVar
-  const backendId = body.name.toLowerCase().replace(/\s+/g, '-');
+  // P1-4 修复:严格清洗,仅保留 [a-z0-9-],防止非法字符导致 env var/路径问题
+  const backendId = body.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (!backendId) {
+    return c.json(
+      { success: false, error: 'name 清洗后为空,需包含至少一个字母或数字' } satisfies WizardSetupResponse,
+      400,
+    );
+  }
   const adminTokenEnvVar =
     body.adminTokenEnvVar ??
     `${backendId.toUpperCase().replace(/-/g, '_')}_TOKEN`;
@@ -367,16 +377,27 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   }
 
   // 4. 如果有 vault 且提供了凭据,存储到 vault
-  if (vault) {
-    if (body.credentialKind === 'bearer-token' && body.token) {
-      await vault.setCredentials(backendId, { kind: 'bearer-token', token: body.token });
-    } else if (body.credentialKind === 'email-password' && body.email && body.password) {
-      await vault.setCredentials(backendId, {
-        kind: 'email-password',
-        email: body.email,
-        password: body.password,
-      });
+  // P1-5 修复:email-password 模式必须有 vault,否则凭据会丢失(无 env var 回退)
+  if (body.credentialKind === 'email-password') {
+    if (!body.email || !body.password) {
+      return c.json(
+        { success: false, error: 'email-password 模式必须提供 email 和 password' } satisfies WizardSetupResponse,
+        400,
+      );
     }
+    if (!vault) {
+      return c.json(
+        { success: false, error: 'email-password 模式需要 Token Vault 支持,当前环境未配置 vault' } satisfies WizardSetupResponse,
+        500,
+      );
+    }
+    await vault.setCredentials(backendId, {
+      kind: 'email-password',
+      email: body.email,
+      password: body.password,
+    });
+  } else if (vault && body.credentialKind === 'bearer-token' && body.token) {
+    await vault.setCredentials(backendId, { kind: 'bearer-token', token: body.token });
   }
 
   // 5. 构造 HarnessBackendConfig(不含 token 明文)
@@ -439,7 +460,8 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   manager.invalidate();
 
   // 9. 生成 env snippet(展示 .env 片段,用户手动设置或作为 vault 回退参考)
-  const envSnippet = `# 添加到 .env 文件\n${adminTokenEnvVar}=${body.token ?? '<your-token>'}`;
+  // P1-3 修复:响应不含 token 明文,始终使用占位符
+  const envSnippet = `# 添加到 .env 文件\n${adminTokenEnvVar}=<your-token>`;
 
   return c.json({ success: true, backendId, envSnippet } satisfies WizardSetupResponse);
 });

@@ -3,6 +3,7 @@
 // CSS Grid 布局,受控/非受控折叠,响应式断点(<1024 图标栏,<768 overlay)
 
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
 
@@ -77,6 +78,7 @@ export function ThreeColumnLayout({
   onSidebarCollapsedChange,
   onToolPanelCollapsedChange,
 }: ThreeColumnLayoutProps) {
+  const { t } = useTranslation();
   // ---- 受控/非受控: sidebar ----
   const [internalSidebarCollapsed, setInternalSidebarCollapsed] =
     React.useState<boolean>(defaultSidebarCollapsed);
@@ -216,7 +218,7 @@ export function ThreeColumnLayout({
       {sidebar && (
         <aside
           role="complementary"
-          aria-label="任务列表"
+          aria-label={t('threeColumnLayout.taskListLabel')}
           className={cn(
             'overflow-hidden border-r border-[var(--trae-line)] bg-[var(--trae-surface)]',
           )}
@@ -259,7 +261,7 @@ export function ThreeColumnLayout({
           )}
           <aside
             role="complementary"
-            aria-label="工具面板"
+            aria-label={t('threeColumnLayout.toolPanelLabel')}
             className={cn(
               'overflow-hidden border-l border-[var(--trae-line)] bg-[var(--trae-surface)]',
               isMobile && 'absolute z-50',

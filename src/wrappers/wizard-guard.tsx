@@ -21,6 +21,13 @@ import { Routes } from '@/constants/routes';
 
 const WIZARD_STATUS_STALE_MS = 5 * 60 * 1000; // 5 分钟缓存
 
+/**
+ * wizard/status 查询的 query key。
+ * 导出供 wizard 页面 setup 成功后 invalidate,避免 WizardGuard 读到旧缓存
+ * (needsSetup=true)导致重定向回 /wizard 形成死循环。
+ */
+export const WIZARD_STATUS_QUERY_KEY = ['wizard/status'];
+
 function LoadingOverlay() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[1px]">
@@ -37,8 +44,8 @@ export default function WizardGuard({ children }: React.PropsWithChildren) {
   // staleTime 避免路由切换时重复请求;cacheTime 保留缓存供其他组件复用
   // retry: 1 容忍瞬时网络抖动(原 retry: false 对公开状态接口过激)
   // 错误时不阻塞渲染(降级放行,由 AuthWrapper 兜底)
-  const { data, isLoading } = useQuery({
-    queryKey: ['wizard/status'],
+  const { data, isPending, isFetching } = useQuery({
+    queryKey: WIZARD_STATUS_QUERY_KEY,
     // fetchWizardStatus 已声明返回 WizardStatusResponse 裸对象(无 ApiResponse 包装),
     // res.data 是 axios 响应体,即 { needsSetup, ... }
     queryFn: async () => (await fetchWizardStatus()).data,
@@ -68,10 +75,12 @@ export default function WizardGuard({ children }: React.PropsWithChildren) {
     return <LoadingOverlay />;
   }
 
-  // isLoading 期间渲染 loading 占位,而不是直接渲染 children。
+  // isPending(首次加载)或 isFetching(retry/backgound refetch)期间渲染 loading 占位,
+  // 而不是直接渲染 children。
   // 否则 AuthWrapper 会在未登录状态下抢先跳转 /login,而 /login 是公开路由不经过 WizardGuard,
   // 即使随后查询返回 needsSetup=true 也无法再触发 wizard 重定向。
-  if (isLoading) {
+  // 使用 isPending || isFetching 而非 isLoading,确保 retry 期间也显示 loading(避免闪烁)。
+  if (isPending || isFetching) {
     return <LoadingOverlay />;
   }
 

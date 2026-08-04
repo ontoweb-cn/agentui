@@ -20,13 +20,7 @@ jest.mock('@/components/trae-work', () => ({
   ),
 }));
 
-// mock react-i18next:返回 defaultValue(若存在),否则返回 key
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: { defaultValue?: string }) =>
-      options?.defaultValue ?? key,
-  }),
-}));
+// i18n 已在 jest-setup.ts 中初始化,无需 mock react-i18next
 
 function makeTasks(count = 3): TaskCardProps[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -158,7 +152,7 @@ describe('TaskSidebar', () => {
 
   it('空状态（tasks=[] 时显示空状态文案）', () => {
     render(<TaskSidebar tasks={[]} />);
-    expect(screen.getByText('暂无任务')).toBeInTheDocument();
+    expect(screen.getByText('No tasks')).toBeInTheDocument();
     expect(screen.queryAllByTestId('task-card')).toHaveLength(0);
   });
 
@@ -177,7 +171,7 @@ describe('TaskSidebar', () => {
       />,
     );
     expect(screen.getByTestId('custom-empty')).toBeInTheDocument();
-    expect(screen.queryByText('暂无任务')).not.toBeInTheDocument();
+    expect(screen.queryByText('No tasks')).not.toBeInTheDocument();
   });
 
   it('modeSwitcher 渲染在顶部区域', () => {
@@ -225,14 +219,14 @@ describe('TaskSidebar', () => {
   it('loading=true 优先于空状态(即使 tasks 为空也显示 skeleton)', () => {
     render(<TaskSidebar tasks={[]} loading />);
     expect(screen.getAllByTestId('task-sidebar-skeleton')).toHaveLength(3);
-    expect(screen.queryByText('暂无任务')).not.toBeInTheDocument();
+    expect(screen.queryByText('No tasks')).not.toBeInTheDocument();
   });
 
   it('新建按钮有 aria-label', () => {
     render(<TaskSidebar tasks={makeTasks(3)} onCreateTask={jest.fn()} />);
     expect(screen.getByTestId('task-sidebar-create')).toHaveAttribute(
       'aria-label',
-      '新建任务',
+      'New Task',
     );
   });
 
@@ -242,7 +236,7 @@ describe('TaskSidebar', () => {
     );
     expect(screen.getByTestId('task-sidebar-create')).toHaveAttribute(
       'aria-label',
-      '新建任务',
+      'New Task',
     );
   });
 });
