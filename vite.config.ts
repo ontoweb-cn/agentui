@@ -46,13 +46,14 @@ export default defineConfig(({ mode }) => {
   const apiHost = env.API_HOST || 'localhost';
   const pythonApiPort = env.PYTHON_API_PORT || '9380';
   const pythonAdminPort = env.PYTHON_ADMIN_PORT || '9381';
+  const bffHost = env.BFF_HOST || 'localhost';
   const bffPort = env.BFF_PORT || '9390';
 
-  console.log(`[vite.config] mode: ${mode}, API_HOST: ${apiHost}`);
+  console.log(`[vite.config] mode: ${mode}, API_HOST: ${apiHost}, BFF_HOST: ${bffHost}`);
 
   const proxy = {
     '/api/bff': {
-      target: `http://localhost:${bffPort}`,
+      target: `http://${bffHost}:${bffPort}`,
       changeOrigin: true,
       ws: true,
       rewrite: (path: string) => path.replace(/^\/api\/bff/, ''),
