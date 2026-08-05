@@ -1,0 +1,85 @@
+/**
+ * Cognitive Wargame plugin English translations.
+ *
+ * Merged into the 'translation' namespace by features/_registry;
+ * access via `t('cognitiveWargame.nav.dashboard')`.
+ */
+export default {
+  cognitiveWargame: {
+    nav: {
+      dashboard: 'Dashboard',
+      scenarios: 'Scenarios',
+      rounds: 'Round Monitor',
+      metrics: 'Metrics',
+      kg: 'Knowledge Graph',
+      reports: 'Reports',
+    },
+    common: {
+      title: 'Cognitive Wargame',
+      subtitle: 'Red-Blue cognitive domain wargaming & evaluation',
+      loading: 'Loading…',
+      empty: 'No data',
+      error: 'Failed to load',
+      retry: 'Retry',
+      refresh: 'Refresh',
+      viewDetail: 'View detail',
+      back: 'Back',
+      execute: 'Execute',
+      generate: 'Generate scenario',
+      selectScenario: 'Select a scenario',
+      selectRound: 'Select a round',
+      round: 'Round',
+      status: 'Status',
+      createdAt: 'Created at',
+      updatedAt: 'Updated at',
+      actions: 'Actions',
+    },
+    dashboard: {
+      title: 'Overview',
+      totalScenarios: 'Total scenarios',
+      runningScenarios: 'Running',
+      completedScenarios: 'Completed',
+      recentScenarios: 'Recent scenarios',
+    },
+    scenario: {
+      listTitle: 'Scenario list',
+      name: 'Name',
+      description: 'Description',
+      redForce: 'Red force',
+      blueForce: 'Blue force',
+      roundsLimit: 'Rounds limit',
+      roundsCompleted: 'Rounds completed',
+      detailTitle: 'Scenario detail',
+      roundList: 'Rounds',
+    },
+    round: {
+      title: 'Round view',
+      eventStream: 'Event stream',
+      phase: 'Phase',
+      actor: 'Actor',
+      action: 'Action',
+      timestamp: 'Timestamp',
+    },
+    metrics: {
+      title: 'Metrics',
+      redScore: 'Red score',
+      blueScore: 'Blue score',
+      redCognitive: 'Red cognitive',
+      blueCognitive: 'Blue cognitive',
+      chartPlaceholder: 'Chart area (placeholder)',
+    },
+    kg: {
+      title: 'Knowledge graph',
+      entities: 'Entities',
+      relations: 'Relations',
+      graphPlaceholder: 'Graph visualization (placeholder)',
+    },
+    report: {
+      title: 'Reports',
+      listTitle: 'Report list',
+      type: 'Type',
+      generatedAt: 'Generated at',
+      contentPlaceholder: 'Markdown report content (placeholder)',
+    },
+  },
+};
