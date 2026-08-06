@@ -51,6 +51,8 @@ export default {
       roundsCompleted: '已完成回合',
       detailTitle: '想定详情',
       roundList: '回合列表',
+      delete: '删除',
+      startRound: '启动回合',
     },
     round: {
       title: '回合视图',
@@ -73,6 +75,9 @@ export default {
       entities: '实体',
       relations: '关系',
       graphPlaceholder: '图谱可视化区域（占位）',
+      narrativeChain: '叙事链',
+      keyNodes: '关键节点',
+      search: '搜索',
     },
     report: {
       title: '评估报告',
@@ -80,6 +85,15 @@ export default {
       type: '报告类型',
       generatedAt: '生成时间',
       contentPlaceholder: 'Markdown 报告内容（占位）',
+      roundReport: '回合报告',
+      monteCarlo: '蒙特卡洛分析',
+      backtest: '回测',
+      counterfactual: '反事实分析',
+    },
+    sse: {
+      connected: '实时连接已建立',
+      disconnected: '实时连接已断开',
+      reconnecting: '正在重连…',
     },
   },
 };

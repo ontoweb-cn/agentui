@@ -19,6 +19,8 @@ export interface WargameState {
   total: number;
   /** 当前选中的回合序号（回合视图用）。 */
   currentRound: number;
+  /** SSE 实时连接状态（useSseEvents hook 维护）。 */
+  sseConnected: boolean;
 
   /** 拉取想定列表。 */
   fetchScenarios: (limit?: number, offset?: number) => Promise<void>;
@@ -28,6 +30,8 @@ export interface WargameState {
   loadScenario: (id: string) => Promise<void>;
   /** 设置当前回合。 */
   setCurrentRound: (round: number) => void;
+  /** 设置 SSE 连接状态。 */
+  setSseConnected: (connected: boolean) => void;
   /** 清空错误。 */
   clearError: () => void;
 }
@@ -39,6 +43,7 @@ export const useWargameStore = create<WargameState>((set) => ({
   error: null,
   total: 0,
   currentRound: 0,
+  sseConnected: false,
 
   fetchScenarios: async (limit = 20, offset = 0) => {
     set({ loading: true, error: null });
@@ -73,6 +78,8 @@ export const useWargameStore = create<WargameState>((set) => ({
   },
 
   setCurrentRound: (round) => set({ currentRound: round }),
+
+  setSseConnected: (connected) => set({ sseConnected: connected }),
 
   clearError: () => set({ error: null }),
 }));

@@ -51,6 +51,8 @@ export default {
       roundsCompleted: 'Rounds completed',
       detailTitle: 'Scenario detail',
       roundList: 'Rounds',
+      delete: 'Delete',
+      startRound: 'Start Round',
     },
     round: {
       title: 'Round view',
@@ -73,6 +75,9 @@ export default {
       entities: 'Entities',
       relations: 'Relations',
       graphPlaceholder: 'Graph visualization (placeholder)',
+      narrativeChain: 'Narrative Chain',
+      keyNodes: 'Key Nodes',
+      search: 'Search',
     },
     report: {
       title: 'Reports',
@@ -80,6 +85,15 @@ export default {
       type: 'Type',
       generatedAt: 'Generated at',
       contentPlaceholder: 'Markdown report content (placeholder)',
+      roundReport: 'Round Report',
+      monteCarlo: 'Monte Carlo',
+      backtest: 'Backtest',
+      counterfactual: 'Counterfactual',
+    },
+    sse: {
+      connected: 'Real-time connection established',
+      disconnected: 'Real-time connection lost',
+      reconnecting: 'Reconnecting…',
     },
   },
 };

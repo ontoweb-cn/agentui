@@ -19,6 +19,8 @@ function createWargameClient(): AxiosInstance {
   });
 
   instance.interceptors.request.use((config) => {
+    // S1 TODO: localStorage 存 token 有 XSS 风险，生产环境应改用 httpOnly cookie
+    // 或 GATEWAY 签发 SSE 专用短期 token（见 intellect-team-gateway-integration-requirements.md §二）
     const token =
       (typeof localStorage !== 'undefined' &&
         localStorage.getItem(Authorization)) ||
@@ -129,6 +131,23 @@ export interface Playback {
   events: RoundEvent[];
 }
 
+/** 事件日志条目（P4 修复：替代 unknown[]）。 */
+export interface EventLogEntry {
+  event_id: string;
+  event_type: string;
+  scenario_id: string;
+  timestamp: number | string;
+  payload: Record<string, unknown>;
+}
+
+/** 回放时间轴条目（P4 修复：替代 unknown[]）。 */
+export interface PlaybackTimelineEntry {
+  round_id: number;
+  timestamp: string;
+  event_type: string;
+  snapshot: Record<string, unknown>;
+}
+
 /** 异步任务状态（对应后端 TaskInfo.to_dict()）。 */
 export interface TaskStatus {
   task_id: string;
@@ -157,18 +176,51 @@ async function unwrap<T>(p: Promise<{ data: ApiResult<T> | T }>): Promise<T> {
   return payload as T;
 }
 
+/** 后端想定 dict → 前端 Scenario 类型映射。 */
+function mapScenario(raw: Record<string, unknown>): Scenario {
+  const overview = (raw.overview ?? {}) as Record<string, unknown>;
+  const sourceEvents = raw.source_events;
+  return {
+    id: String(raw.scenario_id ?? raw.id ?? ''),
+    name: String(raw.scenario_id ?? raw.name ?? ''),
+    description:
+      (overview.objective as string | undefined) ??
+      (Array.isArray(sourceEvents)
+        ? sourceEvents.join(', ')
+        : undefined),
+    status: (raw.status as ScenarioStatus | undefined) ?? 'ready',
+    rounds_limit: (raw.total_rounds ?? raw.rounds_limit) as
+      | number
+      | undefined,
+    rounds_completed: raw.rounds_completed as number | undefined,
+    created_at: raw.created_at as string | undefined,
+    updated_at: raw.updated_at as string | undefined,
+  };
+}
+
 /** 想定相关 API。 */
 export const api = {
   /** 分页获取想定列表。 */
-  getScenarios(limit = 20, offset = 0) {
-    return unwrap<Paginated<Scenario>>(
-      client.get('/scenarios', { params: { limit, offset } }),
-    );
+  async getScenarios(limit = 20, offset = 0): Promise<Paginated<Scenario>> {
+    const raw = await unwrap<{
+      status: string;
+      count: number;
+      scenarios: Array<Record<string, unknown>>;
+    }>(client.get('/scenarios', { params: { limit, offset } }));
+    return {
+      items: (raw.scenarios ?? []).map((s) => mapScenario(s)),
+      total: raw.count ?? 0,
+      limit,
+      offset,
+    };
   },
 
   /** 获取单个想定详情。 */
-  getScenario(id: string) {
-    return unwrap<Scenario>(client.get(`/scenarios/${id}`));
+  async getScenario(id: string): Promise<Scenario> {
+    const raw = await unwrap<Record<string, unknown>>(
+      client.get(`/scenarios/${id}`),
+    );
+    return mapScenario(raw);
   },
 
   /** 生成/创建想定。 */
@@ -239,6 +291,85 @@ export const api = {
   getPlayback(scenarioId: string, round: number) {
     return unwrap<Playback>(
       client.get(`/playback/${scenarioId}/rounds/${round}`),
+    );
+  },
+
+  /** 删除想定（对接 scenario_cleanup Tool）。 */
+  deleteScenario(id: string) {
+    return unwrap<void>(client.delete(`/scenarios/${id}`));
+  },
+
+  /** 查询事件日志（P4 修复：强类型返回）。 */
+  listEvents(
+    scenarioId: string,
+    params?: { limit?: number; offset?: number; type?: string },
+  ) {
+    return unwrap<EventLogEntry[]>(
+      client.get(`/scenarios/${scenarioId}/events`, { params }),
+    );
+  },
+
+  /**
+   * SSE 事件流 URL（供 EventSource 订阅）。
+   * P2 修复：EventSource 不支持自定义 Header，通过 ?token= 传递认证。
+   * P5 修复：URL 编码 channel 名，防止特殊字符破坏 URL。
+   */
+  eventStreamUrl: (scenarioId: string, channels?: string[]) => {
+    const base = `${WARGAME_BASE_URL}/events/${scenarioId}`;
+    const params = new URLSearchParams();
+    const token =
+      typeof localStorage !== 'undefined'
+        ? localStorage.getItem(Authorization)
+        : null;
+    if (token) {
+      params.set('token', token);
+    }
+    if (channels?.length) {
+      params.set('channels', channels.map(encodeURIComponent).join(','));
+    }
+    const qs = params.toString();
+    return qs ? `${base}?${qs}` : base;
+  },
+
+  /** 运行反事实分析（异步，返回 task_id）。 */
+  runCounterfactual(scenarioId: string, data: Record<string, unknown>) {
+    return unwrap<TaskStatus>(
+      client.post('/reports/counterfactual', {
+        scenario_id: scenarioId,
+        ...data,
+      }),
+    );
+  },
+
+  /** 获取叙事链（知识图谱溯源）。 */
+  getNarrativeChain(
+    scenarioId: string,
+    entityId: string,
+    maxHops?: number,
+  ) {
+    return unwrap<Record<string, unknown>>(
+      client.get('/kg/narrative-chain', {
+        params: {
+          narrative_id: entityId,
+          namespace: scenarioId,
+          max_depth: maxHops,
+        },
+      }),
+    );
+  },
+
+  /** 获取关键节点（度中心性 + 介数中心性）。 */
+  getKeyNodes(
+    scenarioId: string,
+    params?: { limit?: number; algorithm?: string },
+  ) {
+    return unwrap<unknown[]>(
+      client.get('/kg/key-nodes', {
+        params: {
+          scenario_id: scenarioId,
+          top_n: params?.limit,
+        },
+      }),
     );
   },
 };

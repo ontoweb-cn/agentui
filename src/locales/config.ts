@@ -137,8 +137,12 @@ export const loadLanguageAsync = async (lng: string): Promise<void> => {
     i18n.addResourceBundle(lng, 'translation', translationData);
 
     const featureLazy = collectI18nLazy();
+    // 兼容 feature manifest 中 lazy key 使用 primary code（如 'zh'）而系统语言
+    // 为 BCP-47 完整代码（如 'zh-Hans'/'pt-BR'）的情况：同时匹配完整码与 primary 码。
+    // 否则 'cognitiveWargame:zh' 无法被 'zh-Hans' 匹配，导致 feature 翻译全部丢失。
+    const lngPrimary = lng.split('-')[0];
     const featureLoadersForLang = Object.entries(featureLazy).filter(
-      ([key]) => key.endsWith(`:${lng}`),
+      ([key]) => key.endsWith(`:${lng}`) || key.endsWith(`:${lngPrimary}`),
     );
     await Promise.all(
       featureLoadersForLang.map(async ([key, loader]) => {
