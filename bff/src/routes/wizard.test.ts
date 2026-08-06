@@ -147,6 +147,8 @@ describe('wizard 路由 (B-3)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // 默认 mock:isUrlSafe 返回 true(安全 URL),SSRF 拦截测试用例显式覆盖为 false
+    vi.mocked(isUrlSafe).mockResolvedValue(true);
     stores = createMockStores();
     app = createApp(stores);
   });
@@ -240,6 +242,26 @@ describe('wizard 路由 (B-3)', () => {
   // -------------------------------------------------------------------------
 
   describe('POST /admin/wizard/probe', () => {
+    it('无 Authorization header 时 probe 正常返回(公开端点)', async () => {
+      vi.mocked(isUrlSafe).mockResolvedValue(true);
+      vi.mocked(safeFetch).mockResolvedValue(
+        new Response('[]', { status: 200 }),
+      );
+
+      const res = await app.request('/admin/wizard/probe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'intellect-rag',
+          endpoint: 'http://example.com:9380',
+          token: 'test-token',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.healthy).toBe(true);
+    });
+
     it('探测成功返回 healthy=true', async () => {
       vi.mocked(isUrlSafe).mockResolvedValue(true);
       vi.mocked(safeFetch).mockResolvedValue(
@@ -248,7 +270,7 @@ describe('wizard 路由 (B-3)', () => {
 
       const res = await app.request('/admin/wizard/probe', {
         method: 'POST',
-        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'intellect-rag',
           endpoint: 'http://example.com:9380',
@@ -266,7 +288,7 @@ describe('wizard 路由 (B-3)', () => {
 
       const res = await app.request('/admin/wizard/probe', {
         method: 'POST',
-        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'intellect-rag',
           endpoint: 'http://127.0.0.1:9380',
@@ -286,7 +308,7 @@ describe('wizard 路由 (B-3)', () => {
 
       const res = await app.request('/admin/wizard/probe', {
         method: 'POST',
-        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'intellect-rag',
           endpoint: 'http://example.com:9380',
@@ -303,7 +325,7 @@ describe('wizard 路由 (B-3)', () => {
 
       const res = await app.request('/admin/wizard/probe', {
         method: 'POST',
-        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'intellect-rag',
           endpoint: 'http://example.com:9380',
@@ -317,7 +339,7 @@ describe('wizard 路由 (B-3)', () => {
     it('缺少 endpoint 返回 400', async () => {
       const res = await app.request('/admin/wizard/probe', {
         method: 'POST',
-        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'intellect-rag' }),
       });
       expect(res.status).toBe(400);
@@ -329,6 +351,26 @@ describe('wizard 路由 (B-3)', () => {
   // -------------------------------------------------------------------------
 
   describe('POST /admin/wizard/setup', () => {
+    it('SSRF 拦截:endpoint 指向私有 IP 时返回 400', async () => {
+      vi.mocked(isUrlSafe).mockResolvedValue(false);
+
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'SSRF Test',
+          type: 'intellect-rag',
+          endpoint: 'http://127.0.0.1:9380',
+          credentialKind: 'bearer-token',
+          token: 'test-token',
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(body.error).toContain('不安全');
+    });
+
     it('创建 backend 成功,触发 saveConfig + load + invalidate + vault.setCredentials', async () => {
       vi.mocked(validateTenantConfigs).mockResolvedValue(true);
 

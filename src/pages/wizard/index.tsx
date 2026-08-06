@@ -401,6 +401,12 @@ function StepConnectionForm({
             onChange={(e) => update({ name: e.target.value })}
             placeholder="Intellect RAG Default"
           />
+          <p className="text-xs text-text-secondary">
+            {t('wizard.connection.nameHint', {
+              defaultValue:
+                '用于生成 backendId（kebab-case，如 intellect-rag-default）与 adminTokenEnvVar（大写下划线_TOKEN）。仅允许字母、数字、连字符。',
+            })}
+          </p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="wizard-endpoint">

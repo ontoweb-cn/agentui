@@ -17,7 +17,8 @@ export async function authMiddleware(c: Context, next: Next) {
   // spec-010 v8 B-3 (B1 修复): Wizard 公开端点
   // - /admin/wizard/status: 查询是否需要向导(首次安装时无 admin token)
   // - /admin/wizard/backend-types: 可用后端类型列表(无敏感信息)
-  const publicPrefixes = ['/admin/wizard/status', '/admin/wizard/backend-types'];
+  // - /admin/wizard/probe: 探测后端连接(首次安装时无 admin token,SSRF 防护 + 速率限制已就位)
+  const publicPrefixes = ['/admin/wizard/status', '/admin/wizard/backend-types', '/admin/wizard/probe'];
 
   if (publicPaths.includes(path) || publicPrefixes.includes(path)) {
     await next();

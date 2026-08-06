@@ -12,7 +12,7 @@
 // 鉴权(B1 修复):
 // - /admin/wizard/status        公开(authMiddleware.publicPrefixes)
 // - /admin/wizard/backend-types 公开(authMiddleware.publicPrefixes)
-// - /admin/wizard/probe         admin 鉴权(authMiddleware 已挂载)
+// - /admin/wizard/probe         公开(authMiddleware.publicPrefixes,SSRF 防护 + IP 速率限制)
 // - /admin/wizard/setup         admin OR bootstrap token(wizardSetupAuth 中间件)
 // 非租户隔离:Wizard 是运维全局操作,无 backendContextMiddleware。
 
@@ -154,12 +154,53 @@ wizardRoutes.get('/admin/wizard/backend-types', (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// probe 速率限制(公开端点防护)
+// 基于 IP 的滑动窗口限流,避免被滥用探测公网目标可达性。
+// BFF 单实例部署下使用内存 Map 即可;多实例需替换为 Redis。
+// ---------------------------------------------------------------------------
+const PROBE_RATE_LIMIT = 10; // 每分钟最多 10 次
+const PROBE_RATE_WINDOW_MS = 60 * 1000;
+const probeRateMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkProbeRateLimit(clientIp: string): boolean {
+  const now = Date.now();
+  const entry = probeRateMap.get(clientIp);
+  if (!entry || now > entry.resetAt) {
+    probeRateMap.set(clientIp, { count: 1, resetAt: now + PROBE_RATE_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= PROBE_RATE_LIMIT) {
+    return false;
+  }
+  entry.count++;
+  return true;
+}
+
+function getClientIp(c: Context): string {
+  const forwarded = c.req.header('x-forwarded-for');
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  return c.req.header('x-real-ip') || 'unknown';
+}
+
+// ---------------------------------------------------------------------------
 // POST /admin/wizard/probe — 探测后端连接
+// 公开端点(首次安装时无 admin token),IP 速率限制 + SSRF 防护
 // M3 修复:按 credentialKind 区分鉴权头
 // M4 修复:intellect-enterprise 类型额外探测 /api/tenant/info
 // ---------------------------------------------------------------------------
 
 wizardRoutes.post('/admin/wizard/probe', async (c) => {
+  // 速率限制
+  const clientIp = getClientIp(c);
+  if (!checkProbeRateLimit(clientIp)) {
+    return c.json(
+      { healthy: false, error: '请求过于频繁,请稍后再试' } satisfies WizardProbeResponse,
+      429,
+    );
+  }
+
   const body = await c.req.json<WizardProbeRequest>().catch(() => null);
   if (!body || !body.endpoint) {
     return c.json(
@@ -297,6 +338,15 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
         success: false,
         error: 'name, type, endpoint, credentialKind are required',
       } satisfies WizardSetupResponse,
+      400,
+    );
+  }
+
+  // SSRF 预校验(与 probe 路由一致,防止持久化恶意 URL)
+  const endpointSafe = await isUrlSafe(body.endpoint);
+  if (!endpointSafe) {
+    return c.json(
+      { success: false, error: 'URL 不安全(可能指向私有 IP)' } satisfies WizardSetupResponse,
       400,
     );
   }
