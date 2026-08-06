@@ -161,6 +161,37 @@ export interface TaskStatus {
   elapsed: number;
 }
 
+/** 干预请求（P3.3-1 对接 intervention_api）。 */
+export interface InterventionRequest {
+  type: 'narrative_inject' | 'agent_override' | 'strategy_veto';
+  round_num: number;
+  payload: Record<string, unknown>;
+  reason?: string;
+}
+
+/** 干预审计记录。 */
+export interface Intervention {
+  log_id: string;
+  scenario_id: string;
+  intervention_type: string;
+  task_id?: string;
+  round_num?: number;
+  payload?: Record<string, unknown>;
+  reason?: string;
+  operator?: string;
+  created_at?: string;
+}
+
+/** 异常告警（P3.3-2 对接 anomaly.detected 事件）。 */
+export interface Anomaly {
+  type: string;
+  severity: 'warning' | 'critical';
+  scenario_id: string;
+  round_num: number;
+  detail: Record<string, unknown>;
+  timestamp: number;
+}
+
 async function unwrap<T>(p: Promise<{ data: ApiResult<T> | T }>): Promise<T> {
   const res = await p;
   const payload = res.data as ApiResult<T> | T;
@@ -299,6 +330,34 @@ export const api = {
     return unwrap<void>(client.delete(`/scenarios/${id}`));
   },
 
+  /** 暂停推演（P3.3-1 导演台干预）。 */
+  pauseScenario(id: string) {
+    return unwrap<Record<string, unknown>>(
+      client.post(`/scenarios/${id}/pause`),
+    );
+  },
+
+  /** 恢复推演（P3.3-1 导演台干预）。 */
+  resumeScenario(id: string) {
+    return unwrap<Record<string, unknown>>(
+      client.post(`/scenarios/${id}/resume`),
+    );
+  },
+
+  /** 注入干预（P3.3-1 导演台干预）。 */
+  injectIntervention(id: string, req: InterventionRequest) {
+    return unwrap<Record<string, unknown>>(
+      client.post(`/scenarios/${id}/interventions`, req),
+    );
+  },
+
+  /** 查询干预审计日志（P3.3-1）。 */
+  getInterventions(id: string, limit = 100) {
+    return unwrap<{ count: number; interventions: Intervention[] }>(
+      client.get(`/scenarios/${id}/interventions`, { params: { limit } }),
+    );
+  },
+
   /** 查询事件日志（P4 修复：强类型返回）。 */
   listEvents(
     scenarioId: string,
@@ -311,11 +370,12 @@ export const api = {
 
   /**
    * SSE 事件流 URL（供 EventSource 订阅）。
+   * P3.3-2: 指向 /events/{id}/stream SSE 端点（Redis pub-sub → text/event-stream）。
    * P2 修复：EventSource 不支持自定义 Header，通过 ?token= 传递认证。
    * P5 修复：URL 编码 channel 名，防止特殊字符破坏 URL。
    */
   eventStreamUrl: (scenarioId: string, channels?: string[]) => {
-    const base = `${WARGAME_BASE_URL}/events/${scenarioId}`;
+    const base = `${WARGAME_BASE_URL}/events/${scenarioId}/stream`;
     const params = new URLSearchParams();
     const token =
       typeof localStorage !== 'undefined'

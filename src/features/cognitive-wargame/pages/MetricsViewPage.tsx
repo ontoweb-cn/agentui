@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/card';
 import { Spin } from '@/components/ui/spin';
 import { api, type Metrics } from '../api';
+import MetricsChart from '../components/MetricsChart';
 import { useWargameStore } from '../store';
 import { t } from 'i18next';
 import { useCallback, useEffect, useState } from 'react';
@@ -116,14 +117,17 @@ const MetricsViewPage: React.FC = () => {
         <Card className="mt-4">
           <CardHeader>
             <CardTitle className="text-lg">
-              {t('cognitiveWargame.metrics.chartPlaceholder')}
+              {t('cognitiveWargame.metrics.trendTitle')}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex h-64 items-center justify-center rounded border border-dashed border-border-button text-text-secondary">
-              {t('cognitiveWargame.metrics.chartPlaceholder')}(
-              {history.length} rounds)
-            </div>
+            {history.length === 0 ? (
+              <div className="flex h-64 items-center justify-center rounded border border-dashed border-border-button text-text-secondary">
+                {t('cognitiveWargame.common.empty')}
+              </div>
+            ) : (
+              <MetricsChart history={history} height={300} />
+            )}
           </CardContent>
         </Card>
       </Spin>

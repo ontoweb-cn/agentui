@@ -33,6 +33,7 @@ export type CognitiveEventType =
   | 'agent.acted'
   | 'metric.updated'
   | 'anomaly.detected'
+  | 'intervention.applied'
   | 'counterfactual.started'
   | 'counterfactual.completed'
   | 'counterfactual.failed';
@@ -134,9 +135,18 @@ export function useSseEvents(options: UseSseEventsOptions): UseSseEventsResult {
     };
 
     // 监听所有命名事件（P1 修复：引用 onEventRef.current 避免闭包过期）
+    // P3.0-5 修复：后端 event_bridge 发布 { event_type, timestamp(number), ... }，
+    // 前端 CognitiveEvent 统一为 { type, timestamp(string) }，这里做字段归一化。
     source.onmessage = (ev) => {
       try {
-        const event = JSON.parse(ev.data) as CognitiveEvent;
+        const raw = JSON.parse(ev.data) as Record<string, unknown>;
+        const event = {
+          type: (raw.type ?? raw.event_type) as CognitiveEventType,
+          scenario_id: raw.scenario_id as string,
+          round_id: raw.round_id as number | undefined,
+          timestamp: String(raw.timestamp ?? ''),
+          payload: (raw.payload ?? {}) as Record<string, unknown>,
+        } as CognitiveEvent;
         onEventRef.current?.(event);
       } catch {
         // 忽略非 JSON 心跳消息
