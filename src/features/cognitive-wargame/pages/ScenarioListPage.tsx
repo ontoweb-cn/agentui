@@ -32,7 +32,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { api } from '../api';
+import { api, type Scenario } from '../api';
 import { WargamePath } from '../routes';
 import { useWargameStore } from '../store';
 import { t } from 'i18next';
@@ -62,6 +62,7 @@ const ScenarioListPage: React.FC = () => {
   const [createForm, setCreateForm] = useState<CreateFormData>(DEFAULT_FORM);
   const [creating, setCreating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [approvalBusy, setApprovalBusy] = useState<string | null>(null);
 
   useEffect(() => {
     fetchScenarios(20, 0);
@@ -111,6 +112,32 @@ const ScenarioListPage: React.FC = () => {
       navigate(WargamePath.roundView(id));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleSubmitApproval = async (s: Scenario) => {
+    const title = window.prompt(
+      t('cognitiveWargame.approval.submitTitle'),
+      `${s.name} ${t('cognitiveWargame.approval.title')}`,
+    );
+    if (!title?.trim()) return;
+    setApprovalBusy(s.id);
+    setActionError(null);
+    try {
+      await api.submitApproval({
+        resource_type: 'scenario',
+        resource_id: s.id,
+        title: title.trim(),
+      });
+      setActionError(t('cognitiveWargame.approval.submitSuccess'));
+    } catch (err) {
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : t('cognitiveWargame.approval.submitFailed'),
+      );
+    } finally {
+      setApprovalBusy(null);
     }
   };
 
@@ -298,6 +325,17 @@ const ScenarioListPage: React.FC = () => {
                             onClick={() => handleExecute(s.id)}
                           >
                             {t('cognitiveWargame.common.execute')}
+                          </Button>
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="h-auto p-0"
+                            disabled={approvalBusy === s.id}
+                            onClick={() => handleSubmitApproval(s)}
+                          >
+                            {approvalBusy === s.id
+                              ? t('cognitiveWargame.common.loading')
+                              : t('cognitiveWargame.approval.submit')}
                           </Button>
                           <Button
                             variant="link"

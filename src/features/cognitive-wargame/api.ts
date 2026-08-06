@@ -10,6 +10,16 @@ import { Authorization } from '@/constants/authorization';
 /** 管理服务基础路径，由 Nginx 代理到 9381。 */
 const WARGAME_BASE_URL = '/api/v1';
 
+/**
+ * SSE 事件流直连地址。
+ * Vite 7.3.0 的 http-proxy-3 不支持 SSE 流式转发，开发环境直连 admin_server。
+ * 生产环境通过 Nginx/Gateway 代理，可改回相对路径。
+ */
+const SSE_BASE_URL =
+  typeof window !== 'undefined' && window.location.hostname === 'localhost'
+    ? `http://${window.location.hostname}:9380/api/v1`
+    : WARGAME_BASE_URL;
+
 /** 创建带鉴权拦截器的 axios 实例。 */
 function createWargameClient(): AxiosInstance {
   const instance = axios.create({
@@ -161,6 +171,45 @@ export interface TaskStatus {
   elapsed: number;
 }
 
+/** 审批记录（对应 intellect-gateway Approval schema，P3.3-3）。 */
+export interface Approval {
+  approval_id: string;
+  status: 'pending' | 'approved' | 'rejected' | 'request_changes' | 'completed';
+  tenant_id?: string;
+  resource_type: string;
+  resource_id: string;
+  title: string;
+  description?: string | null;
+  summary?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
+  submitted_by?: string | null;
+  approvers?: string[];
+  callback_channel?: string | null;
+  created_at?: string;
+  resolved_at?: string | null;
+  resolved_by?: string | null;
+  resolution_comment?: string | null;
+  completed_at?: string | null;
+}
+
+/** 审批详情（含审计历史）。 */
+export interface ApprovalDetail extends Approval {
+  history?: Array<{
+    action: string;
+    actor: string | null;
+    timestamp: string;
+    comment: string | null;
+  }>;
+}
+
+/** 审批列表响应。 */
+export interface ApprovalList {
+  approvals: Approval[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 /** 干预请求（P3.3-1 对接 intervention_api）。 */
 export interface InterventionRequest {
   type: 'narrative_inject' | 'agent_override' | 'strategy_veto';
@@ -281,10 +330,11 @@ export const api = {
   },
 
   /** 获取态势指标历史序列。 */
-  getMetricsHistory(scenarioId: string) {
-    return unwrap<Metrics[]>(
+  async getMetricsHistory(scenarioId: string) {
+    const data = await unwrap<Metrics[]>(
       client.get(`/metrics/${scenarioId}/history`),
     );
+    return Array.isArray(data) ? data : [];
   },
 
   /** 生成评估报告（POST，对应后端 /reports/round）。 */
@@ -375,7 +425,7 @@ export const api = {
    * P5 修复：URL 编码 channel 名，防止特殊字符破坏 URL。
    */
   eventStreamUrl: (scenarioId: string, channels?: string[]) => {
-    const base = `${WARGAME_BASE_URL}/events/${scenarioId}/stream`;
+    const base = `${SSE_BASE_URL}/events/${scenarioId}/stream`;
     const params = new URLSearchParams();
     const token =
       typeof localStorage !== 'undefined'
@@ -430,6 +480,91 @@ export const api = {
           top_n: params?.limit,
         },
       }),
+    );
+  },
+
+  // ── P3.4-2 评估中心：蒙特卡洛 / 回测 / 任务轮询 ──────────────
+
+  /** 提交蒙特卡洛报告生成（异步，返回 task_id）。 */
+  runMonteCarlo(
+    scenarioId: string,
+    params: { n: number; rounds: number; seed_base: number },
+  ) {
+    return unwrap<TaskStatus>(
+      client.post('/reports/monte-carlo', {
+        scenario_id: scenarioId,
+        n: params.n,
+        rounds: params.rounds,
+        seed_base: params.seed_base,
+      }),
+    );
+  },
+
+  /** 提交回测报告生成（异步，返回 task_id）。 */
+  runBacktest(
+    scenarioId: string,
+    params: { event_ids?: string[] },
+  ) {
+    return unwrap<TaskStatus>(
+      client.post('/reports/backtest', {
+        scenario_id: scenarioId,
+        event_ids: params.event_ids,
+      }),
+    );
+  },
+
+  /** 查询任务状态（轮询用，对接 /scenarios/{id}/status?task_id=）。 */
+  getTaskStatus(scenarioId: string, taskId: string) {
+    return unwrap<TaskStatus>(
+      client.get(`/scenarios/${scenarioId}/status`, {
+        params: { task_id: taskId },
+      }),
+    );
+  },
+
+  /** 获取异步报告任务结果（任务完成后调）。 */
+  getReportResult(taskId: string) {
+    return unwrap<Record<string, unknown>>(
+      client.get(`/reports/result/${taskId}`),
+    );
+  },
+
+  // ── P3.3-3 想定审批（代理 intellect-gateway /v1/approvals）────
+
+  /** 提交审批（resource_type='scenario'，resource_id=想定ID）。 */
+  submitApproval(data: {
+    resource_type: string;
+    resource_id: string;
+    title: string;
+    description?: string;
+    summary?: Record<string, unknown>;
+    callback_channel?: string;
+    approvers?: string[];
+    metadata?: Record<string, unknown>;
+  }) {
+    return unwrap<Approval>(client.post('/approvals', data));
+  },
+
+  /** 查询审批列表。 */
+  getApprovals(params?: {
+    status?: string;
+    resource_type?: string;
+    submitted_by?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    return unwrap<ApprovalList>(client.get('/approvals', { params }));
+  },
+
+  /** 查询审批详情（含审计历史）。 */
+  getApprovalDetail(approvalId: string) {
+    return unwrap<ApprovalDetail>(client.get(`/approvals/${approvalId}`));
+  },
+
+  /** 决议审批（approved/rejected/request_changes）。 */
+  resolveApproval(approvalId: string, decision: string, comment?: string) {
+    return unwrap<Approval>(
+      client.post(`/approvals/${approvalId}/resolve`, { decision, comment }),
     );
   },
 };

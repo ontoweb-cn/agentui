@@ -21,6 +21,7 @@ export const WargameRoutes = {
   ReportView: '/cognitive-wargame/reports/:id',
   Playback: '/cognitive-wargame/playback',
   PlaybackView: '/cognitive-wargame/playback/:id',
+  Approvals: '/cognitive-wargame/approvals',
 } as const;
 
 /** 构造想定详情等动态路径的工具函数。 */
@@ -90,6 +91,11 @@ const routes: LazyRouteConfig[] = [
   {
     path: WargameRoutes.PlaybackView,
     Component: () => import('./pages/PlaybackPage'),
+  },
+  // approvals: 想定审批（P3.3-3）
+  {
+    path: WargameRoutes.Approvals,
+    Component: () => import('./pages/ApprovalListPage'),
   },
 ];
 

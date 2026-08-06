@@ -58,6 +58,12 @@ const definition: ModuleDefinition = {
       pathMap: [WargameRoutes.Playback, WargameRoutes.PlaybackView],
       testId: 'nav-cw-playback',
     },
+    {
+      path: WargameRoutes.Approvals,
+      labelKey: 'cognitiveWargame.nav.approvals',
+      pathMap: [WargameRoutes.Approvals],
+      testId: 'nav-cw-approvals',
+    },
   ],
   i18n: {
     namespaces: ['cognitiveWargame'],
