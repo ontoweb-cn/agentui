@@ -146,6 +146,8 @@ export default {
       narrativeChain: '叙事链',
       keyNodes: '关键节点',
       search: '搜索',
+      degree: '度中心性',
+      betweenness: '介数中心性',
     },
     report: {
       title: '评估报告',

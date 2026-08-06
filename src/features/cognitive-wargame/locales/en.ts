@@ -146,6 +146,8 @@ export default {
       narrativeChain: 'Narrative Chain',
       keyNodes: 'Key Nodes',
       search: 'Search',
+      degree: 'Degree',
+      betweenness: 'Betweenness',
     },
     report: {
       title: 'Reports',
