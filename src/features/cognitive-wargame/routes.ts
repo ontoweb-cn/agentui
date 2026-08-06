@@ -19,6 +19,8 @@ export const WargameRoutes = {
   KGView: '/cognitive-wargame/kg/:id',
   Reports: '/cognitive-wargame/reports',
   ReportView: '/cognitive-wargame/reports/:id',
+  Playback: '/cognitive-wargame/playback',
+  PlaybackView: '/cognitive-wargame/playback/:id',
 } as const;
 
 /** 构造想定详情等动态路径的工具函数。 */
@@ -28,6 +30,7 @@ export const WargamePath = {
   metricsView: (id: string) => `/cognitive-wargame/metrics/${id}`,
   kgView: (id: string) => `/cognitive-wargame/kg/${id}`,
   reportView: (id: string) => `/cognitive-wargame/reports/${id}`,
+  playbackView: (id: string) => `/cognitive-wargame/playback/${id}`,
 };
 
 const routes: LazyRouteConfig[] = [
@@ -78,6 +81,15 @@ const routes: LazyRouteConfig[] = [
   {
     path: WargameRoutes.ReportView,
     Component: () => import('./pages/ReportViewPage'),
+  },
+  // playback: index + detail（P3.4-3 历史回放）
+  {
+    path: WargameRoutes.Playback,
+    Component: () => import('./pages/PlaybackPage'),
+  },
+  {
+    path: WargameRoutes.PlaybackView,
+    Component: () => import('./pages/PlaybackPage'),
   },
 ];
 

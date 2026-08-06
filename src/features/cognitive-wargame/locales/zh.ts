@@ -13,6 +13,7 @@ export default {
       metrics: '态势分析',
       kg: '知识图谱',
       reports: '评估报告',
+      playback: '历史回放',
     },
     common: {
       title: '认知博弈推演',
@@ -156,6 +157,15 @@ export default {
       monteCarlo: '蒙特卡洛分析',
       backtest: '回测',
       counterfactual: '反事实分析',
+    },
+    playback: {
+      title: '历史回放',
+      selectScenario: '选择想定',
+      selectRound: '选择回合',
+      prevRound: '上一回合',
+      nextRound: '下一回合',
+      eventTimeline: '事件时间轴',
+      noEvents: '该回合暂无事件',
     },
     sse: {
       connected: '实时连接已建立',

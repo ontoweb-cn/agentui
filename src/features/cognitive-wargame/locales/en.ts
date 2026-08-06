@@ -13,6 +13,7 @@ export default {
       metrics: 'Metrics',
       kg: 'Knowledge Graph',
       reports: 'Reports',
+      playback: 'Playback',
     },
     common: {
       title: 'Cognitive Wargame',
@@ -156,6 +157,15 @@ export default {
       monteCarlo: 'Monte Carlo',
       backtest: 'Backtest',
       counterfactual: 'Counterfactual',
+    },
+    playback: {
+      title: 'Playback',
+      selectScenario: 'Select scenario',
+      selectRound: 'Select round',
+      prevRound: 'Previous round',
+      nextRound: 'Next round',
+      eventTimeline: 'Event timeline',
+      noEvents: 'No events for this round',
     },
     sse: {
       connected: 'Real-time connection established',

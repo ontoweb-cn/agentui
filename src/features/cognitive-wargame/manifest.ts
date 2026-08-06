@@ -4,7 +4,7 @@
  * 字段对齐 `ModuleDefinition`（见 features/_types.ts）：
  * - name/order/enabled 控制插件注册与排序
  * - routes 由 routes.ts 提供懒加载路由
- * - nav 暴露导航项（Dashboard/想定管理/推演监控/态势分析/知识图谱/评估报告）
+ * - nav 暴露导航项（Dashboard/想定管理/推演监控/态势分析/知识图谱/评估报告/历史回放）
  * - i18n 提供中英文懒加载词条
  */
 import type { ModuleDefinition } from '../_types';
@@ -51,6 +51,12 @@ const definition: ModuleDefinition = {
       labelKey: 'cognitiveWargame.nav.reports',
       pathMap: [WargameRoutes.Reports, WargameRoutes.ReportView],
       testId: 'nav-cw-reports',
+    },
+    {
+      path: WargameRoutes.Playback,
+      labelKey: 'cognitiveWargame.nav.playback',
+      pathMap: [WargameRoutes.Playback, WargameRoutes.PlaybackView],
+      testId: 'nav-cw-playback',
     },
   ],
   i18n: {
