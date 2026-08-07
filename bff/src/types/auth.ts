@@ -11,6 +11,8 @@
  * - Principle VIII:企业版认证用 member token(imt_*),非 API_SERVER_KEY
  */
 
+import type { AuthMode } from './tenant';
+
 // ---------------------------------------------------------------------------
 // AuthSession(BFF 内存,不持久化)
 // ---------------------------------------------------------------------------
@@ -29,8 +31,8 @@ export interface AuthSession {
   token: string;
   /** 当前租户 ID(从 X-Backend-Id header) */
   backendId: string;
-  /** 认证模式(来自 BffTenant.authMode,默认 intellect-rag) */
-  authMode: 'intellect-rag' | 'intellect-enterprise';
+  /** 认证模式(来自 BffTenant.authMode,默认 intellect-community) */
+  authMode: AuthMode;
 }
 
 // ---------------------------------------------------------------------------

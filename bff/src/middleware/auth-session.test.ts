@@ -73,7 +73,7 @@ describe('authSessionMiddleware', () => {
     expect(ctx.storedSession).toBeDefined();
     expect(ctx.storedSession?.token).toBe('imt_abc123');
     expect(ctx.storedSession?.backendId).toBe('tenant-enterprise');
-    expect(ctx.storedSession?.authMode).toBe('intellect-rag'); // 默认
+    expect(ctx.storedSession?.authMode).toBe('intellect-community'); // 默认
   });
 
   it('有 cookie + BffTenant.authMode=intellect-enterprise 时注入正确 authMode', async () => {
@@ -129,14 +129,14 @@ describe('authSessionMiddleware', () => {
     await authSessionMiddleware(ctx as never, next);
 
     expect(next).toHaveBeenCalledTimes(1);
-    // 有 cookie 就注入 session(tenantId='0',authMode 默认 intellect-rag)
+    // 有 cookie 就注入 session(tenantId='0',authMode 默认 intellect-community)
     expect(ctx.storedSession).toBeDefined();
     expect(ctx.storedSession?.token).toBe('imt_abc123');
     expect(ctx.storedSession?.backendId).toBe('0');
-    expect(ctx.storedSession?.authMode).toBe('intellect-rag');
+    expect(ctx.storedSession?.authMode).toBe('intellect-community');
   });
 
-  it('无 backendStore 时不报错,authMode 默认 intellect-rag', async () => {
+  it('无 backendStore 时不报错,authMode 默认 intellect-community', async () => {
     const ctx = createMockContext(
       { 'X-Backend-Id': 'tenant-001' },
       'imt_token1',
@@ -146,11 +146,11 @@ describe('authSessionMiddleware', () => {
 
     await authSessionMiddleware(ctx as never, next);
 
-    expect(ctx.storedSession?.authMode).toBe('intellect-rag');
+    expect(ctx.storedSession?.authMode).toBe('intellect-community');
     expect(ctx.storedSession?.token).toBe('imt_token1');
   });
 
-  it('backendStore 无对应 tenant 时 authMode 默认 intellect-rag(向后兼容)', async () => {
+  it('backendStore 无对应 tenant 时 authMode 默认 intellect-community(向后兼容)', async () => {
     const ctx = createMockContext(
       { 'X-Backend-Id': 'unknown-tenant' },
       'imt_token2',
@@ -160,10 +160,10 @@ describe('authSessionMiddleware', () => {
 
     await authSessionMiddleware(ctx as never, next);
 
-    expect(ctx.storedSession?.authMode).toBe('intellect-rag');
+    expect(ctx.storedSession?.authMode).toBe('intellect-community');
   });
 
-  it('BffTenant.authMode 未设置时默认 intellect-rag(向后兼容旧配置)', async () => {
+  it('BffTenant.authMode 未设置时默认 intellect-community(向后兼容旧配置)', async () => {
     const ctx = createMockContext(
       { 'X-Backend-Id': 'tenant-001' },
       'imt_token3',
@@ -176,6 +176,6 @@ describe('authSessionMiddleware', () => {
 
     await authSessionMiddleware(ctx as never, next);
 
-    expect(ctx.storedSession?.authMode).toBe('intellect-rag');
+    expect(ctx.storedSession?.authMode).toBe('intellect-community');
   });
 });

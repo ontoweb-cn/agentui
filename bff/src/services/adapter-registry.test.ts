@@ -84,6 +84,7 @@ function createMockBackendStore(
     getHarnessBinding: vi.fn((id: string) =>
       loaded ? tenants.find((t) => t.id === id)?.intellectBackendId : undefined,
     ),
+    setAuthMode: vi.fn(),
     setCanvasBinding: vi.fn(),
     getCanvasBinding: vi.fn(),
     setIntellectBinding: vi.fn(),

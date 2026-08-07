@@ -17,6 +17,7 @@ import type { MiddlewareHandler } from 'hono';
 import { getCookie } from 'hono/cookie';
 import type { AuthSession } from '../types/auth';
 import { AUTH_COOKIE_NAME } from '../types/auth';
+import type { AuthMode } from '../types/tenant';
 
 /** Hono context key for injected AuthSession */
 export const AUTH_SESSION_KEY = 'authSession';
@@ -39,9 +40,9 @@ export const authSessionMiddleware: MiddlewareHandler = async (c, next) => {
   // 缺省 TenantID="0"(与 auth.ts 公开端点策略一致,未传 header 时用缺省租户)
   const backendId = c.req.header('X-Backend-Id') || '0';
 
-  // 从 BackendStore 读取 BffTenant.authMode(默认 intellect-rag,向后兼容)
+  // 从 BackendStore 读取 BffTenant.authMode(默认 intellect-community,向后兼容)
   const backendStore = c.get('backendStore');
-  let authMode: 'intellect-rag' | 'intellect-enterprise' = 'intellect-rag';
+  let authMode: AuthMode = 'intellect-community';
   if (backendStore) {
     const bffTenant = backendStore.getBackend(backendId);
     if (bffTenant?.authMode) {

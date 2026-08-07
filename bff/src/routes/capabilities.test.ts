@@ -105,6 +105,7 @@ function createMocks(
     createBackend: vi.fn(),
     setHarnessBinding: vi.fn(),
     getHarnessBinding: vi.fn(),
+    setAuthMode: vi.fn(),
     setCanvasBinding: vi.fn(),
     getCanvasBinding: vi.fn(),
     setIntellectBinding: vi.fn(),

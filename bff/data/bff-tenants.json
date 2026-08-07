@@ -4,11 +4,10 @@
       "id": "0",
       "name": "Default Enterprise Tenant",
       "intellectTenantId": "0",
-      "intellectBackendId": "intellect-enterprise-default",
-      "canvasBackendId": "intellect-rag-default",
+      "intellectBackendId": "test-enterprise",
       "authMode": "intellect-enterprise",
       "createdAt": "2026-06-26T00:00:00Z",
-      "updatedAt": "2026-06-26T00:00:00Z"
+      "updatedAt": "2026-08-07T20:20:00Z"
     },
     {
       "id": "tenant-rag",

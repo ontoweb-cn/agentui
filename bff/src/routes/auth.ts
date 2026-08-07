@@ -9,7 +9,7 @@
  * - Principle VII (YAGNI + Test-First): 路由必有单元测试,不实现 token 刷新
  *
  * 路径映射(按 BffTenant.authMode 分发):
- * - authMode=intellect-rag(默认):透传到 intellect-rag /api/v1/auth/* + /api/v1/users/*
+ * - authMode=intellect-community(默认)/intellect-rag:透传到 intellect-rag /api/v1/auth/* + /api/v1/users/*
  * - authMode=intellect-enterprise:调 intellect-team /api/members/* + /api/oauth/*
  *
  * Cookie 规则(企业版):
@@ -22,6 +22,7 @@ import { setCookie, deleteCookie, getCookie } from 'hono/cookie';
 import type { BackendStore, HarnessStore } from '../types/stores';
 import type { AuthSession } from '../types/auth';
 import { AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE } from '../types/auth';
+import type { AuthMode } from '../types/tenant';
 import { getAuthSession, AUTH_SESSION_KEY } from '../middleware/auth-session';
 
 /**
@@ -95,12 +96,12 @@ function fail(code: number, message: string) {
 }
 
 /**
- * 获取 tenant 的 authMode,默认 intellect-rag(向后兼容)。
+ * 获取 tenant 的 authMode,默认 intellect-community(向后兼容)。
  */
-function getAuthMode(backendStore: BackendStore | undefined, tenantId: string): 'intellect-rag' | 'intellect-enterprise' {
-  if (!backendStore) return 'intellect-rag';
+function getAuthMode(backendStore: BackendStore | undefined, tenantId: string): AuthMode {
+  if (!backendStore) return 'intellect-community';
   const tenant = backendStore.getBackend(tenantId);
-  return tenant?.authMode ?? 'intellect-rag';
+  return tenant?.authMode ?? 'intellect-community';
 }
 
 /**
@@ -307,7 +308,7 @@ authRoutes.get('/auth/me', async (c) => {
   const backendStore = c.get('backendStore');
   const authMode = getAuthMode(backendStore, tenantId);
 
-  if (authMode === 'intellect-rag') {
+  if (authMode !== 'intellect-enterprise') {
     const ragBaseUrl = getRagBaseUrl();
     const authHeader = c.req.header('Authorization');
     if (!authHeader) {
@@ -511,7 +512,7 @@ authRoutes.post('/auth/logout', async (c) => {
   const communityAuthHeader = c.req.header('Authorization');
 
   // 社区版模式:用前端 Authorization header 调 intellect-rag /api/v1/auth/logout
-  if (authMode === 'intellect-rag') {
+  if (authMode !== 'intellect-enterprise') {
     // 无 token 也清前端标记(防御性,允许登出已过期的会话)
     if (!communityAuthHeader) {
       return c.json(ok({ logged_out: true }));

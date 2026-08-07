@@ -14,6 +14,14 @@
  *   intellectTenantId/intellectProjectId 是实例内 Team/Project 组织隔离,非租户隔离。
  */
 
+/**
+ * 认证模式类型。
+ * - 'intellect-community':社区版(默认),BFF 透传到后端 /api/v1/auth/*
+ * - 'intellect-rag':旧版社区版(向后兼容,行为同 intellect-community)
+ * - 'intellect-enterprise':企业版,BFF 调 intellect-team /api/members/* + /api/oauth/*
+ */
+export type AuthMode = 'intellect-community' | 'intellect-rag' | 'intellect-enterprise';
+
 // ---------------------------------------------------------------------------
 // BFF Tenant (persisted to bff/data/bff-tenants.json, NO token)
 // ---------------------------------------------------------------------------
@@ -59,12 +67,13 @@ export interface BffTenant {
    */
   canvasBackendId?: string;
   /**
-   * 认证模式(P4b 新增,默认 'intellect-rag',向后兼容)。
-   * - 'intellect-rag':社区版,BFF 透传到 intellect-rag /api/v1/auth/*
+   * 认证模式(P4b 新增,默认 'intellect-community',向后兼容)。
+   * - 'intellect-community':社区版(默认),BFF 透传到后端 /api/v1/auth/*
+   * - 'intellect-rag':旧版社区版(向后兼容,行为同 intellect-community)
    * - 'intellect-enterprise':企业版,BFF 调 intellect-team /api/members/* + /api/oauth/*
    *   此时 intellectBackendId 必须指向 type='intellect-enterprise' 的后端。
    */
-  authMode?: 'intellect-rag' | 'intellect-enterprise';
+  authMode?: AuthMode;
   /** ISO 8601 创建时间戳 */
   createdAt: string;
   /** ISO 8601 更新时间戳 */

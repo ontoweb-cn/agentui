@@ -204,7 +204,7 @@ export const useLogout = () => {
   return { data, loading, logout: mutateAsync };
 };
 
-export type AuthMode = 'intellect-rag' | 'intellect-enterprise';
+export type AuthMode = 'intellect-community' | 'intellect-rag' | 'intellect-enterprise';
 
 /**
  * 获取当前 tenant 的认证模式(公开端点,无需登录)。
@@ -224,10 +224,10 @@ export const useAuthMode = () => {
       const { data: res = {} } = await request.get(api.authConfig, {
         headers: { 'X-Backend-Id': tenantId },
       });
-      return (res?.data?.authMode as AuthMode) ?? 'intellect-rag';
+      return (res?.data?.authMode as AuthMode) ?? 'intellect-community';
     },
     staleTime: 5 * 60 * 1000, // 5 min
   });
 
-  return { authMode: (data ?? 'intellect-rag') as AuthMode, loading: isLoading };
+  return { authMode: (data ?? 'intellect-community') as AuthMode, loading: isLoading };
 };

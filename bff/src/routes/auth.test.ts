@@ -65,6 +65,7 @@ function createMockBackendStore(tenants: BffTenant[]): BackendStore {
     createBackend: vi.fn(),
     setHarnessBinding: vi.fn(),
     getHarnessBinding: vi.fn(),
+    setAuthMode: vi.fn(),
     setCanvasBinding: vi.fn(),
     getCanvasBinding: vi.fn(),
     setIntellectBinding: vi.fn(),
@@ -153,7 +154,7 @@ describe('auth 路由 (P4b US1)', () => {
     expect(body.data.authMode).toBe('intellect-rag');
   });
 
-  it('auth config:无 X-Backend-Id → 默认 intellect-rag', async () => {
+  it('auth config:无 X-Backend-Id → 默认 intellect-community', async () => {
     const backendStore = createMockBackendStore([enterpriseTenant]);
     const app = createApp(backendStore);
 
@@ -161,7 +162,7 @@ describe('auth 路由 (P4b US1)', () => {
 
     expect(resp.status).toBe(200);
     const body = await resp.json();
-    expect(body.data.authMode).toBe('intellect-rag');
+    expect(body.data.authMode).toBe('intellect-community');
   });
 
   // -------------------------------------------------------------------------

@@ -20,7 +20,7 @@ import type {
   HarnessBackend,
   HarnessBackendConfig,
 } from './harness';
-import type { BffTenant } from './tenant';
+import type { BffTenant, AuthMode } from './tenant';
 
 // ---------------------------------------------------------------------------
 // HarnessStore
@@ -99,6 +99,7 @@ export interface BackendStore {
    * @param name 租户名称
    * @param intellectBackendId 主后端 ID(必须已存在于 HarnessStore)
    * @param intellectTenantId 对应的 Intellect 企业版 Tenant ID(企业版用户必填)
+   * @param authMode 认证模式(可选,未设置时由 getAuthMode 默认 intellect-community)
    * @returns 新建的 BffTenant
    * @throws 若 intellectBackendId 不存在于 HarnessStore
    */
@@ -106,6 +107,7 @@ export interface BackendStore {
     name: string,
     intellectBackendId: string,
     intellectTenantId?: string,
+    authMode?: AuthMode,
   ): Promise<BffTenant>;
 
   /** 按 ID 获取 Tenant。 */
@@ -122,6 +124,12 @@ export interface BackendStore {
 
   /** 获取 Tenant 的主后端 ID(未绑定则 undefined)。 */
   getHarnessBinding(tenantId: string): string | undefined;
+
+  /**
+   * 设置 Tenant 的认证模式。
+   * @throws 若 tenantId 不存在
+   */
+  setAuthMode(tenantId: string, authMode: AuthMode): Promise<void>;
 
   /**
    * 设置 Tenant 的 Intellect 企业版 Team/Project 绑定(P5 新增)。

@@ -27,6 +27,7 @@ import { validateTenantConfigs, fetchTenantInfo } from '../services/tenant-valid
 import { BootstrapTokenManager } from '../services/bootstrap-token';
 import type { HarnessStoreListConfigs } from '../types/harness-admin';
 import type { HarnessBackendConfig, BackendType, HarnessCapabilities } from '../types/harness';
+import type { AuthMode } from '../types/tenant';
 import { AUTH_COOKIE_NAME } from '../types/auth';
 import type {
   WizardStatusResponse,
@@ -533,6 +534,33 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
         400,
       );
     }
+  }
+
+  // 7.5. 创建/更新默认 tenant '0',确保 X-Backend-Id: '0' 的请求能路由到新创建的 backend。
+  //      Wizard 创建第一个 backend 时,需同步更新 BffTenant 记录,否则 authMode 会使用
+  //      默认值(可能导致企业版后端显示社区版登录界面)。
+  const wizardAuthMode: AuthMode =
+    req.type === 'intellect-enterprise' ? 'intellect-enterprise' : 'intellect-community';
+  const defaultTenantId = '0';
+  const bStore = c.get('backendStore');
+  const existingDefaultTenant = bStore.getBackend(defaultTenantId);
+  if (existingDefaultTenant) {
+    // 更新现有默认 tenant 的绑定
+    if (existingDefaultTenant.intellectBackendId !== backendId) {
+      await bStore.setHarnessBinding(defaultTenantId, backendId);
+    }
+    await bStore.setAuthMode(defaultTenantId, wizardAuthMode);
+    if (req.type === 'intellect-enterprise' && req.intellectTenantId) {
+      await bStore.setIntellectBinding(defaultTenantId, req.intellectTenantId);
+    }
+  } else {
+    // 全新安装(无 bff-tenants.json 或文件中无 tenant '0'):创建默认 tenant
+    await bStore.createBackend(
+      req.name || 'Default',
+      backendId,
+      req.intellectTenantId,
+      wizardAuthMode,
+    );
   }
 
   // 8. 首个 backend 创建成功后,失效 bootstrap token(spec §9.4)

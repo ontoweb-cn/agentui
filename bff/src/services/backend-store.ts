@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { BffTenant, BackendStore, HarnessBackendConfig, HarnessStore } from '../types';
+import type { AuthMode } from '../types/tenant';
 import {
   TenantNotFoundError,
   BackendNotConfiguredError,
@@ -34,7 +35,7 @@ const tenantSchema = z.object({
   intellectProjectId: z.string().optional(),
   intellectBackendId: z.string().min(1),
   canvasBackendId: z.string().optional(),
-  authMode: z.enum(['intellect-rag', 'intellect-enterprise']).optional(),
+  authMode: z.enum(['intellect-community', 'intellect-rag', 'intellect-enterprise']).optional(),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
 });
@@ -176,6 +177,7 @@ export class JSONFileBackendStore implements BackendStore {
     name: string,
     intellectBackendId: string,
     intellectTenantId?: string,
+    authMode?: AuthMode,
   ): Promise<BffTenant> {
     // 校验 backendId 存在
     const backend = this.harnessStore.get(intellectBackendId);
@@ -189,6 +191,7 @@ export class JSONFileBackendStore implements BackendStore {
       name,
       intellectTenantId,
       intellectBackendId,
+      ...(authMode ? { authMode } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -222,6 +225,16 @@ export class JSONFileBackendStore implements BackendStore {
 
   getHarnessBinding(tenantId: string): string | undefined {
     return this.getBackend(tenantId)?.intellectBackendId;
+  }
+
+  async setAuthMode(tenantId: string, authMode: AuthMode): Promise<void> {
+    const tenant = this.getBackend(tenantId);
+    if (!tenant) {
+      throw new TenantNotFoundError(tenantId);
+    }
+    tenant.authMode = authMode;
+    tenant.updatedAt = new Date().toISOString();
+    await this.persist();
   }
 
   async setIntellectBinding(
