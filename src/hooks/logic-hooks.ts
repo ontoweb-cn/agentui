@@ -162,7 +162,8 @@ export interface AppConf {
 export const useFetchAppConf = () => {
   const [appConf, setAppConf] = useState<AppConf>({} as AppConf);
   const fetchAppConf = useCallback(async () => {
-    const ret = await axios.get('/conf.json');
+    // 子目录部署支持:使用 BASE_URL 拼接,避免 404
+    const ret = await axios.get(`${import.meta.env.BASE_URL}conf.json`);
 
     setAppConf(ret.data);
   }, []);

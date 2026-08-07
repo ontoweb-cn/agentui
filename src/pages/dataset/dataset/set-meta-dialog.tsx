@@ -27,7 +27,8 @@ import Editor, { loader } from '@monaco-editor/react';
 import DOMPurify from 'dompurify';
 import { useEffect } from 'react';
 
-loader.config({ paths: { vs: '/vs' } });
+// 子目录部署支持:使用 BASE_URL 拼接 vs 路径,避免 404
+loader.config({ paths: { vs: `${import.meta.env.BASE_URL}vs` } });
 
 export function SetMetaDialog({
   hideModal,

@@ -1,0 +1,127 @@
+# =============================================================================
+# K8S Deployment + Service(方案 A 子目录部署)
+#
+# 镜像构建:
+#   docker build -f deploy/subpath/Dockerfile \
+#     --build-arg SUBPATH=agentui \
+#     -t agentui:subpath .
+#
+# 部署:
+#   kubectl apply -f deploy/subpath/k8s-deployment.yaml
+#   kubectl apply -f deploy/subpath/k8s-ingress.yaml
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentui
+  namespace: default
+  labels:
+    app: agentui
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agentui
+  template:
+    metadata:
+      labels:
+        app: agentui
+    spec:
+      containers:
+        - name: agentui
+          image: agentui:subpath
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+              name: http
+          env:
+            # 子目录名(必须与构建时 --build-arg SUBPATH 一致)
+            - name: SUBPATH
+              value: "agentui"
+
+            # OAuth 回调重定向到子目录首页
+            - name: BFF_OAUTH_FRONTEND_HOME
+              value: "/agentui/"
+
+            # cookie 路径(同域多应用时建议设置)
+            - name: BFF_COOKIE_PATH
+              value: "/agentui"
+
+            # ---- BFF ----
+            - name: BFF_PORT
+              value: "9390"
+
+            # ---- intellect-rag 后端 ----
+            - name: INTELLECT_RAG_HOST
+              value: "intellect-rag"
+            - name: PYTHON_API_PORT
+              value: "9380"
+            - name: PYTHON_ADMIN_PORT
+              value: "9381"
+
+            # ---- cognitive-wargame 后端 ----
+            - name: WARGAME_HOST
+              value: "wargame-service"
+            - name: WARGAME_PORT
+              value: "9385"
+
+            # ---- SSRF 防护(内部部署允许私有网段) ----
+            - name: SSRF_ALLOW_PRIVATE_IP
+              value: "true"
+
+            # ---- 凭据(从 Secret 注入,避免明文) ----
+            - name: HARNESS_INTELLECT_RAG_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: agentui-secrets
+                  key: rag-admin-token
+                  optional: true
+            - name: HARNESS_INTELLECT_ENTERPRISE_API_SERVER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agentui-secrets
+                  key: enterprise-api-key
+                  optional: true
+
+          # 健康检查(Nginx 前端根路径会 301 到 /agentui/,所以检查 301)
+          livenessProbe:
+            httpGet:
+              path: /agentui/
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /agentui/
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentui
+  namespace: default
+  labels:
+    app: agentui
+spec:
+  type: ClusterIP
+  selector:
+    app: agentui
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP

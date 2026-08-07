@@ -67,10 +67,12 @@ export const getAuthorization = () => {
 export default storage;
 
 // Will not jump to the login page
+// 子目录部署支持:使用 import.meta.env.BASE_URL 拼接路径,避免丢失子目录前缀
 export function redirectToLogin() {
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '');
   const currentPath = location.pathname;
-  if (currentPath === '/login' || currentPath === '/login-next') {
+  if (currentPath === `${base}/login` || currentPath === `${base}/login-next`) {
     return;
   }
-  window.location.href = location.origin + `/login`;
+  window.location.href = location.origin + base + '/login';
 }

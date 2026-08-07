@@ -202,7 +202,7 @@ function MessageItem({
             !isContinuation &&
             (item.role === MessageType.User ? (
               <IntellectAvatar
-                avatar={avatar ?? '/logo-96.png'}
+                avatar={avatar ?? `${import.meta.env.BASE_URL}logo-96.png`}
                 name={nickname}
                 isPerson
               />

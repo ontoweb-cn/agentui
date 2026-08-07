@@ -105,7 +105,7 @@ export function TopBar({
       <div className="justify-self-start">
         {left ?? (
           <Link to={Routes.Root}>
-            <img src="/logo-96.png" alt="Logo" className="size-8" />
+            <img src={`${import.meta.env.BASE_URL}logo-96.png`} alt="Logo" className="size-8" />
           </Link>
         )}
       </div>
