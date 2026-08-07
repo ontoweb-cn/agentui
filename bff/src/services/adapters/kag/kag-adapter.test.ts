@@ -17,6 +17,7 @@ const { mockListTools, mockCallTool, mockConnect, mockClose, mockIsUrlSafe, mock
 // Mock ssrf-guard:绕过真实 DNS 解析(测试用 127.0.0.1 会被私有 IP 拦截)
 vi.mock('../../ssrf-guard', () => ({
   isUrlSafe: mockIsUrlSafe,
+  SSRF_PRIVATE_IP_HINT: 'TEST_HINT',
 }));
 
 // Mock MCP SDK Client:工厂返回共享 spy

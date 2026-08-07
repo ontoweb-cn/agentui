@@ -18,6 +18,7 @@ import type { BffTenant } from '../types/tenant';
 vi.mock('../services/ssrf-guard', () => ({
   safeFetch: vi.fn(),
   isUrlSafe: vi.fn(),
+  SSRF_PRIVATE_IP_HINT: 'TEST_HINT',
 }));
 vi.mock('../services/tenant-validator', () => ({
   validateTenantConfigs: vi.fn(),

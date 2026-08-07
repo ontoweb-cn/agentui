@@ -11,6 +11,24 @@
 
 import { promises as dns } from 'node:dns';
 
+/**
+ * 默认是否允许私有 IP。
+ *
+ * 多数内部/实验室部署的后端位于私有网段(192.168.x.x / 10.x.x.x 等),
+ * 默认拦截会阻断向导探测与 setup。通过环境变量 SSRF_ALLOW_PRIVATE_IP=true
+ * 显式放行(部署级 opt-in),未设置时保持默认安全(拦截)。
+ *
+ * 注:仅在受信任的内网部署中启用;公网暴露的 BFF 不应开启。
+ */
+const DEFAULT_ALLOW_PRIVATE_IP = process.env.SSRF_ALLOW_PRIVATE_IP === 'true';
+
+/**
+ * SSRF 私有 IP 拦截时附加给用户的操作指引(单一数据源)。
+ * 所有因私有网段拦截产生的错误消息均复用此串,确保用户得到准确的修复建议。
+ */
+export const SSRF_PRIVATE_IP_HINT =
+  '如需访问内网/私有网段后端,请在 BFF .env 设置 SSRF_ALLOW_PRIVATE_IP=true 放行';
+
 const PRIVATE_IP_PATTERNS = [
   /^127\./, // 127.0.0.0/8 (loopback)
   /^10\./, // 10.0.0.0/8
@@ -51,7 +69,7 @@ async function assertHostNotPrivate(
   // IPv4 字面量
   if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
     if (isPrivateIP(hostname)) {
-      throw new Error(`SSRF blocked: ${hostname} is a private IP`);
+      throw new Error(`SSRF blocked: ${hostname} is a private IP。${SSRF_PRIVATE_IP_HINT}`);
     }
     return;
   }
@@ -60,7 +78,7 @@ async function assertHostNotPrivate(
   if (hostname.startsWith('[') && hostname.endsWith(']')) {
     const ip = hostname.slice(1, -1);
     if (isPrivateIP(ip)) {
-      throw new Error(`SSRF blocked: ${hostname} is a private IP`);
+      throw new Error(`SSRF blocked: ${hostname} is a private IP。${SSRF_PRIVATE_IP_HINT}`);
     }
     return;
   }
@@ -71,7 +89,7 @@ async function assertHostNotPrivate(
     for (const { address } of lookupResults) {
       if (isPrivateIP(address)) {
         throw new Error(
-          `SSRF blocked: ${hostname} resolves to private IP ${address}`,
+          `SSRF blocked: ${hostname} resolves to private IP ${address}。${SSRF_PRIVATE_IP_HINT}`,
         );
       }
     }
@@ -100,7 +118,7 @@ export async function safeFetch(
   url: string,
   options: SafeFetchOptions = {},
 ): Promise<Response> {
-  const { timeoutMs = 10000, allowPrivateIP = false, ...fetchOptions } = options;
+  const { timeoutMs = 10000, allowPrivateIP = DEFAULT_ALLOW_PRIVATE_IP, ...fetchOptions } = options;
 
   // SSRF 校验:解析 URL,检查 hostname
   const parsed = new URL(url);
@@ -138,7 +156,7 @@ export async function safeFetch(
  */
 export async function isUrlSafe(
   url: string,
-  allowPrivateIP = false,
+  allowPrivateIP = DEFAULT_ALLOW_PRIVATE_IP,
 ): Promise<boolean> {
   try {
     const parsed = new URL(url);

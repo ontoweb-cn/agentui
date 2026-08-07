@@ -22,7 +22,7 @@ import type { HarnessStore } from '../types/stores';
 import type { BackendStore } from '../types/stores';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
 import type { ITokenVault } from '../services/token-vault';
-import { safeFetch, isUrlSafe } from '../services/ssrf-guard';
+import { safeFetch, isUrlSafe, SSRF_PRIVATE_IP_HINT } from '../services/ssrf-guard';
 import { validateTenantConfigs, fetchTenantInfo } from '../services/tenant-validator';
 import { BootstrapTokenManager } from '../services/bootstrap-token';
 import type { HarnessStoreListConfigs } from '../types/harness-admin';
@@ -213,7 +213,7 @@ wizardRoutes.post('/admin/wizard/probe', async (c) => {
   const safe = await isUrlSafe(body.endpoint);
   if (!safe) {
     return c.json(
-      { healthy: false, error: 'URL 不安全(可能指向私有 IP)' } satisfies WizardProbeResponse,
+      { healthy: false, error: `URL 不安全(可能指向私有 IP)。${SSRF_PRIVATE_IP_HINT}` } satisfies WizardProbeResponse,
       400,
     );
   }
@@ -366,23 +366,23 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   }
 
   // SSRF 预校验(与 probe 路由一致,防止持久化恶意 URL)
-  const endpointSafe = await isUrlSafe(body.endpoint);
+  const endpointSafe = await isUrlSafe(req.endpoint);
   if (!endpointSafe) {
     return c.json(
-      { success: false, error: 'URL 不安全(可能指向私有 IP)' } satisfies WizardSetupResponse,
+      { success: false, error: `URL 不安全(可能指向私有 IP)。${SSRF_PRIVATE_IP_HINT}` } satisfies WizardSetupResponse,
       400,
     );
   }
 
   // m4 修复(P3):intellect-enterprise 的 intellectTenantId 校验(32 位 hex)
-  if (body.type === 'intellect-enterprise') {
-    if (!body.intellectTenantId) {
+  if (req.type === 'intellect-enterprise') {
+    if (!req.intellectTenantId) {
       return c.json(
         { success: false, error: 'intellect-enterprise 类型必须提供 intellectTenantId' } satisfies WizardSetupResponse,
         400,
       );
     }
-    if (!/^[0-9a-fA-F]{32}$/.test(body.intellectTenantId)) {
+    if (!/^[0-9a-fA-F]{32}$/.test(req.intellectTenantId)) {
       return c.json(
         { success: false, error: 'intellectTenantId 必须为 32 位 hex(Rust 版本要求)' } satisfies WizardSetupResponse,
         400,
@@ -390,10 +390,10 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
     }
   }
 
-  const option = getOptionForType(body.type);
+  const option = getOptionForType(req.type);
   if (!option) {
     return c.json(
-      { success: false, error: `Unsupported backend type: ${body.type}` } satisfies WizardSetupResponse,
+      { success: false, error: `Unsupported backend type: ${req.type}` } satisfies WizardSetupResponse,
       400,
     );
   }
@@ -404,7 +404,7 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
 
   // 1. 生成 backendId(kebab-case) + adminTokenEnvVar
   // P1-4 修复:严格清洗,仅保留 [a-z0-9-],防止非法字符导致 env var/路径问题
-  const backendId = body.name
+  const backendId = req.name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
@@ -417,9 +417,9 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   // adminTokenEnvVar 始终由 BFF 自动生成,命名规则升级为 HARNESS_<ID>_TOKEN。
   // 前端传入的 adminTokenEnvVar 会被忽略并记录 warn(防止前端污染命名空间)。
   // 向后兼容:已持久化的 config 不变,只有新建 backend 用新规则。
-  if (body.adminTokenEnvVar !== undefined) {
+  if (req.adminTokenEnvVar !== undefined) {
     console.warn(
-      `[wizard] Ignoring frontend-provided adminTokenEnvVar="${body.adminTokenEnvVar}" ` +
+      `[wizard] Ignoring frontend-provided adminTokenEnvVar="${req.adminTokenEnvVar}" ` +
         `for backend "${backendId}"; BFF auto-generates HARNESS_<ID>_TOKEN.`,
     );
   }
@@ -437,16 +437,16 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   // 3. spec-010 v8 修改 3 (B2 修复):若 type='intellect-enterprise',
   //    在持久化**之前**触发 validateTenantConfigs 校验,失败则不创建。
   //    注:此处 store 尚未含新 backend,需构造临时校验对象。
-  if (body.type === 'intellect-enterprise' && body.intellectTenantId) {
+  if (req.type === 'intellect-enterprise' && req.intellectTenantId) {
     // 调用 intellect-team /api/tenant/info 校验 tenant_id 一致性
-    const tenantInfo = await fetchTenantInfo(body.endpoint);
+    const tenantInfo = await fetchTenantInfo(req.endpoint);
     if (tenantInfo && tenantInfo.tenant_id) {
-      if (tenantInfo.tenant_id !== body.intellectTenantId) {
+      if (tenantInfo.tenant_id !== req.intellectTenantId) {
         return c.json(
           {
             success: false,
             error:
-              `tenant_id mismatch: 配置的 intellectTenantId="${body.intellectTenantId}" ` +
+              `tenant_id mismatch: 配置的 intellectTenantId="${req.intellectTenantId}" ` +
               `与 intellect-team 实际 tenant_id="${tenantInfo.tenant_id}" 不一致`,
           } satisfies WizardSetupResponse,
           400,
@@ -458,8 +458,8 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
 
   // 4. 如果有 vault 且提供了凭据,存储到 vault
   // P1-5 修复:email-password 模式必须有 vault,否则凭据会丢失(无 env var 回退)
-  if (body.credentialKind === 'email-password') {
-    if (!body.email || !body.password) {
+  if (req.credentialKind === 'email-password') {
+    if (!req.email || !req.password) {
       return c.json(
         { success: false, error: 'email-password 模式必须提供 email 和 password' } satisfies WizardSetupResponse,
         400,
@@ -473,24 +473,24 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
     }
     await vault.setCredentials(backendId, {
       kind: 'email-password',
-      email: body.email,
-      password: body.password,
+      email: req.email,
+      password: req.password,
     });
-  } else if (vault && body.credentialKind === 'bearer-token' && body.token) {
-    await vault.setCredentials(backendId, { kind: 'bearer-token', token: body.token });
+  } else if (vault && req.credentialKind === 'bearer-token' && req.token) {
+    await vault.setCredentials(backendId, { kind: 'bearer-token', token: req.token });
   }
 
   // 5. 构造 HarnessBackendConfig(不含 token 明文)
   const newConfig: HarnessBackendConfig = {
     id: backendId,
-    name: body.name,
-    type: body.type,
-    endpoint: body.endpoint,
+    name: req.name,
+    type: req.type,
+    endpoint: req.endpoint,
     adminTokenEnvVar,
     capabilities: option.capabilities,
-    credentialKind: body.credentialKind,
-    ...(body.intellectTenantId ? { intellectTenantId: body.intellectTenantId } : {}),
-    ...(body.defaultForTenant !== undefined ? { defaultForTenant: body.defaultForTenant } : {}),
+    credentialKind: req.credentialKind,
+    ...(req.intellectTenantId ? { intellectTenantId: req.intellectTenantId } : {}),
+    ...(req.defaultForTenant !== undefined ? { defaultForTenant: req.defaultForTenant } : {}),
   };
 
   // 6. 持久化 + 热加载 + 缓存失效

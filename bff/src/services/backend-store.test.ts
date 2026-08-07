@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import type { HarnessBackend, HarnessStore, HarnessBackendConfig } from '../types';
+import type { HarnessStoreListConfigs } from '../types/harness-admin';
 
 // vi.hoisted 保证 mock 对象在 vi.mock 工厂执行前已定义
 const { mockFs } = vi.hoisted(() => ({
@@ -67,7 +68,7 @@ const enterpriseBackend: HarnessBackend = {
 function createMockHarnessStore(
   backends: HarnessBackend[] = [],
   configs: HarnessBackendConfig[] = [],
-): HarnessStore {
+): HarnessStore & HarnessStoreListConfigs {
   return {
     list: vi.fn(() => backends),
     get: vi.fn((id: string) => backends.find((b) => b.id === id)),

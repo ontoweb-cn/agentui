@@ -28,7 +28,7 @@ import type { AgentSummary, Session, SendMessageRequest } from '../../../types/d
 import type { StreamChunk, StreamIterable } from '../../../types/stream';
 import type { HarnessCapabilities, HarnessBackend, BackendType } from '../../../types/harness';
 import type { BackendContext } from '../../../types/tenant';
-import { isUrlSafe } from '../../ssrf-guard';
+import { isUrlSafe, SSRF_PRIVATE_IP_HINT } from '../../ssrf-guard';
 
 /** MCP 工具调用超时(毫秒,spec-012 §7.3) */
 const MCP_TOOL_TIMEOUT_MS = 30_000;
@@ -88,7 +88,7 @@ export abstract class MCPBaseAdapter implements IHarnessAdapter {
     // SSRF 预校验(评审 D3 修复:实际代码无 validateEndpoint,用 isUrlSafe)
     const safe = await isUrlSafe(this.baseUrl);
     if (!safe) {
-      throw new Error(`MCP endpoint blocked by SSRF guard: ${this.baseUrl}`);
+      throw new Error(`MCP endpoint blocked by SSRF guard: ${this.baseUrl}。${SSRF_PRIVATE_IP_HINT}`);
     }
 
     // 构造 headers(adminToken 非空时注入,评审 S6 同款修复)

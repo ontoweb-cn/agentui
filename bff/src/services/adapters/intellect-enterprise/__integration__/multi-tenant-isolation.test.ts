@@ -77,7 +77,7 @@ function makeRecordingFetch(records: RecordedRequest[]) {
     }
 
     records.push({
-      url: typeof url === 'string' ? url : url.toString(),
+      url,
       method: init?.method ?? 'GET',
       headers: reqHeaders,
       body: init?.body as string | undefined,
