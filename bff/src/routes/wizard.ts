@@ -74,7 +74,8 @@ const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
     description: 'Team/Project + multi-tenant',
     defaultEndpoint: 'http://localhost:8642',
     // spec-010 v8.3:memory/mcp 能力与 spec.md §3.2 对齐
-    capabilities: { canvas: false, knowledgeBase: false, memory: true, mcp: true, multiTenant: true, modelManagement: true },
+    // intellect-enterprise 集成 intellect-rag 插件,具备 canvas 和 knowledgeBase 能力
+    capabilities: { canvas: true, knowledgeBase: true, memory: true, mcp: true, multiTenant: true, modelManagement: true },
     credentialKind: 'bearer-token',
   },
   {

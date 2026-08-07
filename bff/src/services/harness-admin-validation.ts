@@ -183,7 +183,8 @@ export function validateForm(form: unknown): ValidationResult {
  * Constitution 约束交叉校验(spec-010 v8 A3-7 / M5 修正)。
  *
  * 校验 capabilities 字段是否与 type 字段匹配,违反 Constitution 约束时返回错误消息数组:
- * - Principle III: canvas=true 仅 intellect-rag 允许
+ * - Principle III: canvas=true 仅 intellect-rag / intellect-enterprise 允许
+ *   (intellect-enterprise 集成 intellect-rag 插件,具备 canvas 和 knowledgeBase 能力)
  * - Principle V:   multiTenant=true 仅 intellect-enterprise 允许
  *
  * @param type 后端类型
@@ -195,8 +196,9 @@ export function validateCapabilities(
   caps: HarnessCapabilities,
 ): string[] {
   const errors: string[] = [];
-  if (type !== 'intellect-rag' && caps.canvas) {
-    errors.push('canvas=true 仅 intellect-rag 允许(Principle III)');
+  // intellect-enterprise 集成 intellect-rag 插件,允许 canvas=true
+  if (type !== 'intellect-rag' && type !== 'intellect-enterprise' && caps.canvas) {
+    errors.push('canvas=true 仅 intellect-rag/intellect-enterprise 允许(Principle III)');
   }
   if (type !== 'intellect-enterprise' && caps.multiTenant) {
     errors.push('multiTenant=true 仅 intellect-enterprise 允许');

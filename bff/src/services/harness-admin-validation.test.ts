@@ -25,8 +25,8 @@ const ragCapabilities: HarnessCapabilities = {
 };
 
 const enterpriseCapabilities: HarnessCapabilities = {
-  canvas: false,
-  knowledgeBase: false,
+  canvas: true,
+  knowledgeBase: true,
   memory: true,
   mcp: true,
   multiTenant: true,
@@ -104,18 +104,17 @@ describe('validateCapabilities', () => {
     expect(validateCapabilities('intellect-rag', ragCapabilities)).toEqual([]);
   });
 
-  it('intellect-enterprise + canvas=true 失败(Principle III)', () => {
-    const bad = { ...enterpriseCapabilities, canvas: true };
-    const errors = validateCapabilities('intellect-enterprise', bad);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain('canvas=true 仅 intellect-rag 允许');
+  it('intellect-enterprise + canvas=true 通过(集成 intellect-rag 插件)', () => {
+    const ok = { ...enterpriseCapabilities, canvas: true };
+    const errors = validateCapabilities('intellect-enterprise', ok);
+    expect(errors).toEqual([]);
   });
 
   it('intellect-community + canvas=true 失败(Principle III)', () => {
     const bad = { ...communityCapabilities, canvas: true };
     const errors = validateCapabilities('intellect-community', bad);
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain('canvas=true 仅 intellect-rag 允许');
+    expect(errors[0]).toContain('canvas=true 仅 intellect-rag/intellect-enterprise 允许');
   });
 
   it('intellect-enterprise + multiTenant=true 通过(Principle V)', () => {
@@ -140,7 +139,7 @@ describe('validateCapabilities', () => {
     };
     const errors = validateCapabilities('hermes', bad);
     expect(errors).toHaveLength(2);
-    expect(errors[0]).toContain('canvas=true 仅 intellect-rag 允许');
+    expect(errors[0]).toContain('canvas=true 仅 intellect-rag/intellect-enterprise 允许');
     expect(errors[1]).toContain('multiTenant=true 仅 intellect-enterprise 允许');
   });
 
@@ -172,18 +171,18 @@ describe('validateForm', () => {
     expect(result.valid).toBe(true);
   });
 
-  it('交叉校验:intellect-enterprise + canvas=true 失败', () => {
-    const bad = {
+  it('交叉校验:intellect-enterprise + canvas=true 通过(集成 intellect-rag 插件)', () => {
+    const ok = {
       ...validRagForm,
-      id: 'enterprise-bad',
+      id: 'enterprise-ok',
       type: 'intellect-enterprise' as BackendType,
       endpoint: 'http://localhost:8642',
       adminTokenEnvVar: 'HARNESS_KEY',
-      capabilities: { ...enterpriseCapabilities, canvas: true },
+      capabilities: { ...enterpriseCapabilities, canvas: true, knowledgeBase: true },
     };
-    const result = validateForm(bad);
-    expect(result.valid).toBe(false);
-    expect(result.errors.capabilities).toContain('canvas=true 仅 intellect-rag 允许');
+    const result = validateForm(ok);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual({});
   });
 
   it('交叉校验:hermes + multiTenant=true 失败', () => {
