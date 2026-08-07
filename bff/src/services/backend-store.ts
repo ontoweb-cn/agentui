@@ -158,19 +158,21 @@ export class JSONFileBackendStore implements BackendStore {
    * 用于区分"引用完全不存在"(数据完整性错误,需抛错)与
    * "配置存在但 token 未就绪"(可恢复,跳过即可)两种场景。
    *
-   * harnessStore 运行时实例通常实现 HarnessStoreListConfigs(listConfigs),
-   * 但构造函数字段类型声明为 HarnessStore(不含 listConfigs),
-   * 因此用鸭子类型检测 + 类型断言访问。
+   * 优先用 listConfigs()(含 token 未就绪的配置);若 harnessStore 未实现
+   * listConfigs 或返回空,则 fallback 到 list()(token 就绪的 backend)。
    */
   private isBackendConfigured(backendId: string): boolean {
     const store = this.harnessStore as HarnessStore & {
       listConfigs?: () => HarnessBackendConfig[];
     };
-    if (typeof store.listConfigs !== 'function') {
-      // harnessStore 未实现 listConfigs,无法区分,按原逻辑视为"不存在"
-      return false;
+    if (typeof store.listConfigs === 'function') {
+      const configs = store.listConfigs();
+      if (configs.length > 0) {
+        return configs.some((c) => c.id === backendId);
+      }
     }
-    return store.listConfigs().some((c) => c.id === backendId);
+    // fallback:listConfigs 未实现或为空,用 list() 检查 token 就绪的 backend
+    return this.harnessStore.list().some((b) => b.id === backendId);
   }
 
   async createBackend(
@@ -178,16 +180,16 @@ export class JSONFileBackendStore implements BackendStore {
     intellectBackendId: string,
     intellectTenantId?: string,
     authMode?: AuthMode,
+    tenantId?: string,
   ): Promise<BffTenant> {
-    // 校验 backendId 存在
-    const backend = this.harnessStore.get(intellectBackendId);
-    if (!backend) {
+    // 校验 backendId 配置存在(不要求 token 就绪,wizard 刚创建的 backend 可能 token 未设置)
+    if (!this.isBackendConfigured(intellectBackendId)) {
       throw new BackendNotConfiguredError(intellectBackendId);
     }
 
     const now = new Date().toISOString();
     const tenant: BffTenant = {
-      id: randomUUID(),
+      id: tenantId ?? randomUUID(),
       name,
       intellectTenantId,
       intellectBackendId,

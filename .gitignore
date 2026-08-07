@@ -7,11 +7,8 @@
 # OpenAPI 生成类型（CI 动态生成）
 /src/interfaces/generated/
 
-# BFF 运行时数据（首次启动自动生成）
+# BFF 运行时数据（首次启动自动生成,含本地后端/租户配置,不入库）
 /bff/data/
-# 例外:harness 配置与租户绑定可入库(无 token 明文,Constitution Token 安全约束)
-!/bff/data/harness-backends.json
-!/bff/data/bff-tenants.json
 
 # 敏感环境变量(Constitution Token 安全约束)
 /.env

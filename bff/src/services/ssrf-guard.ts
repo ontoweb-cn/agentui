@@ -15,19 +15,17 @@ import { promises as dns } from 'node:dns';
  * 默认是否允许私有 IP。
  *
  * 多数内部/实验室部署的后端位于私有网段(192.168.x.x / 10.x.x.x 等),
- * 默认拦截会阻断向导探测与 setup。通过环境变量 SSRF_ALLOW_PRIVATE_IP=true
- * 显式放行(部署级 opt-in),未设置时保持默认安全(拦截)。
- *
- * 注:仅在受信任的内网部署中启用;公网暴露的 BFF 不应开启。
+ * 默认放行以适配内网部署场景。公网暴露的 BFF 应通过环境变量
+ * SSRF_ALLOW_PRIVATE_IP=false 显式拦截(部署级 opt-out)。
  */
-const DEFAULT_ALLOW_PRIVATE_IP = process.env.SSRF_ALLOW_PRIVATE_IP === 'true';
+const DEFAULT_ALLOW_PRIVATE_IP = process.env.SSRF_ALLOW_PRIVATE_IP !== 'false';
 
 /**
  * SSRF 私有 IP 拦截时附加给用户的操作指引(单一数据源)。
  * 所有因私有网段拦截产生的错误消息均复用此串,确保用户得到准确的修复建议。
  */
 export const SSRF_PRIVATE_IP_HINT =
-  '如需访问内网/私有网段后端,请在 BFF .env 设置 SSRF_ALLOW_PRIVATE_IP=true 放行';
+  '如需访问内网/私有网段后端,请确认 BFF .env 未设置 SSRF_ALLOW_PRIVATE_IP=false,或将其删除以放行';
 
 const PRIVATE_IP_PATTERNS = [
   /^127\./, // 127.0.0.0/8 (loopback)

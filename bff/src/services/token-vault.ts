@@ -130,10 +130,9 @@ export class EnvTokenVault implements ITokenVault {
 // EncryptedFileTokenVault (P4 模式,B-5 加密文件存储)
 // ---------------------------------------------------------------------------
 
-const VAULT_FILE_DEFAULT = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  '../../data/token-vault.json',
-);
+const DATA_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../data');
+const VAULT_FILE_DEFAULT = resolve(DATA_DIR, 'token-vault.json');
+const VAULT_KEY_FILE = resolve(DATA_DIR, 'vault-key.txt');
 const ALGORITHM = 'aes-256-gcm';
 const KEY_LENGTH = 32; // 256 bit
 const IV_LENGTH = 12; // GCM 推荐 12 字节 IV
@@ -160,13 +159,19 @@ interface EncryptedEntry {
 export class EncryptedFileTokenVault implements ITokenVault {
   private readonly encryptionKey: Buffer;
   private readonly vaultFile: string;
+  private readonly keyFile: string;
   private cache: Map<string, EncryptedEntry> = new Map();
 
-  constructor(vaultFile?: string) {
-    const key = process.env.HARNESS_TOKEN_ENCRYPTION_KEY;
+  constructor(vaultFile?: string, keyFile?: string) {
+    this.keyFile = keyFile ?? VAULT_KEY_FILE;
+    let key = process.env.HARNESS_TOKEN_ENCRYPTION_KEY;
     if (!key) {
-      throw new Error(
-        'HARNESS_TOKEN_ENCRYPTION_KEY env var is required for EncryptedFileTokenVault',
+      // Dev/single-instance mode: auto-generate and persist a key so tokens
+      // survive restarts without requiring the user to set an env var.
+      key = this.loadOrCreateKey();
+      console.warn(
+        `[token-vault] HARNESS_TOKEN_ENCRYPTION_KEY not set; using auto-generated key at ${this.keyFile}. ` +
+          'For production, set HARNESS_TOKEN_ENCRYPTION_KEY env var.',
       );
     }
     // 密钥可以是 32 字节直接使用,或 hex 编码的 64 字符
@@ -186,6 +191,22 @@ export class EncryptedFileTokenVault implements ITokenVault {
     }
     this.vaultFile = vaultFile ?? VAULT_FILE_DEFAULT;
     this.load();
+  }
+
+  /**
+   * Dev mode: load or create a persistent encryption key.
+   * The key is stored as hex (64 chars) so it survives restarts.
+   * This file MUST be gitignored and protected on the filesystem.
+   */
+  private loadOrCreateKey(): string {
+    if (existsSync(this.keyFile)) {
+      return readFileSync(this.keyFile, 'utf-8').trim();
+    }
+    const generated = randomBytes(KEY_LENGTH).toString('hex');
+    const dir = dirname(this.keyFile);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(this.keyFile, generated, 'utf-8');
+    return generated;
   }
 
   private load(): void {

@@ -428,10 +428,19 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
 
   // 2. 唯一性校验
   const existing = store.listConfigs?.() ?? [];
-  if (existing.some((cfg) => cfg.id === backendId)) {
-    return c.json(
-      { success: false, error: `Backend id "${backendId}" 已存在` } satisfies WizardSetupResponse,
-      409,
+  const existingConfig = existing.find((cfg) => cfg.id === backendId);
+  if (existingConfig) {
+    // 配置已存在:仅当后端未就绪(token 缺失)时允许重新 setup(修复 token),
+    // 已就绪则拒绝(防止重复创建)。
+    const isReady = store.list().some((b) => b.id === backendId);
+    if (isReady) {
+      return c.json(
+        { success: false, error: `Backend id "${backendId}" 已存在且已就绪` } satisfies WizardSetupResponse,
+        409,
+      );
+    }
+    console.warn(
+      `[wizard] Backend "${backendId}" config exists but token is missing, allowing re-setup to fix credentials`,
     );
   }
 
@@ -495,7 +504,10 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   };
 
   // 6. 持久化 + 热加载 + 缓存失效
-  const nextConfigs = [...existing, newConfig];
+  //    若 existingConfig 存在(重新 setup 场景),用 newConfig 覆盖;否则追加。
+  const nextConfigs = existingConfig
+    ? existing.map((cfg) => (cfg.id === backendId ? newConfig : cfg))
+    : [...existing, newConfig];
   try {
     await store.saveConfig(nextConfigs);
     await store.load();
@@ -555,11 +567,13 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
     }
   } else {
     // 全新安装(无 bff-tenants.json 或文件中无 tenant '0'):创建默认 tenant
+    // 传入 defaultTenantId='0',确保后续 X-Backend-Id: '0' 的请求能路由到此 tenant
     await bStore.createBackend(
       req.name || 'Default',
       backendId,
       req.intellectTenantId,
       wizardAuthMode,
+      defaultTenantId,
     );
   }
 

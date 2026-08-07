@@ -23,6 +23,7 @@ import { JSONFileBackendStore } from './services/backend-store';
 import { AdapterRegistry } from './services/adapter-registry';
 import { CanvasService } from './services/canvas-service';
 import { validateTenantConfigs } from './services/tenant-validator';
+import { EncryptedFileTokenVault } from './services/token-vault';
 import { IntellectRagAdapter } from './services/adapters/intellect-rag/intellect-rag-adapter';
 import { IntellectEnterpriseAdapter } from './services/adapters/intellect-enterprise/intellect-enterprise-adapter';
 // spec-010 v8 Phase C-P1/P2/P3 (2026-07-30): 3 个 OpenAI 兼容后端 Adapter 工厂注册
@@ -55,7 +56,11 @@ const app = new Hono<{ Variables: AppVariables }>();
 // Multi-Harness P0 Phase 5 + P1 US3:启动时初始化 Store + Registry。
 // Constitution Principle V (Tenant Isolation) + Principle II (Adapter Abstraction)。
 // 必须在所有路由注册之前,确保 context 注入中间件先于路由处理执行。
-const harnessStore: HarnessStore = new JSONFileHarnessStore();
+// spec-010 v8 A3-5: TokenVault — Wizard setup 时存储凭据,store.load() 时读取,
+// 使后端在创建后立即就绪(无需手动设置 env var 重启)。
+// EncryptedFileTokenVault 在 HARNESS_TOKEN_ENCRYPTION_KEY 未设置时自动生成并持久化密钥(dev 模式)。
+const tokenVault = new EncryptedFileTokenVault();
+const harnessStore: HarnessStore = new JSONFileHarnessStore(tokenVault);
 const backendStore: BackendStore = new JSONFileBackendStore(harnessStore);
 const adapterRegistry = new AdapterRegistry(harnessStore, backendStore);
 // 工厂注册:仅 intellect-rag 和 intellect-enterprise 注册 Adapter 工厂。
@@ -228,6 +233,8 @@ app.route('/', tenantBindingRoutes);
 app.use('/admin/wizard/*', async (c, next) => {
   // 注入 BootstrapTokenManager 供 setup 端点使用
   c.set('bootstrapTokenManager' as never, bootstrapTokenManager as never);
+  // 注入 TokenVault 供 setup 端点存储凭据(setCredentials)
+  c.set('tokenVault' as never, tokenVault as never);
   await authMiddleware(c, next);
 });
 app.route('/', wizardRoutes);

@@ -118,11 +118,29 @@ describe('EncryptedFileTokenVault (B-5)', () => {
     expect(result).toBeNull();
   });
 
-  it('缺少 HARNESS_TOKEN_ENCRYPTION_KEY 抛异常', () => {
+  it('缺少 HARNESS_TOKEN_ENCRYPTION_KEY 时自动生成密钥(dev 模式)', async () => {
     delete process.env.HARNESS_TOKEN_ENCRYPTION_KEY;
-    expect(() => new EncryptedFileTokenVault(vaultFile)).toThrow(
-      'HARNESS_TOKEN_ENCRYPTION_KEY env var is required',
-    );
+    const keyFile = uniqueVaultFile();
+    const vault = new EncryptedFileTokenVault(vaultFile, keyFile);
+    await vault.setCredentials('backend-auto', { kind: 'bearer-token', token: 'auto-key-token' });
+    const retrieved = await vault.getCredentials('backend-auto');
+    expect(retrieved).toEqual({ kind: 'bearer-token', token: 'auto-key-token' });
+    // 密钥文件应已持久化
+    expect(existsSync(keyFile)).toBe(true);
+    if (existsSync(keyFile)) rmSync(keyFile);
+  });
+
+  it('自动生成密钥持久化:新实例复用同一密钥文件', async () => {
+    delete process.env.HARNESS_TOKEN_ENCRYPTION_KEY;
+    const keyFile = uniqueVaultFile();
+    const vault1 = new EncryptedFileTokenVault(vaultFile, keyFile);
+    await vault1.setCredentials('backend-persist-key', { kind: 'bearer-token', token: 'persist-key-token' });
+
+    // 新实例,同一 vault 文件,同一 key 文件,应能解密
+    const vault2 = new EncryptedFileTokenVault(vaultFile, keyFile);
+    const retrieved = await vault2.getCredentials('backend-persist-key');
+    expect(retrieved).toEqual({ kind: 'bearer-token', token: 'persist-key-token' });
+    if (existsSync(keyFile)) rmSync(keyFile);
   });
 
   it('密钥长度不合法抛异常', () => {

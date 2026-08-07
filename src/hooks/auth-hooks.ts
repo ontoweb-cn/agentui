@@ -68,13 +68,16 @@ const useEnterpriseCookieProbe = () => {
 
   const hasAuthorization = !!authorizationUtil.getAuthorization();
   const isAdminPath = location.pathname.startsWith('/admin');
+  const isLoginPath = location.pathname.startsWith('/login');
 
-  // 企业版 + 无 localStorage Authorization + 非 admin 路径时启用。
+  // 企业版 + 无 localStorage Authorization + 非 admin/login 路径时启用。
   // 不再跳过 hasMarker=true 的情况:需要验证 cookie 是否仍然有效(可能已过期)。
+  // 登录页跳过探测:用户尚未登录,探测必返回 401,无意义且触发控制台 ERR_ABORTED。
   const enabled =
     authMode === 'intellect-enterprise' &&
     !hasAuthorization &&
-    !isAdminPath;
+    !isAdminPath &&
+    !isLoginPath;
 
   return useQuery({
     queryKey: ['enterpriseCookieProbe'],

@@ -97,17 +97,19 @@ export interface BackendStore {
   /**
    * 创建 BFF Tenant。
    * @param name 租户名称
-   * @param intellectBackendId 主后端 ID(必须已存在于 HarnessStore)
+   * @param intellectBackendId 主后端 ID(必须已配置于 HarnessStore,不要求 token 就绪)
    * @param intellectTenantId 对应的 Intellect 企业版 Tenant ID(企业版用户必填)
    * @param authMode 认证模式(可选,未设置时由 getAuthMode 默认 intellect-community)
+   * @param tenantId 指定 tenant ID(可选,默认 randomUUID();wizard 创建默认 tenant '0' 时传入)
    * @returns 新建的 BffTenant
-   * @throws 若 intellectBackendId 不存在于 HarnessStore
+   * @throws 若 intellectBackendId 不存在于 HarnessStore 配置
    */
   createBackend(
     name: string,
     intellectBackendId: string,
     intellectTenantId?: string,
     authMode?: AuthMode,
+    tenantId?: string,
   ): Promise<BffTenant>;
 
   /** 按 ID 获取 Tenant。 */
