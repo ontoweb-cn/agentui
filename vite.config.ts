@@ -46,6 +46,7 @@ export default defineConfig(({ mode }) => {
   const apiHost = env.API_HOST || 'localhost';
   const pythonApiPort = env.PYTHON_API_PORT || '9380';
   const pythonAdminPort = env.PYTHON_ADMIN_PORT || '9381';
+  const wargamePort = env.WARGAME_PORT || '9385';
   const bffHost = env.BFF_HOST || 'localhost';
   const bffPort = env.BFF_PORT || '9390';
 
@@ -63,12 +64,14 @@ export default defineConfig(({ mode }) => {
       changeOrigin: true,
       ws: true,
     },
-    '/api/v1/events': {
-      target: `http://${apiHost}:${pythonApiPort}`,
+    // cognitive-wargame SSE 事件流(独立服务,端口 9385,需禁用超时)
+    // rewrite 去掉 /wargame 前缀,后端仍监听 /api/v1/events/*
+    '/api/v1/wargame/events': {
+      target: `http://${apiHost}:${wargamePort}`,
       changeOrigin: true,
-      // SSE 长连接需要禁用超时，否则 http-proxy 会中断流式响应
       timeout: 0,
       proxyTimeout: 0,
+      rewrite: (path: string) => path.replace(/^\/api\/v1\/wargame/, '/api/v1'),
       configure: (proxy) => {
         proxy.on('proxyReq', (proxyReq) => {
           proxyReq.setHeader('Connection', 'keep-alive');
@@ -76,6 +79,15 @@ export default defineConfig(({ mode }) => {
           proxyReq.setHeader('Accept', 'text/event-stream');
         });
       },
+    },
+    // cognitive-wargame REST 端点(独立服务,端口 9385,非 intellect-rag-app)
+    // 统一前缀 /api/v1/wargame/*,与 intellect-rag-app 的 /api/v1/* 隔离
+    // rewrite 去掉 /wargame 前缀,后端仍监听 /api/v1/*
+    '/api/v1/wargame': {
+      target: `http://${apiHost}:${wargamePort}`,
+      changeOrigin: true,
+      ws: true,
+      rewrite: (path: string) => path.replace(/^\/api\/v1\/wargame/, '/api/v1'),
     },
     '/api': {
       target: `http://${apiHost}:${pythonApiPort}`,
@@ -96,6 +108,9 @@ export default defineConfig(({ mode }) => {
     define: {
       // Expose to client code via import.meta.env
       'import.meta.env.API_PROXY_SCHEME': JSON.stringify('python'),
+      // cognitive-wargame SSE 直连地址(开发环境绕过 Vite proxy 直连后端)
+      'import.meta.env.WARGAME_SSE_HOST': JSON.stringify(apiHost),
+      'import.meta.env.WARGAME_SSE_PORT': JSON.stringify(wargamePort),
       // Keep backward compatibility
       __API_PROXY_SCHEME__: JSON.stringify('python'),
     },

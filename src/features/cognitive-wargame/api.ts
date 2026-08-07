@@ -1,23 +1,25 @@
 /**
  * Cognitive Wargame 插件 API 客户端。
  *
- * 管理服务监听 9381 端口，前端通过 Nginx 反向代理以 `/api/v1/*` 访问。
+ * 管理服务监听 9385 端口（独立服务，非 intellect-rag-app），前端通过 Vite proxy
+ * 以 `/api/v1/wargame/*` 访问，rewrite 去掉 /wargame 前缀后转发到后端 /api/v1/*。
  * 这里使用独立的 axios 实例，避免与 BFF 的 restAPIv1 (`/api/bff/proxy/v1`) 拦截器耦合。
  */
 import axios, { type AxiosInstance } from 'axios';
 import { Authorization } from '@/constants/authorization';
 
-/** 管理服务基础路径，由 Nginx 代理到 9381。 */
-const WARGAME_BASE_URL = '/api/v1';
+/** 管理服务基础路径，统一前缀 /api/v1/wargame，由 Vite proxy 代理到 9385。 */
+const WARGAME_BASE_URL = '/api/v1/wargame';
 
 /**
  * SSE 事件流直连地址。
- * Vite 7.3.0 的 http-proxy-3 不支持 SSE 流式转发，开发环境直连 admin_server。
+ * Vite 7.3.0 的 http-proxy-3 不支持 SSE 流式转发，开发环境直连 cognitive-wargame 管理服务。
+ * 主机/端口由 vite.config.ts 的 define 注入(取自 .env 的 API_HOST / WARGAME_PORT)。
  * 生产环境通过 Nginx/Gateway 代理，可改回相对路径。
  */
 const SSE_BASE_URL =
   typeof window !== 'undefined' && window.location.hostname === 'localhost'
-    ? `http://${window.location.hostname}:9380/api/v1`
+    ? `http://${import.meta.env.WARGAME_SSE_HOST ?? 'localhost'}:${import.meta.env.WARGAME_SSE_PORT ?? '9385'}/api/v1`
     : WARGAME_BASE_URL;
 
 /** 创建带鉴权拦截器的 axios 实例。 */
