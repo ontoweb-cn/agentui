@@ -63,7 +63,7 @@ function createI18nInstance(lng: string = 'en') {
   return instance;
 }
 
-function renderWithI18n(ui: React.ReactElement, instance: i18n.i18n) {
+function renderWithI18n(ui: React.ReactElement, instance: typeof i18n) {
   return render(<I18nextProvider i18n={instance}>{ui}</I18nextProvider>);
 }
 

@@ -29,13 +29,15 @@ const MetricsChart: React.FC<MetricsChartProps> = ({
   height = 280,
   showCognitive = true,
 }) => {
-  const data = history.map((m) => ({
-    round: `R${m.round}`,
-    redScore: m.red_score ?? null,
-    blueScore: m.blue_score ?? null,
-    redCog: m.red_cognitive ?? null,
-    blueCog: m.blue_cognitive ?? null,
-  }));
+  const data = Array.isArray(history)
+    ? history.map((m) => ({
+        round: `R${m.round}`,
+        redScore: m.red_score ?? null,
+        blueScore: m.blue_score ?? null,
+        redCog: m.red_cognitive ?? null,
+        blueCog: m.blue_cognitive ?? null,
+      }))
+    : [];
 
   return (
     <ResponsiveContainer width="100%" height={height}>

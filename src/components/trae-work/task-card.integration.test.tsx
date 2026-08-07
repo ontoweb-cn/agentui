@@ -87,7 +87,7 @@ function createI18nInstance(resources: Record<string, unknown>, lng: string = 'e
 }
 
 /** 用指定 i18n 实例渲染组件 */
-function renderWithI18n(ui: React.ReactElement, instance: i18n.i18n) {
+function renderWithI18n(ui: React.ReactElement, instance: typeof i18n) {
   return render(<I18nextProvider i18n={instance}>{ui}</I18nextProvider>);
 }
 

@@ -1,13 +1,17 @@
 // spec-013 P1-4: 重构 root-layout,根据 feature flag 切换三栏或旧布局
-// three-column(默认): ThreeColumnLayout + TopBar + TaskSidebar + ToolPanelHost
+// three-column(默认): ThreeColumnLayout + TopBar + ActivityBar + TaskSidebar + ToolPanelHost
 // legacy: 旧 RootLayoutContainer + Header
 
 import { Outlet } from 'react-router';
+import * as React from 'react';
 import { useLayoutMode } from '@/hooks/use-layout-mode';
+import { useWorkMode } from '@/hooks/use-work-mode';
 import { ThreeColumnLayout } from './three-column-layout';
 import { TopBar } from './components/top-bar';
 import { TaskSidebar } from './components/task-sidebar';
 import { ToolPanelHost } from './components/tool-panel-host';
+import { ActivityBar } from './components/activity-bar';
+import { GlobalSearch } from './components/global-search';
 import { Header } from './components/header';
 
 export function RootLayoutContainer({ children }: React.PropsWithChildren) {
@@ -22,6 +26,8 @@ export function RootLayoutContainer({ children }: React.PropsWithChildren) {
 
 export default function RootLayout() {
   const { mode } = useLayoutMode();
+  // WorkMode 通过 useWorkMode hook 管理:localStorage 持久化 + 跨组件共享
+  const { mode: workMode, setMode: setWorkMode } = useWorkMode();
 
   if (mode === 'legacy') {
     return (
@@ -33,7 +39,13 @@ export default function RootLayout() {
 
   return (
     <ThreeColumnLayout
-      topBar={<TopBar />}
+      topBar={<TopBar center={<GlobalSearch />} />}
+      activityBar={
+        <ActivityBar value={workMode} onChange={setWorkMode} />
+      }
+      mobileTabBar={
+        <ActivityBar value={workMode} onChange={setWorkMode} mobile />
+      }
       sidebar={
         <TaskSidebar tasks={[]} />
       }

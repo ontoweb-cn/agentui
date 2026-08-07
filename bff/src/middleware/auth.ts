@@ -18,7 +18,9 @@ export async function authMiddleware(c: Context, next: Next) {
   // - /admin/wizard/status: 查询是否需要向导(首次安装时无 admin token)
   // - /admin/wizard/backend-types: 可用后端类型列表(无敏感信息)
   // - /admin/wizard/probe: 探测后端连接(首次安装时无 admin token,SSRF 防护 + 速率限制已就位)
-  const publicPrefixes = ['/admin/wizard/status', '/admin/wizard/backend-types', '/admin/wizard/probe'];
+  // - /admin/wizard/setup: 首次安装创建首个 backend(首次安装时无 admin token,
+  //   由 wizard.ts 内 wizardSetupAuth 做 bootstrap token / 首次安装放行鉴权)
+  const publicPrefixes = ['/admin/wizard/status', '/admin/wizard/backend-types', '/admin/wizard/probe', '/admin/wizard/setup'];
 
   if (publicPaths.includes(path) || publicPrefixes.includes(path)) {
     await next();

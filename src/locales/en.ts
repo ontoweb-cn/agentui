@@ -3442,9 +3442,7 @@ Important structured information may include: names, dates, locations, events, k
           'Enter the backend endpoint and credentials. Token is sent over HTTPS and not stored in plaintext.',
         name: 'Backend Name',
         endpoint: 'Endpoint',
-        adminTokenEnvVar: 'Admin Token Env Var',
-        adminTokenEnvVarHint:
-          'Env var name to read the token from at runtime (fallback when no vault).',
+        // adminTokenEnvVar/adminTokenEnvVarHint removed: BFF auto-generates HARNESS_<ID>_TOKEN
         token: 'Bearer Token',
         email: 'Email',
         password: 'Password',

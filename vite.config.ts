@@ -63,6 +63,20 @@ export default defineConfig(({ mode }) => {
       changeOrigin: true,
       ws: true,
     },
+    '/api/v1/events': {
+      target: `http://${apiHost}:${pythonApiPort}`,
+      changeOrigin: true,
+      // SSE 长连接需要禁用超时，否则 http-proxy 会中断流式响应
+      timeout: 0,
+      proxyTimeout: 0,
+      configure: (proxy) => {
+        proxy.on('proxyReq', (proxyReq) => {
+          proxyReq.setHeader('Connection', 'keep-alive');
+          proxyReq.setHeader('Cache-Control', 'no-cache');
+          proxyReq.setHeader('Accept', 'text/event-stream');
+        });
+      },
+    },
     '/api': {
       target: `http://${apiHost}:${pythonApiPort}`,
       changeOrigin: true,

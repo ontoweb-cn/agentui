@@ -124,12 +124,15 @@ export function validateForm(form: unknown): ValidationResult {
   }
 
   const f = form as Record<string, unknown>;
+  // adminTokenEnvVar 已从必填字段列表移除:BFF 始终自动生成 HARNESS_<ID>_TOKEN,
+  // 前端传入的值会被路由层忽略并记录 warn。VALIDATION_RULES.adminTokenEnvVar + 
+  // validateField('adminTokenEnvVar', ...) 保留供显式调用使用(向后兼容),
+  // 但 validateForm 不再校验该字段(无论是否传入、格式是否合法)。
   const fields: (keyof HarnessBackendForm)[] = [
     'id',
     'name',
     'type',
     'endpoint',
-    'adminTokenEnvVar',
     'capabilities',
   ];
 

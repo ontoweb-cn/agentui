@@ -76,4 +76,6 @@ export interface ModeSwitcherProps {
   size?: 'sm' | 'md' | 'lg';
   disabled?: boolean;
   showLabels?: boolean;
+  /** 排列方向:水平(默认,顶栏用)/ 垂直(Activity Bar 用) */
+  orientation?: 'horizontal' | 'vertical';
 }

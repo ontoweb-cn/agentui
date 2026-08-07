@@ -104,6 +104,31 @@ function isBackendBound(
   return { bound: false };
 }
 
+/**
+ * 始终由 BFF 自动生成 adminTokenEnvVar,命名规则:HARNESS_<ID>_TOKEN。
+ * 前端传入的 adminTokenEnvVar 会被忽略并记录 warn(防止前端污染命名空间)。
+ * 向后兼容:已持久化的 config 不变,只有新建/编辑 backend 用新规则。
+ */
+function generateAdminTokenEnvVar(backendId: string): string {
+  return `HARNESS_${backendId.toUpperCase().replace(/-/g, '_')}_TOKEN`;
+}
+
+/**
+ * 检查前端 body 是否传入了 adminTokenEnvVar,若有则记录 warn(值会被覆盖)。
+ */
+function warnIfAdminTokenEnvVarProvided(
+  source: 'POST' | 'PUT',
+  backendId: string,
+  body: Record<string, unknown>,
+): void {
+  if (body.adminTokenEnvVar !== undefined) {
+    console.warn(
+      `[harness-admin:${source}] Ignoring frontend-provided adminTokenEnvVar="${body.adminTokenEnvVar}" ` +
+        `for backend "${backendId}"; BFF auto-generates HARNESS_<ID>_TOKEN.`,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // GET /admin/harness-backends — 列表(含 ready 状态,不含 token 明文)
 // ---------------------------------------------------------------------------
@@ -149,13 +174,17 @@ harnessAdminRoutes.post('/admin/harness-backends', async (c) => {
 
   const form = body as HarnessBackendForm;
 
+  // adminTokenEnvVar 始终由 BFF 自动生成(忽略前端传入,记录 warn)
+  warnIfAdminTokenEnvVarProvided('POST', form.id, body as Record<string, unknown>);
+  const adminTokenEnvVar = generateAdminTokenEnvVar(form.id);
+
   // 构造 HarnessBackendConfig(不含 token)
   const newConfig: HarnessBackendConfig = {
     id: form.id,
     name: form.name,
     type: form.type,
     endpoint: form.endpoint,
-    adminTokenEnvVar: form.adminTokenEnvVar,
+    adminTokenEnvVar,
     capabilities: form.capabilities,
     ...(form.defaultForTenant !== undefined ? { defaultForTenant: form.defaultForTenant } : {}),
   };
@@ -206,13 +235,18 @@ harnessAdminRoutes.put('/admin/harness-backends/:id', async (c) => {
 
   const form = formToValidate as HarnessBackendForm;
 
+  // adminTokenEnvVar 始终由 BFF 自动生成(忽略前端传入,记录 warn)
+  // 注:PUT 也会重新生成,确保命名规则升级后编辑旧 config 时同步迁移到 HARNESS_<ID>_TOKEN
+  warnIfAdminTokenEnvVarProvided('PUT', id, body as Record<string, unknown>);
+  const adminTokenEnvVar = generateAdminTokenEnvVar(id);
+
   // 构造更新后的 config(保留原 id)
   const updatedConfig: HarnessBackendConfig = {
     id, // 只读,用路径参数
     name: form.name,
     type: form.type,
     endpoint: form.endpoint,
-    adminTokenEnvVar: form.adminTokenEnvVar,
+    adminTokenEnvVar,
     capabilities: form.capabilities,
     ...(form.defaultForTenant !== undefined ? { defaultForTenant: form.defaultForTenant } : {}),
   };

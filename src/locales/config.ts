@@ -120,59 +120,69 @@ export function mapBrowserLanguage(lang: string): string {
   return DEFAULT_LANGUAGE_CODE;
 }
 
-export const loadLanguageAsync = async (lng: string): Promise<void> => {
-  if (i18n.hasResourceBundle(lng, 'translation')) {
-    return;
-  }
+// 追踪已加载过 feature i18n 的语言，避免重复加载。
+// 不能用 i18n.hasResourceBundle 判断：主翻译 bundle（en）在初始化时就存在，
+// 会导致 feature 翻译永远不会被合并（early return 漏掉 feature 词条）。
+const featureI18nLoadedLanguages = new Set<string>();
 
+export const loadLanguageAsync = async (lng: string): Promise<void> => {
   const importFn = languageImports[lng];
   if (!importFn) {
     console.warn(`Language ${lng} is not supported for lazy loading`);
     return;
   }
 
-  try {
-    const module = await importFn();
-    const translationData = module.default?.translation || module.default;
-    i18n.addResourceBundle(lng, 'translation', translationData);
-
-    const featureLazy = collectI18nLazy();
-    // 兼容 feature manifest 中 lazy key 使用 primary code（如 'zh'）而系统语言
-    // 为 BCP-47 完整代码（如 'zh-Hans'/'pt-BR'）的情况：同时匹配完整码与 primary 码。
-    // 否则 'cognitiveWargame:zh' 无法被 'zh-Hans' 匹配，导致 feature 翻译全部丢失。
-    const lngPrimary = lng.split('-')[0];
-    const featureLoadersForLang = Object.entries(featureLazy).filter(
-      ([key]) => key.endsWith(`:${lng}`) || key.endsWith(`:${lngPrimary}`),
-    );
-    await Promise.all(
-      featureLoadersForLang.map(async ([key, loader]) => {
-        try {
-          const featureModule = await loader();
-          const featureData = featureModule.default ?? {};
-          i18n.addResourceBundle(
-            lng,
-            'translation',
-            featureData,
-            true,
-            true,
-          );
-        } catch (error) {
-          console.error(`Failed to load feature i18n ${key}:`, error);
-        }
-      }),
-    );
-  } catch (error) {
-    console.error(`Failed to load language ${lng}:`, error);
+  // 仅当主翻译 bundle 不存在时才加载（en 在初始化时已注入，跳过）
+  if (!i18n.hasResourceBundle(lng, 'translation')) {
+    try {
+      const module = await importFn();
+      const translationData = module.default?.translation || module.default;
+      i18n.addResourceBundle(lng, 'translation', translationData);
+    } catch (error) {
+      console.error(`Failed to load language ${lng}:`, error);
+      return;
+    }
   }
+
+  // feature i18n 独立追踪：即使主 bundle 已存在（如 en），feature 词条仍需合并。
+  // 用 Set 避免同一语言重复加载 feature 翻译。
+  if (featureI18nLoadedLanguages.has(lng)) {
+    return;
+  }
+  featureI18nLoadedLanguages.add(lng);
+
+  const featureLazy = collectI18nLazy();
+  // 兼容 feature manifest 中 lazy key 使用 primary code（如 'zh'）而系统语言
+  // 为 BCP-47 完整代码（如 'zh-Hans'/'pt-BR'）的情况：同时匹配完整码与 primary 码。
+  // 否则 'cognitiveWargame:zh' 无法被 'zh-Hans' 匹配，导致 feature 翻译全部丢失。
+  const lngPrimary = lng.split('-')[0];
+  const featureLoadersForLang = Object.entries(featureLazy).filter(
+    ([key]) => key.endsWith(`:${lng}`) || key.endsWith(`:${lngPrimary}`),
+  );
+  await Promise.all(
+    featureLoadersForLang.map(async ([key, loader]) => {
+      try {
+        const featureModule = await loader();
+        const featureData = featureModule.default ?? {};
+        i18n.addResourceBundle(
+          lng,
+          'translation',
+          featureData,
+          true,
+          true,
+        );
+      } catch (error) {
+        console.error(`Failed to load feature i18n ${key}:`, error);
+      }
+    }),
+  );
 };
 
 export const changeLanguageAsync = async (lng: string): Promise<void> => {
-  if (
-    lng !== LanguageAbbreviation.En &&
-    !i18n.hasResourceBundle(lng, 'translation')
-  ) {
-    await loadLanguageAsync(lng);
-  }
+  // 始终调用 loadLanguageAsync：主 bundle 已存在时跳过主翻译加载，
+  // 但 feature i18n 仍需合并（用 featureI18nLoadedLanguages Set 做幂等）。
+  // 之前 en 语言因主 bundle 已存在而 early return，导致 feature 翻译永远不加载。
+  await loadLanguageAsync(lng);
 
   storage.setLanguage(lng);
 

@@ -99,7 +99,7 @@ export function useSseEvents(options: UseSseEventsOptions): UseSseEventsResult {
 
     cleanup();
     const url = api.eventStreamUrl(scenarioId, channels);
-    const source = new EventSource(url, { withCredentials: true });
+    const source = new EventSource(url, { withCredentials: false });
     eventSourceRef.current = source;
 
     source.onopen = () => {

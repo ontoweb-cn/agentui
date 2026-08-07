@@ -52,7 +52,11 @@ export interface CapabilitiesResponse {
 
 /**
  * Admin 页面新增/编辑表单提交数据。
- * BFF 校验 id/name/type/endpoint/adminTokenEnvVar 格式。
+ * BFF 校验 id/name/type/endpoint 格式。
+ *
+ * adminTokenEnvVar 已改为 optional:
+ * - BFF 始终自动生成 `HARNESS_<ID>_TOKEN`(POST/PUT/wizard setup 均忽略前端传入)。
+ * - 保留字段用于向后兼容已持久化的 config(读取时不强制要求)。
  */
 export interface HarnessBackendForm {
   /** kebab-case,新增必填,编辑只读 */
@@ -63,8 +67,8 @@ export interface HarnessBackendForm {
   type: BackendType;
   /** 合法 URL(http/https) */
   endpoint: string;
-  /** 合法环境变量名(大写字母+下划线) */
-  adminTokenEnvVar: string;
+  /** 合法环境变量名(大写字母+下划线);optional,BFF 自动生成 HARNESS_<ID>_TOKEN */
+  adminTokenEnvVar?: string;
   /** 能力声明 */
   capabilities: HarnessCapabilities;
   /** 是否作为新 tenant 默认主后端(可选) */

@@ -11,7 +11,7 @@
 // 路由:/wizard (不经过 AuthWrapper,首次安装无 admin token)
 // URL query:?step=N 控制步骤,?mode=add 从 Admin 页跳转过来(已有后端时新增)
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router';
 
@@ -65,7 +65,6 @@ interface WizardDraft {
   selectedType: BackendType | null;
   name: string;
   endpoint: string;
-  adminTokenEnvVar: string;
   credentialKind: CredentialKind;
   token: string;
   email: string;
@@ -78,7 +77,6 @@ const INITIAL_DRAFT: WizardDraft = {
   selectedType: null,
   name: '',
   endpoint: '',
-  adminTokenEnvVar: '',
   credentialKind: 'bearer-token',
   token: '',
   email: '',
@@ -335,19 +333,11 @@ function StepConnectionForm({
   const { t } = useTranslation();
   const isEnterprise = draft.selectedType === 'intellect-enterprise';
 
-  // 自动填充默认 endpoint/adminTokenEnvVar(首次进入时)
+  // 自动填充默认 endpoint(首次进入时)
+  // 注:adminTokenEnvVar 由 BFF 自动生成 HARNESS_<ID>_TOKEN,前端不再收集该字段
   useEffect(() => {
     if (option && !draft.endpoint) {
       update({ endpoint: option.defaultEndpoint });
-    }
-    // m1 修复:adminTokenEnvVar 优先用 name,若 name 为空则用 option.type 兜底
-    // 原 bug:`${draft.name...}_TOKEN` 在 name 为空时产出 '_TOKEN'(truthy),`||` 右侧永不执行
-    if (option && !draft.adminTokenEnvVar) {
-      const trimmedName = draft.name.trim();
-      const envVar = trimmedName
-        ? `${trimmedName.toUpperCase().replace(/\s+/g, '_')}_TOKEN`
-        : `${option.type.toUpperCase().replace(/-/g, '_')}_TOKEN`;
-      update({ adminTokenEnvVar: envVar });
     }
     if (option) {
       update({ credentialKind: option.credentialKind });
@@ -404,7 +394,7 @@ function StepConnectionForm({
           <p className="text-xs text-text-secondary">
             {t('wizard.connection.nameHint', {
               defaultValue:
-                '用于生成 backendId（kebab-case，如 intellect-rag-default）与 adminTokenEnvVar（大写下划线_TOKEN）。仅允许字母、数字、连字符。',
+                '用于生成 backendId（kebab-case，如 intellect-rag-default）。BFF 会基于此自动生成 adminTokenEnvVar（HARNESS_<ID>_TOKEN）。仅允许字母、数字、连字符。',
             })}
           </p>
         </div>
@@ -418,25 +408,6 @@ function StepConnectionForm({
             onChange={(e) => update({ endpoint: e.target.value })}
             placeholder="http://localhost:9380"
           />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="wizard-envvar">
-            {t('wizard.connection.adminTokenEnvVar', {
-              defaultValue: 'Admin Token Env Var',
-            })}
-          </Label>
-          <Input
-            id="wizard-envvar"
-            value={draft.adminTokenEnvVar}
-            onChange={(e) => update({ adminTokenEnvVar: e.target.value })}
-            placeholder="HARNESS_INTELLECT_RAG_ADMIN_TOKEN"
-          />
-          <p className="text-xs text-text-secondary">
-            {t('wizard.connection.adminTokenEnvVarHint', {
-              defaultValue:
-                'Env var name to read the token from at runtime (fallback when no vault).',
-            })}
-          </p>
         </div>
 
         {draft.credentialKind === 'bearer-token' && (
@@ -669,10 +640,6 @@ function StepConfirm({
           label={t('wizard.confirm.endpoint', { defaultValue: 'Endpoint' })}
           value={draft.endpoint}
         />
-        <Row
-          label={t('wizard.confirm.envVar', { defaultValue: 'Env Var' })}
-          value={draft.adminTokenEnvVar}
-        />
         {draft.intellectTenantId && (
           <Row
             label={t('wizard.confirm.tenantId', { defaultValue: 'Tenant ID' })}
@@ -804,7 +771,13 @@ function WizardPage() {
     retry: false,
   });
 
+  // 仅当页面以 step>=5 加载(刷新场景)时才执行重定向检测。
+  // 用户从 Step 4 点击"继续"进入 Step 5 时,后端尚未创建(needsSetup=true 是预期行为),
+  // 不应触发回退逻辑。此处通过 initialStep 判断是否为刷新场景。
+  const isRefreshToConfirmOrDone = useRef(initialStep >= 5);
+
   useEffect(() => {
+    if (!isRefreshToConfirmOrDone.current) return;
     if (step >= 5 && statusData) {
       if (!statusData.needsSetup) {
         // 后端已配置:mode=add 场景允许继续完成向导,其他场景跳走
@@ -901,7 +874,7 @@ function WizardPage() {
         type: draft.selectedType,
         endpoint: draft.endpoint,
         credentialKind: draft.credentialKind,
-        adminTokenEnvVar: draft.adminTokenEnvVar,
+        // adminTokenEnvVar 由 BFF 自动生成 HARNESS_<ID>_TOKEN,前端不再发送该字段
         ...(draft.credentialKind === 'bearer-token'
           ? { token: draft.token }
           : { email: draft.email, password: draft.password }),

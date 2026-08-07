@@ -1,8 +1,6 @@
 // spec-013 P1-5: TopBar 简化顶栏
 
 import { IntellectAvatar } from '@/components/intellect-avatar';
-import { ModeSwitcher } from '@/components/trae-work';
-import type { WorkMode } from '@/components/trae-work';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -30,7 +28,7 @@ import ThemeButton from './theme-button';
 export interface TopBarProps {
   /** 左侧内容(可选,默认 Logo) */
   left?: React.ReactNode;
-  /** 中间内容(可选,默认 ModeSwitcher) */
+  /** 中间内容(可选,默认留空;通常传入 GlobalSearch) */
   center?: React.ReactNode;
   /** 右侧内容(可选,默认用户菜单) */
   right?: React.ReactNode;
@@ -72,7 +70,7 @@ function useHeaderActions() {
  *
  * 三列网格布局(左/中/右),支持毛玻璃背景与粘性定位。
  * - 左列:默认 Logo(链接到 Routes.Root)
- * - 中列:默认 ModeSwitcher(受控,value 由 TopBar 内部 state 管理)
+ * - 中列:默认留空;通常由父组件传入 GlobalSearch
  * - 右列:默认用户操作区(语言切换/帮助/主题/通知/头像)
  *
  * 各列均支持通过 prop 自定义内容,传入则覆盖默认渲染。
@@ -84,7 +82,6 @@ export function TopBar({
   height = 56,
   sticky = true,
 }: TopBarProps) {
-  const [mode, setMode] = React.useState<WorkMode>('work');
   const { mode: layoutMode, toggleMode } = useLayoutMode();
   const {
     changeLanguage,
@@ -113,8 +110,8 @@ export function TopBar({
         )}
       </div>
 
-      <div className="justify-self-center">
-        {center ?? <ModeSwitcher value={mode} onChange={setMode} />}
+      <div className="justify-self-center w-full max-w-[420px]">
+        {center}
       </div>
 
       <div className="justify-self-end flex items-center gap-4">

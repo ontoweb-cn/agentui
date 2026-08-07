@@ -237,6 +237,28 @@ describe('validateForm', () => {
     expect(result.errors.credentialKind).toBeDefined();
   });
 
+  // -------------------------------------------------------------------------
+  // adminTokenEnvVar 不再必填(任务:移除必填字段,BFF 自动生成 HARNESS_<ID>_TOKEN)
+  // -------------------------------------------------------------------------
+
+  it('adminTokenEnvVar 缺失或格式非法时 validateForm 均通过(BFF 自动生成,不再校验)', () => {
+    // 1. 缺失:显式移除 adminTokenEnvVar,validateForm 应通过
+    const { adminTokenEnvVar: _omit, ...formWithoutVar } = validRagForm;
+    void _omit;
+    const resultMissing = validateForm(formWithoutVar);
+    expect(resultMissing.valid).toBe(true);
+    expect(resultMissing.errors.adminTokenEnvVar).toBeUndefined();
+
+    // 2. 格式非法:前端传入 lowercase-invalid,validateForm 不再校验该字段
+    //    (路由层会忽略并自动生成 HARNESS_<ID>_TOKEN)
+    const resultInvalid = validateForm({
+      ...validRagForm,
+      adminTokenEnvVar: 'lowercase-invalid',
+    });
+    expect(resultInvalid.valid).toBe(true);
+    expect(resultInvalid.errors.adminTokenEnvVar).toBeUndefined();
+  });
+
   it('非对象表单返回失败', () => {
     const result = validateForm(null);
     expect(result.valid).toBe(false);

@@ -8,6 +8,8 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 export interface ThreeColumnLayoutProps {
+  /** 最左侧 Activity Bar(模式导航,可选) */
+  activityBar?: React.ReactNode;
   /** 左侧栏内容(任务列表) */
   sidebar?: React.ReactNode;
   /** 主区域内容 */
@@ -16,10 +18,14 @@ export interface ThreeColumnLayoutProps {
   toolPanel?: React.ReactNode;
   /** 顶栏内容(可选,默认不渲染) */
   topBar?: React.ReactNode;
+  /** 移动端底部 tab bar(可选,仅 <768px 渲染,替代左侧 activityBar) */
+  mobileTabBar?: React.ReactNode;
   /** 左侧栏宽度(可选,默认 280px) */
   sidebarWidth?: number | string;
   /** 右侧面板宽度(可选,默认 360px) */
   toolPanelWidth?: number | string;
+  /** Activity Bar 宽度(可选,默认 52px) */
+  activityBarWidth?: number | string;
   /** 左侧栏是否可折叠(可选,默认 true) */
   sidebarCollapsible?: boolean;
   /** 右侧面板是否可折叠(可选,默认 true) */
@@ -50,8 +56,11 @@ function normalizeWidth(width: number | string): string {
 /**
  * ThreeColumnLayout — 三栏布局容器。
  *
- * CSS Grid: `[topbar] 56px [body] 1fr` × `[sidebar] auto [main] 1fr [toolpanel] auto`。
- * 顶栏跨三列,主区 `min-w-0` 防溢出。
+ * CSS Grid:
+ * - 行:`[topbar] 56px [body] 1fr`(有顶栏时)或 `[body] 1fr`;
+ *   移动端有底部 tab bar 时追加 `[mobiletab] auto` 行。
+ * - 列:`[activitybar] 52px [sidebar] auto [main] 1fr [toolpanel] auto`。
+ *   顶栏跨全部列;Activity Bar 在 body 行最左侧;主区 `min-w-0` 防溢出。
  *
  * 折叠状态支持受控(`sidebarCollapsed`/`toolPanelCollapsed`)与非受控
  * (`defaultSidebarCollapsed`/`defaultToolPanelCollapsed`)两种模式,
@@ -59,16 +68,20 @@ function normalizeWidth(width: number | string): string {
  *
  * 响应式断点:
  * - `< 1024px`(平板):侧栏宽度强制为 56px(图标栏)
- * - `< 768px`(移动):侧栏完全隐藏(width=0),工具面板切换为 overlay 模式
+ * - `< 768px`(移动):Activity Bar 隐藏(width=0)改由 `mobileTabBar` 在底部渲染;
+ *   侧栏完全隐藏(width=0),工具面板切换为 overlay 模式
  *   (position: absolute + backdrop),进入移动端时自动折叠侧栏并通知父组件。
  */
 export function ThreeColumnLayout({
+  activityBar,
   sidebar,
   children,
   toolPanel,
   topBar,
+  mobileTabBar,
   sidebarWidth = 280,
   toolPanelWidth = 360,
+  activityBarWidth = 52,
   sidebarCollapsible = true,
   toolPanelCollapsible = true,
   defaultSidebarCollapsed = false,
@@ -176,10 +189,18 @@ export function ThreeColumnLayout({
 
   // ---- 渲染 ----
   const hasTopBar = !!topBar;
+  const hasActivityBar = !!activityBar;
+  const hasMobileTabBar = !!mobileTabBar;
+  // 移动端:activityBar 隐藏(改用底部 tab bar);行模板加 [mobiletab]
+  const effectiveActivityBarWidth = isMobile ? '0px' : normalizeWidth(activityBarWidth);
   const gridTemplateRows = hasTopBar
-    ? `[topbar] ${TOPBAR_HEIGHT}px [body] 1fr`
-    : `[body] 1fr`;
-  const gridTemplateColumns = `[sidebar] auto [main] 1fr [toolpanel] auto`;
+    ? hasMobileTabBar
+      ? `[topbar] ${TOPBAR_HEIGHT}px [body] 1fr [mobiletab] auto`
+      : `[topbar] ${TOPBAR_HEIGHT}px [body] 1fr`
+    : hasMobileTabBar
+      ? `[body] 1fr [mobiletab] auto`
+      : `[body] 1fr`;
+  const gridTemplateColumns = `[activitybar] ${effectiveActivityBarWidth} [sidebar] auto [main] 1fr [toolpanel] auto`;
 
   const handleBackdropClick = React.useCallback(() => {
     setToolPanelCollapsed(true);
@@ -213,6 +234,24 @@ export function ThreeColumnLayout({
         >
           {topBar}
         </div>
+      )}
+
+      {hasActivityBar && !isMobile && (
+        <aside
+          role="complementary"
+          aria-label={t('threeColumnLayout.activityBarLabel', '模式导航')}
+          className={cn(
+            'overflow-hidden border-r border-[var(--trae-line)] bg-[var(--trae-surface)]',
+          )}
+          style={{
+            gridRow: 'body',
+            gridColumn: 'activitybar',
+            width: effectiveActivityBarWidth,
+          }}
+          data-testid="three-column-activitybar"
+        >
+          {activityBar}
+        </aside>
       )}
 
       {sidebar && (
@@ -288,6 +327,19 @@ export function ThreeColumnLayout({
             {toolPanel}
           </aside>
         </>
+      )}
+
+      {hasMobileTabBar && isMobile && (
+        <div
+          className="border-t border-[var(--trae-line)] bg-[var(--trae-surface)]"
+          style={{
+            gridColumn: '1 / -1',
+            gridRow: 'mobiletab',
+          }}
+          data-testid="three-column-mobile-tabbar"
+        >
+          {mobileTabBar}
+        </div>
       )}
     </div>
   );

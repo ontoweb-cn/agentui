@@ -317,21 +317,8 @@ describe('harness-admin 路由 (P2 US1)', () => {
       expect(body.message).toContain('endpoint');
     });
 
-    it('adminTokenEnvVar 非法格式时返回 400', async () => {
-      const badForm = { ...validForm, adminTokenEnvVar: 'lowercase-invalid' };
-      const res = await app.request('/admin/harness-backends', {
-        method: 'POST',
-        headers: {
-          Authorization: 'Bearer test',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(badForm),
-      });
-      expect(res.status).toBe(400);
-      const body = await res.json();
-      expect(body.code).toBe(400);
-      expect(body.message).toContain('adminTokenEnvVar');
-    });
+    // 注:原 "adminTokenEnvVar 非法格式时返回 400" 测试已删除(adminTokenEnvVar 不再必填,
+    // BFF 自动生成 HARNESS_<ID>_TOKEN,前端传入的值会被路由层忽略,不再走校验)。
 
     it('type 非 intellect-rag/intellect-enterprise 时返回 400', async () => {
       const badForm = { ...validForm, type: 'invalid-type' };
@@ -360,6 +347,56 @@ describe('harness-admin 路由 (P2 US1)', () => {
       });
       const text = await res.text();
       expect(text).not.toContain('"adminToken":');
+    });
+
+    // -------------------------------------------------------------------------
+    // adminTokenEnvVar 自动生成测试(任务:移除必填,BFF 自动生成 HARNESS_<ID>_TOKEN)
+    // -------------------------------------------------------------------------
+
+    it('POST 自动生成 adminTokenEnvVar = HARNESS_<ID>_TOKEN(忽略 body 中的值)', async () => {
+      // validForm.adminTokenEnvVar='HARNESS_NEW_TOKEN',但 BFF 应忽略并生成 HARNESS_INTELLECT_RAG_NEW_TOKEN
+      const res = await app.request('/admin/harness-backends', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(validForm),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      // 基于 form.id 自动生成,而非 body.adminTokenEnvVar
+      expect(body.data.adminTokenEnvVar).toBe('HARNESS_INTELLECT_RAG_NEW_TOKEN');
+      expect(body.data.adminTokenEnvVar).not.toBe('HARNESS_NEW_TOKEN');
+
+      const savedConfigs = stores.saveConfigMock.mock.calls[0][0];
+      const saved = savedConfigs.find((c: HarnessBackendConfig) => c.id === 'intellect-rag-new');
+      expect(saved.adminTokenEnvVar).toBe('HARNESS_INTELLECT_RAG_NEW_TOKEN');
+    });
+
+    it('POST 前端传入 adminTokenEnvVar 时记录 warn 并覆盖为 HARNESS_<ID>_TOKEN', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const formWithVar = { ...validForm, adminTokenEnvVar: 'CUSTOM_FRONTEND_VAR' };
+
+      const res = await app.request('/admin/harness-backends', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formWithVar),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.adminTokenEnvVar).toBe('HARNESS_INTELLECT_RAG_NEW_TOKEN');
+      expect(body.data.adminTokenEnvVar).not.toBe('CUSTOM_FRONTEND_VAR');
+
+      // warn 被记录
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain('CUSTOM_FRONTEND_VAR');
+      expect(warnSpy.mock.calls[0][0]).toContain('harness-admin:POST');
+
+      warnSpy.mockRestore();
     });
   });
 
@@ -417,6 +454,46 @@ describe('harness-admin 路由 (P2 US1)', () => {
         body: JSON.stringify({ ...validForm, id: undefined, endpoint: 'bad' }),
       });
       expect(res.status).toBe(400);
+    });
+
+    // -------------------------------------------------------------------------
+    // adminTokenEnvVar 自动生成测试(任务:PUT 同样自动生成,基于路径 id)
+    // -------------------------------------------------------------------------
+
+    it('PUT 自动生成 adminTokenEnvVar = HARNESS_<ID>_TOKEN(基于路径 id,忽略 body)', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      // body 中带一个前端尝试污染的 adminTokenEnvVar,应被忽略
+      const updateForm = {
+        ...validForm,
+        id: undefined,
+        name: 'Updated Name',
+        adminTokenEnvVar: 'BODY_INJECTED_VAR',
+      };
+
+      const res = await app.request('/admin/harness-backends/intellect-rag-default', {
+        method: 'PUT',
+        headers: {
+          Authorization: 'Bearer test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateForm),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      // 基于路径参数 id='intellect-rag-default' 生成,而非 body.adminTokenEnvVar
+      expect(body.data.adminTokenEnvVar).toBe('HARNESS_INTELLECT_RAG_DEFAULT_TOKEN');
+      expect(body.data.adminTokenEnvVar).not.toBe('BODY_INJECTED_VAR');
+
+      const savedConfigs = stores.saveConfigMock.mock.calls[0][0];
+      const saved = savedConfigs.find((c: HarnessBackendConfig) => c.id === 'intellect-rag-default');
+      expect(saved.adminTokenEnvVar).toBe('HARNESS_INTELLECT_RAG_DEFAULT_TOKEN');
+
+      // warn 被记录(因为 body 显式传入了 adminTokenEnvVar)
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain('BODY_INJECTED_VAR');
+      expect(warnSpy.mock.calls[0][0]).toContain('harness-admin:PUT');
+
+      warnSpy.mockRestore();
     });
   });
 

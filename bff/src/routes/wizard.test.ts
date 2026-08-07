@@ -390,7 +390,7 @@ describe('wizard 路由 (B-3)', () => {
       const body = await res.json();
       expect(body.success).toBe(true);
       expect(body.backendId).toBe('my-rag');
-      expect(body.envSnippet).toContain('MY_RAG_TOKEN');
+      expect(body.envSnippet).toContain('HARNESS_MY_RAG_TOKEN');
       // P1-3 修复:响应不含 token 明文
       expect(body.envSnippet).not.toContain('secret-token-123');
       expect(body.envSnippet).toContain('<your-token>');
@@ -400,7 +400,7 @@ describe('wizard 路由 (B-3)', () => {
       const savedConfigs = stores.saveConfigMock.mock.calls[0][0] as HarnessBackendConfig[];
       expect(savedConfigs).toHaveLength(1);
       expect(savedConfigs[0].id).toBe('my-rag');
-      expect(savedConfigs[0].adminTokenEnvVar).toBe('MY_RAG_TOKEN');
+      expect(savedConfigs[0].adminTokenEnvVar).toBe('HARNESS_MY_RAG_TOKEN');
 
       // load 被调用(热加载)
       expect(stores.loadMock).toHaveBeenCalledTimes(1);
@@ -703,6 +703,68 @@ describe('wizard 路由 (B-3)', () => {
       const body = await res.json();
       expect(body.success).toBe(false);
       expect(body.error).toContain('清洗后为空');
+    });
+
+    // -------------------------------------------------------------------------
+    // adminTokenEnvVar 自动生成测试(任务:移除必填,BFF 自动生成 HARNESS_<ID>_TOKEN)
+    // -------------------------------------------------------------------------
+
+    it('adminTokenEnvVar 未传时自动生成 HARNESS_<ID>_TOKEN', async () => {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Auto Gen Var',
+          type: 'intellect-rag',
+          endpoint: 'http://localhost:9380',
+          credentialKind: 'bearer-token',
+          token: 'token',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.backendId).toBe('auto-gen-var');
+      // 命名规则升级为 HARNESS_<ID>_TOKEN
+      expect(body.envSnippet).toContain('HARNESS_AUTO_GEN_VAR_TOKEN');
+
+      const savedConfigs = stores.saveConfigMock.mock.calls[0][0] as HarnessBackendConfig[];
+      expect(savedConfigs[0].adminTokenEnvVar).toBe('HARNESS_AUTO_GEN_VAR_TOKEN');
+    });
+
+    it('前端传入 adminTokenEnvVar 时被忽略 + 记录 warn + 自动生成', async () => {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Ignore Var',
+          type: 'intellect-rag',
+          endpoint: 'http://localhost:9380',
+          credentialKind: 'bearer-token',
+          token: 'token',
+          // 前端尝试污染命名空间,应被忽略
+          adminTokenEnvVar: 'FRONTEND_INJECTED_VAR',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.backendId).toBe('ignore-var');
+      // 持久化的是 BFF 自动生成的值,而非前端传入
+      const savedConfigs = stores.saveConfigMock.mock.calls[0][0] as HarnessBackendConfig[];
+      expect(savedConfigs[0].adminTokenEnvVar).toBe('HARNESS_IGNORE_VAR_TOKEN');
+      expect(savedConfigs[0].adminTokenEnvVar).not.toBe('FRONTEND_INJECTED_VAR');
+      expect(body.envSnippet).toContain('HARNESS_IGNORE_VAR_TOKEN');
+      expect(body.envSnippet).not.toContain('FRONTEND_INJECTED_VAR');
+      // warn 被记录,包含被忽略的值
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain('FRONTEND_INJECTED_VAR');
+      expect(warnSpy.mock.calls[0][0]).toContain('Ignoring frontend-provided adminTokenEnvVar');
+
+      warnSpy.mockRestore();
     });
   });
 });

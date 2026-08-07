@@ -30,12 +30,14 @@ export const ModeSwitcher = React.forwardRef<HTMLDivElement, ModeSwitcherProps>(
       size = 'md',
       disabled = false,
       showLabels = true,
+      orientation = 'horizontal',
     },
     ref,
   ) {
     const { t } = useTranslation();
     const sizePadding = MODE_SWITCHER_SIZE_PADDING[size];
     const sizeIcon = MODE_SWITCHER_SIZE_ICON[size];
+    const isVertical = orientation === 'vertical';
 
     const handleSelect = React.useCallback(
       (mode: WorkMode) => {
@@ -61,15 +63,19 @@ export const ModeSwitcher = React.forwardRef<HTMLDivElement, ModeSwitcherProps>(
       <div
         ref={ref}
         className={cn(
-          'inline-flex items-center gap-0.5 rounded-trae-md',
+          isVertical
+            ? 'inline-flex flex-col items-stretch gap-0.5 rounded-trae-md'
+            : 'inline-flex items-center gap-0.5 rounded-trae-md',
           'bg-[image:var(--trae-card-bg-hover)]',
           disabled && 'opacity-50',
         )}
         role="radiogroup"
+        aria-orientation={isVertical ? 'vertical' : 'horizontal'}
         aria-label={t('modeSwitcher.label')}
         aria-disabled={disabled}
         data-testid="mode-switcher"
         data-value={value}
+        data-orientation={orientation}
       >
         {availableModes.map((mode) => {
           const Icon = MODE_ICON_COMPONENT[mode];
@@ -88,24 +94,33 @@ export const ModeSwitcher = React.forwardRef<HTMLDivElement, ModeSwitcherProps>(
               onClick={() => handleSelect(mode)}
               onKeyDown={(e) => handleKeyDown(e, mode)}
               className={cn(
-                'inline-flex items-center justify-center gap-1.5 rounded-trae-sm',
+                'inline-flex items-center justify-center gap-1.5 rounded-trae-sm relative',
                 'font-semibold tracking-trae-wide transition-all duration-trae-base',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-trae-green',
                 sizePadding,
+                isVertical && 'flex-col py-2',
                 isActive
-                  ? 'text-black shadow-trae-glow-sm'
+                  ? isVertical
+                    ? 'text-trae-green bg-[var(--trae-green-soft,rgba(16,185,129,0.12))]'
+                    : 'text-black shadow-trae-glow-sm'
                   : 'text-trae-grey hover:text-trae-green',
               )}
               style={
-                isActive
+                isActive && !isVertical
                   ? { backgroundColor: 'var(--trae-green-bright)' }
                   : undefined
               }
               data-mode={mode}
               data-active={isActive}
             >
+              {isActive && isVertical && (
+                <span
+                  className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-r-full bg-trae-green"
+                  aria-hidden
+                />
+              )}
               <Icon className={cn(sizeIcon)} aria-hidden />
-              {showLabels && <span>{label}</span>}
+              {showLabels && <span className={cn(isVertical && 'text-[10px]')}>{label}</span>}
             </button>
           );
         })}

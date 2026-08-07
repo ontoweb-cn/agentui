@@ -1,5 +1,6 @@
 // spec-013 P1-5: TopBar Jest 单元测试
-// 覆盖:默认渲染/自定义 left/center/right/sticky=false/ModeSwitcher 切换
+// 覆盖:默认渲染/自定义 left/center/right/sticky=false
+// 注:ModeSwitcher 已移至 ActivityBar,TopBar 不再管理模式切换状态
 
 import { render, screen, fireEvent } from '@testing-library/react';
 import * as React from 'react';
@@ -58,7 +59,7 @@ function renderWithProviders(ui: React.ReactElement) {
 }
 
 describe('TopBar', () => {
-  it('渲染默认 TopBar (Logo + ModeSwitcher + 用户操作区)', () => {
+  it('渲染默认 TopBar (Logo + 空中列 + 用户操作区)', () => {
     renderWithProviders(<TopBar />);
 
     // 默认左列:Logo
@@ -66,8 +67,8 @@ describe('TopBar', () => {
     expect(logo).toBeInTheDocument();
     expect(logo).toHaveAttribute('src', '/logo-96.png');
 
-    // 默认中列:ModeSwitcher
-    expect(screen.getByTestId('mode-switcher')).toBeInTheDocument();
+    // 默认中列:不再渲染 ModeSwitcher(已移至 ActivityBar)
+    expect(screen.queryByTestId('mode-switcher')).not.toBeInTheDocument();
 
     // 默认右列:用户操作区(语言切换/帮助/主题/头像)
     expect(screen.getByTestId('auth-status')).toBeInTheDocument();
@@ -154,34 +155,6 @@ describe('TopBar', () => {
   it('自定义 height 字符串原样应用', () => {
     renderWithProviders(<TopBar height="4rem" />);
     expect(screen.getByTestId('top-bar')).toHaveStyle({ height: '4rem' });
-  });
-
-  it('ModeSwitcher 显示默认 work 模式且可切换到 code/canvas', () => {
-    renderWithProviders(<TopBar />);
-    const modeSwitcher = screen.getByTestId('mode-switcher');
-    expect(modeSwitcher).toHaveAttribute('data-value', 'work');
-
-    // work 段激活
-    expect(screen.getByRole('radio', { name: 'Work' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-
-    // 切换到 code
-    fireEvent.click(screen.getByRole('radio', { name: 'Code' }));
-    expect(modeSwitcher).toHaveAttribute('data-value', 'code');
-    expect(screen.getByRole('radio', { name: 'Code' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-
-    // 切换到 canvas
-    fireEvent.click(screen.getByRole('radio', { name: 'Canvas' }));
-    expect(modeSwitcher).toHaveAttribute('data-value', 'canvas');
-    expect(screen.getByRole('radio', { name: 'Canvas' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
   });
 
   it('点击语言触发器不抛异常', () => {

@@ -294,11 +294,11 @@ function isAdminAuthorized(c: Context): boolean {
  * spec-010 v8 §9.4 (B1 修复):Wizard setup 端点鉴权中间件。
  * 接受 admin token(JWT/cookie)或 bootstrap token(首次安装专用)。
  */
-async function wizardSetupAuth(c: Context, next: () => Promise<void>): Promise<Response> {
+async function wizardSetupAuth(c: Context, next: () => Promise<void>): Promise<void> {
   // 1. admin 鉴权通过则放行
   if (isAdminAuthorized(c)) {
     await next();
-    return new Response(null, { status: 204 });
+    return;
   }
 
   // 2. 尝试 bootstrap token 鉴权
@@ -308,11 +308,23 @@ async function wizardSetupAuth(c: Context, next: () => Promise<void>): Promise<R
     const manager = getBootstrapManager(c);
     if (manager.verify(token)) {
       await next();
-      return new Response(null, { status: 204 });
+      return;
     }
   }
 
-  return c.json(
+  // 3. 首次安装放行(spec §9.4):当 bootstrap 模式启用且尚无就绪后端时,
+  // 允许无凭据完成 setup。这是 wizard 面向终端用户的首次安装场景;
+  // bootstrap token 机制本身即为此场景的授权,前端 wizard 无需手动传递 token。
+  // 多实例部署(BOOTSTRAP_ENABLED=false)仍强制 admin/bootstrap token 鉴权。
+  if (process.env.BOOTSTRAP_ENABLED !== 'false') {
+    const store = getStore(c);
+    if (store.list().length === 0) {
+      await next();
+      return;
+    }
+  }
+
+  c.json(
     { code: 401, message: 'Unauthorized: admin token or bootstrap token required' },
     401,
   );
@@ -323,16 +335,27 @@ async function wizardSetupAuth(c: Context, next: () => Promise<void>): Promise<R
 // ---------------------------------------------------------------------------
 
 wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
-  const body = await c.req.json<WizardSetupRequest>().catch(() => null);
-  if (!body) {
+  const rawBody = await c.req.json<Record<string, unknown>>().catch(() => null);
+  if (!rawBody) {
     return c.json(
       { success: false, error: 'Request body must be JSON' } satisfies WizardSetupResponse,
       400,
     );
   }
 
+  // 兼容前端 request 拦截器的 snake_case 转换(next-request.ts convertTheKeysOfTheObjectToSnake)。
+  // 前端向导经共享 axios 实例发送请求,键名会被转为 snake_case(credentialKind → credential_kind 等)。
+  // BFF wizard 契约为 camelCase,此处做归一化,同时接受 camelCase 和 snake_case。
+  const toCamel = (s: string): string =>
+    s.replace(/_([a-z])/g, (_, ch: string) => ch.toUpperCase());
+  const body = {} as Record<string, unknown>;
+  for (const [key, value] of Object.entries(rawBody)) {
+    body[toCamel(key)] = value;
+  }
+  const req = body as unknown as WizardSetupRequest;
+
   // 基本校验
-  if (!body.name || !body.type || !body.endpoint || !body.credentialKind) {
+  if (!req.name || !req.type || !req.endpoint || !req.credentialKind) {
     return c.json(
       {
         success: false,
@@ -391,9 +414,16 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
       400,
     );
   }
-  const adminTokenEnvVar =
-    body.adminTokenEnvVar ??
-    `${backendId.toUpperCase().replace(/-/g, '_')}_TOKEN`;
+  // adminTokenEnvVar 始终由 BFF 自动生成,命名规则升级为 HARNESS_<ID>_TOKEN。
+  // 前端传入的 adminTokenEnvVar 会被忽略并记录 warn(防止前端污染命名空间)。
+  // 向后兼容:已持久化的 config 不变,只有新建 backend 用新规则。
+  if (body.adminTokenEnvVar !== undefined) {
+    console.warn(
+      `[wizard] Ignoring frontend-provided adminTokenEnvVar="${body.adminTokenEnvVar}" ` +
+        `for backend "${backendId}"; BFF auto-generates HARNESS_<ID>_TOKEN.`,
+    );
+  }
+  const adminTokenEnvVar = `HARNESS_${backendId.toUpperCase().replace(/-/g, '_')}_TOKEN`;
 
   // 2. 唯一性校验
   const existing = store.listConfigs?.() ?? [];

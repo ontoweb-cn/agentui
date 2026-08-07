@@ -15,12 +15,14 @@ import {
 } from './harness-admin-service';
 
 // 本地定义表单类型,避免跨模块 type-only import 触发 esbuild-jest 限制。
+// 注:adminTokenEnvVar 已改 optional(与 src/services/harness-admin-service.ts 同步);
+// BFF 始终自动生成 HARNESS_<ID>_TOKEN,前端表单不再收集该字段。
 type HarnessBackendForm = {
   id: string;
   name: string;
   type: 'intellect-rag' | 'intellect-enterprise';
   endpoint: string;
-  adminTokenEnvVar: string;
+  adminTokenEnvVar?: string;
   capabilities: {
     canvas: boolean;
     knowledgeBase: boolean;
@@ -147,7 +149,7 @@ describe('createHarnessBackend', () => {
     expect(res?.data?.data).toEqual(created);
   });
 
-  it('请求体包含 adminTokenEnvVar(非明文 token)', async () => {
+  it('请求体不含明文 adminToken(Token Security)', async () => {
     mockedRequest.post.mockResolvedValueOnce({
       data: { code: 0, message: 'ok', data: { ...sampleForm, ready: true } },
     });
@@ -156,10 +158,10 @@ describe('createHarnessBackend', () => {
       string,
       HarnessBackendForm,
     ];
-    // Token Security:只传 env var 名,不传明文 token
-    expect(body).toHaveProperty('adminTokenEnvVar');
+    // Token Security:任何情况下都不传明文 token
     expect(body).not.toHaveProperty('adminToken');
-    expect(body.adminTokenEnvVar).toBe('HARNESS_INTELLECT_RAG_ADMIN_TOKEN');
+    // 注:adminTokenEnvVar 已改 optional,前端表单不再收集该字段(BFF 自动生成)。
+    // 若 sampleForm 显式携带(向后兼容),service 仍会透传,但表单层已不收集。
   });
 });
 

@@ -94,7 +94,7 @@ describe('ThreeColumnLayout', () => {
     expect(layout.style.gridTemplateRows).toBe('[topbar] 56px [body] 1fr');
   });
 
-  it('grid-template-columns 含 sidebar/main/toolpanel', () => {
+  it('grid-template-columns 含 activitybar/sidebar/main/toolpanel', () => {
     render(
       <ThreeColumnLayout
         sidebar={<div>S</div>}
@@ -106,8 +106,65 @@ describe('ThreeColumnLayout', () => {
     );
     const layout = screen.getByTestId('three-column-layout');
     expect(layout.style.gridTemplateColumns).toBe(
-      '[sidebar] auto [main] 1fr [toolpanel] auto',
+      '[activitybar] 52px [sidebar] auto [main] 1fr [toolpanel] auto',
     );
+  });
+
+  it('渲染 activityBar(最左侧窄列)', () => {
+    render(
+      <ThreeColumnLayout
+        activityBar={<div data-testid="activitybar-content">AB</div>}
+        sidebar={<div>S</div>}
+      >
+        <div>M</div>
+      </ThreeColumnLayout>,
+    );
+    const ab = screen.getByTestId('three-column-activitybar');
+    expect(ab).toBeInTheDocument();
+    expect(screen.getByTestId('activitybar-content')).toBeInTheDocument();
+    expect(ab.style.width).toBe('52px');
+    expect(ab.style.gridColumn).toBe('activitybar');
+  });
+
+  it('自定义 activityBarWidth', () => {
+    render(
+      <ThreeColumnLayout
+        activityBar={<div>AB</div>}
+        activityBarWidth={64}
+      >
+        <div>M</div>
+      </ThreeColumnLayout>,
+    );
+    expect(screen.getByTestId('three-column-activitybar').style.width).toBe('64px');
+  });
+
+  it('不渲染 activityBar 时 grid-template-columns 仍含 activitybar 列(宽度默认 52px)', () => {
+    render(
+      <ThreeColumnLayout sidebar={<div>S</div>}>
+        <div>M</div>
+      </ThreeColumnLayout>,
+    );
+    // activityBar 是可选的,但 grid 列模板保留 [activitybar] 占位
+    expect(screen.queryByTestId('three-column-activitybar')).not.toBeInTheDocument();
+    const layout = screen.getByTestId('three-column-layout');
+    expect(layout.style.gridTemplateColumns).toContain('[activitybar]');
+  });
+
+  it('移动端隐藏 activityBar(width=0)并渲染 mobileTabBar', () => {
+    mockMatchMediaPerQuery((q) => q.includes('767'));
+    render(
+      <ThreeColumnLayout
+        activityBar={<div data-testid="ab-desktop">AB</div>}
+        mobileTabBar={<div data-testid="ab-mobile">MobileTab</div>}
+      >
+        <div>M</div>
+      </ThreeColumnLayout>,
+    );
+    // 移动端不渲染左侧 activityBar
+    expect(screen.queryByTestId('three-column-activitybar')).not.toBeInTheDocument();
+    // 移动端渲染底部 tab bar
+    expect(screen.getByTestId('three-column-mobile-tabbar')).toBeInTheDocument();
+    expect(screen.getByTestId('ab-mobile')).toBeInTheDocument();
   });
 
   it('侧栏折叠(collapsed=true 时 width=0)', () => {

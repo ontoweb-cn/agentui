@@ -107,7 +107,6 @@ interface HarnessBackendFormValues {
   name: string;
   type: BackendType;
   endpoint: string;
-  adminTokenEnvVar: string;
   capabilities: HarnessCapabilities;
   defaultForTenant?: boolean;
 }
@@ -131,12 +130,7 @@ const useHarnessBackendFormSchema = () => {
           'agent-scope',
         ]),
         endpoint: z.string().url(t('admin.harnessBackends.endpointHint')),
-        adminTokenEnvVar: z
-          .string()
-          .regex(
-            /^[A-Z][A-Z0-9_]*$/,
-            t('admin.harnessBackends.adminTokenEnvVarHint'),
-          ),
+        // adminTokenEnvVar 不再进表单:BFF 始终自动生成 HARNESS_<ID>_TOKEN
         capabilities: z.object({
           canvas: z.boolean(),
           knowledgeBase: z.boolean(),
@@ -156,7 +150,6 @@ const DEFAULT_FORM_VALUES: HarnessBackendFormValues = {
   name: '',
   type: 'intellect-rag',
   endpoint: 'http://localhost:9380',
-  adminTokenEnvVar: 'HARNESS_INTELLECT_RAG_ADMIN_TOKEN',
   capabilities: {
     canvas: true,
     knowledgeBase: true,
@@ -318,7 +311,7 @@ function AdminHarnessBackends() {
         name: itemToAction.name,
         type: itemToAction.type,
         endpoint: itemToAction.endpoint,
-        adminTokenEnvVar: itemToAction.adminTokenEnvVar,
+        // 注:adminTokenEnvVar 由 BFF 自动生成,编辑表单不再展示/提交
         capabilities: itemToAction.capabilities,
         defaultForTenant: itemToAction.defaultForTenant,
       });
@@ -560,28 +553,6 @@ function AdminHarnessBackends() {
               </FormControl>
               <FormDescription>
                 {t('admin.harnessBackends.endpointHint')}
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="adminTokenEnvVar"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>
-                {t('admin.harnessBackends.adminTokenEnvVar')}
-              </FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  placeholder="HARNESS_INTELLECT_RAG_ADMIN_TOKEN"
-                  className="bg-bg-input border-border-button"
-                />
-              </FormControl>
-              <FormDescription>
-                {t('admin.harnessBackends.adminTokenEnvVarHint')}
               </FormDescription>
               <FormMessage />
             </FormItem>

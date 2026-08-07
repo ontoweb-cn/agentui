@@ -57,7 +57,11 @@ export interface HarnessBackendForm {
   name: string;
   type: BackendType;
   endpoint: string;
-  adminTokenEnvVar: string;
+  /**
+   * 可选;BFF 始终自动生成 `HARNESS_<ID>_TOKEN` 并忽略前端传入的值。
+   * 保留字段用于响应类型 HarnessBackendWithStatus 的展示(列表/详情中读取)。
+   */
+  adminTokenEnvVar?: string;
   capabilities: HarnessCapabilities;
   defaultForTenant?: boolean;
 }
