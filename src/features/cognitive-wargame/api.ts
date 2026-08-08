@@ -212,6 +212,67 @@ export interface ApprovalList {
   offset: number;
 }
 
+/** Agent（对应 intellect_agents 表，G-16）。 */
+export interface Agent {
+  agent_id: string;
+  name: string;
+  agent_type:
+    | 'individual'
+    | 'admin_organ'
+    | 'political_party'
+    | 'news_media'
+    | 'mass';
+  parent_agent_id?: string | null;
+  bio?: string | null;
+  avatar?: string | null;
+  attributes?: Record<string, unknown>;
+  status?: 'active' | 'archived';
+  tenant_id?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Agent 关系（对应 intellect_agent_relations 表）。 */
+export interface AgentRelation {
+  relation_id: string;
+  source_agent_id: string;
+  target_agent_id: string;
+  relation_type:
+    | 'employed_by'
+    | 'spokesperson_of'
+    | 'member_of'
+    | 'subsidiary_of'
+    | 'belongs_to';
+  valid_from?: string | null;
+  valid_to?: string | null;
+  attributes?: Record<string, unknown>;
+  created_at?: string;
+}
+
+/** Agent 类型字典（对应 intellect_agent_types 表）。 */
+export interface AgentType {
+  type_code: string;
+  type_name: string;
+  parent_type_code?: string | null;
+  description?: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+/** Agent 列表响应（gateway 返回）。 */
+export interface AgentList {
+  agents: Agent[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** Agent 关系列表响应（gateway 返回）。 */
+export interface AgentRelationList {
+  relations: AgentRelation[];
+  total: number;
+}
+
 /** 干预请求（P3.3-1 对接 intervention_api）。 */
 export interface InterventionRequest {
   type: 'narrative_inject' | 'agent_override' | 'strategy_veto';
@@ -567,6 +628,86 @@ export const api = {
   resolveApproval(approvalId: string, decision: string, comment?: string) {
     return unwrap<Approval>(
       client.post(`/approvals/${approvalId}/resolve`, { decision, comment }),
+    );
+  },
+
+  // ── G-16 Agent 注册表（代理 intellect-gateway /v1/intellect/agents）──
+
+  /** 查询 Agent 列表。 */
+  getAgents(params?: {
+    agent_type?: string;
+    status?: string;
+    parent_agent_id?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    return unwrap<AgentList>(client.get('/agents', { params }));
+  },
+
+  /** 查询 Agent 详情。 */
+  getAgent(agentId: string) {
+    return unwrap<Agent>(client.get(`/agents/${agentId}`));
+  },
+
+  /** 创建 Agent。 */
+  createAgent(data: {
+    agent_id: string;
+    name: string;
+    agent_type: string;
+    parent_agent_id?: string;
+    bio?: string;
+    avatar?: string;
+    attributes?: Record<string, unknown>;
+  }) {
+    return unwrap<Agent>(client.post('/agents', data));
+  },
+
+  /** 更新 Agent。 */
+  updateAgent(agentId: string, data: Partial<Agent>) {
+    return unwrap<Agent>(client.put(`/agents/${agentId}`, data));
+  },
+
+  /** 删除 Agent。 */
+  deleteAgent(agentId: string, hard?: boolean) {
+    return unwrap<{ deleted: boolean }>(
+      client.delete(`/agents/${agentId}`, { params: { hard } }),
+    );
+  },
+
+  /** 查询 Agent 类型字典。 */
+  getAgentTypes(active?: boolean) {
+    return unwrap<AgentType[] | { types: AgentType[] }>(
+      client.get('/agents/types', { params: { active } }),
+    );
+  },
+
+  /** 查询 Agent 关系列表。 */
+  getAgentRelations(agentId: string, direction?: string) {
+    return unwrap<AgentRelationList>(
+      client.get(`/agents/${agentId}/relations`, { params: { direction } }),
+    );
+  },
+
+  /** 建立 Agent 关系。 */
+  createAgentRelation(
+    agentId: string,
+    data: {
+      source_agent_id: string;
+      target_agent_id: string;
+      relation_type: string;
+      valid_from?: string;
+      valid_to?: string;
+    },
+  ) {
+    return unwrap<AgentRelation>(
+      client.post(`/agents/${agentId}/relations`, data),
+    );
+  },
+
+  /** 删除 Agent 关系。 */
+  deleteAgentRelation(agentId: string, relationId: string) {
+    return unwrap<{ deleted: boolean }>(
+      client.delete(`/agents/${agentId}/relations/${relationId}`),
     );
   },
 };
