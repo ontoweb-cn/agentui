@@ -397,7 +397,7 @@ function mapScenario(raw: Record<string, unknown>): Scenario {
   const sourceEvents = raw.source_events;
   return {
     id: String(raw.scenario_id ?? raw.id ?? ''),
-    name: String(raw.scenario_id ?? raw.name ?? ''),
+    name: String(raw.name ?? raw.scenario_id ?? ''),
     description:
       (overview.objective as string | undefined) ??
       (Array.isArray(sourceEvents) ? sourceEvents.join(', ') : undefined),
