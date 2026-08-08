@@ -446,6 +446,21 @@ export const api = {
     );
   },
 
+  /** 发起 intellect-team 推演会话（想定内容作为首条消息，远程自动建会话）。 */
+  createScenarioConversation(
+    id: string,
+    data?: { instruction?: string; model?: string },
+  ) {
+    return unwrap<{
+      status: string;
+      scenario_id: string;
+      session_id: string;
+      model?: string;
+      reply?: string;
+      chat_url?: string;
+    }>(client.post(`/scenarios/${id}/conversations`, data ?? {}));
+  },
+
   /** 查询想定执行状态。 */
   getScenarioStatus(id: string) {
     return unwrap<TaskStatus>(client.get(`/scenarios/${id}/status`));

@@ -29,6 +29,7 @@ export default {
       viewDetail: '查看详情',
       back: '返回',
       execute: '执行推演',
+      launchConversation: '发起推演会话',
       generate: '生成想定',
       create: '创建',
       cancel: '取消',

@@ -31,6 +31,7 @@ const ScenarioDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { currentScenario, loading, loadScenario } = useWargameStore();
   const [executing, setExecuting] = useState(false);
+  const [launching, setLaunching] = useState(false);
 
   useEffect(() => {
     if (id) loadScenario(id);
@@ -44,6 +45,21 @@ const ScenarioDetailPage: React.FC = () => {
       await loadScenario(id);
     } finally {
       setExecuting(false);
+    }
+  };
+
+  /** 发起 intellect-team 推演会话：想定内容作为首条消息，远程自动建会话后跳转聊天页。 */
+  const handleLaunchConversation = async () => {
+    if (!id) return;
+    setLaunching(true);
+    try {
+      const res = await api.createScenarioConversation(id, {});
+      const url =
+        res?.chat_url ||
+        `/next-chats/chat?conversationId=${res?.session_id}&isNew=1`;
+      window.open(url, '_blank');
+    } finally {
+      setLaunching(false);
     }
   };
 
@@ -69,6 +85,13 @@ const ScenarioDetailPage: React.FC = () => {
           </Link>
           <Button onClick={handleExecute} disabled={executing || !id}>
             {t('cognitiveWargame.common.execute')}
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleLaunchConversation}
+            disabled={launching || !id}
+          >
+            {t('cognitiveWargame.common.launchConversation')}
           </Button>
         </div>
       </div>

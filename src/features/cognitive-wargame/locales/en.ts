@@ -29,6 +29,7 @@ export default {
       viewDetail: 'View detail',
       back: 'Back',
       execute: 'Execute',
+      launchConversation: 'Launch Wargame Chat',
       generate: 'Generate scenario',
       create: 'Create',
       cancel: 'Cancel',
