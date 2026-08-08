@@ -47,6 +47,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { api, type InterventionRequest, type Metrics } from '../api';
+import WargameSectionLayout from '../components/section-menu';
 import { useSseEvents, type CognitiveEvent } from '../hooks/use-sse-events';
 import { WargameRoutes } from '../routes';
 import { useWargameStore } from '../store';
@@ -241,7 +242,8 @@ const RoundViewPage: React.FC = () => {
   const scenarioStatus = currentScenario?.status ?? '-';
 
   return (
-    <div className="flex flex-col gap-4 p-6">
+    <WargameSectionLayout>
+      <div className="flex flex-col gap-4 p-6">
       {/* 想定信息栏 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -672,7 +674,8 @@ const RoundViewPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </WargameSectionLayout>
   );
 };
 

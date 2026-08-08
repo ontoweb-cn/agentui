@@ -5,8 +5,8 @@
  * 以 `/api/v1/wargame/*` 访问，rewrite 去掉 /wargame 前缀后转发到后端 /api/v1/*。
  * 这里使用独立的 axios 实例，避免与 BFF 的 restAPIv1 (`/api/bff/proxy/v1`) 拦截器耦合。
  */
-import axios, { type AxiosInstance } from 'axios';
 import { Authorization } from '@/constants/authorization';
+import axios, { type AxiosInstance } from 'axios';
 
 /** 管理服务基础路径，统一前缀 /api/v1/wargame，由 Vite proxy 代理到 9385。 */
 const WARGAME_BASE_URL = '/api/v1/wargame';
@@ -47,6 +47,9 @@ function createWargameClient(): AxiosInstance {
 }
 
 const client = createWargameClient();
+
+const encodePathSegments = (value: string) =>
+  value.split('/').map(encodeURIComponent).join('/');
 
 /**
  * 通用响应包装（兼容 intellect-rag-app 的 { code, data, message } 形态）。
@@ -304,6 +307,75 @@ export interface Anomaly {
   timestamp: number;
 }
 
+export type ResourceCategory =
+  | 'blue-team'
+  | 'gray-team'
+  | 'group-agents'
+  | 'person-agents'
+  | 'red-team'
+  | 'rule-team';
+
+export interface SkillResource {
+  id: string;
+  name: string;
+  category: ResourceCategory;
+  description?: string;
+  version?: string;
+  author?: string;
+  tags?: string[];
+  directory?: string;
+  file_count?: number;
+  created_at?: number;
+  updated_at?: number;
+}
+
+export interface SkillFileEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size: number;
+  content?: string;
+}
+
+export interface SkillDetailResource extends SkillResource {
+  files: SkillFileEntry[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface ToolResource {
+  name: string;
+  toolset?: string;
+  category: string;
+  category_label?: string;
+  description?: string;
+  actions?: string[];
+  requires_env?: string[];
+  source_file?: string;
+}
+
+export interface ToolDetailResource extends ToolResource {
+  schema?: Record<string, unknown>;
+  source_code_preview?: string;
+}
+
+export interface SkillCategoriesResponse {
+  categories: Array<{ name: ResourceCategory; label?: string; count: number }>;
+  total: number;
+}
+
+export interface SkillListResponse {
+  skills: SkillResource[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ToolListResponse {
+  tools: ToolResource[];
+  total: number;
+  categories: Array<{ name: string; label?: string; count: number }>;
+}
+
 async function unwrap<T>(p: Promise<{ data: ApiResult<T> | T }>): Promise<T> {
   const res = await p;
   const payload = res.data as ApiResult<T> | T;
@@ -328,13 +400,9 @@ function mapScenario(raw: Record<string, unknown>): Scenario {
     name: String(raw.scenario_id ?? raw.name ?? ''),
     description:
       (overview.objective as string | undefined) ??
-      (Array.isArray(sourceEvents)
-        ? sourceEvents.join(', ')
-        : undefined),
+      (Array.isArray(sourceEvents) ? sourceEvents.join(', ') : undefined),
     status: (raw.status as ScenarioStatus | undefined) ?? 'ready',
-    rounds_limit: (raw.total_rounds ?? raw.rounds_limit) as
-      | number
-      | undefined,
+    rounds_limit: (raw.total_rounds ?? raw.rounds_limit) as number | undefined,
     rounds_completed: raw.rounds_completed as number | undefined,
     created_at: raw.created_at as string | undefined,
     updated_at: raw.updated_at as string | undefined,
@@ -380,9 +448,7 @@ export const api = {
 
   /** 查询想定执行状态。 */
   getScenarioStatus(id: string) {
-    return unwrap<TaskStatus>(
-      client.get(`/scenarios/${id}/status`),
-    );
+    return unwrap<TaskStatus>(client.get(`/scenarios/${id}/status`));
   },
 
   /** 获取指定回合态势指标。 */
@@ -515,11 +581,7 @@ export const api = {
   },
 
   /** 获取叙事链（知识图谱溯源）。 */
-  getNarrativeChain(
-    scenarioId: string,
-    entityId: string,
-    maxHops?: number,
-  ) {
+  getNarrativeChain(scenarioId: string, entityId: string, maxHops?: number) {
     return unwrap<Record<string, unknown>>(
       client.get('/kg/narrative-chain', {
         params: {
@@ -564,10 +626,7 @@ export const api = {
   },
 
   /** 提交回测报告生成（异步，返回 task_id）。 */
-  runBacktest(
-    scenarioId: string,
-    params: { event_ids?: string[] },
-  ) {
+  runBacktest(scenarioId: string, params: { event_ids?: string[] }) {
     return unwrap<TaskStatus>(
       client.post('/reports/backtest', {
         scenario_id: scenarioId,
@@ -628,6 +687,84 @@ export const api = {
   resolveApproval(approvalId: string, decision: string, comment?: string) {
     return unwrap<Approval>(
       client.post(`/approvals/${approvalId}/resolve`, { decision, comment }),
+    );
+  },
+
+  // ── Skills 资源（代理 intellect-gateway /v1/intellect/skills）──
+
+  getSkillCategories() {
+    return unwrap<SkillCategoriesResponse>(client.get('/skills/categories'));
+  },
+
+  getSkills(params?: { category?: ResourceCategory; page_size?: number }) {
+    return unwrap<SkillListResponse>(client.get('/skills', { params }));
+  },
+
+  getSkillDetail(category: ResourceCategory, skillId: string) {
+    return unwrap<SkillDetailResource>(
+      client.get(
+        `/skills/${encodeURIComponent(category)}/${encodeURIComponent(skillId)}`,
+      ),
+    );
+  },
+
+  getSkillFileContent(
+    category: ResourceCategory,
+    skillId: string,
+    filePath: string,
+  ) {
+    return client
+      .get(
+        `/skills/${encodeURIComponent(category)}/${encodeURIComponent(skillId)}/files/${encodePathSegments(filePath)}`,
+        {
+          responseType: 'text',
+          transformResponse: [(data) => data],
+        },
+      )
+      .then((res) => res.data as string);
+  },
+
+  testSkill(
+    category: ResourceCategory,
+    skillId: string,
+    input: Record<string, unknown>,
+  ) {
+    return unwrap<Record<string, unknown>>(
+      client.post(
+        `/skills/${encodeURIComponent(category)}/${encodeURIComponent(skillId)}/test`,
+        { input },
+      ),
+    );
+  },
+
+  getTools(category?: string) {
+    return unwrap<ToolListResponse>(
+      client.get('/tools', { params: category ? { category } : undefined }),
+    );
+  },
+
+  getToolDetail(toolName: string) {
+    return unwrap<ToolDetailResource>(
+      client.get(`/tools/${encodeURIComponent(toolName)}`),
+    );
+  },
+
+  getToolStatus(toolName: string) {
+    return unwrap<Record<string, unknown>>(
+      client.get(`/tools/${encodeURIComponent(toolName)}/status`),
+    );
+  },
+
+  invokeTool(
+    toolName: string,
+    action: string,
+    params: Record<string, unknown>,
+  ) {
+    return unwrap<Record<string, unknown>>(
+      client.post(`/tools/${encodeURIComponent(toolName)}/invoke`, {
+        action,
+        params,
+      }),
     );
   },
 

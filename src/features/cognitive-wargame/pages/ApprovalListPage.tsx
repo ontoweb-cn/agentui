@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { api, type Approval } from '../api';
+import WargameSectionLayout from '../components/section-menu';
 import { t } from 'i18next';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -128,7 +129,8 @@ const ApprovalListPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col gap-4 p-6">
+    <WargameSectionLayout>
+      <div className="flex flex-col gap-4 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-medium">
           {t('cognitiveWargame.approval.title')}
@@ -284,7 +286,8 @@ const ApprovalListPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </WargameSectionLayout>
   );
 };
 

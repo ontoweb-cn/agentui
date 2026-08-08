@@ -9,6 +9,8 @@ import type { LazyRouteConfig } from '../_types';
 /** 路由路径常量，供 manifest 与页面导航复用。 */
 export const WargameRoutes = {
   Dashboard: '/cognitive-wargame',
+  Resources: '/cognitive-wargame/resources',
+  Settings: '/cognitive-wargame/settings',
   Scenarios: '/cognitive-wargame/scenarios',
   ScenarioDetail: '/cognitive-wargame/scenarios/:id',
   Rounds: '/cognitive-wargame/rounds',
@@ -43,6 +45,14 @@ const routes: LazyRouteConfig[] = [
   {
     path: WargameRoutes.Dashboard,
     Component: () => import('./pages/DashboardPage'),
+  },
+  {
+    path: WargameRoutes.Resources,
+    Component: () => import('./pages/resource-overview-page'),
+  },
+  {
+    path: WargameRoutes.Settings,
+    Component: () => import('./pages/settings-page'),
   },
   {
     path: WargameRoutes.Scenarios,
