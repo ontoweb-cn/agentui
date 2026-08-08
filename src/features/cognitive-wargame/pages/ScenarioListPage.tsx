@@ -78,11 +78,11 @@ const ScenarioListPage: React.FC = () => {
     setActionError(null);
     try {
       await api.generateScenario({
-        name: createForm.name,
-        description: createForm.description,
-        rounds_limit: createForm.rounds,
+        scenario_id: createForm.name.trim() || undefined,
+        rounds: createForm.rounds,
         red_force: createForm.redForce,
         blue_force: createForm.blueForce,
+        description: createForm.description,
       });
       setCreateOpen(false);
       setCreateForm(DEFAULT_FORM);

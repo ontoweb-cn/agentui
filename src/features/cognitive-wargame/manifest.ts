@@ -29,6 +29,12 @@ const definition: ModuleDefinition = {
       testId: 'nav-cw-scenarios',
     },
     {
+      path: WargameRoutes.Agents,
+      labelKey: 'cognitiveWargame.nav.agents',
+      pathMap: [WargameRoutes.Agents, WargameRoutes.AgentDetail, WargameRoutes.AgentTypes],
+      testId: 'nav-cw-agents',
+    },
+    {
       path: WargameRoutes.Rounds,
       labelKey: 'cognitiveWargame.nav.rounds',
       pathMap: [WargameRoutes.Rounds, WargameRoutes.RoundView],

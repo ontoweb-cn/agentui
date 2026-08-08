@@ -24,6 +24,9 @@ export const WargameRoutes = {
   Playback: '/cognitive-wargame/playback',
   PlaybackView: '/cognitive-wargame/playback/:id',
   Approvals: '/cognitive-wargame/approvals',
+  Agents: '/cognitive-wargame/agents',
+  AgentDetail: '/cognitive-wargame/agents/:id',
+  AgentTypes: '/cognitive-wargame/agent-types',
 } as const;
 
 /** 构造想定详情等动态路径的工具函数。 */
@@ -34,6 +37,8 @@ export const WargamePath = {
   kgView: (id: string) => `/cognitive-wargame/kg/${id}`,
   reportView: (id: string) => `/cognitive-wargame/reports/${id}`,
   playbackView: (id: string) => `/cognitive-wargame/playback/${id}`,
+  agentDetail: (id: string) => `/cognitive-wargame/agents/${id}`,
+  agentTypes: () => '/cognitive-wargame/agent-types',
 };
 
 const routes: LazyRouteConfig[] = [
@@ -106,6 +111,19 @@ const routes: LazyRouteConfig[] = [
   {
     path: WargameRoutes.Approvals,
     Component: () => import('./pages/ApprovalListPage'),
+  },
+  // agents: Agent 注册表（G-16）
+  {
+    path: WargameRoutes.Agents,
+    Component: () => import('./pages/AgentListPage'),
+  },
+  {
+    path: WargameRoutes.AgentDetail,
+    Component: () => import('./pages/AgentDetailPage'),
+  },
+  {
+    path: WargameRoutes.AgentTypes,
+    Component: () => import('./pages/AgentTypePage'),
   },
 ];
 
