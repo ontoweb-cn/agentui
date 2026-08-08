@@ -4,7 +4,7 @@
  * 管理想定列表、当前选中想定以及加载状态。页面组件通过 useWargameStore 读取/操作状态。
  */
 import { create } from 'zustand';
-import { api, type Scenario, type Intervention, type Anomaly } from './api';
+import { api, type Scenario, type Intervention, type Anomaly, type Agent, type AgentRelation, type AgentType } from './api';
 
 export interface WargameState {
   /** 想定列表。 */
@@ -27,6 +27,18 @@ export interface WargameState {
   interventions: Intervention[];
   /** 异常告警列表（P3.3-2 anomaly.detected）。 */
   anomalies: Anomaly[];
+  /** Agent 列表（G-16）。 */
+  agents: Agent[];
+  /** 当前 Agent 详情。 */
+  currentAgent: Agent | null;
+  /** Agent 关系列表。 */
+  agentRelations: AgentRelation[];
+  /** Agent 类型字典。 */
+  agentTypes: AgentType[];
+  /** Agent 列表加载态。 */
+  agentsLoading: boolean;
+  /** Agent 类型字典加载态。 */
+  typesLoading: boolean;
 
   /** 拉取想定列表。 */
   fetchScenarios: (limit?: number, offset?: number) => Promise<void>;
@@ -50,6 +62,33 @@ export interface WargameState {
   clearEvents: () => void;
   /** 清空错误。 */
   clearError: () => void;
+  /** 拉取 Agent 列表。 */
+  fetchAgents: (params?: { agent_type?: string; status?: string }) => Promise<void>;
+  /** 加载单个 Agent 详情。 */
+  loadAgent: (agentId: string) => Promise<void>;
+  /** 创建 Agent。 */
+  createAgent: (data: { agent_id: string; name: string; agent_type: string; bio?: string; parent_agent_id?: string }) => Promise<void>;
+  /** 更新 Agent。 */
+  updateAgent: (agentId: string, data: Partial<Agent>) => Promise<void>;
+  /** 删除 Agent。 */
+  deleteAgent: (agentId: string, hard?: boolean) => Promise<void>;
+  /** 加载 Agent 关系。 */
+  loadAgentRelations: (agentId: string) => Promise<void>;
+  /** 建立 Agent 关系（成功后刷新关系列表）。 */
+  createAgentRelation: (
+    agentId: string,
+    data: {
+      source_agent_id: string;
+      target_agent_id: string;
+      relation_type: string;
+      valid_from?: string;
+      valid_to?: string;
+    },
+  ) => Promise<void>;
+  /** 删除 Agent 关系（成功后刷新关系列表）。 */
+  deleteAgentRelation: (agentId: string, relationId: string) => Promise<void>;
+  /** 拉取 Agent 类型字典。 */
+  fetchAgentTypes: () => Promise<void>;
 }
 
 export const useWargameStore = create<WargameState>((set) => ({
@@ -63,6 +102,12 @@ export const useWargameStore = create<WargameState>((set) => ({
   currentTaskId: null,
   interventions: [],
   anomalies: [],
+  agents: [],
+  currentAgent: null,
+  agentRelations: [],
+  agentTypes: [],
+  agentsLoading: false,
+  typesLoading: false,
 
   fetchScenarios: async (limit = 20, offset = 0) => {
     set({ loading: true, error: null });
@@ -141,6 +186,98 @@ export const useWargameStore = create<WargameState>((set) => ({
     set({ interventions: [], anomalies: [], currentTaskId: null }),
 
   clearError: () => set({ error: null }),
+
+  fetchAgents: async (params) => {
+    set({ agentsLoading: true, error: null });
+    try {
+      const data = await api.getAgents({ ...params, limit: 100 });
+      set({ agents: data.agents ?? [], agentsLoading: false });
+    } catch (err) {
+      set({
+        agentsLoading: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
+
+  loadAgent: async (agentId) => {
+    set({ loading: true, error: null });
+    try {
+      const agent = await api.getAgent(agentId);
+      set({ currentAgent: agent, loading: false });
+    } catch (err) {
+      set({
+        loading: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
+
+  createAgent: async (data) => {
+    await api.createAgent(data);
+    await useWargameStore.getState().fetchAgents();
+  },
+
+  updateAgent: async (agentId, data) => {
+    await api.updateAgent(agentId, data);
+    await useWargameStore.getState().loadAgent(agentId);
+  },
+
+  deleteAgent: async (agentId, hard) => {
+    await api.deleteAgent(agentId, hard);
+    await useWargameStore.getState().fetchAgents();
+  },
+
+  loadAgentRelations: async (agentId) => {
+    try {
+      const data = await api.getAgentRelations(agentId, 'both');
+      set({ agentRelations: data.relations ?? [] });
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+
+  createAgentRelation: async (agentId, data) => {
+    set({ error: null });
+    try {
+      await api.createAgentRelation(agentId, data);
+      const refreshed = await api.getAgentRelations(agentId, 'both');
+      set({ agentRelations: refreshed.relations ?? [] });
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  },
+
+  deleteAgentRelation: async (agentId, relationId) => {
+    set({ error: null });
+    try {
+      await api.deleteAgentRelation(agentId, relationId);
+      const refreshed = await api.getAgentRelations(agentId, 'both');
+      set({ agentRelations: refreshed.relations ?? [] });
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  },
+
+  fetchAgentTypes: async () => {
+    set({ typesLoading: true });
+    try {
+      const data = await api.getAgentTypes();
+      const types = Array.isArray(data) ? data : (data as { types: AgentType[] }).types ?? [];
+      set({ agentTypes: types, typesLoading: false });
+    } catch (err) {
+      set({
+        typesLoading: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
 }));
 
 export default useWargameStore;
