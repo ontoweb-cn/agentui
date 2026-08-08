@@ -133,6 +133,14 @@ export default {
       deleteConfirm: '确认删除此想定？',
       executeConfirm: '确认启动推演？',
     },
+    conversation: {
+      title: '推演会话已发起',
+      sessionId: '会话 ID',
+      model: '模型',
+      reply: '首轮回复',
+      openChat: '打开聊天页',
+      launchFailed: '发起推演会话失败',
+    },
     round: {
       title: '回合视图',
       eventStream: '事件流',

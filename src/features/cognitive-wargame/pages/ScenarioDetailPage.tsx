@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import message from '@/components/ui/message';
 import { api } from '../api';
 import WargameSectionLayout from '../components/section-menu';
 import { WargamePath } from '../routes';
@@ -32,6 +33,12 @@ const ScenarioDetailPage: React.FC = () => {
   const { currentScenario, loading, loadScenario } = useWargameStore();
   const [executing, setExecuting] = useState(false);
   const [launching, setLaunching] = useState(false);
+  const [conversation, setConversation] = useState<{
+    session_id: string;
+    model?: string;
+    reply?: string;
+    chat_url?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (id) loadScenario(id);
@@ -48,20 +55,31 @@ const ScenarioDetailPage: React.FC = () => {
     }
   };
 
-  /** 发起 intellect-team 推演会话：想定内容作为首条消息，远程自动建会话后跳转聊天页。 */
+  /** 发起 intellect-team 推演会话：想定内容作为首条消息，远程自动建会话，结果展示在详情页。 */
   const handleLaunchConversation = async () => {
     if (!id) return;
     setLaunching(true);
     try {
       const res = await api.createScenarioConversation(id, {});
-      const url =
-        res?.chat_url ||
-        `/next-chats/chat?conversationId=${res?.session_id}&isNew=1`;
-      window.open(url, '_blank');
+      setConversation({
+        session_id: res?.session_id ?? '',
+        model: res?.model,
+        reply: res?.reply,
+        chat_url:
+          res?.chat_url ||
+          `/next-chats/chat?conversationId=${res?.session_id ?? ''}&isNew=1`,
+      });
+    } catch (err) {
+      message.error(
+        t('cognitiveWargame.conversation.launchFailed') +
+          (err instanceof Error ? `: ${err.message}` : ''),
+      );
     } finally {
       setLaunching(false);
     }
   };
+
+  const conversationChatUrl = conversation?.chat_url || '';
 
   const roundsCompleted = currentScenario?.rounds_completed ?? 0;
   const roundsLimit = currentScenario?.rounds_limit ?? 0;
@@ -129,6 +147,45 @@ const ScenarioDetailPage: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        {conversation && (
+          <Card className="mt-4 border-primary/40">
+            <CardHeader>
+              <CardTitle className="text-lg">
+                {t('cognitiveWargame.conversation.title')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="break-all">
+                  {t('cognitiveWargame.conversation.sessionId')}:
+                  <span className="ml-1 font-mono">{conversation.session_id}</span>
+                </div>
+                <div>
+                  {t('cognitiveWargame.conversation.model')}:
+                  {conversation.model ?? '-'}
+                </div>
+              </div>
+              <div>
+                <div className="mb-1">
+                  {t('cognitiveWargame.conversation.reply')}:
+                </div>
+                <div className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-surface-hover p-3 text-sm">
+                  {conversation.reply || '-'}
+                </div>
+              </div>
+              {conversationChatUrl && (
+                <div>
+                  <a href={conversationChatUrl} target="_blank" rel="noreferrer">
+                    <Button variant="primary" size="sm">
+                      {t('cognitiveWargame.conversation.openChat')}
+                    </Button>
+                  </a>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="mt-4">
           <CardHeader>

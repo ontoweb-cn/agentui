@@ -133,6 +133,14 @@ export default {
       deleteConfirm: 'Delete this scenario?',
       executeConfirm: 'Start execution?',
     },
+    conversation: {
+      title: 'Wargame Conversation Started',
+      sessionId: 'Session ID',
+      model: 'Model',
+      reply: 'First Reply',
+      openChat: 'Open Chat',
+      launchFailed: 'Failed to launch wargame conversation',
+    },
     round: {
       title: 'Round view',
       eventStream: 'Event stream',
