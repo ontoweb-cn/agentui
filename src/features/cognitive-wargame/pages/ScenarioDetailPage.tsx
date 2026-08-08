@@ -20,6 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { api } from '../api';
+import WargameSectionLayout from '../components/section-menu';
 import { WargamePath } from '../routes';
 import { useWargameStore } from '../store';
 import { t } from 'i18next';
@@ -54,7 +55,8 @@ const ScenarioDetailPage: React.FC = () => {
   );
 
   return (
-    <div className="flex flex-col gap-4 p-6">
+    <WargameSectionLayout>
+      <div className="flex flex-col gap-4 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-medium">
           {t('cognitiveWargame.scenario.detailTitle')}
@@ -148,7 +150,8 @@ const ScenarioDetailPage: React.FC = () => {
           </CardContent>
         </Card>
       </Spin>
-    </div>
+      </div>
+    </WargameSectionLayout>
   );
 };
 

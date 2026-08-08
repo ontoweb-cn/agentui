@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/select';
 import { Spin } from '@/components/ui/spin';
 import { api, type Playback, type RoundEvent } from '../api';
+import WargameSectionLayout from '../components/section-menu';
 import { WargameRoutes } from '../routes';
 import { useWargameStore } from '../store';
 import { t } from 'i18next';
@@ -93,7 +94,8 @@ const PlaybackPage: React.FC = () => {
   const events: RoundEvent[] = playback?.events ?? [];
 
   return (
-    <div className="flex flex-col gap-4 p-6">
+    <WargameSectionLayout>
+      <div className="flex flex-col gap-4 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-medium">
           {t('cognitiveWargame.playback.title')}
@@ -236,7 +238,8 @@ const PlaybackPage: React.FC = () => {
           </Link>
         </div>
       )}
-    </div>
+      </div>
+    </WargameSectionLayout>
   );
 };
 

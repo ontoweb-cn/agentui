@@ -1,0 +1,44 @@
+
+ ERROR  [2m19:56:06[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /admin/wizard/status[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+
+
+ ERROR  [2m19:56:07[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /admin/wizard/status[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+
+
+ ERROR  [2m19:56:07[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /auth/config[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+
+
+ WARN  Browserslist: browsers data (caniuse-lite) is 8 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+
+
+ WARN 
+
+
+ WARN  [1m[33mwarn[39m[22m - As of Tailwind CSS v3.3, the @tailwindcss/line-clamp plugin is now included by default.
+
+
+ WARN  [1m[33mwarn[39m[22m - Remove it from the plugins array in your configuration to eliminate this warning.
+
+
+ ERROR  [2m20:02:41[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /admin/wizard/status[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+
+
+ ERROR  [2m20:23:06[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/skills/categories[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+

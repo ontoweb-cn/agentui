@@ -31,8 +31,8 @@
 
 页面核心能力：
 
-1. **左侧资源类型树**：展示 Skills（6 分类）、Tools（9 功能分类）、模型配置（待开发）三层树形导航。
-2. 点击树叶节点切换右侧列表。
+1. **左侧资源类型树**：把资源总览拆成 Skills、Tools、模型配置三部分；Skills 下再展示 6 个分类，Tools 下展示功能分类，模型配置第一版预留入口。
+2. 点击左侧资源类型树节点切换右侧内容区，三类资源不混在同一个列表中展示。
 3. **Skills 列表**：展示 skill 名称、描述、版本、标签等，点击行查看 `SKILL.md` 等文件内容。
 4. **Tools 列表**：展示 tool 名称、功能分类、描述、环境依赖等，点击行查看 schema 和源码预览。
 5. 每个 skill / tool 右侧提供「测试」按钮，作为调试/执行入口。
@@ -142,7 +142,7 @@ src/features/cognitive-wargame/components/ResourceSkillTestPanel.tsx # 测试面
 
 ## 4. 页面信息架构
 
-采用**左侧资源类型树 + 右侧列表/详情**布局：
+采用**左侧资源类型树 + 右侧独立内容区**布局。资源总览拆为 Skills、Tools、模型配置三部分；六个分类作为 Skills 的子节点出现：
 
 ```text
 +--------------------+----------------------------------------------+
@@ -177,13 +177,14 @@ src/features/cognitive-wargame/components/ResourceSkillTestPanel.tsx # 测试面
 - 点击 Skills 下的分类节点（如 `red-team`），右侧仅展示该分类 skills。
 - 点击「Tools」根节点，右侧展示全部 tools。
 - 点击 Tools 下的分类节点（如 `传播模拟`），右侧仅展示该分类 tools。
+- 点击「模型配置」节点时，第一版只展示待开发占位，不与 Skills / Tools 列表混排。
 - 点击 skill 行的「查看」打开 `SkillDetail` 组件查看文件内容。
 - 点击 tool 行的「查看」在右侧展示 tool 详情（schema + 源码预览）。
 - 「模型配置」节点置灰，显示「待开发」tooltip。
 
-## 5. 六大类定义
+## 5. Skills 六大类定义
 
-建议在 `ResourceOverviewPage.tsx` 内先定义固定分类：
+六大类只属于「Skills」资源类型，是左侧资源类型树中 Skills 下的子分类。建议在 `ResourceOverviewPage.tsx` 内先定义固定分类：
 
 ```ts
 const RESOURCE_CATEGORIES = [
@@ -216,7 +217,7 @@ src/features/cognitive-wargame/constants.ts
 2. `skill.metadata.group`
 3. `skill.metadata.tags`
 4. `skill.id` / `skill.name` / file path 中包含六大类名称
-5. 无法识别时归入 `uncategorized`，但页面顶部仍只展示六个固定大类
+5. 无法识别时归入 `uncategorized`；左侧资源类型树仍只在 Skills 下展示六个固定大类
 
 > 注：`skill.source_ref` / `skill.central_path` 虽在 `types.ts` 中有定义，但当前数据源（`useSkills` 的 search 结果与文件系统回退）从未给这两个字段赋值，因此不列入可用分类来源。
 
@@ -265,7 +266,7 @@ const inferSkillCategory = (skill: Skill): ResourceCategory | null => {
 };
 ```
 
-注意：如果 skills 实际是按 skill space 区分六大类，例如六个 space 名分别就是 `blue-team` 等，则页面可以直接遍历这六个 space 并分别调用 `fetchSkills`。如果不是，则采用上面的 metadata/path 推断策略。
+注意：如果 skills 实际是按 skill space 区分六大类，例如六个 space 名分别就是 `blue-team` 等，则页面可以直接遍历这六个 space 并分别调用 `fetchSkills`。如果不是，则采用上面的 metadata/path 推断策略。当前新结构下，无论分类来源如何，六大类都只出现在左侧资源类型树的 Skills 分组内。
 
 ## 7. 数据接入策略
 
@@ -505,7 +506,7 @@ export interface ToolInvokeResponse {
   elapsed_ms?: number;
 }
 
-// === 左侧树节点类型 ===
+// === 左侧资源类型树节点类型 ===
 
 export type ResourceType = 'skills' | 'tools' | 'models';
 
@@ -525,7 +526,7 @@ export interface ResourceTreeNode {
 页面内用本地 `useState` 维护，直接调用上述 `api.ts` 方法：
 
 ```ts
-// === 左侧树数据 ===
+// === 左侧资源类型树数据 ===
 const [treeNodes, setTreeNodes] = useState<ResourceTreeNode[]>([]);
 // === 右侧列表数据 ===
 const [skills, setSkills] = useState<SkillSummary[]>([]);
@@ -534,7 +535,7 @@ const [activeResourceType, setActiveResourceType] = useState<ResourceType>('skil
 const [activeCategory, setActiveCategory] = useState<string | null>(null);
 const [loading, setLoading] = useState(false);
 
-// 加载左侧树（并发拉取 Skills 分类 + Tools 分类）
+// 加载左侧资源类型树（并发拉取 Skills 分类 + Tools 分类）
 const loadTree = useCallback(async () => {
   try {
     const [skillCats, toolList] = await Promise.all([
@@ -569,7 +570,7 @@ const loadTree = useCallback(async () => {
     ];
     setTreeNodes(nodes);
   } catch (e) {
-    console.error('Failed to load tree:', e);
+    console.error('Failed to load resource tree:', e);
   }
 }, []);
 
@@ -591,13 +592,13 @@ const loadTools = useCallback(async (category?: string) => {
   } catch { setTools([]); } finally { setLoading(false); }
 }, []);
 
-// 首次加载：树 + 默认 skills 列表
+// 首次加载：左侧资源类型树 + 默认 skills 列表
 useEffect(() => {
   loadTree();
   loadSkills(null);
 }, [loadTree, loadSkills]);
 
-// 点击树节点
+// 点击资源类型树节点
 const handleTreeNodeClick = (node: ResourceTreeNode) => {
   if (node.disabled) return;
   setActiveResourceType(node.resourceType);
@@ -616,11 +617,11 @@ const handleTreeNodeClick = (node: ResourceTreeNode) => {
 页面挂载
   │
   ├─ api.getSkillCategories() ─┐
-  │                            ├─ Promise.all → 构建 treeNodes（左侧树）
+  │                            ├─ Promise.all → 构建 treeNodes（左侧资源类型树）
   └─ api.getTools() ───────────┘
   └─ api.getSkills({}) → SKILL-02 → setSkills（默认右侧列表）
 
-点击树节点
+点击资源类型树节点
   ├─ Skills 节点 → loadSkills(category)  → SKILL-02 → setSkills
   └─ Tools 节点  → loadTools(category)   → TOOL-01  → setTools
 
@@ -640,7 +641,7 @@ const handleTreeNodeClick = (node: ResourceTreeNode) => {
 
 ### 7.7 错误处理
 
-- SKILL-01 失败：分类方框显示「加载失败」，skills 列表仍尝试加载。
+- SKILL-01 失败：左侧 Skills 分类节点显示「加载失败」或空数量，skills 列表仍尝试加载。
 - SKILL-02 失败：列表显示空状态 + 重试按钮。
 - SKILL-03 失败：详情弹窗显示错误提示。
 - SKILL-05 失败：文件内容区显示「文件读取失败」。
@@ -849,7 +850,7 @@ CodeViewer（Tool 源码预览）
 左侧资源类型树建议：
 
 - 使用 shadcn/ui 的 Tree 或自定义树组件。
-- 三层结构：资源类型根节点 > 分类节点。
+- 两层结构为主：资源类型根节点 > 分类节点；根节点包括 Skills、Tools、模型配置。
 - 根节点显示资源类型名 + 总数（如 `Skills (23)`）。
 - 分类节点显示分类名 + 数量（如 `red-team (3)`）。
 - 当前选中节点高亮。
@@ -949,9 +950,9 @@ src/features/cognitive-wargame/types/resource.ts                    ← 资源�
 3. 在 `manifest.ts` 的 dashboard 后新增 nav item。
 4. 补充中英文 i18n 文案（Skills + Tools + 模型配置）。
 5. 在 `api.ts` 新增 Skills（`getSkillCategories` / `getSkills` / `getSkillDetail` / `getSkillFileContent` / `testSkill`）和 Tools（`getTools` / `getToolDetail` / `getToolStatus` / `invokeTool`）方法。
-6. 在 `types/resource.ts` 定义 Skills + Tools + 树节点类型。
-7. 创建 `ResourceOverviewPage.tsx`，实现左侧树 + 右侧列表布局。
-8. 创建 `ResourceTree.tsx`，并发加载 SKILL-01 + TOOL-01 构建树节点。
+6. 在 `types/resource.ts` 定义 Skills + Tools + 资源类型树节点类型。
+7. 创建 `ResourceOverviewPage.tsx`，实现左侧资源类型树 + 右侧独立内容区布局。
+8. 创建 `ResourceTree.tsx`，并发加载 SKILL-01 + TOOL-01 构建资源类型树节点。
 9. 创建 `SkillListPanel.tsx`，调用 SKILL-02 展示 skills 列表。
 10. 创建 `ToolListPanel.tsx`，调用 TOOL-01 展示 tools 列表。
 11. 实现 skill 详情查看（SKILL-03 + 复用 `SkillDetail` 组件 + SKILL-05 读文件）。
@@ -966,7 +967,7 @@ src/features/cognitive-wargame/types/resource.ts                    ← 资源�
 1. 访问 `http://localhost:9391/cognitive-wargame` 时，导航中「总览仪表盘」旁出现「资源总览」。
 2. 点击「资源总览」进入 `/cognitive-wargame/resources`。
 3. 页面左侧展示资源类型树：Skills（6 分类）、Tools（9 分类）、模型配置（置灰）。
-4. 树节点上的数量来自后端 SKILL-01 和 TOOL-01。
+4. 资源类型树节点上的数量来自后端 SKILL-01 和 TOOL-01。
 5. 默认选中 Skills 根节点，右侧展示全部 skills 列表。
 6. 点击 Skills 分类节点，右侧仅展示该分类 skills。
 7. 点击 Tools 根节点，右侧展示全部 tools 列表。

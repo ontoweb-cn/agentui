@@ -1,0 +1,45 @@
+
+> openkg-agentui@0.1.0 dev
+> vite --host --host 0.0.0.0
+
+[vite.config] mode: development, API_HOST: localhost, BFF_HOST: localhost
+
+  [32m[1mVITE[22m v7.3.0[39m  [2mready in [0m[1m12077[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m9391[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.95.1:[1m9391[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.245.1:[1m9391[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.77.151:[1m9391[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+[36m[vite-plugin-static-copy][39m [32mCollected 2 items.[39m
+[2m20:27:13[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/components/section-menu.tsx[22m
+[2m20:29:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/components/section-menu.tsx[22m
+[2m20:31:39[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/resource-overview-page.tsx[22m
+[2m20:40:38[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/components/section-menu.tsx[22m
+[2m20:40:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/DashboardPage.tsx[22m
+[2m20:41:22[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/resource-overview-page.tsx[22m
+[2m20:41:48[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/components/overview-tabs.tsx[22m
+[2m20:42:51[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/PlaybackPage.tsx[22m
+[2m20:43:05[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/MetricsViewPage.tsx[22m
+[2m20:44:04[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/KGViewPage.tsx[22m
+[2m20:44:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/KGViewPage.tsx[22m
+[2m20:44:37[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/RoundViewPage.tsx[22m
+[2m20:44:46[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/ApprovalListPage.tsx[22m
+[2m20:49:39[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/resource-overview-page.tsx[22m
+[2m20:55:45[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/resource-overview-page.tsx[22m
+[2m20:56:09[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/resource-overview-page.tsx[22m
+[2m20:56:52[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/resource-overview-page.tsx[22m
+[2m21:01:05[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/resource-overview-page.tsx[22m
+[2m21:18:31[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/resource-overview-page.tsx[22m
+[2m21:19:13[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/DashboardPage.tsx, /src/features/cognitive-wargame/pages/ScenarioListPage.tsx, /src/features/cognitive-wargame/pages/RoundViewPage.tsx, /src/features/cognitive-wargame/pages/MetricsViewPage.tsx, /src/features/cognitive-wargame/pages/PlaybackPage.tsx, /src/features/cognitive-wargame/pages/KGViewPage.tsx, /src/features/cognitive-wargame/pages/resource-overview-page.tsx, /src/features/cognitive-wargame/pages/ApprovalListPage.tsx, /src/features/cognitive-wargame/pages/ReportViewPage.tsx[22m
+[2m21:19:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/DashboardPage.tsx, /src/features/cognitive-wargame/pages/ScenarioListPage.tsx, /src/features/cognitive-wargame/pages/RoundViewPage.tsx, /src/features/cognitive-wargame/pages/MetricsViewPage.tsx, /src/features/cognitive-wargame/pages/PlaybackPage.tsx, /src/features/cognitive-wargame/pages/KGViewPage.tsx, /src/features/cognitive-wargame/pages/resource-overview-page.tsx, /src/features/cognitive-wargame/pages/ApprovalListPage.tsx, /src/features/cognitive-wargame/pages/ReportViewPage.tsx[22m
+[2m21:19:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/resource-overview-page.tsx[22m
+[2m21:39:47[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/components/section-menu.tsx[22m
+[2m21:39:58[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/components/section-menu.tsx[22m
+[2m21:41:22[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/features/cognitive-wargame/locales/zh.ts[22m
+[2m21:53:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/components/section-menu.tsx[22m
+[2m21:53:05[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/features/cognitive-wargame/locales/zh.ts[22m
+[2m21:56:22[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/features/cognitive-wargame/pages/DashboardPage.tsx[22m
+[2m21:56:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/features/cognitive-wargame/locales/zh.ts[22m
+[2m21:59:31[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/features/cognitive-wargame/locales/zh.ts[22m
+[2m21:59:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/features/cognitive-wargame/locales/zh.ts[22m

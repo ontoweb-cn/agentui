@@ -35,6 +35,7 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs';
 import { api, type Report, type TaskStatus } from '../api';
+import WargameSectionLayout from '../components/section-menu';
 import { t } from 'i18next';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -562,7 +563,8 @@ const ReportViewPage: React.FC = () => {
   const [tab, setTab] = useState('round');
 
   return (
-    <div className="flex flex-col gap-4 p-6">
+    <WargameSectionLayout>
+      <div className="flex flex-col gap-4 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-medium">
           {t('cognitiveWargame.report.title')}
@@ -598,7 +600,8 @@ const ReportViewPage: React.FC = () => {
           <AsyncReportTab kind="counterfactual" scenarioId={scenarioId} />
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </WargameSectionLayout>
   );
 };
 

@@ -13,6 +13,7 @@ import {
 import { Spin } from '@/components/ui/spin';
 import { api, type Metrics } from '../api';
 import MetricsChart from '../components/MetricsChart';
+import WargameSectionLayout from '../components/section-menu';
 import { useWargameStore } from '../store';
 import { t } from 'i18next';
 import { useCallback, useEffect, useState } from 'react';
@@ -68,7 +69,8 @@ const MetricsViewPage: React.FC = () => {
   }, [currentRound, setCurrentRound, loadMetrics]);
 
   return (
-    <div className="flex flex-col gap-4 p-6">
+    <WargameSectionLayout>
+      <div className="flex flex-col gap-4 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-medium">
           {t('cognitiveWargame.metrics.title')}
@@ -131,7 +133,8 @@ const MetricsViewPage: React.FC = () => {
           </CardContent>
         </Card>
       </Spin>
-    </div>
+      </div>
+    </WargameSectionLayout>
   );
 };
 
