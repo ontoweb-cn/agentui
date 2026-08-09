@@ -653,18 +653,27 @@ export const api = {
 
   // ── P3.3-3 想定审批（代理 intellect-gateway /v1/approvals）────
 
-  /** 提交审批（resource_type='scenario'，resource_id=想定ID）。 */
-  submitApproval(data: {
-    resource_type: string;
-    resource_id: string;
-    title: string;
-    description?: string;
-    summary?: Record<string, unknown>;
-    callback_channel?: string;
-    approvers?: string[];
-    metadata?: Record<string, unknown>;
-  }) {
-    return unwrap<Approval>(client.post('/approvals', data));
+  /** 提交审批（resource_type='scenario'，resource_id=想定ID）。actor 为当前用户身份（落 submitted_by）。 */
+  submitApproval(
+    data: {
+      resource_type: string;
+      resource_id: string;
+      title: string;
+      description?: string;
+      summary?: Record<string, unknown>;
+      callback_channel?: string;
+      approvers?: string[];
+      metadata?: Record<string, unknown>;
+    },
+    actor?: string,
+  ) {
+    return unwrap<Approval>(
+      client.post(
+        '/approvals',
+        data,
+        actor ? { headers: { 'X-Actor': actor } } : undefined,
+      ),
+    );
   },
 
   /** 查询审批列表。 */
@@ -683,10 +692,19 @@ export const api = {
     return unwrap<ApprovalDetail>(client.get(`/approvals/${approvalId}`));
   },
 
-  /** 决议审批（approved/rejected/request_changes）。 */
-  resolveApproval(approvalId: string, decision: string, comment?: string) {
+  /** 决议审批（approved/rejected/request_changes）。actor 为审批人身份（落 resolved_by）。 */
+  resolveApproval(
+    approvalId: string,
+    decision: string,
+    comment?: string,
+    actor?: string,
+  ) {
     return unwrap<Approval>(
-      client.post(`/approvals/${approvalId}/resolve`, { decision, comment }),
+      client.post(
+        `/approvals/${approvalId}/resolve`,
+        { decision, comment },
+        actor ? { headers: { 'X-Actor': actor } } : undefined,
+      ),
     );
   },
 

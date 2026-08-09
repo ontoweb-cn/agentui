@@ -41,6 +41,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { api, type Approval } from '../api';
 import WargameSectionLayout from '../components/section-menu';
+import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { t } from 'i18next';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -58,6 +59,8 @@ const ApprovalListPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('pending');
+  // 审批人身份：X-Actor 头透传当前用户 id（落 resolved_by/submitted_by，审计用）
+  const { data: userInfo } = useFetchUserInfo();
 
   // 决议 Dialog 状态
   const [resolveTarget, setResolveTarget] = useState<Approval | null>(null);
@@ -103,6 +106,7 @@ const ApprovalListPage: React.FC = () => {
         resolveTarget.approval_id,
         decision,
         comment || undefined,
+        userInfo?.id,
       );
       setResolveTarget(null);
       await load();
