@@ -661,7 +661,6 @@ export const api = {
       title: string;
       description?: string;
       summary?: Record<string, unknown>;
-      callback_channel?: string;
       approvers?: string[];
       metadata?: Record<string, unknown>;
     },

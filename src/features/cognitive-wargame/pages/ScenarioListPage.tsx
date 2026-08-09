@@ -36,6 +36,7 @@ import { api, type Scenario } from '../api';
 import WargameSectionLayout from '../components/section-menu';
 import { WargamePath } from '../routes';
 import { useWargameStore } from '../store';
+import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { t } from 'i18next';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -64,6 +65,8 @@ const ScenarioListPage: React.FC = () => {
   const [creating, setCreating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [approvalBusy, setApprovalBusy] = useState<string | null>(null);
+  // 审批人身份：X-Actor 头透传当前用户 id（落 submitted_by，评审 #3 修复提交侧）
+  const { data: userInfo } = useFetchUserInfo();
 
   useEffect(() => {
     fetchScenarios(20, 0);
@@ -125,11 +128,14 @@ const ScenarioListPage: React.FC = () => {
     setApprovalBusy(s.id);
     setActionError(null);
     try {
-      await api.submitApproval({
-        resource_type: 'scenario',
-        resource_id: s.id,
-        title: title.trim(),
-      });
+      await api.submitApproval(
+        {
+          resource_type: 'scenario',
+          resource_id: s.id,
+          title: title.trim(),
+        },
+        userInfo?.id,
+      );
       setActionError(t('cognitiveWargame.approval.submitSuccess'));
     } catch (err) {
       setActionError(
