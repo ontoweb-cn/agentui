@@ -10,6 +10,8 @@ import {
   ScrollText,
   Settings,
   SlidersHorizontal,
+  Tags,
+  Users,
 } from 'lucide-react';
 import type { ComponentType, PropsWithChildren } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -37,6 +39,26 @@ export default function WargameSectionLayout({ children }: PropsWithChildren) {
       label: t('cognitiveWargame.sectionMenu.overviewDashboard', '总览'),
       path: WargameRoutes.Dashboard,
       icon: LayoutDashboard,
+    },
+    {
+      id: 'agents',
+      label: t('cognitiveWargame.sectionMenu.agents', 'Agent 管理'),
+      path: WargameRoutes.Agents,
+      icon: Users,
+      children: [
+        {
+          id: 'agent-list',
+          label: t('cognitiveWargame.sectionMenu.agentList', 'Agent 列表'),
+          path: WargameRoutes.Agents,
+          icon: Users,
+        },
+        {
+          id: 'agent-types',
+          label: t('cognitiveWargame.sectionMenu.agentTypes', '类型字典'),
+          path: WargameRoutes.AgentTypes,
+          icon: Tags,
+        },
+      ],
     },
     {
       id: 'resources',
@@ -107,10 +129,7 @@ export default function WargameSectionLayout({ children }: PropsWithChildren) {
   return (
     <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
       <aside className="w-56 shrink-0 overflow-y-auto border-r border-border-button px-3 py-6">
-        <nav
-          className="space-y-2"
-          aria-label={t('cognitiveWargame.sectionMenu.label')}
-        >
+        <nav className="space-y-2" aria-label={t('cognitiveWargame.sectionMenu.label')}>
           {items.map((item) => {
             const Icon = item.icon;
             const isActive = active === item.id;
@@ -139,8 +158,7 @@ export default function WargameSectionLayout({ children }: PropsWithChildren) {
                           aria-current={childActive ? 'page' : undefined}
                           className={cn(
                             'flex min-h-8 items-center gap-2 rounded px-2 py-1.5 text-xs text-text-disabled transition-colors hover:bg-bg-input/70 hover:text-text-primary',
-                            childActive &&
-                              'bg-bg-input/80 font-medium text-text-primary',
+                            childActive && 'bg-bg-input/80 font-medium text-text-primary',
                           )}
                         >
                           <ChildIcon className="size-3.5 shrink-0" />
@@ -155,20 +173,16 @@ export default function WargameSectionLayout({ children }: PropsWithChildren) {
           })}
         </nav>
       </aside>
-      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-        {children}
-      </main>
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
     </div>
   );
 }
 
 function getActiveSection(pathname: string) {
   if (pathname.startsWith(WargameRoutes.Settings)) return 'settings';
+  if (pathname.startsWith(WargameRoutes.Agents) || pathname.startsWith(WargameRoutes.AgentTypes)) return 'agents';
   if (pathname.startsWith(WargameRoutes.Resources)) return 'resources';
-  if (
-    pathname.startsWith(WargameRoutes.Scenarios) ||
-    pathname.startsWith(WargameRoutes.Approvals)
-  ) {
+  if (pathname.startsWith(WargameRoutes.Scenarios) || pathname.startsWith(WargameRoutes.Approvals)) {
     return 'scenarios';
   }
   if (

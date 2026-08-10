@@ -857,6 +857,12 @@ export const api = {
     );
   },
 
+  getAgentRelation(agentId: string, relationId: string) {
+    return unwrap<AgentRelation>(
+      client.get(`/agents/${agentId}/relations/${relationId}`),
+    );
+  },
+
   /** 建立 Agent 关系。 */
   createAgentRelation(
     agentId: string,
@@ -870,6 +876,16 @@ export const api = {
   ) {
     return unwrap<AgentRelation>(
       client.post(`/agents/${agentId}/relations`, data),
+    );
+  },
+
+  updateAgentRelation(
+    agentId: string,
+    relationId: string,
+    data: Partial<Pick<AgentRelation, 'relation_type' | 'valid_from' | 'valid_to' | 'attributes'>>,
+  ) {
+    return unwrap<AgentRelation>(
+      client.put(`/agents/${agentId}/relations/${relationId}`, data),
     );
   },
 

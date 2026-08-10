@@ -1,49 +1,95 @@
 /**
- * AgentListPage — Agent 注册表列表（G-16）。
- *
- * 展示 intellect_agents 全量 Agent，支持按类型/状态过滤、创建/编辑/删除。
- * 经 cognitive-wargame 代理 API 读写 intellect-gateway。
+ * AgentListPage - Agent register list for G-16.
  */
 import { EmptyCard } from '@/components/empty/empty';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog';
+import { IntellectPagination } from '@/components/ui/intellect-pagination';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@/components/ui/select';
 import { Spin } from '@/components/ui/spin';
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { type Agent } from '../api';
-import { useWargameStore } from '../store';
-import { WargamePath } from '../routes';
-import { t } from 'i18next';
-import { useCallback, useEffect, useState } from 'react';
+import { ArrowRight, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { t } from 'i18next';
+import { type Agent, type AgentRelation } from '../api';
+import AgentAttributesView from '../components/agent-attributes-view';
+import WargameSectionLayout from '../components/section-menu';
+import { WargamePath } from '../routes';
+import { useWargameStore } from '../store';
 
-const TYPE_OPTIONS = ['', 'individual', 'admin_organ', 'political_party', 'news_media', 'mass'] as const;
-const STATUS_OPTIONS = ['', 'active', 'archived'] as const;
+const ALL_FILTER = 'all';
+const DEFAULT_PAGE_SIZE = 10;
+const TYPE_OPTIONS = [
+  ALL_FILTER,
+  'individual',
+  'admin_organ',
+  'political_party',
+  'news_media',
+  'mass',
+] as const;
+const STATUS_OPTIONS = [ALL_FILTER, 'active', 'archived'] as const;
 const AGENT_ID_RE = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 
-const AgentListPage: React.FC = () => {
+export default function AgentListPage() {
   const navigate = useNavigate();
-  const { agents, agentsLoading, fetchAgents, fetchAgentTypes, createAgent, updateAgent, deleteAgent } = useWargameStore();
+  const {
+    agents,
+    agentTotal,
+    currentAgent,
+    agentRelations,
+    agentsLoading,
+    loading: detailLoading,
+    error: storeError,
+    fetchAgents,
+    fetchAgentTypes,
+    loadAgent,
+    loadAgentRelations,
+    createAgent,
+    updateAgent,
+    deleteAgent,
+  } = useWargameStore();
 
-  const [typeFilter, setTypeFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string>(ALL_FILTER);
+  const [statusFilter, setStatusFilter] = useState<string>(ALL_FILTER);
   const [search, setSearch] = useState('');
-
-  // Create/Edit dialog
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Agent | null>(null);
-  const [form, setForm] = useState({ agent_id: '', name: '', agent_type: 'individual', bio: '', parent_agent_id: '' });
+  const [form, setForm] = useState({
+    agent_id: '',
+    name: '',
+    agent_type: 'individual',
+    bio: '',
+    parent_agent_id: '',
+  });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,40 +97,100 @@ const AgentListPage: React.FC = () => {
     setError(null);
     try {
       await fetchAgents({
-        agent_type: typeFilter || undefined,
-        status: statusFilter || undefined,
+        agent_type: typeFilter === ALL_FILTER ? undefined : typeFilter,
+        status: statusFilter === ALL_FILTER ? undefined : statusFilter,
+        limit: pageSize,
+        offset: (currentPage - 1) * pageSize,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [fetchAgents, typeFilter, statusFilter]);
+  }, [currentPage, fetchAgents, pageSize, typeFilter, statusFilter]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   useEffect(() => {
-    fetchAgentTypes();
+    void fetchAgentTypes();
   }, [fetchAgentTypes]);
+
+  const filteredAgents = useMemo(() => {
+    if (!search) return agents;
+    const q = search.toLowerCase();
+    return agents.filter((agent) =>
+      `${agent.agent_id} ${agent.name}`.toLowerCase().includes(q),
+    );
+  }, [agents, search]);
+
+  const typeLabel = (ty: string) =>
+    t(`cognitiveWargame.agents.type.${ty}`, { defaultValue: ty });
+  const relLabel = (rt: string) =>
+    t(`cognitiveWargame.agents.relation.${rt}`, { defaultValue: rt });
+  const statusLabel = (status?: string) =>
+    t(`cognitiveWargame.agents.status.${status ?? 'active'}`, {
+      defaultValue: status ?? 'active',
+    });
+  const statusVariant = (status?: string) => {
+    if (status === 'active') return 'success' as const;
+    if (status === 'archived') return 'secondary' as const;
+    return 'outline' as const;
+  };
+
+  const resetDetailSelection = () => {
+    setSelectedAgentId(null);
+  };
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ agent_id: '', name: '', agent_type: 'individual', bio: '', parent_agent_id: '' });
+    setForm({
+      agent_id: '',
+      name: '',
+      agent_type: 'individual',
+      bio: '',
+      parent_agent_id: '',
+    });
     setError(null);
     setDialogOpen(true);
   };
 
-  const openEdit = (a: Agent) => {
-    setEditing(a);
+  const openEdit = (agent: Agent) => {
+    setEditing(agent);
     setForm({
-      agent_id: a.agent_id,
-      name: a.name,
-      agent_type: a.agent_type,
-      bio: a.bio ?? '',
-      parent_agent_id: a.parent_agent_id ?? '',
+      agent_id: agent.agent_id,
+      name: agent.name,
+      agent_type: agent.agent_type,
+      bio: agent.bio ?? '',
+      parent_agent_id: agent.parent_agent_id ?? '',
     });
     setError(null);
     setDialogOpen(true);
+  };
+
+  const selectAgent = async (agentId: string) => {
+    setSelectedAgentId(agentId);
+    setError(null);
+    try {
+      await loadAgent(agentId);
+      await loadAgentRelations(agentId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleDelete = async (agent: Agent) => {
+    if (!confirm(t('cognitiveWargame.agents.deleteConfirm', { defaultValue: '确认删除？' }))) {
+      return;
+    }
+    try {
+      await deleteAgent(agent.agent_id);
+      if (selectedAgentId === agent.agent_id) {
+        resetDetailSelection();
+      }
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const submit = async () => {
@@ -96,6 +202,12 @@ const AgentListPage: React.FC = () => {
       setError(t('cognitiveWargame.agents.form.agentIdFormat'));
       return;
     }
+
+    if (form.parent_agent_id && !AGENT_ID_RE.test(form.parent_agent_id)) {
+      setError(t('cognitiveWargame.agents.form.agentIdFormat'));
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
@@ -116,6 +228,7 @@ const AgentListPage: React.FC = () => {
         });
       }
       setDialogOpen(false);
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -123,181 +236,384 @@ const AgentListPage: React.FC = () => {
     }
   };
 
-  const handleDelete = async (a: Agent) => {
-    if (!confirm(t('cognitiveWargame.agents.deleteConfirm', { defaultValue: '确认删除？' }))) return;
-    try {
-      await deleteAgent(a.agent_id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const filtered = search
-    ? agents.filter(
-        (a) =>
-          a.agent_id.toLowerCase().includes(search.toLowerCase()) ||
-          a.name.toLowerCase().includes(search.toLowerCase()),
-      )
-    : agents;
-
-  const typeLabel = (ty: string) => t(`cognitiveWargame.agents.type.${ty}`, { defaultValue: ty });
-  const statusVariant = (s?: string): 'default' | 'secondary' | 'success' | 'destructive' | 'outline' => {
-    if (s === 'active') return 'success';
-    if (s === 'archived') return 'secondary';
-    return 'outline';
+  const handlePaginationChange = (page: number, size: number) => {
+    setCurrentPage(page);
+    setPageSize(size);
+    resetDetailSelection();
   };
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-medium">{t('cognitiveWargame.agents.title')}</h1>
-          <p className="text-sm text-text-secondary">{t('cognitiveWargame.agents.subtitle')}</p>
+    <WargameSectionLayout>
+      <div className="flex flex-col gap-4 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-medium">{t('cognitiveWargame.agents.title')}</h1>
+            <p className="text-sm text-text-secondary">{t('cognitiveWargame.agents.subtitle')}</p>
+          </div>
+          <div className="flex items-end gap-3">
+            <Button onClick={openCreate}>{t('cognitiveWargame.agents.list.create')}</Button>
+            <Button variant="outline" onClick={() => void load()} disabled={agentsLoading}>
+              <RefreshCw className="size-4" />
+              {t('cognitiveWargame.agents.list.refresh')}
+            </Button>
+          </div>
         </div>
-        <div className="flex items-end gap-3">
-          <Button onClick={openCreate}>{t('cognitiveWargame.agents.list.create')}</Button>
-          <Button variant="outline" onClick={load} disabled={agentsLoading}>
-            {t('cognitiveWargame.agents.list.refresh')}
-          </Button>
-        </div>
-      </div>
 
-      {error && <p className="text-sm text-text-error">{error}</p>}
+        {(error || storeError) && (
+          <p className="text-sm text-text-error">{error || storeError}</p>
+        )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">{t('cognitiveWargame.agents.title')} ({filtered.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            <div className="flex flex-col gap-2">
-              <Label>{t('cognitiveWargame.agents.list.filterType')}</Label>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {TYPE_OPTIONS.map((ty) => (
-                    <SelectItem key={ty} value={ty}>
-                      {ty ? typeLabel(ty) : t('cognitiveWargame.approval.all', { defaultValue: '全部' })}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">
+              {t('cognitiveWargame.agents.title')} ({search ? `${filteredAgents.length}/${agentTotal}` : agentTotal})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <div className="flex flex-col gap-2">
+                <Label>{t('cognitiveWargame.agents.list.filterType')}</Label>
+                <Select
+                  value={typeFilter}
+                  onValueChange={(value) => {
+                    setTypeFilter(value);
+                    setCurrentPage(1);
+                    resetDetailSelection();
+                  }}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TYPE_OPTIONS.map((ty) => (
+                      <SelectItem key={ty} value={ty}>
+                        {ty === ALL_FILTER
+                          ? t('cognitiveWargame.agents.list.all', { defaultValue: '全部' })
+                          : typeLabel(ty)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>{t('cognitiveWargame.agents.list.filterStatus')}</Label>
+                <Select
+                  value={statusFilter}
+                  onValueChange={(value) => {
+                    setStatusFilter(value);
+                    setCurrentPage(1);
+                    resetDetailSelection();
+                  }}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUS_OPTIONS.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status === ALL_FILTER
+                          ? t('cognitiveWargame.agents.list.all', { defaultValue: '全部' })
+                          : statusLabel(status)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>&nbsp;</Label>
+                <Input
+                  placeholder={t('cognitiveWargame.agents.list.searchPlaceholder')}
+                  value={search}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setCurrentPage(1);
+                    resetDetailSelection();
+                  }}
+                  className="w-60"
+                />
+              </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <Label>{t('cognitiveWargame.agents.list.filterStatus')}</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {STATUS_OPTIONS.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s ? t(`cognitiveWargame.agents.status.${s}`, { defaultValue: s }) : t('cognitiveWargame.approval.all', { defaultValue: '全部' })}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>&nbsp;</Label>
-              <Input
-                placeholder={t('cognitiveWargame.agents.list.searchPlaceholder')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-60"
+
+            <Spin spinning={agentsLoading}>
+              {filteredAgents.length === 0 ? (
+                <EmptyCard title={t('cognitiveWargame.agents.empty')} className="w-full" />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t('cognitiveWargame.agents.table.agentId')}</TableHead>
+                      <TableHead>{t('cognitiveWargame.agents.table.name')}</TableHead>
+                      <TableHead>{t('cognitiveWargame.agents.table.type')}</TableHead>
+                      <TableHead>{t('cognitiveWargame.agents.table.status')}</TableHead>
+                      <TableHead>{t('cognitiveWargame.agents.table.updatedAt')}</TableHead>
+                      <TableHead>{t('cognitiveWargame.agents.table.actions')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredAgents.map((agent) => (
+                      <TableRow
+                        key={agent.agent_id}
+                        className={selectedAgentId === agent.agent_id ? 'bg-bg-input/60' : ''}
+                        onClick={() => void selectAgent(agent.agent_id)}
+                      >
+                        <TableCell className="font-mono text-sm">{agent.agent_id}</TableCell>
+                        <TableCell className="font-medium">{agent.name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{typeLabel(agent.agent_type)}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={statusVariant(agent.status)}>
+                            {statusLabel(agent.status)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-text-secondary">
+                          {agent.updated_at ?? '-'}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2" onClick={(event) => event.stopPropagation()}>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0"
+                              onClick={() => navigate(WargamePath.agentDetail(agent.agent_id))}
+                            >
+                              {t('cognitiveWargame.common.viewDetail')}
+                              <ArrowRight className="size-3.5" />
+                            </Button>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0"
+                              onClick={() => openEdit(agent)}
+                            >
+                              {t('cognitiveWargame.agents.detail.edit')}
+                            </Button>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0 text-text-error"
+                              onClick={() => void handleDelete(agent)}
+                            >
+                              {t('cognitiveWargame.agents.detail.delete')}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </Spin>
+
+            <div className="mt-4">
+              <IntellectPagination
+                current={currentPage}
+                pageSize={pageSize}
+                total={agentTotal}
+                onChange={handlePaginationChange}
               />
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          <Spin spinning={agentsLoading}>
-            {filtered.length === 0 ? (
-              <EmptyCard title={t('cognitiveWargame.agents.empty')} className="w-full" />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('cognitiveWargame.agents.table.agentId')}</TableHead>
-                    <TableHead>{t('cognitiveWargame.agents.table.name')}</TableHead>
-                    <TableHead>{t('cognitiveWargame.agents.table.type')}</TableHead>
-                    <TableHead>{t('cognitiveWargame.agents.table.status')}</TableHead>
-                    <TableHead>{t('cognitiveWargame.agents.table.updatedAt')}</TableHead>
-                    <TableHead>{t('cognitiveWargame.agents.table.actions')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((a) => (
-                    <TableRow key={a.agent_id}>
-                      <TableCell className="font-mono text-sm">{a.agent_id}</TableCell>
-                      <TableCell className="font-medium">{a.name}</TableCell>
-                      <TableCell><Badge variant="outline">{typeLabel(a.agent_type)}</Badge></TableCell>
-                      <TableCell><Badge variant={statusVariant(a.status)}>{t(`cognitiveWargame.agents.status.${a.status ?? 'active'}`, { defaultValue: a.status ?? 'active' })}</Badge></TableCell>
-                      <TableCell className="text-sm text-text-secondary">{a.updated_at ?? '-'}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button variant="link" size="sm" className="h-auto p-0" onClick={() => navigate(WargamePath.agentDetail(a.agent_id))}>
-                            {t('cognitiveWargame.common.viewDetail')}
-                          </Button>
-                          <Button variant="link" size="sm" className="h-auto p-0" onClick={() => openEdit(a)}>
-                            {t('cognitiveWargame.agents.detail.edit')}
-                          </Button>
-                          <Button variant="link" size="sm" className="h-auto p-0 text-text-error" onClick={() => handleDelete(a)}>
-                            {t('cognitiveWargame.agents.detail.delete')}
-                          </Button>
+        {selectedAgentId && (
+          <Card>
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <CardTitle className="text-lg">
+                  {t('cognitiveWargame.agents.detail.basicInfo', { defaultValue: '基本信息' })}
+                </CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate(WargamePath.agentDetail(selectedAgentId))}
+                >
+                  {t('cognitiveWargame.common.viewDetail')}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Spin spinning={detailLoading}>
+                {currentAgent && currentAgent.agent_id === selectedAgentId ? (
+                  <Tabs defaultValue="info">
+                    <TabsList>
+                      <TabsTrigger value="info">
+                        {t('cognitiveWargame.agents.detail.basicInfo', { defaultValue: '基本信息' })}
+                      </TabsTrigger>
+                      <TabsTrigger value="relations">
+                        {t('cognitiveWargame.agents.detail.relations')} ({agentRelations.length})
+                      </TabsTrigger>
+                      <TabsTrigger value="attrs">
+                        {t('cognitiveWargame.agents.detail.attrs')}
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="info">
+                      <dl className="grid gap-4 text-sm md:grid-cols-2 xl:grid-cols-3">
+                        <div>
+                          <dt className="text-text-secondary">Agent ID</dt>
+                          <dd className="break-all font-mono">{currentAgent.agent_id}</dd>
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </Spin>
-        </CardContent>
-      </Card>
+                        <div>
+                          <dt className="text-text-secondary">{t('cognitiveWargame.agents.form.name')}</dt>
+                          <dd>{currentAgent.name}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-text-secondary">{t('cognitiveWargame.agents.form.type')}</dt>
+                          <dd>
+                            <Badge variant="outline">{typeLabel(currentAgent.agent_type)}</Badge>
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-text-secondary">{t('cognitiveWargame.agents.table.status')}</dt>
+                          <dd>
+                            <Badge variant={statusVariant(currentAgent.status)}>
+                              {statusLabel(currentAgent.status)}
+                            </Badge>
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-text-secondary">{t('cognitiveWargame.agents.form.parent')}</dt>
+                          <dd className="break-all font-mono">{currentAgent.parent_agent_id ?? '-'}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-text-secondary">{t('cognitiveWargame.agents.form.bio')}</dt>
+                          <dd>{currentAgent.bio ?? '-'}</dd>
+                        </div>
+                      </dl>
+                    </TabsContent>
 
-      <Dialog open={dialogOpen} onOpenChange={(o) => !o && setDialogOpen(false)}>
-        <DialogContent className="sm:max-w-[480px]">
-          <DialogHeader>
-            <DialogTitle>{editing ? t('cognitiveWargame.agents.form.editTitle') : t('cognitiveWargame.agents.form.createTitle')}</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-4 py-4">
-            <div className="flex flex-col gap-2">
-              <Label>{t('cognitiveWargame.agents.form.agentId')}</Label>
-              <Input value={form.agent_id} onChange={(e) => setForm({ ...form, agent_id: e.target.value })} disabled={!!editing} placeholder={t('cognitiveWargame.agents.form.agentIdPlaceholder')} />
+                    <TabsContent value="relations">
+                      {agentRelations.length === 0 ? (
+                        <p className="text-sm text-text-secondary">
+                          {t('cognitiveWargame.agents.detail.noRelations')}
+                        </p>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>{t('cognitiveWargame.agents.relation.type')}</TableHead>
+                              <TableHead>{t('cognitiveWargame.agents.relation.source')}</TableHead>
+                              <TableHead>{t('cognitiveWargame.agents.relation.target')}</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {agentRelations.map((relation: AgentRelation) => (
+                              <TableRow key={relation.relation_id}>
+                                <TableCell>
+                                  <Badge variant="outline">
+                                    {relLabel(relation.relation_type)}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="font-mono text-sm">
+                                  {relation.source_agent_id}
+                                </TableCell>
+                                <TableCell className="font-mono text-sm">
+                                  {relation.target_agent_id}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="attrs">
+                      <AgentAttributesView
+                        attributes={currentAgent.attributes}
+                      />
+                    </TabsContent>
+                  </Tabs>
+                ) : (
+                  <p className="text-sm text-text-secondary">
+                    {t('cognitiveWargame.common.loading')}
+                  </p>
+                )}
+              </Spin>
+            </CardContent>
+          </Card>
+        )}
+
+        <Dialog open={dialogOpen} onOpenChange={(open) => !open && setDialogOpen(false)}>
+          <DialogContent className="sm:max-w-[480px]">
+            <DialogHeader>
+              <DialogTitle>
+                {editing
+                  ? t('cognitiveWargame.agents.form.editTitle')
+                  : t('cognitiveWargame.agents.form.createTitle')}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-4 py-4">
+              <div className="flex flex-col gap-2">
+                <Label>{t('cognitiveWargame.agents.form.agentId')}</Label>
+                <Input
+                  value={form.agent_id}
+                  onChange={(event) => setForm({ ...form, agent_id: event.target.value })}
+                  disabled={!!editing}
+                  placeholder={t('cognitiveWargame.agents.form.agentIdPlaceholder')}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>{t('cognitiveWargame.agents.form.name')}</Label>
+                <Input
+                  value={form.name}
+                  onChange={(event) => setForm({ ...form, name: event.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>{t('cognitiveWargame.agents.form.type')}</Label>
+                <Select
+                  value={form.agent_type}
+                  onValueChange={(value) => setForm({ ...form, agent_type: value })}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TYPE_OPTIONS.filter((ty) => ty !== ALL_FILTER).map((ty) => (
+                      <SelectItem key={ty} value={ty}>
+                        {typeLabel(ty)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>{t('cognitiveWargame.agents.form.bio')}</Label>
+                <Textarea
+                  value={form.bio}
+                  onChange={(event) => setForm({ ...form, bio: event.target.value })}
+                  rows={2}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>{t('cognitiveWargame.agents.form.parent')}</Label>
+                <Input
+                  value={form.parent_agent_id}
+                  onChange={(event) =>
+                    setForm({ ...form, parent_agent_id: event.target.value })
+                  }
+                  placeholder={t('cognitiveWargame.agents.form.parentPlaceholder')}
+                />
+              </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <Label>{t('cognitiveWargame.agents.form.name')}</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>{t('cognitiveWargame.agents.form.type')}</Label>
-              <Select value={form.agent_type} onValueChange={(v) => setForm({ ...form, agent_type: v })}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {TYPE_OPTIONS.filter((ty) => ty).map((ty) => (
-                    <SelectItem key={ty} value={ty}>{typeLabel(ty)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>{t('cognitiveWargame.agents.form.bio')}</Label>
-              <Textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} rows={2} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>{t('cognitiveWargame.agents.form.parent')}</Label>
-              <Input value={form.parent_agent_id} onChange={(e) => setForm({ ...form, parent_agent_id: e.target.value })} placeholder={t('cognitiveWargame.agents.form.parentPlaceholder')} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={submitting}>
-              {t('cognitiveWargame.agents.form.cancel')}
-            </Button>
-            <Button onClick={submit} disabled={submitting}>
-              {submitting ? t('cognitiveWargame.common.loading') : t('cognitiveWargame.agents.form.submit')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+                disabled={submitting}
+              >
+                {t('cognitiveWargame.agents.form.cancel')}
+              </Button>
+              <Button onClick={() => void submit()} disabled={submitting}>
+                {submitting
+                  ? t('cognitiveWargame.common.loading')
+                  : t('cognitiveWargame.agents.form.submit')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </WargameSectionLayout>
   );
-};
-
-export default AgentListPage;
+}

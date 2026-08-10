@@ -29,6 +29,9 @@ export interface WargameState {
   anomalies: Anomaly[];
   /** Agent 列表（G-16）。 */
   agents: Agent[];
+  agentTotal: number;
+  agentLimit: number;
+  agentOffset: number;
   /** 当前 Agent 详情。 */
   currentAgent: Agent | null;
   /** Agent 关系列表。 */
@@ -63,7 +66,7 @@ export interface WargameState {
   /** 清空错误。 */
   clearError: () => void;
   /** 拉取 Agent 列表。 */
-  fetchAgents: (params?: { agent_type?: string; status?: string }) => Promise<void>;
+  fetchAgents: (params?: { agent_type?: string; status?: string; limit?: number; offset?: number }) => Promise<void>;
   /** 加载单个 Agent 详情。 */
   loadAgent: (agentId: string) => Promise<void>;
   /** 创建 Agent。 */
@@ -103,6 +106,9 @@ export const useWargameStore = create<WargameState>((set) => ({
   interventions: [],
   anomalies: [],
   agents: [],
+  agentTotal: 0,
+  agentLimit: 10,
+  agentOffset: 0,
   currentAgent: null,
   agentRelations: [],
   agentTypes: [],
@@ -190,8 +196,16 @@ export const useWargameStore = create<WargameState>((set) => ({
   fetchAgents: async (params) => {
     set({ agentsLoading: true, error: null });
     try {
-      const data = await api.getAgents({ ...params, limit: 100 });
-      set({ agents: data.agents ?? [], agentsLoading: false });
+      const limit = params?.limit ?? 10;
+      const offset = params?.offset ?? 0;
+      const data = await api.getAgents({ ...params, limit, offset });
+      set({
+        agents: data.agents ?? [],
+        agentTotal: data.total ?? data.agents?.length ?? 0,
+        agentLimit: data.limit ?? limit,
+        agentOffset: data.offset ?? offset,
+        agentsLoading: false,
+      });
     } catch (err) {
       set({
         agentsLoading: false,

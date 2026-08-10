@@ -104,11 +104,7 @@ const ScenarioDetailPage: React.FC = () => {
           <Button onClick={handleExecute} disabled={executing || !id}>
             {t('cognitiveWargame.common.execute')}
           </Button>
-          <Button
-            variant="primary"
-            onClick={handleLaunchConversation}
-            disabled={launching || !id}
-          >
+          <Button onClick={handleLaunchConversation} disabled={launching || !id}>
             {t('cognitiveWargame.common.launchConversation')}
           </Button>
         </div>
@@ -177,7 +173,7 @@ const ScenarioDetailPage: React.FC = () => {
               {conversationChatUrl && (
                 <div>
                   <a href={conversationChatUrl} target="_blank" rel="noreferrer">
-                    <Button variant="primary" size="sm">
+                    <Button size="sm">
                       {t('cognitiveWargame.conversation.openChat')}
                     </Button>
                   </a>
