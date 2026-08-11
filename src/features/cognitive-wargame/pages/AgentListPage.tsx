@@ -39,6 +39,8 @@ import { useNavigate } from 'react-router';
 import { t } from 'i18next';
 import { type Agent, type AgentRelation } from '../api';
 import AgentAttributesView from '../components/agent-attributes-view';
+import { RequireRole } from '../components/require-role';
+import SkillAssignPanel from '../components/skill-assign-panel';
 import WargameSectionLayout from '../components/section-menu';
 import { WargamePath } from '../routes';
 import { useWargameStore } from '../store';
@@ -251,7 +253,9 @@ export default function AgentListPage() {
             <p className="text-sm text-text-secondary">{t('cognitiveWargame.agents.subtitle')}</p>
           </div>
           <div className="flex items-end gap-3">
-            <Button onClick={openCreate}>{t('cognitiveWargame.agents.list.create')}</Button>
+            <RequireRole>
+              <Button onClick={openCreate}>{t('cognitiveWargame.agents.list.create')}</Button>
+            </RequireRole>
             <Button variant="outline" onClick={() => void load()} disabled={agentsLoading}>
               <RefreshCw className="size-4" />
               {t('cognitiveWargame.agents.list.refresh')}
@@ -380,22 +384,24 @@ export default function AgentListPage() {
                               {t('cognitiveWargame.common.viewDetail')}
                               <ArrowRight className="size-3.5" />
                             </Button>
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="h-auto p-0"
-                              onClick={() => openEdit(agent)}
-                            >
-                              {t('cognitiveWargame.agents.detail.edit')}
-                            </Button>
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="h-auto p-0 text-text-error"
-                              onClick={() => void handleDelete(agent)}
-                            >
-                              {t('cognitiveWargame.agents.detail.delete')}
-                            </Button>
+                            <RequireRole>
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="h-auto p-0"
+                                onClick={() => openEdit(agent)}
+                              >
+                                {t('cognitiveWargame.agents.detail.edit')}
+                              </Button>
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="h-auto p-0 text-text-error"
+                                onClick={() => void handleDelete(agent)}
+                              >
+                                {t('cognitiveWargame.agents.detail.delete')}
+                              </Button>
+                            </RequireRole>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -421,7 +427,7 @@ export default function AgentListPage() {
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <CardTitle className="text-lg">
-                  {t('cognitiveWargame.agents.detail.basicInfo', { defaultValue: '基本信息' })}
+                  {currentAgent?.name ?? t('cognitiveWargame.agents.detail.basicInfo', { defaultValue: '基本信息' })}
                 </CardTitle>
                 <Button
                   variant="outline"
@@ -519,6 +525,7 @@ export default function AgentListPage() {
                     </TabsContent>
 
                     <TabsContent value="attrs">
+                      <SkillAssignPanel agentId={selectedAgentId} />
                       <AgentAttributesView
                         attributes={currentAgent.attributes}
                       />

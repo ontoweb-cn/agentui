@@ -21,6 +21,8 @@ import {
   FileCode2,
   FileText,
   FlaskConical,
+  Pencil,
+  Trash2,
   FolderOpen,
   FolderTree,
   RefreshCw,
@@ -33,6 +35,8 @@ import { useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import CodeViewer from '@/pages/skills/components/code-viewer';
 import MarkdownViewer from '@/pages/skills/components/markdown-viewer';
+import { RequireRole } from '../components/require-role';
+import SkillEditDialog from '../components/skill-edit-dialog';
 import api, {
   type ResourceCategory,
   type SkillDetailResource,
@@ -115,6 +119,13 @@ export default function ResourceOverviewPage() {
   } | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [testInput, setTestInput] = useState('{}');
+  const [skillDialog, setSkillDialog] = useState<{
+    open: boolean;
+    mode: 'create' | 'edit';
+    category?: ResourceCategory;
+    skill?: SkillResource | null;
+  }>({ open: false, mode: 'create' });
+  const [deleteTarget, setDeleteTarget] = useState<SkillResource | null>(null);
   const openedDeepLink = useRef<string | null>(null);
   const skillCategoriesQuery = useQuery({
     queryKey: ['cognitive-wargame', 'resources', 'skill-categories'],
@@ -348,23 +359,55 @@ export default function ResourceOverviewPage() {
                   <Eye className="size-3.5" />
                   {t('cognitiveWargame.resource.view')}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  loading={skill?.id === openingTestSkillId}
-                  onClick={() => {
-                    if (skill) {
-                      void openSkillTestPage(skill);
-                    } else {
-                      setTestTarget(tool!);
-                      setTestInput('{}');
-                      testMutation.reset();
-                    }
-                  }}
-                >
-                  <FlaskConical className="size-3.5" />
-                  {t('cognitiveWargame.resource.test')}
-                </Button>
+                {skill && (
+                  <RequireRole>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setSkillDialog({
+                          open: true,
+                          mode: 'edit',
+                          skill,
+                        })
+                      }
+                    >
+                      <Pencil className="size-3.5" />
+                      {t('cognitiveWargame.skills.editDialog.editAction', {
+                        defaultValue: '修改',
+                      })}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setDeleteTarget(skill)}
+                    >
+                      <Trash2 className="size-3.5 text-text-error" />
+                      {t('cognitiveWargame.skills.editDialog.deleteAction', {
+                        defaultValue: '删除',
+                      })}
+                    </Button>
+                  </RequireRole>
+                )}
+                <RequireRole>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    loading={skill?.id === openingTestSkillId}
+                    onClick={() => {
+                      if (skill) {
+                        void openSkillTestPage(skill);
+                      } else {
+                        setTestTarget(tool!);
+                        setTestInput('{}');
+                        testMutation.reset();
+                      }
+                    }}
+                  >
+                    <FlaskConical className="size-3.5" />
+                    {t('cognitiveWargame.resource.test')}
+                  </Button>
+                </RequireRole>
               </div>
             </div>
           );
@@ -511,12 +554,35 @@ export default function ResourceOverviewPage() {
             </Card>
           ) : (
             <Card className="overflow-hidden">
-              <div className="border-b border-border-button px-5 py-3">
+              <div className="flex items-center justify-between border-b border-border-button px-5 py-3">
                 <span className="text-sm text-text-secondary">
                   {isSkills
                     ? `${t('cognitiveWargame.resource.skills')} · ${skillsQuery.data?.total ?? '-'}`
                     : `${t('cognitiveWargame.resource.tools')} · ${toolsQuery.data?.total ?? '-'}`}
                 </span>
+                <div className="flex items-center gap-2">
+                  {isSkills && (
+                    <RequireRole>
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                        setSkillDialog({
+                            open: true,
+                            mode: 'create',
+                            category:
+                              selected.type === 'skills' && selected.category
+                                ? (selected.category as ResourceCategory)
+                                : undefined,
+                          })
+                        }
+                      >
+                        {t('cognitiveWargame.skills.editDialog.createTitle', {
+                          defaultValue: 'New Skill',
+                        })}
+                      </Button>
+                    </RequireRole>
+                  )}
+                </div>
               </div>
               <CardContent className="overflow-x-auto p-0">
                 {(isSkills ? skillsQuery.isLoading : toolsQuery.isLoading) ? (
@@ -615,20 +681,22 @@ export default function ResourceOverviewPage() {
             <Button variant="outline" onClick={() => setTestTarget(null)}>
               {t('common.cancel')}
             </Button>
-            <Button
-              onClick={() => {
-                try {
-                  JSON.parse(testInput);
-                  testMutation.mutate();
-                } catch {
-                  /* input validation is intentionally local */
-                }
-              }}
-              loading={testMutation.isPending}
-            >
-              <FlaskConical className="size-4" />
-              {t('cognitiveWargame.resource.run')}
-            </Button>
+            <RequireRole>
+              <Button
+                onClick={() => {
+                  try {
+                    JSON.parse(testInput);
+                    testMutation.mutate();
+                  } catch {
+                    /* input validation is intentionally local */
+                  }
+                }}
+                loading={testMutation.isPending}
+              >
+                <FlaskConical className="size-4" />
+                {t('cognitiveWargame.resource.run')}
+              </Button>
+            </RequireRole>
           </DialogFooter>
           {testMutation.isError && (
             <p className="text-sm text-state-error">
@@ -640,6 +708,60 @@ export default function ResourceOverviewPage() {
               {JSON.stringify(testMutation.data, null, 2)}
             </pre>
           )}
+        </DialogContent>
+      </Dialog>
+      <SkillEditDialog
+        open={skillDialog.open}
+        mode={skillDialog.mode}
+        category={skillDialog.category}
+        skill={skillDialog.skill ?? null}
+        onClose={() => setSkillDialog({ open: false, mode: 'create' })}
+        onSuccess={() => {
+          skillsQuery.refetch();
+        }}
+      />
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t('cognitiveWargame.skills.editDialog.deleteTitle', {
+                defaultValue: 'Delete Skill',
+              })}
+            </DialogTitle>
+            <DialogDescription>
+              {deleteTarget?.id
+                ? t('cognitiveWargame.skills.editDialog.deleteConfirm', {
+                    defaultValue: `Are you sure you want to delete "${deleteTarget.id}"?`,
+                    skillId: deleteTarget.id,
+                  })
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!deleteTarget) return;
+                try {
+                  await api.deleteSkill(
+                    deleteTarget.category,
+                    deleteTarget.id,
+                  );
+                  setDeleteTarget(null);
+                  skillsQuery.refetch();
+                } catch {
+                  /* errors shown by toast interceptor */
+                }
+              }}
+            >
+              {t('common.delete')}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       </div>

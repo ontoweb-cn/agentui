@@ -413,6 +413,32 @@ export interface SkillDetailResource extends SkillResource {
   metadata?: Record<string, unknown>;
 }
 
+/** Agent 已分配的 Skill 记录。 */
+export interface AgentSkill {
+  category: ResourceCategory;
+  skill_id: string;
+  skill_name: string;
+  assigned_at?: string;
+  assigned_by?: string;
+}
+
+/** GET /agents/:agentId/skills 响应。 */
+export interface AgentSkillsResponse {
+  agent_id: string;
+  skills: AgentSkill[];
+}
+
+/** POST /agents/:agentId/skills 请求体。 */
+export interface AssignSkillsRequest {
+  skills: Array<{ category: ResourceCategory; skill_id: string }>;
+}
+
+/** POST /agents/:agentId/skills 响应。 */
+export interface AssignSkillsResponse {
+  assigned: number;
+  skipped: number;
+}
+
 export interface ToolResource {
   name: string;
   toolset?: string;
@@ -853,6 +879,50 @@ export const api = {
     );
   },
 
+  // ── Skill 写操作（admin/owner，直连 cognitive-wargame 管理服务）──
+
+  /** 创建 Skill（写入 SKILL.md）。 */
+  createSkill(
+    category: ResourceCategory,
+    skillId: string,
+    skillMdContent: string,
+  ) {
+    return unwrap<SkillResource>(
+      client.post(`/skills/${encodeURIComponent(category)}`, {
+        skill_id: skillId,
+        skill_md: skillMdContent,
+      }),
+    );
+  },
+
+  /** 更新 Skill 的 SKILL.md 内容。 */
+  updateSkillMd(
+    category: ResourceCategory,
+    skillId: string,
+    skillMdContent: string,
+  ) {
+    return unwrap<SkillResource>(
+      client.put(
+        `/skills/${encodeURIComponent(category)}/${encodeURIComponent(skillId)}`,
+        { skill_md: skillMdContent },
+      ),
+    );
+  },
+
+  /** 删除 Skill（hard 默认 true，已分配则返回 409）。 */
+  deleteSkill(
+    category: ResourceCategory,
+    skillId: string,
+    hard: boolean = true,
+  ) {
+    return unwrap<{ deleted: boolean }>(
+      client.delete(
+        `/skills/${encodeURIComponent(category)}/${encodeURIComponent(skillId)}`,
+        { params: { hard } },
+      ),
+    );
+  },
+
   getTools(category?: string) {
     return unwrap<ToolListResponse>(
       client.get('/tools', { params: category ? { category } : undefined }),
@@ -977,6 +1047,35 @@ export const api = {
   deleteAgentRelation(agentId: string, relationId: string) {
     return unwrap<{ deleted: boolean }>(
       client.delete(`/agents/${agentId}/relations/${relationId}`),
+    );
+  },
+
+  // ── Agent-Skill 分配（代理 intellect-gateway /v1/intellect/agents/:id/skills）──
+
+  /** 查询 Agent 已分配 Skill 列表（所有认证用户可访问）。 */
+  getAgentSkills(agentId: string) {
+    return unwrap<AgentSkillsResponse>(
+      client.get(`/agents/${agentId}/skills`),
+    );
+  },
+
+  /** 批量分配 Skill 给 Agent（admin/owner）。 */
+  assignAgentSkills(agentId: string, skills: AssignSkillsRequest['skills']) {
+    return unwrap<AssignSkillsResponse>(
+      client.post(`/agents/${agentId}/skills`, { skills }),
+    );
+  },
+
+  /** 取消 Agent 的 Skill 分配（admin/owner）。 */
+  unassignAgentSkill(
+    agentId: string,
+    skillCategory: ResourceCategory,
+    skillId: string,
+  ) {
+    return unwrap<{ unassigned: boolean }>(
+      client.delete(
+        `/agents/${agentId}/skills/${encodeURIComponent(skillCategory)}/${encodeURIComponent(skillId)}`,
+      ),
     );
   },
 };
