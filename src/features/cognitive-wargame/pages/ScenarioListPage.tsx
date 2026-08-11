@@ -153,7 +153,6 @@ const ScenarioListPage: React.FC = () => {
         blue_force: createForm.blueForce,
         description: createForm.description,
       });
-      api.cacheScenarioDescription(scenarioId, createForm.description);
       setCreateOpen(false);
       setCreateForm(DEFAULT_FORM);
       await fetchScenarios(20, 0);
@@ -390,7 +389,7 @@ const ScenarioListPage: React.FC = () => {
                     return (
                       <TableRow key={s.id}>
                         <TableCell className="font-medium">{s.name}</TableCell>
-                        <TableCell className="max-w-xs truncate">
+                        <TableCell className="max-w-40 truncate">
                           {s.description ?? '-'}
                         </TableCell>
                         <TableCell>{s.status ?? '-'}</TableCell>

@@ -67,45 +67,6 @@ const client = createWargameClient();
 const encodePathSegments = (value: string) =>
   value.split('/').map(encodeURIComponent).join('/');
 
-const SCENARIO_DESCRIPTION_CACHE_KEY =
-  'cognitive-wargame:scenario-descriptions';
-
-function readScenarioDescriptionCache(): Record<string, string> {
-  if (typeof localStorage === 'undefined') return {};
-
-  try {
-    const raw = localStorage.getItem(SCENARIO_DESCRIPTION_CACHE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object'
-      ? (parsed as Record<string, string>)
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeScenarioDescriptionCache(cache: Record<string, string>) {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(SCENARIO_DESCRIPTION_CACHE_KEY, JSON.stringify(cache));
-}
-
-function getCachedScenarioDescription(id: string): string | undefined {
-  const value = readScenarioDescriptionCache()[id];
-  return value?.trim() || undefined;
-}
-
-function setCachedScenarioDescription(id: string, description: string) {
-  const trimmed = description.trim();
-  const cache = readScenarioDescriptionCache();
-  if (trimmed) {
-    cache[id] = trimmed;
-  } else {
-    delete cache[id];
-  }
-  writeScenarioDescriptionCache(cache);
-}
-
 function readText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
 }
@@ -499,7 +460,6 @@ function mapScenario(raw: Record<string, unknown>): Scenario {
     description:
       readText(raw.description) ??
       readText(meta.description) ??
-      getCachedScenarioDescription(id) ??
       readText(overview.description) ??
       readText(overview.objective),
     status: (raw.status as ScenarioStatus | undefined) ?? 'ready',
@@ -519,8 +479,24 @@ export const api = {
       count: number;
       scenarios: Array<Record<string, unknown>>;
     }>(client.get('/scenarios', { params: { limit, offset } }));
+    const items = (raw.scenarios ?? []).map((s) => mapScenario(s));
+    // 列表接口当前不返回描述字段，详情接口才有 overview.objective。
+    // 对缺描述的想定逐个拉详情补齐，保证所有用户看到的数据一致。
+    const enrichedItems = await Promise.all(
+      items.map(async (item) => {
+        if (item.description) return item;
+        try {
+          const detail = await api.getScenario(item.id);
+          return detail.description
+            ? { ...item, description: detail.description }
+            : item;
+        } catch {
+          return item;
+        }
+      }),
+    );
     return {
-      items: (raw.scenarios ?? []).map((s) => mapScenario(s)),
+      items: enrichedItems,
       total: raw.count ?? 0,
       limit,
       offset,
@@ -541,10 +517,6 @@ export const api = {
   },
 
   /** 执行想定推演（异步，返回 task_id）。 */
-  cacheScenarioDescription(id: string, description: string) {
-    setCachedScenarioDescription(id, description);
-  },
-
   executeScenario(id: string, roundsLimit?: number) {
     return unwrap<TaskStatus>(
       client.post(`/scenarios/${id}/execute`, { rounds_limit: roundsLimit }),
