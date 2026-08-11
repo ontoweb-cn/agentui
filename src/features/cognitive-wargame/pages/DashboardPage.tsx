@@ -9,6 +9,7 @@
  */
 import { EmptyCard } from '@/components/empty/empty';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
@@ -24,7 +25,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { api, type KGRelation, type Metrics } from '../api';
+import { ShieldCheck } from 'lucide-react';
+import { api, type AuthMode, type KGRelation, type Metrics } from '../api';
 import GraphView from '../components/GraphView';
 import MetricsChart from '../components/MetricsChart';
 import WargameSectionLayout from '../components/section-menu';
@@ -86,6 +88,7 @@ const DashboardPage: React.FC = () => {
   const [trendLoading, setTrendLoading] = useState(false);
   const [skillCount, setSkillCount] = useState<number | null>(null);
   const [toolCount, setToolCount] = useState<number | null>(null);
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
 
   useEffect(() => {
     fetchScenarios(10, 0);
@@ -100,6 +103,19 @@ const DashboardPage: React.FC = () => {
       if (cancelled) return;
       setSkillCount(skills?.total ?? null);
       setToolCount(tools?.total ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 探测后端认证模式（CW_AUTH_BYPASS_LAN 内网免 token 场景展示标识）
+  useEffect(() => {
+    let cancelled = false;
+    api.getSystemHealthz().then((h) => {
+      if (!cancelled) setAuthMode(h.auth_mode);
+    }).catch(() => {
+      // healthz 失败时不展示标识，不影响主流程
     });
     return () => {
       cancelled = true;
@@ -138,9 +154,21 @@ const DashboardPage: React.FC = () => {
     <WargameSectionLayout>
       <div className="flex flex-col gap-4 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-medium">
-          {t('cognitiveWargame.dashboard.title')}
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-medium">
+            {t('cognitiveWargame.dashboard.title')}
+          </h1>
+          {authMode === 'lan_bypass' && (
+            <Badge
+              variant="success"
+              className="gap-1"
+              title={t('cognitiveWargame.auth.lanBypassTooltip')}
+            >
+              <ShieldCheck className="size-3" />
+              {t('cognitiveWargame.auth.lanBypassBadge')}
+            </Badge>
+          )}
+        </div>
         <Button variant="outline" onClick={() => fetchScenarios(10, 0)}>
           {t('cognitiveWargame.common.refresh')}
         </Button>

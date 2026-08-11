@@ -353,5 +353,18 @@ export default {
       disconnected: 'Real-time connection lost',
       reconnecting: 'Reconnecting…',
     },
+    auth: {
+      lanBypassBadge: 'Intranet Mode (No Auth)',
+      lanBypassTooltip:
+        'The backend has CW_AUTH_BYPASS_LAN enabled. Requests from trusted LAN segments do not require an API TOKEN',
+    },
+    errors: {
+      auth401:
+        'Authentication failed (401). For LAN deployment, ask the administrator to enable CW_AUTH_BYPASS_LAN; for public deployment, check the API TOKEN configuration',
+      sseAuthRejected:
+        'SSE connection rejected (possibly authentication failure or resource not found), reconnection stopped. For LAN deployment, ensure CW_AUTH_BYPASS_LAN is enabled on the backend; for public deployment, check the API TOKEN configuration',
+      sseReconnecting:
+        'SSE connection lost, reconnecting in {{delay}}s (attempt #{{count}})',
+    },
   },
 };

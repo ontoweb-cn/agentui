@@ -17,26 +17,72 @@
  */
 import { useEffect, useRef, useState } from 'react';
 
+import i18n from '@/locales/config';
+
 import { api } from '../api';
 import { useWargameStore } from '../store';
 
-/** SSE 事件类型（对齐 admin_server event_bridge） */
+/** SSE 事件类型（对齐 wargamesrv event_bridge 实际发布的 23 种事件） */
 export type CognitiveEventType =
-  | 'scenario.created'
+  // scenario.*
   | 'scenario.started'
-  | 'scenario.paused'
-  | 'scenario.resumed'
   | 'scenario.completed'
-  | 'round.started'
-  | 'round.completed'
-  | 'round.failed'
+  | 'scenario.canceled'
+  | 'scenario.cancel_requested'
+  | 'scenario.round.started'
+  | 'scenario.round.completed'
+  // agent.*
   | 'agent.acted'
-  | 'metric.updated'
+  | 'agent.acted.batch'
+  // anomaly / intervention
   | 'anomaly.detected'
   | 'intervention.applied'
+  // strategy.*
+  | 'strategy.adapted'
+  | 'strategy.multi.started'
+  | 'strategy.variant.started'
+  | 'strategy.variant.completed'
+  | 'strategy.variant.failed'
+  | 'strategy.multi.completed'
+  // report.*
+  | 'report.started'
+  | 'report.completed'
+  | 'report.failed'
+  // counterfactual.*
   | 'counterfactual.started'
   | 'counterfactual.completed'
-  | 'counterfactual.failed';
+  | 'counterfactual.failed'
+  // system.*
+  | 'system.degraded'
+  // R1: 未知事件类型的兜底（运行时校验用）
+  | '__unknown__';
+
+/** R1: 运行时校验用的事件类型集合（不含 __unknown__） */
+const VALID_EVENT_TYPES: ReadonlySet<string> = new Set<CognitiveEventType>([
+  'scenario.started',
+  'scenario.completed',
+  'scenario.canceled',
+  'scenario.cancel_requested',
+  'scenario.round.started',
+  'scenario.round.completed',
+  'agent.acted',
+  'agent.acted.batch',
+  'anomaly.detected',
+  'intervention.applied',
+  'strategy.adapted',
+  'strategy.multi.started',
+  'strategy.variant.started',
+  'strategy.variant.completed',
+  'strategy.variant.failed',
+  'strategy.multi.completed',
+  'report.started',
+  'report.completed',
+  'report.failed',
+  'counterfactual.started',
+  'counterfactual.completed',
+  'counterfactual.failed',
+  'system.degraded',
+] as const);
 
 export interface CognitiveEvent {
   type: CognitiveEventType;
@@ -120,7 +166,7 @@ export function useSseEvents(options: UseSseEventsOptions): UseSseEventsResult {
       eventSourceRef.current = null;
 
       if (isFatal) {
-        setError(new Error('SSE 连接被拒绝（可能是认证失败或资源不存在），已停止重连'));
+        setError(new Error(i18n.t('cognitiveWargame.errors.sseAuthRejected')));
         return;
       }
 
@@ -130,7 +176,14 @@ export function useSseEvents(options: UseSseEventsOptions): UseSseEventsResult {
         MAX_RETRY_DELAY,
       );
       retryCountRef.current += 1;
-      setError(new Error(`SSE 连接断开，${delay / 1000}s 后重连（第 ${retryCountRef.current} 次）`));
+      setError(
+        new Error(
+          i18n.t('cognitiveWargame.errors.sseReconnecting', {
+            delay: delay / 1000,
+            count: retryCountRef.current,
+          }),
+        ),
+      );
       retryTimerRef.current = setTimeout(connect, delay);
     };
 
@@ -140,12 +193,18 @@ export function useSseEvents(options: UseSseEventsOptions): UseSseEventsResult {
     source.onmessage = (ev) => {
       try {
         const raw = JSON.parse(ev.data) as Record<string, unknown>;
+        // R2: 提取 payload 为局部变量复用
+        const payload = (raw.payload ?? {}) as Record<string, unknown>;
+        const rawType = raw.type ?? raw.event_type;
+        // R1: 运行时校验事件类型，未知类型不阻断但记录为 string
+        const isKnown = typeof rawType === 'string' && VALID_EVENT_TYPES.has(rawType);
         const event = {
-          type: (raw.type ?? raw.event_type) as CognitiveEventType,
+          type: (isKnown ? rawType : '__unknown__') as CognitiveEventType,
           scenario_id: raw.scenario_id as string,
-          round_id: raw.round_id as number | undefined,
+          // F24: 后端 round_num 在 payload 内，兼容顶层 round_id
+          round_id: (raw.round_id ?? payload.round_num) as number | undefined,
           timestamp: String(raw.timestamp ?? ''),
-          payload: (raw.payload ?? {}) as Record<string, unknown>,
+          payload,
         } as CognitiveEvent;
         onEventRef.current?.(event);
       } catch {

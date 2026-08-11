@@ -8,6 +8,8 @@
 import { Authorization } from '@/constants/authorization';
 import axios, { type AxiosInstance } from 'axios';
 
+import i18n from '@/locales/config';
+
 /** 管理服务基础路径，统一前缀 /api/v1/wargame，由 Vite proxy 代理到 9385。 */
 const WARGAME_BASE_URL = '/api/v1/wargame';
 
@@ -42,6 +44,20 @@ function createWargameClient(): AxiosInstance {
     }
     return config;
   });
+
+  // 401 提示优化：检测到 401 响应时，提示用户认证配置信息
+  instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (error?.response?.status === 401) {
+        const hint = i18n.t('cognitiveWargame.errors.auth401');
+        error.message = hint;
+        // 控制台输出详细提示，供运维排查
+        console.warn('[Wargame API] 401 Unauthorized:', hint);
+      }
+      return Promise.reject(error);
+    },
+  );
 
   return instance;
 }
@@ -174,6 +190,18 @@ export interface TaskStatus {
   started_at?: number | null;
   finished_at?: number | null;
   elapsed: number;
+}
+
+/** 后端认证模式（对应 /api/v1/system/healthz 的 auth_mode 字段）。 */
+export type AuthMode = 'token' | 'lan_bypass' | 'disabled';
+
+/** /healthz 响应。 */
+export interface SystemHealthz {
+  status: string;
+  redis: boolean;
+  gateway_url: string;
+  auth_enabled: boolean;
+  auth_mode: AuthMode;
 }
 
 /** 审批记录（对应 intellect-gateway Approval schema，P3.3-3）。 */
@@ -649,6 +677,11 @@ export const api = {
     return unwrap<Record<string, unknown>>(
       client.get(`/reports/result/${taskId}`),
     );
+  },
+
+  /** 探测后端认证模式（供前端判断是否内网免 token 场景）。 */
+  getSystemHealthz() {
+    return unwrap<SystemHealthz>(client.get('/system/healthz'));
   },
 
   // ── P3.3-3 想定审批（代理 intellect-gateway /v1/approvals）────

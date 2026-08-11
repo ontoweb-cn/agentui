@@ -75,7 +75,7 @@
 ### 1.2 设计原则
 
 - **平台无关**：前端字段对齐 `intellect_agents` 通用表，不耦合认知域业务字段（如 stance / narrative_valence），便于未来迁移到其他 Agent 平台
-- **代理透传**：前端不持久化主数据到本地存储（localStorage），运行时仅在 Zustand store 内存缓存；所有 CRUD 经 cognitive-wargame admin_server 代理到 intellect-gateway，保证数据一致性
+- **代理透传**：前端不持久化主数据到本地存储（localStorage），运行时仅在 Zustand store 内存缓存；所有 CRUD 经 cognitive-wargame wargamesrv 代理到 intellect-gateway，保证数据一致性
 - **复用既有组件**：优先复用 `@/components/ui/*` shadcn/ui 基础组件与插件内 `GraphView`，不引入新依赖
 - **最小化状态**：仅维护列表、当前选中、关系列表、类型字典等必要状态，避免与 TanStack Query 重复
 
@@ -96,8 +96,8 @@
                            │ HTTP（Vite proxy / Nginx 反代）
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  cognitive-wargame admin_server (FastAPI, :9385)                 │
-│  admin_server/apps/restful_apis/agents_api.py                    │
+│  cognitive-wargame wargamesrv (FastAPI, :9385)                 │
+│  wargamesrv/apps/restful_apis/agents_api.py                    │
 │  - 11 条代理路由（prefix /api/v1/wargame/agents）                │
 │  - 认证透传 + tenant_id 一致性校验                                │
 └──────────────────────────┬──────────────────────────────────────┘
@@ -118,7 +118,7 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-> **端口对应**：admin_server `:9385`（FastAPI，cognitive-wargame 仓库），intellect-gateway `:8642`（Rust，intellect-team 仓库）。前端开发时通过 Vite proxy 将 `/api/v1/wargame` 代理到 admin_server `:9385`，admin_server 再用 httpx 转发到 gateway `:8642`。
+> **端口对应**：wargamesrv `:9385`（FastAPI，cognitive-wargame 仓库），intellect-gateway `:8642`（Rust，intellect-team 仓库）。前端开发时通过 Vite proxy 将 `/api/v1/wargame` 代理到 wargamesrv `:9385`，wargamesrv 再用 httpx 转发到 gateway `:8642`。
 
 ### 2.2 前端分层架构
 
@@ -162,19 +162,19 @@
 
 ## 三、接口契约
 
-> **来源**：cognitive-wargame [intellect-agent-registry-design-requirement.md §5.2.2](file:///Users/simon/project/cognitive-wargame/docs/intellect-agent-registry-design-requirement.md) 与 [agents_api.py](file:///Users/simon/project/cognitive-wargame/admin_server/apps/restful_apis/agents_api.py)。
-> **共 11 条路由**，前缀 `/api/v1/wargame/agents`，由 admin_server 代理到 gateway `/v1/intellect/agents*`。
+> **来源**：cognitive-wargame [intellect-agent-registry-design-requirement.md §5.2.2](file:///Users/simon/project/cognitive-wargame/docs/intellect-agent-registry-design-requirement.md) 与 [agents_api.py](file:///Users/simon/project/cognitive-wargame/wargamesrv/apps/restful_apis/agents_api.py)。
+> **共 11 条路由**，前缀 `/api/v1/wargame/agents`，由 wargamesrv 代理到 gateway `/v1/intellect/agents*`。
 
 ### 3.1 通用约定
 
 | 项 | 说明 |
 |---|---|
-| Base URL | `/api/v1/wargame`（由 Vite proxy 代理到 admin_server :9385） |
+| Base URL | `/api/v1/wargame`（由 Vite proxy 代理到 wargamesrv :9385） |
 | 认证 | `Authorization: Bearer <token>`（从 `localStorage[Authorization]` 读取，由请求拦截器自动注入） |
 | Content-Type | `application/json` |
 | 响应格式 | JSON（gateway 直接返回 Tool 的 dict 结果，不使用 `{code, data, message}` 包装；前端 `unwrap()` 自动兼容两种形态） |
 | 超时 | 300000ms（5 分钟，沿用 wargameClient 配置） |
-| `agent_id` 格式 | `^[a-z0-9][a-z0-9_-]{0,127}$`（前端 + admin_server + gateway 三层校验） |
+| `agent_id` 格式 | `^[a-z0-9][a-z0-9_-]{0,127}$`（前端 + wargamesrv + gateway 三层校验） |
 | `relation_id` 格式 | `^[A-Za-z0-9_-]{1,128}$`（gateway 生成 `rel-{uuid}` 形式） |
 
 ### 3.2 Agent CRUD（5 条）
@@ -192,7 +192,7 @@ GET /api/v1/wargame/agents
 | `agent_type` | string | 否 | — | 类型过滤：individual/admin_organ/political_party/news_media/mass |
 | `status` | string | 否 | — | 状态过滤：active/archived |
 | `parent_agent_id` | string | 否 | — | 按父 Agent 过滤 |
-| `limit` | int | 否 | 20 | 1~100（admin_server 强制约束） |
+| `limit` | int | 否 | 20 | 1~100（wargamesrv 强制约束） |
 | `offset` | int | 否 | 0 | 分页偏移 |
 
 **响应**
@@ -211,7 +211,7 @@ GET /api/v1/wargame/agents
 | HTTP | 含义 |
 |---|---|
 | 400 | `parent_agent_id` 格式非法 |
-| 503 | admin_server → gateway 不可达 |
+| 503 | wargamesrv → gateway 不可达 |
 
 #### 3.2.2 查询 Agent 详情
 
@@ -245,9 +245,9 @@ POST /api/v1/wargame/agents
 
 **响应**：201 + `Agent` 对象。
 
-**请求体序列化**：admin_server 使用 `model_dump(exclude_none=True)`（[agents_api.py L270](file:///Users/simon/project/cognitive-wargame/admin_server/apps/restful_apis/agents_api.py)），即 `None` 值字段不会发送到 gateway。前端 `createAgent` 传入 `undefined` 时 axios 会自动忽略，行为一致。
+**请求体序列化**：wargamesrv 使用 `model_dump(exclude_none=True)`（[agents_api.py L270](file:///Users/simon/project/cognitive-wargame/wargamesrv/apps/restful_apis/agents_api.py)），即 `None` 值字段不会发送到 gateway。前端 `createAgent` 传入 `undefined` 时 axios 会自动忽略，行为一致。
 
-**tenant 一致性校验**：admin_server 会校验回包 `tenant_id` 与 `INTELLECT_TENANT_ID` 一致，不一致返回 500（防止 `GATEWAY_API_TOKEN` 绑定的 tenant 与 intellect-team 实例不一致导致数据隔离问题）。
+**tenant 一致性校验**：wargamesrv 会校验回包 `tenant_id` 与 `INTELLECT_TENANT_ID` 一致，不一致返回 500（防止 `GATEWAY_API_TOKEN` 绑定的 tenant 与 intellect-team 实例不一致导致数据隔离问题）。
 
 #### 3.2.4 更新 Agent
 
@@ -289,7 +289,7 @@ DELETE /api/v1/wargame/agents/{agent_id}?hard={bool}
 GET /api/v1/wargame/agents/types?active={bool}
 ```
 
-> **路由注意**：前端请求路径为 `/api/v1/wargame/agents/types`（admin_server 侧嵌套路由），admin_server 代理到 gateway `/v1/intellect/agent-types`。注意 gateway 路径用 `/` 分段为 `intellect/agent-types`，**非**用 `-` 拼成单段 `intellect-agent-types`（参见 [agents_api.py L303-304](file:///Users/simon/project/cognitive-wargame/admin_server/apps/restful_apis/agents_api.py)）。
+> **路由注意**：前端请求路径为 `/api/v1/wargame/agents/types`（wargamesrv 侧嵌套路由），wargamesrv 代理到 gateway `/v1/intellect/agent-types`。注意 gateway 路径用 `/` 分段为 `intellect/agent-types`，**非**用 `-` 拼成单段 `intellect-agent-types`（参见 [agents_api.py L303-304](file:///Users/simon/project/cognitive-wargame/wargamesrv/apps/restful_apis/agents_api.py)）。
 
 **Query 参数**
 
@@ -311,7 +311,7 @@ AgentType[]
 
 ### 3.4 Agent 关系管理（5 条）
 
-> **实现状态说明**：admin_server 侧完整实现 5 条路由（对齐 gateway 11 条总数中的 5 条关系路由），但前端 [api.ts](file:///Users/simon/project/agentui/src/features/cognitive-wargame/api.ts) 仅封装 **3 条**（§3.4.1 列表、§3.4.2 建立、§3.4.5 删除）。**§3.4.3 单条详情**与 **§3.4.4 更新关系**当前未在前端封装，仅作为契约保留，如需使用需扩展 `api.ts`。
+> **实现状态说明**：wargamesrv 侧完整实现 5 条路由（对齐 gateway 11 条总数中的 5 条关系路由），但前端 [api.ts](file:///Users/simon/project/agentui/src/features/cognitive-wargame/api.ts) 仅封装 **3 条**（§3.4.1 列表、§3.4.2 建立、§3.4.5 删除）。**§3.4.3 单条详情**与 **§3.4.4 更新关系**当前未在前端封装，仅作为契约保留，如需使用需扩展 `api.ts`。
 
 #### 3.4.1 查询关系列表
 
@@ -402,7 +402,7 @@ DELETE /api/v1/wargame/agents/{agent_id}/relations/{relation_id}
 | 409 | 关系三元组唯一约束冲突 | 提示"关系已存在" |
 | 422 | `source_agent_id` 与 path `agent_id` 不一致 | 表单提交前校验 |
 | 500 | tenant_id 不一致 / 内部错误 | 提示联系管理员校对 `GATEWAY_API_TOKEN` |
-| 503 | admin_server → gateway 不可达 | 提示"Agent 服务不可达，请稍后重试" |
+| 503 | wargamesrv → gateway 不可达 | 提示"Agent 服务不可达，请稍后重试" |
 
 ---
 
@@ -509,7 +509,7 @@ export interface Agent {
 
 > **注意**：`attributes` 仅承载**平台无关**通用属性（occupation / region / channel_type 等）。认知域业务字段（stance_on_unification / narrative_valence / cognitive_attrs 等）由 cognitive-wargame 自建表 `wargame.agents` 承担，**不在此接口暴露**。
 
-> **status 字段一致性风险**：前端类型 `status?: 'active' | 'archived'`（2 值），admin_server [agents_api.py L65](file:///Users/simon/project/cognitive-wargame/admin_server/apps/restful_apis/agents_api.py) `AgentStatusLiteral = Literal["active", "archived"]`（2 值），但 DB schema（[intellect-agent-registry-design-requirement.md §2.2](file:///Users/simon/project/cognitive-wargame/docs/intellect-agent-registry-design-requirement.md)）允许 3 值：`CHECK (status IN ('active','inactive','archived'))`。`inactive` 状态当前在链路中未暴露，若 gateway 直接写入 `inactive`，前端无法正确显示（会 fallback 到 defaultValue）。如需支持需同步扩展前端类型 + admin_server Literal + i18n 词条 `agents.status.inactive`。
+> **status 字段一致性风险**：前端类型 `status?: 'active' | 'archived'`（2 值），wargamesrv [agents_api.py L65](file:///Users/simon/project/cognitive-wargame/wargamesrv/apps/restful_apis/agents_api.py) `AgentStatusLiteral = Literal["active", "archived"]`（2 值），但 DB schema（[intellect-agent-registry-design-requirement.md §2.2](file:///Users/simon/project/cognitive-wargame/docs/intellect-agent-registry-design-requirement.md)）允许 3 值：`CHECK (status IN ('active','inactive','archived'))`。`inactive` 状态当前在链路中未暴露，若 gateway 直接写入 `inactive`，前端无法正确显示（会 fallback 到 defaultValue）。如需支持需同步扩展前端类型 + wargamesrv Literal + i18n 词条 `agents.status.inactive`。
 
 ### 5.2 AgentRelation（对应 `intellect_agent_relations` 表）
 
@@ -720,7 +720,7 @@ if (!editing && !AGENT_ID_RE.test(form.agent_id)) {
 }
 ```
 
-> **注意**：当前表单**仅校验 `agent_id` 格式**，未校验 `parent_agent_id`。若用户输入非法 `parent_agent_id`（如含路径分隔符），前端不会拦截，由 admin_server [agents_api.py L137-140](file:///Users/simon/project/cognitive-wargame/admin_server/apps/restful_apis/agents_api.py) `_validate_optional_agent_id` 兜底返回 400。建议前端补全校验，避免无谓请求。
+> **注意**：当前表单**仅校验 `agent_id` 格式**，未校验 `parent_agent_id`。若用户输入非法 `parent_agent_id`（如含路径分隔符），前端不会拦截，由 wargamesrv [agents_api.py L137-140](file:///Users/simon/project/cognitive-wargame/wargamesrv/apps/restful_apis/agents_api.py) `_validate_optional_agent_id` 兜底返回 400。建议前端补全校验，避免无谓请求。
 
 **空字符串提交显式清空字段**
 
@@ -735,7 +735,7 @@ await updateAgent(editing.agent_id, {
 });
 ```
 
-此行为符合 admin_server `UpdateAgentRequest` 的 `null` 显式清空语义（[agents_api.py L215-229](file:///Users/simon/project/cognitive-wargame/admin_server/apps/restful_apis/agents_api.py)）。
+此行为符合 wargamesrv `UpdateAgentRequest` 的 `null` 显式清空语义（[agents_api.py L215-229](file:///Users/simon/project/cognitive-wargame/wargamesrv/apps/restful_apis/agents_api.py)）。
 
 **行操作**
 
@@ -944,8 +944,8 @@ if (!editing && !AGENT_ID_RE.test(form.agent_id)) {
 
 **后端三层校验**（兜底）：
 
-1. admin_server `agents_api.py` 的 `_validate_agent_id()` / `_validate_optional_agent_id()` → 400
-2. admin_server Pydantic `Field(..., max_length=128)` → 422
+1. wargamesrv `agents_api.py` 的 `_validate_agent_id()` / `_validate_optional_agent_id()` → 400
+2. wargamesrv Pydantic `Field(..., max_length=128)` → 422
 3. intellect-gateway `agent_store.rs` → 400/422
 
 ---
@@ -1130,7 +1130,7 @@ cognitiveWargame: {
 
 1. **响应包装兼容**：gateway 直接返回 Tool 的 dict 结果（裸数据），不使用 `{code, data, message}` 包装。`unwrap()` 函数会自动检测并兼容两种形态，新增接口务必通过 `unwrap()` 处理。
 
-2. **`agent_id` 格式校验**：三处校验（前端 / admin_server / gateway），前端必须用 `AGENT_ID_RE = /^[a-z0-9][a-z0-9_-]{0,127}$/` 拦截，避免发无效请求。
+2. **`agent_id` 格式校验**：三处校验（前端 / wargamesrv / gateway），前端必须用 `AGENT_ID_RE = /^[a-z0-9][a-z0-9_-]{0,127}$/` 拦截，避免发无效请求。
 
 3. **`relation_id` 形态**：gateway 生成 `rel-{uuid}` 形式（约 36 字符），前端 `AgentRelation.relation_id` 类型为 `string`（非 number）。
 
@@ -1138,9 +1138,9 @@ cognitiveWargame: {
 
 5. **`source_agent_id` 一致性**：建立关系时 body 的 `source_agent_id` 必须等于 path 的 `agent_id`，否则 gateway 返回 422。前端 `submitRelation` 中已硬编码 `source_agent_id: id`。
 
-6. **类型字典路径**：前端请求 `/api/v1/wargame/agents/types`（admin_server 嵌套路由），admin_server 代理到 gateway `/v1/intellect/agent-types`（**斜杠**，非连字符 `agent-types`）。
+6. **类型字典路径**：前端请求 `/api/v1/wargame/agents/types`（wargamesrv 嵌套路由），wargamesrv 代理到 gateway `/v1/intellect/agent-types`（**斜杠**，非连字符 `agent-types`）。
 
-7. **`tenant_id` 一致性**：创建/更新成功后，admin_server 会校验回包 `tenant_id` 与 `INTELLECT_TENANT_ID` 一致，不一致返回 500。前端遇到 500 时应提示"联系管理员校对 `GATEWAY_API_TOKEN`"。
+7. **`tenant_id` 一致性**：创建/更新成功后，wargamesrv 会校验回包 `tenant_id` 与 `INTELLECT_TENANT_ID` 一致，不一致返回 500。前端遇到 500 时应提示"联系管理员校对 `GATEWAY_API_TOKEN`"。
 
 ### 11.3 安全注意事项
 
@@ -1162,7 +1162,7 @@ cognitiveWargame: {
 - **命名实体录入与认知域 Agent 创建**（需区分两个概念）：
   - **前端创建 Agent**：通过 `POST /api/v1/wargame/agents` 仅写入 `intellect_agents` 平台层主表，**不自动写入** `wargame.agents` 认知域映射表
   - **`register_agent` action**：cognitive-wargame state_store 内部 action（[agent-table-redesign-plan.md §B1 L188](file:///Users/simon/project/cognitive-wargame/docs/agent-table-redesign-plan.md)），先通过 HTTP 调 intellect-gateway 创建 `intellect_agents` 记录，再写 `wargame.agents`，保证两表一致。**此 action 当前无对应 HTTP 端点**，仅由后端脚本（如 `seed_named_agents.py`）通过 state_store_tool 调用
-  - **`link_scenario_agent` action**：建立场景-Agent 引用绑定（写 `wargame.scenario_agent_refs` 表），对应 HTTP 端点 `POST /api/v1/wargame/scenarios/:id/agents/:aid`（[agents_api.py L11-13](file:///Users/simon/project/cognitive-wargame/admin_server/apps/restful_apis/agents_api.py) 说明此端点走 state_store action，不属 Agent 代理范围）。**此端点功能是场景引用绑定，不是创建 Agent**
+  - **`link_scenario_agent` action**：建立场景-Agent 引用绑定（写 `wargame.scenario_agent_refs` 表），对应 HTTP 端点 `POST /api/v1/wargame/scenarios/:id/agents/:aid`（[agents_api.py L11-13](file:///Users/simon/project/cognitive-wargame/wargamesrv/apps/restful_apis/agents_api.py) 说明此端点走 state_store action，不属 Agent 代理范围）。**此端点功能是场景引用绑定，不是创建 Agent**
   - **结论**：前端目前**无法直接创建认知域 Agent**（`wargame.agents` 记录）。如需支持，需后端新增暴露 `register_agent` 的 HTTP 端点，或扩展前端调用场景引用端点（前提是 Agent 已存在于 `wargame.agents`）
 
 ### 11.6 后续优化方向
@@ -1176,7 +1176,7 @@ cognitiveWargame: {
 | i18n 跨模块解耦 | P1 | 新增 `cognitiveWargame.agents.list.all` 词条，替换 `approval.all` 跨模块引用（见 §9.4） |
 | AgentTypePage 语义修复 | P1 | 新增 `cognitiveWargame.agents.types.inactive` 词条，替换 `status.archived` 误用（见 §7.3） |
 | Store 错误处理统一 | P2 | 统一 `createAgentRelation` / `deleteAgentRelation` 的错误处理模式，避免双重处理（见 §6.3） |
-| status 类型一致性 | P2 | 若需支持 `inactive` 状态，同步扩展前端类型 + admin_server Literal + i18n（见 §5.1） |
+| status 类型一致性 | P2 | 若需支持 `inactive` 状态，同步扩展前端类型 + wargamesrv Literal + i18n（见 §5.1） |
 | 关系单条查询与更新 | P2 | 补全 `api.ts` 的 `getAgentRelation` / `updateAgentRelation` 封装（见 §3.4.3 / §3.4.4） |
 | 表单字段扩展 | P2 | 表单补全 `avatar` / `attributes` / `status` 字段编辑能力（见 §7.1.2） |
 | 分页支持 | P2 | 列表支持 `offset` 分页，应对大规模群众 Agent |
@@ -1204,7 +1204,7 @@ cognitiveWargame: {
 | SSE 事件订阅 hook | [src/features/cognitive-wargame/hooks/use-sse-events.ts](file:///Users/simon/project/agentui/src/features/cognitive-wargame/hooks/use-sse-events.ts) |
 | 中文词条 | [src/features/cognitive-wargame/locales/zh.ts](file:///Users/simon/project/agentui/src/features/cognitive-wargame/locales/zh.ts) |
 | 英文词条 | [src/features/cognitive-wargame/locales/en.ts](file:///Users/simon/project/agentui/src/features/cognitive-wargame/locales/en.ts) |
-| 后端代理路由（cognitive-wargame） | [admin_server/apps/restful_apis/agents_api.py](file:///Users/simon/project/cognitive-wargame/admin_server/apps/restful_apis/agents_api.py) |
+| 后端代理路由（cognitive-wargame） | [wargamesrv/apps/restful_apis/agents_api.py](file:///Users/simon/project/cognitive-wargame/wargamesrv/apps/restful_apis/agents_api.py) |
 | 后端 HTTP 端点（intellect-team） | [intellect-gateway/src/platform/agent_registry_api.rs](file:///Users/simon/project/intellect-team/intellect-gateway/src/platform/agent_registry_api.rs) |
 | 后端 Rust Store | [intellect-storage/src/agent_store.rs](file:///Users/simon/project/intellect-team/intellect-storage/src/agent_store.rs) |
 | 后端迁移文件 | [intellect-storage/migrations/20260808000001_agents.sql](file:///Users/simon/project/intellect-team/intellect-storage/migrations/20260808000001_agents.sql) |

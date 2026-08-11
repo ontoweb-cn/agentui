@@ -138,18 +138,43 @@ const RoundViewPage: React.FC = () => {
             event.payload as unknown as Parameters<typeof addIntervention>[0],
           );
           break;
-        case 'round.completed':
-          if (event.round_id) {
-            setCurrentRound(event.round_id);
+        case 'scenario.round.completed': {
+          // F2: 事件名从 round.completed 改为 scenario.round.completed
+          // F24: round_num 在 payload 内，兼容顶层 round_id
+          const roundNum =
+            (event.payload as { round_num?: number }).round_num ?? event.round_id;
+          if (roundNum) {
+            setCurrentRound(roundNum);
             refreshHistory();
           }
+          break;
+        }
+        case 'scenario.canceled':
+          // R3: 真正中断（未 RUNNING），清除当前任务
+          setCurrentTaskId(null);
+          break;
+        case 'scenario.cancel_requested':
+          // R3: RUNNING 任务请求取消（仅标记），任务仍在运行，保留 taskId
+          // UI 可显示"取消请求已提交"提示，由后续迭代补
+          break;
+        case 'scenario.round.started': {
+          // R4: 回合开始，更新 currentRound 以反映进行中的回合
+          const startedRoundNum =
+            (event.payload as { round_num?: number }).round_num ?? event.round_id;
+          if (startedRoundNum) {
+            setCurrentRound(startedRoundNum);
+          }
+          break;
+        }
+        case 'system.degraded':
+          // F23: Redis 降级警告，事件已入 liveEvents 流，无需额外处理
           break;
         default:
           break;
       }
     },
     // refreshHistory 随 id 变化重建；store action 为 zustand 稳定引用，无需入 deps
-    [refreshHistory, addAnomaly, addIntervention, setCurrentRound],
+    [refreshHistory, addAnomaly, addIntervention, setCurrentRound, setCurrentTaskId],
   );
 
   const { connected, error } = useSseEvents({

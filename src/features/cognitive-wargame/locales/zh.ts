@@ -352,5 +352,18 @@ export default {
       disconnected: '实时连接已断开',
       reconnecting: '正在重连…',
     },
+    auth: {
+      lanBypassBadge: '内网模式（免认证）',
+      lanBypassTooltip:
+        '当前后端已启用 CW_AUTH_BYPASS_LAN，来自可信局域网的请求无需 API TOKEN',
+    },
+    errors: {
+      auth401:
+        '认证失败（401）。若为内网部署，请联系管理员启用 CW_AUTH_BYPASS_LAN；若为公网部署，请检查 API TOKEN 配置',
+      sseAuthRejected:
+        'SSE 连接被拒绝（可能是认证失败或资源不存在），已停止重连。若为内网部署，请确认后端已启用 CW_AUTH_BYPASS_LAN；若为公网部署，请检查 API TOKEN 配置',
+      sseReconnecting:
+        'SSE 连接断开，{{delay}}s 后重连（第 {{count}} 次）',
+    },
   },
 };

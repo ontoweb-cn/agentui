@@ -3,7 +3,7 @@
 > **关联文档**：
 > - 后端接口设计：[cognitive-wargame/docs/skills-resources-api-design.md](../../cognitive-wargame/docs/skills-resources-api-design.md)（SKILL-01~06 + TOOL-01~04）
 > - 管理服务架构：[cognitive-wargame/docs/phase3-architecture-design.md](../../cognitive-wargame/docs/phase3-architecture-design.md)
-> - 管理服务 API 清单：[cognitive-wargame/admin_server/README.md](../../cognitive-wargame/admin_server/README.md)
+> - 管理服务 API 清单：[cognitive-wargame/wargamesrv/README.md](../../cognitive-wargame/wargamesrv/README.md)
 
 ## 1. 背景与目标
 
@@ -65,7 +65,7 @@ src/services/file-manager-service.ts              ← 不复用
 
 > ⚠️ **数据源决策（变更）**：
 >
-> 「资源总览」的数据**与「总览仪表盘」其它接口一致，从 Cognitive Wargame 管理网关（admin_server, 9385）获取**，而非复用 agentui 通用 skills 服务（`/api/v1/skills/search`、`skillSpaceService`）。
+> 「资源总览」的数据**与「总览仪表盘」其它接口一致，从 Cognitive Wargame 管理网关（wargamesrv, 9385）获取**，而非复用 agentui 通用 skills 服务（`/api/v1/skills/search`、`skillSpaceService`）。
 >
 > 后端接口规范见：[cognitive-wargame/docs/skills-resources-api-design.md](../../cognitive-wargame/docs/skills-resources-api-design.md)（SKILL-01 ~ SKILL-06）
 >
@@ -270,7 +270,7 @@ const inferSkillCategory = (skill: Skill): ResourceCategory | null => {
 
 ## 7. 数据接入策略
 
-> ✅ **数据源已确定：从 Cognitive Wargame 管理网关（admin_server, 9385）获取。**
+> ✅ **数据源已确定：从 Cognitive Wargame 管理网关（wargamesrv, 9385）获取。**
 >
 > 与「总览仪表盘」其它接口（`getScenarios` / `getMetrics` / `getKGRelations` 等）一致，通过 cognitive-wargame plugin 自有的独立 axios 实例（`api.ts`，`baseURL = /api/v1/wargame`）调用，经 Vite proxy rewrite 到 9385 的 `/api/v1/*`。
 >
@@ -945,7 +945,7 @@ src/features/cognitive-wargame/types/resource.ts                    ← 资源�
 
 ## 13. 实施步骤
 
-1. **后端先行**：在 cognitive-wargame `admin_server` 新增 `skills_api.py`（SKILL-01~06）和 `tools_api.py`（TOOL-01~04），注册 router。
+1. **后端先行**：在 cognitive-wargame `wargamesrv` 新增 `skills_api.py`（SKILL-01~06）和 `tools_api.py`（TOOL-01~04），注册 router。
 2. 新增 `WargameRoutes.Resources` 和 lazy route。
 3. 在 `manifest.ts` 的 dashboard 后新增 nav item。
 4. 补充中英文 i18n 文案（Skills + Tools + 模型配置）。
@@ -977,11 +977,11 @@ src/features/cognitive-wargame/types/resource.ts                    ← 资源�
 11. 每个 skill / tool 右侧都有「测试」按钮，点击后展示占位响应。
 12. 模型配置节点置灰，tooltip 显示「待开发」。
 13. 原有「总览仪表盘」和其他 Cognitive Wargame 页面不受影响。
-14. 后端 `admin_server` 启动后，`/docs` Swagger UI 中可见 SKILL-01~06 和 TOOL-01~04 接口。
+14. 后端 `wargamesrv` 启动后，`/docs` Swagger UI 中可见 SKILL-01~06 和 TOOL-01~04 接口。
 
 ## 15. 风险与待确认点
 
-1. **后端接口需先行实现**（前置依赖）：SKILL-01~03、SKILL-05~06、TOOL-01~04 需在 cognitive-wargame `admin_server` 落地。SKILL-04 第一版不实现。接口文档见 [skills-resources-api-design.md](../../cognitive-wargame/docs/skills-resources-api-design.md)。
+1. **后端接口需先行实现**（前置依赖）：SKILL-01~03、SKILL-05~06、TOOL-01~04 需在 cognitive-wargame `wargamesrv` 落地。SKILL-04 第一版不实现。接口文档见 [skills-resources-api-design.md](../../cognitive-wargame/docs/skills-resources-api-design.md)。
 2. **`blue-team` 目录缺失**：SKILL-01 返回 `count: 0`，是否创建空目录占位见后端文档待确认点。
 3. **`rule-team` 目录结构特殊**：skills 在 `general rules/` 下（含空格），后端用 `CATEGORY_SUBDIR_OVERRIDE` 兼容。
 4. **`useSkills` 不复用**（已明确）：数据层走 cognitive-wargame 管理服务，不用 `useSkills` hook 有状态部分（见第 7 节）。
