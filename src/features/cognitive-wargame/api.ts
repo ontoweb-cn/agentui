@@ -67,6 +67,49 @@ const client = createWargameClient();
 const encodePathSegments = (value: string) =>
   value.split('/').map(encodeURIComponent).join('/');
 
+const SCENARIO_DESCRIPTION_CACHE_KEY =
+  'cognitive-wargame:scenario-descriptions';
+
+function readScenarioDescriptionCache(): Record<string, string> {
+  if (typeof localStorage === 'undefined') return {};
+
+  try {
+    const raw = localStorage.getItem(SCENARIO_DESCRIPTION_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object'
+      ? (parsed as Record<string, string>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeScenarioDescriptionCache(cache: Record<string, string>) {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.setItem(SCENARIO_DESCRIPTION_CACHE_KEY, JSON.stringify(cache));
+}
+
+function getCachedScenarioDescription(id: string): string | undefined {
+  const value = readScenarioDescriptionCache()[id];
+  return value?.trim() || undefined;
+}
+
+function setCachedScenarioDescription(id: string, description: string) {
+  const trimmed = description.trim();
+  const cache = readScenarioDescriptionCache();
+  if (trimmed) {
+    cache[id] = trimmed;
+  } else {
+    delete cache[id];
+  }
+  writeScenarioDescriptionCache(cache);
+}
+
+function readText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
 /**
  * 通用响应包装（兼容 intellect-rag-app 的 { code, data, message } 形态）。
  * 注意：cognitive-wargame 管理服务直接返回 Tool 的 dict 结果，不使用此包装。
@@ -422,13 +465,17 @@ async function unwrap<T>(p: Promise<{ data: ApiResult<T> | T }>): Promise<T> {
 /** 后端想定 dict → 前端 Scenario 类型映射。 */
 function mapScenario(raw: Record<string, unknown>): Scenario {
   const overview = (raw.overview ?? {}) as Record<string, unknown>;
-  const sourceEvents = raw.source_events;
+  const meta = (raw.meta ?? {}) as Record<string, unknown>;
+  const id = String(raw.scenario_id ?? raw.id ?? '');
   return {
-    id: String(raw.scenario_id ?? raw.id ?? ''),
+    id,
     name: String(raw.name ?? raw.scenario_id ?? ''),
     description:
-      (overview.objective as string | undefined) ??
-      (Array.isArray(sourceEvents) ? sourceEvents.join(', ') : undefined),
+      readText(raw.description) ??
+      readText(meta.description) ??
+      getCachedScenarioDescription(id) ??
+      readText(overview.description) ??
+      readText(overview.objective),
     status: (raw.status as ScenarioStatus | undefined) ?? 'ready',
     rounds_limit: (raw.total_rounds ?? raw.rounds_limit) as number | undefined,
     rounds_completed: raw.rounds_completed as number | undefined,
@@ -468,6 +515,10 @@ export const api = {
   },
 
   /** 执行想定推演（异步，返回 task_id）。 */
+  cacheScenarioDescription(id: string, description: string) {
+    setCachedScenarioDescription(id, description);
+  },
+
   executeScenario(id: string, roundsLimit?: number) {
     return unwrap<TaskStatus>(
       client.post(`/scenarios/${id}/execute`, { rounds_limit: roundsLimit }),

@@ -78,7 +78,7 @@ export default {
       activeAgents: '启用 Agent',
       archivedAgents: '归档 Agent',
       agentSummary: '查看 Agent 注册信息与组织关系',
-      title: '推演总览',
+      title: '总览',
       totalScenarios: '想定总数',
       runningScenarios: '进行中推演',
       completedScenarios: '已完成推演',

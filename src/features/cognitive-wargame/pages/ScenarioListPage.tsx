@@ -57,6 +57,24 @@ const DEFAULT_FORM: CreateFormData = {
   blueForce: '蓝方',
 };
 
+const RUNNING_TASK_STATUS = new Set(['pending', 'running']);
+const FINISHED_TASK_STATUS = new Set([
+  'done',
+  'completed',
+  'failed',
+  'canceled',
+]);
+
+function createScenarioId(name: string) {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return `${slug || 'scenario'}-${Date.now().toString(36)}`;
+}
+
 const ScenarioListPage: React.FC = () => {
   const { scenarios, loading, total, fetchScenarios } = useWargameStore();
   const navigate = useNavigate();
@@ -65,6 +83,9 @@ const ScenarioListPage: React.FC = () => {
   const [creating, setCreating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [approvalBusy, setApprovalBusy] = useState<string | null>(null);
+  const [executingTasks, setExecutingTasks] = useState<Record<string, string>>(
+    {},
+  );
   // 审批人身份：X-Actor 头透传当前用户 id（落 submitted_by，评审 #3 修复提交侧）
   const { data: userInfo } = useFetchUserInfo();
 
@@ -72,21 +93,67 @@ const ScenarioListPage: React.FC = () => {
     fetchScenarios(20, 0);
   }, [fetchScenarios]);
 
+  useEffect(() => {
+    const entries = Object.entries(executingTasks).filter(([, taskId]) =>
+      Boolean(taskId),
+    );
+    if (!entries.length) return;
+
+    const timer = window.setInterval(() => {
+      entries.forEach(([scenarioId, taskId]) => {
+        api
+          .getTaskStatus(scenarioId, taskId)
+          .then((info) => {
+            if (RUNNING_TASK_STATUS.has(info.status)) return;
+            if (FINISHED_TASK_STATUS.has(info.status)) {
+              setExecutingTasks((current) => {
+                const next = { ...current };
+                delete next[scenarioId];
+                return next;
+              });
+              void fetchScenarios(20, 0);
+            }
+          })
+          .catch((err) => {
+            setExecutingTasks((current) => {
+              const next = { ...current };
+              delete next[scenarioId];
+              return next;
+            });
+            setActionError(err instanceof Error ? err.message : String(err));
+          });
+      });
+    }, 2000);
+
+    return () => window.clearInterval(timer);
+  }, [executingTasks, fetchScenarios]);
+
   const handleCreate = async () => {
     if (!createForm.name.trim()) {
       setActionError(t('cognitiveWargame.scenario.createName'));
       return;
     }
+    if (createForm.rounds < 2) {
+      setActionError('回合数至少需要 2 才能创建想定');
+      return;
+    }
     setCreating(true);
     setActionError(null);
     try {
+      const name = createForm.name.trim();
+      const scenarioId = createScenarioId(name);
+      const rounds = Number.isFinite(createForm.rounds)
+        ? Math.max(2, Math.floor(createForm.rounds))
+        : 2;
       await api.generateScenario({
-        scenario_id: createForm.name.trim() || undefined,
-        rounds: createForm.rounds,
+        scenario_id: scenarioId,
+        name,
+        rounds,
         red_force: createForm.redForce,
         blue_force: createForm.blueForce,
         description: createForm.description,
       });
+      api.cacheScenarioDescription(scenarioId, createForm.description);
       setCreateOpen(false);
       setCreateForm(DEFAULT_FORM);
       await fetchScenarios(20, 0);
@@ -111,10 +178,18 @@ const ScenarioListPage: React.FC = () => {
 
   const handleExecute = async (id: string) => {
     if (!window.confirm(t('cognitiveWargame.scenario.executeConfirm'))) return;
+    setExecutingTasks((current) => ({ ...current, [id]: '' }));
+    setActionError(null);
     try {
-      await api.executeScenario(id);
-      navigate(WargamePath.roundView(id));
+      const task = await api.executeScenario(id);
+      setExecutingTasks((current) => ({ ...current, [id]: task.task_id }));
+      await fetchScenarios(20, 0);
     } catch (err) {
+      setExecutingTasks((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
       setActionError(err instanceof Error ? err.message : String(err));
     }
   };
@@ -200,15 +275,18 @@ const ScenarioListPage: React.FC = () => {
                   <Input
                     id="scenario-rounds"
                     type="number"
-                    min={1}
+                    min={2}
                     max={50}
                     value={createForm.rounds}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const rounds = e.currentTarget.valueAsNumber;
                       setCreateForm({
                         ...createForm,
-                        rounds: Number(e.target.value) || 6,
-                      })
-                    }
+                        rounds: Number.isFinite(rounds)
+                          ? Math.max(2, Math.floor(rounds))
+                          : 2,
+                      });
+                    }}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -305,58 +383,68 @@ const ScenarioListPage: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {scenarios.map((s) => (
-                    <TableRow key={s.id}>
-                      <TableCell className="font-medium">{s.name}</TableCell>
-                      <TableCell className="max-w-xs truncate">
-                        {s.description ?? '-'}
-                      </TableCell>
-                      <TableCell>{s.status ?? '-'}</TableCell>
-                      <TableCell>{s.rounds_limit ?? '-'}</TableCell>
-                      <TableCell>{s.created_at ?? '-'}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="link"
-                            size="sm"
-                            className="h-auto p-0"
-                            onClick={() =>
-                              navigate(WargamePath.scenarioDetail(s.id))
-                            }
-                          >
-                            {t('cognitiveWargame.common.viewDetail')}
-                          </Button>
-                          <Button
-                            variant="link"
-                            size="sm"
-                            className="h-auto p-0"
-                            onClick={() => handleExecute(s.id)}
-                          >
-                            {t('cognitiveWargame.common.execute')}
-                          </Button>
-                          <Button
-                            variant="link"
-                            size="sm"
-                            className="h-auto p-0"
-                            disabled={approvalBusy === s.id}
-                            onClick={() => handleSubmitApproval(s)}
-                          >
-                            {approvalBusy === s.id
-                              ? t('cognitiveWargame.common.loading')
-                              : t('cognitiveWargame.approval.submit')}
-                          </Button>
-                          <Button
-                            variant="link"
-                            size="sm"
-                            className="h-auto p-0 text-text-error"
-                            onClick={() => handleDelete(s.id)}
-                          >
-                            {t('cognitiveWargame.common.delete')}
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {scenarios.map((s) => {
+                    const executing =
+                      s.id in executingTasks || s.status === 'running';
+
+                    return (
+                      <TableRow key={s.id}>
+                        <TableCell className="font-medium">{s.name}</TableCell>
+                        <TableCell className="max-w-xs truncate">
+                          {s.description ?? '-'}
+                        </TableCell>
+                        <TableCell>{s.status ?? '-'}</TableCell>
+                        <TableCell>{s.rounds_limit ?? '-'}</TableCell>
+                        <TableCell>{s.created_at ?? '-'}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0"
+                              onClick={() =>
+                                navigate(WargamePath.scenarioDetail(s.id))
+                              }
+                            >
+                              {t('cognitiveWargame.common.viewDetail')}
+                            </Button>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0"
+                              disabled={executing}
+                              onClick={() => handleExecute(s.id)}
+                            >
+                              {executing
+                                ? t('cognitiveWargame.scenario.executing', {
+                                    defaultValue: '正在推演',
+                                  })
+                                : t('cognitiveWargame.common.execute')}
+                            </Button>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0"
+                              disabled={approvalBusy === s.id}
+                              onClick={() => handleSubmitApproval(s)}
+                            >
+                              {approvalBusy === s.id
+                                ? t('cognitiveWargame.common.loading')
+                                : t('cognitiveWargame.approval.submit')}
+                            </Button>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0 text-text-error"
+                              onClick={() => handleDelete(s.id)}
+                            >
+                              {t('cognitiveWargame.common.delete')}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}

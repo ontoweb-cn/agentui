@@ -36,6 +36,53 @@ import { useWargameStore } from '../store';
 import { t } from 'i18next';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
+import {
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+} from 'recharts';
+
+type AgentTypeCode =
+  | 'individual'
+  | 'admin_organ'
+  | 'political_party'
+  | 'news_media'
+  | 'mass';
+
+const AGENT_TYPE_CHART_ITEMS: Array<{
+  type: AgentTypeCode;
+  labelKey: string;
+  color: string;
+}> = [
+  {
+    type: 'individual',
+    labelKey: 'cognitiveWargame.agents.type.individual',
+    color: '#2563eb',
+  },
+  {
+    type: 'admin_organ',
+    labelKey: 'cognitiveWargame.agents.type.admin_organ',
+    color: '#16a34a',
+  },
+  {
+    type: 'political_party',
+    labelKey: 'cognitiveWargame.agents.type.political_party',
+    color: '#dc2626',
+  },
+  {
+    type: 'news_media',
+    labelKey: 'cognitiveWargame.agents.type.news_media',
+    color: '#f59e0b',
+  },
+  {
+    type: 'mass',
+    labelKey: 'cognitiveWargame.agents.type.mass',
+    color: '#7c3aed',
+  },
+];
+
 
 const StatCard: React.FC<{ label: string; value: number }> = ({
   label,
@@ -95,6 +142,15 @@ const DashboardPage: React.FC = () => {
   const [archivedAgentCount, setArchivedAgentCount] = useState<number | null>(
     null,
   );
+  const [agentTypeCounts, setAgentTypeCounts] = useState<
+    Record<AgentTypeCode, number>
+  >({
+    individual: 0,
+    admin_organ: 0,
+    political_party: 0,
+    news_media: 0,
+    mass: 0,
+  });
 
   useEffect(() => {
     fetchScenarios(10, 0);
@@ -108,13 +164,34 @@ const DashboardPage: React.FC = () => {
       api.getAgents({ limit: 1 }).catch(() => null),
       api.getAgents({ status: 'active', limit: 1 }).catch(() => null),
       api.getAgents({ status: 'archived', limit: 1 }).catch(() => null),
-    ]).then(([skills, tools, agents, activeAgents, archivedAgents]) => {
+      Promise.all(
+        AGENT_TYPE_CHART_ITEMS.map(({ type }) =>
+          api.getAgents({ agent_type: type, limit: 1 }).catch(() => null),
+        ),
+      ),
+    ]).then(([
+      skills,
+      tools,
+      agents,
+      activeAgents,
+      archivedAgents,
+      agentTypeResults,
+    ]) => {
       if (cancelled) return;
       setSkillCount(skills?.total ?? null);
       setToolCount(tools?.total ?? null);
       setAgentCount(agents?.total ?? null);
       setActiveAgentCount(activeAgents?.total ?? null);
       setArchivedAgentCount(archivedAgents?.total ?? null);
+      setAgentTypeCounts(
+        AGENT_TYPE_CHART_ITEMS.reduce(
+          (acc, item, index) => ({
+            ...acc,
+            [item.type]: agentTypeResults[index]?.total ?? 0,
+          }),
+          {} as Record<AgentTypeCode, number>,
+        ),
+      );
     });
     return () => {
       cancelled = true;
@@ -161,6 +238,12 @@ const DashboardPage: React.FC = () => {
   const total = scenarios.length;
   const running = scenarios.filter((s) => s.status === 'running').length;
   const completed = scenarios.filter((s) => s.status === 'completed').length;
+  const agentTypeChartData = AGENT_TYPE_CHART_ITEMS.map((item) => ({
+    ...item,
+    name: t(item.labelKey),
+    value: agentTypeCounts[item.type],
+  }));
+  const hasAgentTypeData = agentTypeChartData.some((item) => item.value > 0);
 
   return (
     <WargameSectionLayout>
@@ -389,6 +472,63 @@ const DashboardPage: React.FC = () => {
             to={WargameRoutes.Agents}
           />
         </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">
+              {t('cognitiveWargame.dashboard.agentOverview')} /{' '}
+              {t('cognitiveWargame.common.type')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {hasAgentTypeData ? (
+              <div className="flex flex-col gap-6 xl:flex-row xl:items-center">
+                <div className="h-72 min-w-0 xl:flex-1">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={agentTypeChartData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={72}
+                        outerRadius={112}
+                        paddingAngle={2}
+                      >
+                        {agentTypeChartData.map((item) => (
+                          <Cell key={item.type} fill={item.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex flex-col justify-center gap-3 xl:w-80 xl:shrink-0">
+                  {agentTypeChartData.map((item) => (
+                    <div
+                      key={item.type}
+                      className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="size-3 shrink-0 rounded-full"
+                          style={{ backgroundColor: item.color }}
+                        />
+                        <span className="truncate text-sm">{item.name}</span>
+                      </div>
+                      <span className="text-sm font-medium">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <EmptyCard
+                title={t('cognitiveWargame.common.empty')}
+                className="w-full"
+              />
+            )}
+          </CardContent>
+        </Card>
       </section>
         </TabsContent>
       </Tabs>
