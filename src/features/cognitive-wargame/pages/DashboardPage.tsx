@@ -26,11 +26,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ShieldCheck } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api, type AuthMode, type KGRelation, type Metrics } from '../api';
 import GraphView from '../components/GraphView';
 import MetricsChart from '../components/MetricsChart';
 import WargameSectionLayout from '../components/section-menu';
-import { WargamePath } from '../routes';
+import { WargamePath, WargameRoutes } from '../routes';
 import { useWargameStore } from '../store';
 import { t } from 'i18next';
 import { useEffect, useState } from 'react';
@@ -89,6 +90,11 @@ const DashboardPage: React.FC = () => {
   const [skillCount, setSkillCount] = useState<number | null>(null);
   const [toolCount, setToolCount] = useState<number | null>(null);
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
+  const [agentCount, setAgentCount] = useState<number | null>(null);
+  const [activeAgentCount, setActiveAgentCount] = useState<number | null>(null);
+  const [archivedAgentCount, setArchivedAgentCount] = useState<number | null>(
+    null,
+  );
 
   useEffect(() => {
     fetchScenarios(10, 0);
@@ -99,10 +105,16 @@ const DashboardPage: React.FC = () => {
     Promise.all([
       api.getSkillCategories().catch(() => null),
       api.getTools().catch(() => null),
-    ]).then(([skills, tools]) => {
+      api.getAgents({ limit: 1 }).catch(() => null),
+      api.getAgents({ status: 'active', limit: 1 }).catch(() => null),
+      api.getAgents({ status: 'archived', limit: 1 }).catch(() => null),
+    ]).then(([skills, tools, agents, activeAgents, archivedAgents]) => {
       if (cancelled) return;
       setSkillCount(skills?.total ?? null);
       setToolCount(tools?.total ?? null);
+      setAgentCount(agents?.total ?? null);
+      setActiveAgentCount(activeAgents?.total ?? null);
+      setArchivedAgentCount(archivedAgents?.total ?? null);
     });
     return () => {
       cancelled = true;
@@ -174,6 +186,19 @@ const DashboardPage: React.FC = () => {
         </Button>
       </div>
 
+      <Tabs defaultValue="overview" className="flex flex-col gap-4">
+        <TabsList className="w-full justify-start">
+          <TabsTrigger value="overview">
+            {t('cognitiveWargame.dashboard.overviewTab')}
+          </TabsTrigger>
+          <TabsTrigger value="resources">
+            {t('cognitiveWargame.dashboard.resourceTab')}
+          </TabsTrigger>
+          <TabsTrigger value="agents">
+            {t('cognitiveWargame.dashboard.agentTab')}
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview" className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label={t('cognitiveWargame.dashboard.totalScenarios')}
@@ -295,6 +320,8 @@ const DashboardPage: React.FC = () => {
         </CardContent>
       </Card>
 
+        </TabsContent>
+        <TabsContent value="resources">
       <section className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-medium">
@@ -327,6 +354,44 @@ const DashboardPage: React.FC = () => {
           />
         </div>
       </section>
+
+        </TabsContent>
+        <TabsContent value="agents">
+      <section className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-medium">
+            {t('cognitiveWargame.dashboard.agentOverview')}
+          </h2>
+          <Link
+            to={WargameRoutes.Agents}
+            className="text-sm text-text-secondary underline"
+          >
+            {t('cognitiveWargame.common.viewDetail')}
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <ResourceSummaryCard
+            title={t('cognitiveWargame.dashboard.totalAgents')}
+            value={agentCount ?? '-'}
+            description={t('cognitiveWargame.dashboard.agentSummary')}
+            to={WargameRoutes.Agents}
+          />
+          <ResourceSummaryCard
+            title={t('cognitiveWargame.dashboard.activeAgents')}
+            value={activeAgentCount ?? '-'}
+            description={t('cognitiveWargame.agents.status.active')}
+            to={WargameRoutes.Agents}
+          />
+          <ResourceSummaryCard
+            title={t('cognitiveWargame.dashboard.archivedAgents')}
+            value={archivedAgentCount ?? '-'}
+            description={t('cognitiveWargame.agents.status.archived')}
+            to={WargameRoutes.Agents}
+          />
+        </div>
+      </section>
+        </TabsContent>
+      </Tabs>
       </div>
     </WargameSectionLayout>
   );

@@ -474,6 +474,21 @@ export const api = {
     );
   },
 
+  /** 发起 intellect-team 推演会话（想定内容作为首条消息，远程自动建会话）。 */
+  createScenarioConversation(
+    id: string,
+    data?: { instruction?: string; model?: string },
+  ) {
+    return unwrap<{
+      status: string;
+      scenario_id: string;
+      session_id: string;
+      model?: string;
+      reply?: string;
+      chat_url?: string;
+    }>(client.post(`/scenarios/${id}/conversations`, data ?? {}));
+  },
+
   /** 查询想定执行状态。 */
   getScenarioStatus(id: string) {
     return unwrap<TaskStatus>(client.get(`/scenarios/${id}/status`));
@@ -875,6 +890,12 @@ export const api = {
     );
   },
 
+  getAgentRelation(agentId: string, relationId: string) {
+    return unwrap<AgentRelation>(
+      client.get(`/agents/${agentId}/relations/${relationId}`),
+    );
+  },
+
   /** 建立 Agent 关系。 */
   createAgentRelation(
     agentId: string,
@@ -888,6 +909,16 @@ export const api = {
   ) {
     return unwrap<AgentRelation>(
       client.post(`/agents/${agentId}/relations`, data),
+    );
+  },
+
+  updateAgentRelation(
+    agentId: string,
+    relationId: string,
+    data: Partial<Pick<AgentRelation, 'relation_type' | 'valid_from' | 'valid_to' | 'attributes'>>,
+  ) {
+    return unwrap<AgentRelation>(
+      client.put(`/agents/${agentId}/relations/${relationId}`, data),
     );
   },
 

@@ -28,7 +28,8 @@ import {
   Settings2,
   Wrench,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import CodeViewer from '@/pages/skills/components/code-viewer';
 import MarkdownViewer from '@/pages/skills/components/markdown-viewer';
@@ -86,8 +87,14 @@ const pickSkillTestBoardFile = (files: SkillFileEntry[]) =>
 
 export default function ResourceOverviewPage() {
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
+  const deepLinkSkillId = searchParams.get('skill');
+  const deepLinkCategory = searchParams.get('category');
   const [selected, setSelected] = useState<ResourceNode>({
     type: 'skills',
+    category: isResourceCategory(deepLinkCategory)
+      ? deepLinkCategory
+      : undefined,
     label: t('cognitiveWargame.resource.skills'),
   });
   const [expanded, setExpanded] = useState({ skills: true, tools: true });
@@ -108,6 +115,7 @@ export default function ResourceOverviewPage() {
   } | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [testInput, setTestInput] = useState('{}');
+  const openedDeepLink = useRef<string | null>(null);
   const skillCategoriesQuery = useQuery({
     queryKey: ['cognitive-wargame', 'resources', 'skill-categories'],
     queryFn: () => api.getSkillCategories(),
@@ -199,6 +207,29 @@ export default function ResourceOverviewPage() {
       setOpeningSkillId(null);
     }
   };
+
+  useEffect(() => {
+    if (
+      !deepLinkSkillId ||
+      !skillsQuery.data?.skills ||
+      skillsQuery.isFetching
+    ) {
+      return;
+    }
+    const key = `${deepLinkCategory ?? 'all'}:${deepLinkSkillId}`;
+    if (openedDeepLink.current === key) return;
+    const skill = skillsQuery.data.skills.find(
+      (item) => item.id === deepLinkSkillId,
+    );
+    if (!skill) return;
+    openedDeepLink.current = key;
+    void openSkill(skill);
+  }, [
+    deepLinkCategory,
+    deepLinkSkillId,
+    skillsQuery.data?.skills,
+    skillsQuery.isFetching,
+  ]);
   const openTool = async (tool: ToolResource) =>
     setToolDetail(await api.getToolDetail(tool.name));
   const openSkillTestPage = async (skill: SkillResource) => {
@@ -641,6 +672,10 @@ function buildFileTree(files: SkillFileEntry[]): TreeDataItem[] {
   });
 
   return roots;
+}
+
+function isResourceCategory(value?: string | null): value is ResourceCategory {
+  return Boolean(value && skillCategories.includes(value as ResourceCategory));
 }
 
 function SkillDetailView({

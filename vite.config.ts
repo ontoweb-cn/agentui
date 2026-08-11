@@ -47,6 +47,8 @@ export default defineConfig(({ mode }) => {
   const pythonApiPort = env.PYTHON_API_PORT || '9380';
   const pythonAdminPort = env.PYTHON_ADMIN_PORT || '9381';
   const wargamePort = env.WARGAME_PORT || '9385';
+  // wargame 可单独指向远程主机（不随 API_HOST），便于前端看板展示远程 wargame 资源
+  const wargameHost = env.WARGAME_HOST || apiHost;
   const bffHost = env.BFF_HOST || 'localhost';
   const bffPort = env.BFF_PORT || '9390';
 
@@ -67,7 +69,7 @@ export default defineConfig(({ mode }) => {
     // cognitive-wargame SSE 事件流(独立服务,端口 9385,需禁用超时)
     // rewrite 去掉 /wargame 前缀,后端仍监听 /api/v1/events/*
     '/api/v1/wargame/events': {
-      target: `http://${apiHost}:${wargamePort}`,
+      target: `http://${wargameHost}:${wargamePort}`,
       changeOrigin: true,
       timeout: 0,
       proxyTimeout: 0,
@@ -84,7 +86,7 @@ export default defineConfig(({ mode }) => {
     // 统一前缀 /api/v1/wargame/*,与 intellect-rag-app 的 /api/v1/* 隔离
     // rewrite 去掉 /wargame 前缀,后端仍监听 /api/v1/*
     '/api/v1/wargame': {
-      target: `http://${apiHost}:${wargamePort}`,
+      target: `http://${wargameHost}:${wargamePort}`,
       changeOrigin: true,
       ws: true,
       rewrite: (path: string) => path.replace(/^\/api\/v1\/wargame/, '/api/v1'),
@@ -109,7 +111,7 @@ export default defineConfig(({ mode }) => {
       // Expose to client code via import.meta.env
       'import.meta.env.API_PROXY_SCHEME': JSON.stringify('python'),
       // cognitive-wargame SSE 直连地址(开发环境绕过 Vite proxy 直连后端)
-      'import.meta.env.WARGAME_SSE_HOST': JSON.stringify(apiHost),
+      'import.meta.env.WARGAME_SSE_HOST': JSON.stringify(wargameHost),
       'import.meta.env.WARGAME_SSE_PORT': JSON.stringify(wargamePort),
       // Keep backward compatibility
       __API_PROXY_SCHEME__: JSON.stringify('python'),
