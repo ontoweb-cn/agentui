@@ -41,7 +41,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { api, type Approval } from '../api';
 import WargameSectionLayout from '../components/section-menu';
-import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
+import authorizationUtil from '@/utils/authorization-util';
 import { t } from 'i18next';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -60,7 +60,8 @@ const ApprovalListPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('pending');
   // 审批人身份：X-Actor 头透传当前用户 id（落 resolved_by/submitted_by，审计用）
-  const { data: userInfo } = useFetchUserInfo();
+  // 直接读 localStorage 缓存，避免调用 BFF /auth/me（内网免认证模式下该接口 401）
+  const actorId = authorizationUtil.getUserInfoObject()?.id;
 
   // 决议 Dialog 状态
   const [resolveTarget, setResolveTarget] = useState<Approval | null>(null);
@@ -106,7 +107,7 @@ const ApprovalListPage: React.FC = () => {
         resolveTarget.approval_id,
         decision,
         comment || undefined,
-        userInfo?.id,
+        actorId,
       );
       setResolveTarget(null);
       await load();

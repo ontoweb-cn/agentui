@@ -1,12 +1,8 @@
 import { cn } from '@/lib/utils';
 import {
-  BarChart3,
   ClipboardCheck,
-  FileBarChart,
-  GitGraph,
   LayoutDashboard,
   PackageSearch,
-  PlaySquare,
   ScrollText,
   Settings,
   SlidersHorizontal,
@@ -91,32 +87,6 @@ export default function WargameSectionLayout({ children }: PropsWithChildren) {
       label: t('cognitiveWargame.sectionMenu.director', '推演监控/导演台'),
       path: WargameRoutes.Rounds,
       icon: SlidersHorizontal,
-      children: [
-        {
-          id: 'director-playback',
-          label: t('cognitiveWargame.sectionMenu.playback', '历史回放'),
-          path: WargameRoutes.Playback,
-          icon: PlaySquare,
-        },
-        {
-          id: 'director-metrics',
-          label: t('cognitiveWargame.sectionMenu.metrics', '态势分析'),
-          path: WargameRoutes.Metrics,
-          icon: BarChart3,
-        },
-        {
-          id: 'director-kg',
-          label: t('cognitiveWargame.sectionMenu.kg', '知识图谱'),
-          path: WargameRoutes.KG,
-          icon: GitGraph,
-        },
-        {
-          id: 'director-reports',
-          label: t('cognitiveWargame.sectionMenu.reports', '评估报告'),
-          path: WargameRoutes.Reports,
-          icon: FileBarChart,
-        },
-      ],
     },
     {
       id: 'settings',
@@ -185,13 +155,7 @@ function getActiveSection(pathname: string) {
   if (pathname.startsWith(WargameRoutes.Scenarios) || pathname.startsWith(WargameRoutes.Approvals)) {
     return 'scenarios';
   }
-  if (
-    pathname.startsWith(WargameRoutes.Rounds) ||
-    pathname.startsWith(WargameRoutes.Playback) ||
-    pathname.startsWith(WargameRoutes.Metrics) ||
-    pathname.startsWith(WargameRoutes.KG) ||
-    pathname.startsWith(WargameRoutes.Reports)
-  ) {
+  if (pathname.startsWith(WargameRoutes.Rounds)) {
     return 'director';
   }
   return 'overview';

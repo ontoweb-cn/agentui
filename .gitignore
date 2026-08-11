@@ -31,3 +31,4 @@ coverage/
 # 临时文件
 .tmp/
 tmp_*.py
+vite-dev.log

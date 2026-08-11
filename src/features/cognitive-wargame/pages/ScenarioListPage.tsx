@@ -32,13 +32,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { api, type Scenario } from '../api';
+import { api, type Scenario, type ScenarioTaskStatus } from '../api';
 import WargameSectionLayout from '../components/section-menu';
 import { WargamePath } from '../routes';
 import { useWargameStore } from '../store';
-import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
+import authorizationUtil from '@/utils/authorization-util';
 import { t } from 'i18next';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 interface CreateFormData {
@@ -86,12 +86,61 @@ const ScenarioListPage: React.FC = () => {
   const [executingTasks, setExecutingTasks] = useState<Record<string, string>>(
     {},
   );
+  // 想定任务状态（轮询 /status，用于识别"正在执行"并显示"执行过程"按钮）
+  const [taskStatusMap, setTaskStatusMap] = useState<
+    Record<string, ScenarioTaskStatus>
+  >({});
   // 审批人身份：X-Actor 头透传当前用户 id（落 submitted_by，评审 #3 修复提交侧）
-  const { data: userInfo } = useFetchUserInfo();
+  // 直接读 localStorage 缓存，避免调用 BFF /auth/me（内网免认证模式下该接口 401）
+  const actorId = authorizationUtil.getUserInfoObject()?.id;
 
   useEffect(() => {
     fetchScenarios(20, 0);
   }, [fetchScenarios]);
+
+  // 想定任务状态轮询：每 5s 拉取列表想定的推演状态，识别正在执行的想定
+  const refreshTaskStatuses = useCallback(async (ids: string[]) => {
+    const entries = await Promise.all(
+      ids.map(async (scenarioId) => {
+        try {
+          return [
+            scenarioId,
+            await api.getScenarioTaskStatus(scenarioId),
+          ] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    setTaskStatusMap((prev) => {
+      const next = { ...prev };
+      for (const entry of entries) {
+        if (entry) next[entry[0]] = entry[1];
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const ids = scenarios.map((s) => s.id);
+    if (ids.length === 0) return;
+    refreshTaskStatuses(ids);
+    const timer = window.setInterval(
+      () => refreshTaskStatuses(ids),
+      5000,
+    );
+    return () => window.clearInterval(timer);
+  }, [scenarios, refreshTaskStatuses]);
+
+  // 是否正在执行推演（任务状态 running/pending/started 或已暂停）
+  const isRunning = (s: Scenario): boolean => {
+    const st = taskStatusMap[s.id];
+    if (!st) return false;
+    const status = (st.status ?? '').toLowerCase();
+    return (
+      ['running', 'pending', 'started'].includes(status) || st.paused === true
+    );
+  };
 
   useEffect(() => {
     const entries = Object.entries(executingTasks).filter(([, taskId]) =>
@@ -208,7 +257,7 @@ const ScenarioListPage: React.FC = () => {
           resource_id: s.id,
           title: title.trim(),
         },
-        userInfo?.id,
+        actorId,
       );
       setActionError(t('cognitiveWargame.approval.submitSuccess'));
     } catch (err) {
@@ -384,7 +433,9 @@ const ScenarioListPage: React.FC = () => {
                 <TableBody>
                   {scenarios.map((s) => {
                     const executing =
-                      s.id in executingTasks || s.status === 'running';
+                      s.id in executingTasks ||
+                      s.status === 'running' ||
+                      isRunning(s);
 
                     return (
                       <TableRow key={s.id}>
@@ -439,6 +490,20 @@ const ScenarioListPage: React.FC = () => {
                             >
                               {t('cognitiveWargame.common.delete')}
                             </Button>
+                            {executing && (
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="h-auto p-0"
+                                onClick={() =>
+                                  navigate(
+                                    `${WargamePath.roundView(s.id)}?control=1`,
+                                  )
+                                }
+                              >
+                                {t('cognitiveWargame.scenario.executionProcess')}
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

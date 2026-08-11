@@ -92,6 +92,7 @@ export interface Scenario {
   blue_force?: string;
   rounds_limit?: number;
   rounds_completed?: number;
+  total_agents?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -181,6 +182,18 @@ export interface PlaybackTimelineEntry {
   timestamp: string;
   event_type: string;
   snapshot: Record<string, unknown>;
+}
+
+/** 想定最近任务状态（/status 无 task_id 时，无任务返回 status=idle）。 */
+export interface ScenarioTaskStatus {
+  task_id?: string;
+  task_type?: string;
+  scenario_id?: string;
+  status: string;
+  paused?: boolean;
+  error?: string | null;
+  started_at?: number | null;
+  finished_at?: number | null;
 }
 
 /** 异步任务状态（对应后端 TaskInfo.to_dict()）。 */
@@ -465,6 +478,7 @@ function mapScenario(raw: Record<string, unknown>): Scenario {
     status: (raw.status as ScenarioStatus | undefined) ?? 'ready',
     rounds_limit: (raw.total_rounds ?? raw.rounds_limit) as number | undefined,
     rounds_completed: raw.rounds_completed as number | undefined,
+    total_agents: raw.total_agents as number | undefined,
     created_at: raw.created_at as string | undefined,
     updated_at: raw.updated_at as string | undefined,
   };
@@ -733,6 +747,13 @@ export const api = {
       client.get(`/scenarios/${scenarioId}/status`, {
         params: { task_id: taskId },
       }),
+    );
+  },
+
+  /** 查询想定最新推演任务状态（不传 task_id，后端返回 idle 或最近任务）。 */
+  getScenarioTaskStatus(scenarioId: string) {
+    return unwrap<ScenarioTaskStatus>(
+      client.get(`/scenarios/${scenarioId}/status`),
     );
   },
 

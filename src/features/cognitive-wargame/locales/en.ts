@@ -163,6 +163,7 @@ export default {
       createFailed: 'Creation failed',
       deleteConfirm: 'Delete this scenario?',
       executeConfirm: 'Start execution?',
+      executionProcess: 'Execution process',
     },
     conversation: {
       title: 'Wargame Conversation Started',
@@ -208,9 +209,20 @@ export default {
       executionStarted: 'Execution started',
       interventionType: 'Intervention type',
       liveEvents: 'Live events',
+      otherEvents: 'Other events',
       noLiveEvents: 'No live events',
       roundHistory: 'Round history',
       selectScenarioFirst: 'Select a scenario first',
+    },
+    rounds: {
+      search: 'Search',
+      searchPlaceholder: 'Search name / ID / description',
+      filterRounds: 'Rounds limit',
+      roundsPlaceholder: 'Enter rounds limit',
+      noMatch: 'No matching scenarios',
+      running: 'Running',
+      scenarioId: 'Scenario ID',
+      totalAgents: 'Total agents',
     },
     anomaly: {
       anxietyOverflow: 'Cognitive overload',
