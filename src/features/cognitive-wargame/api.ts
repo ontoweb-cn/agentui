@@ -437,6 +437,32 @@ export interface ToolListResponse {
   categories: Array<{ name: string; label?: string; count: number }>;
 }
 
+/** KANBAN 任务（v3.1 阶段二，对应 wargamesrv /kanban/progress 返回的 task 节点）。 */
+export interface KanbanTask {
+  id: string;
+  title: string;
+  status: string;
+  tenant: string | null;
+  board_id: string | null;
+  metadata?: {
+    task_kind?: 'root' | 'round' | 'narrative' | 'propagation' | 'conversation';
+    round_num?: number;
+  };
+  created_at: number;
+  completed_at: number | null;
+}
+
+/** KANBAN 状态计数（对应 /kanban/stats 返回的 status_counts）。 */
+export interface KanbanStatusCounts {
+  todo: number;
+  ready: number;
+  running: number;
+  blocked: number;
+  done: number;
+  archived: number;
+  [key: string]: number;
+}
+
 async function unwrap<T>(p: Promise<{ data: ApiResult<T> | T }>): Promise<T> {
   const res = await p;
   const payload = res.data as ApiResult<T> | T;
@@ -1047,6 +1073,24 @@ export const api = {
         `/agents/${agentId}/skills/${encodeURIComponent(skillCategory)}/${encodeURIComponent(skillId)}`,
       ),
     );
+  },
+
+  // ── KANBAN 进度（v3.1 阶段二）──────────────────────────────
+
+  /** 获取 KANBAN task 树（轮询用）。 */
+  async getKanbanProgress(scenarioId: string) {
+    const resp = await client.get(`/kanban/progress`, {
+      params: { scenario_id: scenarioId },
+    });
+    return resp.data as KanbanTask[];
+  },
+
+  /** 获取 KANBAN 状态统计。 */
+  async getKanbanStats(scenarioId: string) {
+    const resp = await client.get(`/kanban/stats`, {
+      params: { scenario_id: scenarioId },
+    });
+    return resp.data as KanbanStatusCounts;
   },
 };
 

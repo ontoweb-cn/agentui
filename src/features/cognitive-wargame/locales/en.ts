@@ -211,6 +211,8 @@ export default {
       noLiveEvents: 'No live events',
       roundHistory: 'Round history',
       selectScenarioFirst: 'Select a scenario first',
+      taskProgress: 'Task progress',
+      taskDoneLabel: 'done',
     },
     anomaly: {
       anxietyOverflow: 'Cognitive overload',

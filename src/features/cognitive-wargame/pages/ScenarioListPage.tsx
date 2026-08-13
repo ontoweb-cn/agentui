@@ -39,7 +39,7 @@ import { useWargameStore } from '../store';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { t } from 'i18next';
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 
 interface CreateFormData {
   name: string;
@@ -392,7 +392,21 @@ const ScenarioListPage: React.FC = () => {
                         <TableCell className="max-w-40 truncate">
                           {s.description ?? '-'}
                         </TableCell>
-                        <TableCell>{s.status ?? '-'}</TableCell>
+                        <TableCell>
+                          {s.status ?? '-'}
+                          {s.status === 'running' && (
+                            <Button
+                              variant="link"
+                              size="sm"
+                              asChild
+                              className="ml-2 h-auto p-0"
+                            >
+                              <Link to={WargamePath.roundView(s.id)}>
+                                {t('cognitiveWargame.director.taskProgress')}
+                              </Link>
+                            </Button>
+                          )}
+                        </TableCell>
                         <TableCell>{s.rounds_limit ?? '-'}</TableCell>
                         <TableCell>{s.created_at ?? '-'}</TableCell>
                         <TableCell>

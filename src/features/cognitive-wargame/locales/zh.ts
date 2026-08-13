@@ -211,6 +211,8 @@ export default {
       noLiveEvents: '暂无实时事件',
       roundHistory: '回合历史',
       selectScenarioFirst: '请先选择想定',
+      taskProgress: '任务进度',
+      taskDoneLabel: '完成',
     },
     anomaly: {
       anxietyOverflow: '认知态势偏离',

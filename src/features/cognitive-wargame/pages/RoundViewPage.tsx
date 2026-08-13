@@ -1,13 +1,14 @@
 /**
  * RoundViewPage — 导演台（P3.0-5 重写）。
  *
- * 布局：想定信息栏 + 控制面板/实时事件流（左右分栏）+ 底部 Tab（干预历史/异常告警/回合历史）。
+ * 布局：想定信息栏 + 控制面板/实时事件流（左右分栏）+ 底部 Tab（干预历史/异常告警/回合历史/任务进度）。
  *
  * - 控制面板：启动推演 / 暂停 / 恢复 / 注入干预（叙事注入·状态修改·策略否决）
  * - 实时事件流：useSseEvents 订阅，anomaly.detected/intervention.applied/round.* 实时展示
  * - 干预历史：store.interventions（SSE 增量 + fetchInterventions 全量）
  * - 异常告警：store.anomalies（SSE anomaly.detected 增量）
  * - 回合历史：api.getMetricsHistory
+ * - 任务进度：useKanbanProgress 2s 轮询 + KanbanProgressTree 渲染（v3.1 阶段二任务 2.5）
  */
 import { EmptyCard } from '@/components/empty/empty';
 import { Badge } from '@/components/ui/badge';
@@ -47,7 +48,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { api, type InterventionRequest, type Metrics } from '../api';
+import { KanbanProgressTree } from '../components/KanbanProgressTree';
 import WargameSectionLayout from '../components/section-menu';
+import { useKanbanProgress } from '../hooks/use-kanban-progress';
 import { useSseEvents, type CognitiveEvent } from '../hooks/use-sse-events';
 import { WargameRoutes } from '../routes';
 import { useWargameStore } from '../store';
@@ -103,6 +106,14 @@ const RoundViewPage: React.FC = () => {
     clearEvents,
     setCurrentTaskId,
   } = useWargameStore();
+
+  // KANBAN 进度轮询（v3.1 阶段二任务 2.5）：2s 轮询 task 树 + status_counts
+  const {
+    tasks: kanbanTasks,
+    statusCounts: kanbanCounts,
+    loading: kanbanLoading,
+    error: kanbanError,
+  } = useKanbanProgress(id);
 
   const [liveEvents, setLiveEvents] = useState<CognitiveEvent[]>([]);
   const [history, setHistory] = useState<Metrics[]>([]);
@@ -265,6 +276,11 @@ const RoundViewPage: React.FC = () => {
 
   const scenarioName = currentScenario?.name ?? id;
   const scenarioStatus = currentScenario?.status ?? '-';
+  // KANBAN 状态摘要：done / total
+  const kanbanTotal = kanbanCounts
+    ? Object.values(kanbanCounts).reduce((a, b) => a + b, 0)
+    : 0;
+  const kanbanDone = kanbanCounts?.done ?? 0;
 
   return (
     <WargameSectionLayout>
@@ -371,7 +387,7 @@ const RoundViewPage: React.FC = () => {
         </Card>
       </div>
 
-      {/* 底部 Tab：干预历史 / 异常告警 / 回合历史 */}
+      {/* 底部 Tab：干预历史 / 异常告警 / 回合历史 / 任务进度 */}
       <Tabs defaultValue="interventions">
         <TabsList>
           <TabsTrigger value="interventions">
@@ -383,6 +399,9 @@ const RoundViewPage: React.FC = () => {
           </TabsTrigger>
           <TabsTrigger value="rounds">
             {t('cognitiveWargame.director.roundHistory')} ({history.length})
+          </TabsTrigger>
+          <TabsTrigger value="progress">
+            {t('cognitiveWargame.director.taskProgress')} ({kanbanTasks.length})
           </TabsTrigger>
         </TabsList>
 
@@ -523,6 +542,26 @@ const RoundViewPage: React.FC = () => {
                   </Table>
                 )}
               </Spin>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* 任务进度（v3.1 阶段二任务 2.5） */}
+        <TabsContent value="progress">
+          <Card>
+            <CardContent>
+              {kanbanError ? (
+                <div className="py-4 text-text-error">{kanbanError}</div>
+              ) : (
+                <Spin spinning={kanbanLoading}>
+                  {kanbanCounts && kanbanTotal > 0 && (
+                    <div className="py-2 text-sm text-text-secondary">
+                      {kanbanDone}/{kanbanTotal} {t('cognitiveWargame.director.taskDoneLabel')}
+                    </div>
+                  )}
+                  <KanbanProgressTree tasks={kanbanTasks} />
+                </Spin>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -5,6 +5,7 @@
  */
 import { create } from 'zustand';
 import { api, type Scenario, type Intervention, type Anomaly, type Agent, type AgentRelation, type AgentType } from './api';
+import { type KanbanTask, type KanbanStatusCounts } from './hooks/use-kanban-progress';
 
 export interface WargameState {
   /** 想定列表。 */
@@ -42,6 +43,13 @@ export interface WargameState {
   agentsLoading: boolean;
   /** Agent 类型字典加载态。 */
   typesLoading: boolean;
+  // KANBAN 进度（v3.1 阶段二）
+  kanbanTasks: KanbanTask[];
+  kanbanStatusCounts: KanbanStatusCounts | null;
+  kanbanLoading: boolean;
+  kanbanError: string | null;
+  setKanbanTasks: (tasks: KanbanTask[]) => void;
+  setKanbanStatusCounts: (counts: KanbanStatusCounts | null) => void;
 
   /** 拉取想定列表。 */
   fetchScenarios: (limit?: number, offset?: number) => Promise<void>;
@@ -114,6 +122,12 @@ export const useWargameStore = create<WargameState>((set) => ({
   agentTypes: [],
   agentsLoading: false,
   typesLoading: false,
+  kanbanTasks: [],
+  kanbanStatusCounts: null,
+  kanbanLoading: false,
+  kanbanError: null,
+  setKanbanTasks: (tasks) => set({ kanbanTasks: tasks }),
+  setKanbanStatusCounts: (counts) => set({ kanbanStatusCounts: counts }),
 
   fetchScenarios: async (limit = 20, offset = 0) => {
     set({ loading: true, error: null });
