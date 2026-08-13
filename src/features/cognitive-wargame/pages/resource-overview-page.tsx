@@ -1,6 +1,11 @@
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { Card, CardContent } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { EmptyCard } from '@/components/empty/empty';
 import {
   Dialog,
   DialogContent,
@@ -10,21 +15,27 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { IntellectPagination } from '@/components/ui/intellect-pagination';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Spin } from '@/components/ui/spin';
 import { TreeView, type TreeDataItem } from '@/components/ui/tree-view';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
-  ChevronDown,
-  ChevronRight,
   Eye,
   FileCode2,
   FileText,
   FlaskConical,
+  FolderOpen,
   Pencil,
   Trash2,
-  FolderOpen,
-  FolderTree,
   RefreshCw,
   Search,
   Settings2,
@@ -53,6 +64,12 @@ type ResourceNode = {
   label: string;
   count?: number;
 };
+
+export type ResourceKind = ResourceNode['type'];
+
+type ResourceOverviewPageProps = {
+  kind?: ResourceKind;
+};
 const skillCategories: ResourceCategory[] = [
   'red-team',
   'blue-team',
@@ -61,6 +78,7 @@ const skillCategories: ResourceCategory[] = [
   'person-agents',
   'rule-team',
 ];
+const DEFAULT_PAGE_SIZE = 10;
 const queryKeys = {
   skills: (category?: string) =>
     ['cognitive-wargame', 'resources', 'skills', category ?? 'all'] as const,
@@ -89,20 +107,28 @@ const pickSkillTestBoardFile = (files: SkillFileEntry[]) =>
     .filter(({ score }) => score > 0)
     .sort((left, right) => right.score - left.score)[0]?.file;
 
-export default function ResourceOverviewPage() {
+export default function ResourceOverviewPage({
+  kind = 'skills',
+}: ResourceOverviewPageProps) {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const deepLinkSkillId = searchParams.get('skill');
   const deepLinkCategory = searchParams.get('category');
   const [selected, setSelected] = useState<ResourceNode>({
-    type: 'skills',
-    category: isResourceCategory(deepLinkCategory)
+    type: kind,
+    category: kind === 'skills' && isResourceCategory(deepLinkCategory)
       ? deepLinkCategory
       : undefined,
-    label: t('cognitiveWargame.resource.skills'),
+    label:
+      kind === 'skills'
+        ? t('cognitiveWargame.resource.skills')
+        : kind === 'tools'
+          ? t('cognitiveWargame.resource.tools')
+          : t('cognitiveWargame.resource.modelConfig'),
   });
-  const [expanded, setExpanded] = useState({ skills: true, tools: true });
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [skillDetail, setSkillDetail] = useState<SkillDetailResource | null>(
     null,
   );
@@ -130,37 +156,39 @@ export default function ResourceOverviewPage() {
   const skillCategoriesQuery = useQuery({
     queryKey: ['cognitive-wargame', 'resources', 'skill-categories'],
     queryFn: () => api.getSkillCategories(),
+    enabled: kind === 'skills',
     staleTime: 60_000,
     retry: 1,
   });
   const toolsAllQuery = useQuery({
     queryKey: queryKeys.tools(),
     queryFn: () => api.getTools(),
+    enabled: kind === 'tools',
     staleTime: 60_000,
     retry: 1,
   });
   const skillsQuery = useQuery({
     queryKey: queryKeys.skills(
-      selected.type === 'skills' ? selected.category : undefined,
+      kind === 'skills' ? selected.category : undefined,
     ),
     queryFn: () =>
       api.getSkills({
         category:
-          selected.type === 'skills'
+          kind === 'skills'
             ? (selected.category as ResourceCategory | undefined)
             : undefined,
-        page_size: 100,
+        page_size: 1000,
       }),
-    enabled: selected.type === 'skills',
+    enabled: kind === 'skills',
     retry: 1,
   });
   const toolsQuery = useQuery({
     queryKey: queryKeys.tools(
-      selected.type === 'tools' ? selected.category : undefined,
+      kind === 'tools' ? selected.category : undefined,
     ),
     queryFn: () =>
-      api.getTools(selected.type === 'tools' ? selected.category : undefined),
-    enabled: selected.type === 'tools',
+      api.getTools(kind === 'tools' ? selected.category : undefined),
+    enabled: kind === 'tools',
     retry: 1,
   });
   const testMutation = useMutation({
@@ -174,29 +202,27 @@ export default function ResourceOverviewPage() {
       );
     },
   });
-  const nodes = useMemo(() => {
-    const skillCounts = new Map(
-      skillCategoriesQuery.data?.categories.map((item) => [
-        item.name,
-        item.count,
-      ]),
-    );
-    const toolCategories = toolsAllQuery.data?.categories ?? [];
-    return {
-      skills: skillCategories.map((category) => ({
-          type: 'skills' as const,
-          category,
-          label: category,
-          count: skillCounts.get(category) ?? 0,
-        })),
-      tools: toolCategories.map((item) => ({
-          type: 'tools' as const,
-          category: item.name,
-          label: item.label ?? item.name,
-          count: item.count,
-        })),
-    };
-  }, [skillCategoriesQuery.data, toolsAllQuery.data]);
+  const categoryOptions = useMemo(() => {
+    if (kind === 'skills') {
+      const labels = new Map(
+        skillCategoriesQuery.data?.categories.map((item) => [
+          item.name,
+          item.label ?? item.name,
+        ]),
+      );
+      return skillCategories.map((category) => ({
+        value: category,
+        label: labels.get(category) ?? category,
+      }));
+    }
+    if (kind === 'tools') {
+      return (toolsAllQuery.data?.categories ?? []).map((item) => ({
+        value: item.name,
+        label: item.label ?? item.name,
+      }));
+    }
+    return [];
+  }, [kind, skillCategoriesQuery.data, toolsAllQuery.data]);
   const filteredSkills = (skillsQuery.data?.skills ?? []).filter((item) =>
     `${item.name} ${item.description ?? ''}`
       .toLowerCase()
@@ -207,9 +233,14 @@ export default function ResourceOverviewPage() {
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
-  const selectNode = (node: ResourceNode) => {
-    if (node.type !== 'models') setSelected(node);
-  };
+  const pagedSkills = filteredSkills.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+  const pagedTools = filteredTools.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
   const openSkill = async (skill: SkillResource) => {
     setOpeningSkillId(skill.id);
     try {
@@ -266,11 +297,22 @@ export default function ResourceOverviewPage() {
     }
   };
   const refreshResources = () => {
-    void Promise.all([
-      skillCategoriesQuery.refetch(),
-      toolsAllQuery.refetch(),
-      selected.type === 'skills' ? skillsQuery.refetch() : toolsQuery.refetch(),
-    ]);
+    const requests: Array<Promise<unknown>> = [];
+    if (kind === 'skills') {
+      requests.push(
+        skillCategoriesQuery.refetch(),
+        skillsQuery.refetch(),
+      );
+    }
+    if (kind === 'tools') {
+      requests.push(toolsAllQuery.refetch(), toolsQuery.refetch());
+    }
+    void Promise.all(requests);
+  };
+
+  const handlePaginationChange = (page: number, size: number) => {
+    setCurrentPage(page);
+    setPageSize(size);
   };
 
   if (skillDetail) {
@@ -284,24 +326,6 @@ export default function ResourceOverviewPage() {
     );
   }
 
-  const renderNode = (node: ResourceNode) => (
-    <button
-      key={`${node.type}-${node.category ?? 'all'}`}
-      type="button"
-      onClick={() => selectNode(node)}
-      className={cn(
-        'flex min-h-10 w-full items-center justify-between rounded px-3 py-2 text-left text-sm transition-colors',
-        selected.type === node.type && selected.category === node.category
-          ? 'bg-bg-input font-medium text-text-primary'
-          : 'text-text-secondary hover:bg-bg-input/70 hover:text-text-primary',
-      )}
-    >
-      <span className="truncate">{node.label}</span>
-      <span className="ml-3 min-w-6 rounded bg-bg-input px-1.5 py-0.5 text-center text-xs text-text-disabled">
-        {node.count ?? '-'}
-      </span>
-    </button>
-  );
   const renderRows = (
     items: Array<SkillResource | ToolResource>,
     kind: 'skill' | 'tool',
@@ -318,10 +342,10 @@ export default function ResourceOverviewPage() {
           return (
             <div
               key={'id' in item ? item.id : item.name}
-              className="grid min-h-[76px] min-w-[760px] items-center gap-5 px-5 py-3 text-sm hover:bg-bg-input/30"
+              className="grid min-h-[76px] min-w-[560px] items-center gap-3 px-5 py-3 text-sm hover:bg-bg-input/30"
               style={{
                 gridTemplateColumns:
-                  'minmax(180px, 1.2fr) 120px minmax(240px, 2fr) 156px',
+                  'minmax(120px, 1fr) 90px minmax(160px, 1.3fr) 132px',
               }}
             >
               <div className="min-w-0">
@@ -347,23 +371,32 @@ export default function ResourceOverviewPage() {
               <p className="line-clamp-2 leading-5 text-text-secondary">
                 {item.description || '-'}
               </p>
-              <div className="flex justify-start gap-2">
+              <div className="flex flex-wrap items-center gap-1">
                 <Button
-                  size="sm"
+                  size="icon-sm"
                   variant="ghost"
+                  title={t('cognitiveWargame.resource.view')}
+                  aria-label={t('cognitiveWargame.resource.view')}
                   loading={skill?.id === openingSkillId}
                   onClick={() =>
                     skill ? void openSkill(skill) : void openTool(tool!)
                   }
                 >
                   <Eye className="size-3.5" />
-                  {t('cognitiveWargame.resource.view')}
                 </Button>
                 {skill && (
                   <RequireRole>
                     <Button
-                      size="sm"
-                      variant="outline"
+                      size="icon-sm"
+                      variant="ghost"
+                      title={t(
+                        'cognitiveWargame.skills.editDialog.editAction',
+                        { defaultValue: 'Edit' },
+                      )}
+                      aria-label={t(
+                        'cognitiveWargame.skills.editDialog.editAction',
+                        { defaultValue: 'Edit' },
+                      )}
                       onClick={() =>
                         setSkillDialog({
                           open: true,
@@ -373,26 +406,31 @@ export default function ResourceOverviewPage() {
                       }
                     >
                       <Pencil className="size-3.5" />
-                      {t('cognitiveWargame.skills.editDialog.editAction', {
-                        defaultValue: '修改',
-                      })}
                     </Button>
                     <Button
-                      size="sm"
-                      variant="outline"
+                      size="icon-sm"
+                      variant="ghost"
+                      className="text-text-error"
+                      title={t(
+                        'cognitiveWargame.skills.editDialog.deleteAction',
+                        { defaultValue: 'Delete' },
+                      )}
+                      aria-label={t(
+                        'cognitiveWargame.skills.editDialog.deleteAction',
+                        { defaultValue: 'Delete' },
+                      )}
                       onClick={() => setDeleteTarget(skill)}
                     >
-                      <Trash2 className="size-3.5 text-text-error" />
-                      {t('cognitiveWargame.skills.editDialog.deleteAction', {
-                        defaultValue: '删除',
-                      })}
+                      <Trash2 className="size-3.5" />
                     </Button>
                   </RequireRole>
                 )}
                 <RequireRole>
                   <Button
-                    size="sm"
-                    variant="outline"
+                    size="icon-sm"
+                    variant="ghost"
+                    title={t('cognitiveWargame.resource.test')}
+                    aria-label={t('cognitiveWargame.resource.test')}
                     loading={skill?.id === openingTestSkillId}
                     onClick={() => {
                       if (skill) {
@@ -405,7 +443,6 @@ export default function ResourceOverviewPage() {
                     }}
                   >
                     <FlaskConical className="size-3.5" />
-                    {t('cognitiveWargame.resource.test')}
                   </Button>
                 </RequireRole>
               </div>
@@ -414,177 +451,135 @@ export default function ResourceOverviewPage() {
         })}
       </div>
     ) : (
-      <div className="px-4 py-16 text-center text-sm text-text-secondary">
-        {t('cognitiveWargame.resource.noItems')}
-      </div>
+      <EmptyCard title={t('cognitiveWargame.resource.noItems')} />
     );
   const isSkills = selected.type === 'skills';
   const isModels = selected.type === 'models';
+  const paginationTotal = isSkills
+    ? filteredSkills.length
+    : filteredTools.length;
   const isRefreshing =
-    skillCategoriesQuery.isFetching ||
-    toolsAllQuery.isFetching ||
-    skillsQuery.isFetching ||
-    toolsQuery.isFetching;
+    kind === 'skills'
+      ? skillCategoriesQuery.isFetching || skillsQuery.isFetching
+      : kind === 'tools'
+        ? toolsAllQuery.isFetching || toolsQuery.isFetching
+        : false;
   return (
     <WargameSectionLayout>
-      <div className="flex h-full min-h-0 flex-col gap-5 p-4 md:p-6">
+      <div className="flex flex-col gap-4 p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-medium text-text-primary">
-            {t('cognitiveWargame.resource.title')}
+            {selected.label}
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            {t('cognitiveWargame.resource.subtitle')}
+            {kind === 'skills'
+              ? t('cognitiveWargame.resource.skillsSummary')
+              : kind === 'tools'
+                ? t('cognitiveWargame.resource.toolsSummary')
+                : t('cognitiveWargame.resource.modelConfigSummary')}
           </p>
         </div>
-        <Button
-          variant="outline"
-          loading={isRefreshing}
-          onClick={refreshResources}
-        >
-          <RefreshCw className="size-4" />
-          {t('cognitiveWargame.common.refresh')}
-        </Button>
+        <div className="flex items-end gap-3">
+          {isSkills && (
+            <RequireRole>
+              <Button
+                onClick={() =>
+                  setSkillDialog({
+                    open: true,
+                    mode: 'create',
+                    category:
+                      selected.category &&
+                      isResourceCategory(selected.category)
+                        ? selected.category
+                        : undefined,
+                  })
+                }
+              >
+                {t('cognitiveWargame.skills.editDialog.createTitle', {
+                  defaultValue: 'New Skill',
+                })}
+              </Button>
+            </RequireRole>
+          )}
+          {!isModels && (
+            <Button
+              variant="outline"
+              loading={isRefreshing}
+              onClick={refreshResources}
+            >
+              <RefreshCw className="size-4" />
+              {t('cognitiveWargame.common.refresh')}
+            </Button>
+          )}
+        </div>
       </div>
-      <div className="flex min-h-0 flex-1 gap-5">
-        <aside className="w-72 shrink-0 overflow-y-auto rounded border border-border-button bg-bg-card p-4">
-          <div className="mb-4 flex items-center gap-2 px-2 text-sm font-medium text-text-primary">
-            <FolderTree className="size-4 text-text-secondary" />
-            {t('cognitiveWargame.resource.resourceType')}
-          </div>
-          <div className="space-y-2">
-            <button
-              type="button"
-              className={cn(
-                'flex min-h-11 w-full items-center gap-2 rounded px-3 py-2 text-sm font-medium transition-colors hover:bg-bg-input/70',
-                selected.type === 'skills' && !selected.category
-                  ? 'bg-bg-input text-text-primary'
-                  : 'text-text-secondary',
-              )}
-              onClick={() => {
-                setSelected({
-                  type: 'skills',
-                  label: t('cognitiveWargame.resource.skills'),
-                });
-                setExpanded((v) => ({ ...v, skills: !v.skills }));
-              }}
-            >
-              {expanded.skills ? (
-                <ChevronDown className="size-4" />
-              ) : (
-                <ChevronRight className="size-4" />
-              )}
-              <FileCode2 className="size-4" />
-              {t('cognitiveWargame.resource.skills')}
-              <span className="ml-auto min-w-6 rounded bg-bg-input px-1.5 py-0.5 text-center text-xs text-text-disabled">
-                {skillCategoriesQuery.data?.total ?? '-'}
-              </span>
-            </button>
-            {expanded.skills && (
-              <div className="ml-5 space-y-1 border-l border-border-button pl-3">
-                {nodes.skills.map(renderNode)}
-              </div>
-            )}
-            <button
-              type="button"
-              className={cn(
-                'flex min-h-11 w-full items-center gap-2 rounded px-3 py-2 text-sm font-medium transition-colors hover:bg-bg-input/70',
-                selected.type === 'tools' && !selected.category
-                  ? 'bg-bg-input text-text-primary'
-                  : 'text-text-secondary',
-              )}
-              onClick={() => {
-                setSelected({
-                  type: 'tools',
-                  label: t('cognitiveWargame.resource.tools'),
-                });
-                setExpanded((v) => ({ ...v, tools: !v.tools }));
-              }}
-            >
-              {expanded.tools ? (
-                <ChevronDown className="size-4" />
-              ) : (
-                <ChevronRight className="size-4" />
-              )}
-              <Wrench className="size-4" />
-              {t('cognitiveWargame.resource.tools')}
-              <span className="ml-auto min-w-6 rounded bg-bg-input px-1.5 py-0.5 text-center text-xs text-text-disabled">
-                {toolsAllQuery.data?.total ?? '-'}
-              </span>
-            </button>
-            {expanded.tools && (
-              <div className="ml-5 space-y-1 border-l border-border-button pl-3">
-                {nodes.tools.map(renderNode)}
-              </div>
-            )}
-            <button
-              type="button"
-              disabled
-              title={t('cognitiveWargame.resource.pending')}
-              className="flex min-h-10 w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-text-disabled"
-            >
-              <Settings2 className="size-4" />
-              {t('cognitiveWargame.resource.modelConfig')}
-              <span className="ml-auto text-xs">
-                {t('cognitiveWargame.resource.pending')}
-              </span>
-            </button>
-          </div>
-        </aside>
-        <main className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mb-4">
-            <h2 className="text-lg font-medium text-text-primary">
-              {selected.label}
-            </h2>
-            {!isModels && (
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t('cognitiveWargame.resource.searchPlaceholder')}
-                prefix={<Search className="ms-2 me-1 size-4" />}
-                rootClassName="mt-3 w-full"
-              />
-            )}
-          </div>
+      <main className="min-w-0 flex-1 overflow-y-auto">
           {isModels ? (
             <Card>
-              <CardContent className="py-16 text-center text-sm text-text-secondary">
+              <CardContent className="flex flex-col items-center gap-3 py-16 text-center text-sm text-text-secondary">
+                <Settings2 className="size-8 text-text-disabled" />
                 {t('cognitiveWargame.resource.pending')}
               </CardContent>
             </Card>
           ) : (
-            <Card className="overflow-hidden">
-              <div className="flex items-center justify-between border-b border-border-button px-5 py-3">
-                <span className="text-sm text-text-secondary">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">
+                  {selected.label} (
                   {isSkills
-                    ? `${t('cognitiveWargame.resource.skills')} · ${skillsQuery.data?.total ?? '-'}`
-                    : `${t('cognitiveWargame.resource.tools')} · ${toolsQuery.data?.total ?? '-'}`}
-                </span>
-                <div className="flex items-center gap-2">
-                  {isSkills && (
-                    <RequireRole>
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                        setSkillDialog({
-                            open: true,
-                            mode: 'create',
-                            category:
-                              selected.type === 'skills' && selected.category
-                                ? (selected.category as ResourceCategory)
-                                : undefined,
-                          })
-                        }
-                      >
-                        {t('cognitiveWargame.skills.editDialog.createTitle', {
-                          defaultValue: 'New Skill',
-                        })}
-                      </Button>
-                    </RequireRole>
-                  )}
+                    ? skillsQuery.data?.total ?? '-'
+                    : toolsQuery.data?.total ?? '-'}
+                  )
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4 flex flex-wrap items-end gap-3">
+                  <div className="flex flex-col gap-2">
+                    <Label>{t('cognitiveWargame.resource.category')}</Label>
+                    <Select
+                      value={selected.category ?? 'all'}
+                      onValueChange={(value) => {
+                        setSelected({
+                          type: kind,
+                          category: value === 'all' ? undefined : value,
+                          label: selected.label,
+                        });
+                        setCurrentPage(1);
+                      }}
+                    >
+                      <SelectTrigger className="w-48">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">
+                          {t('cognitiveWargame.resource.all')}
+                        </SelectItem>
+                        {categoryOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label>&nbsp;</Label>
+                    <Input
+                      value={search}
+                      onChange={(event) => {
+                        setSearch(event.target.value);
+                        setCurrentPage(1);
+                      }}
+                      placeholder={t(
+                        'cognitiveWargame.resource.searchPlaceholder',
+                      )}
+                      prefix={<Search className="ms-2 me-1 size-4" />}
+                      className="w-60"
+                    />
+                  </div>
                 </div>
-              </div>
-              <CardContent className="overflow-x-auto p-0">
+
                 {(isSkills ? skillsQuery.isLoading : toolsQuery.isLoading) ? (
                   <div className="flex justify-center py-16">
                     <Spin size="large" />
@@ -604,12 +599,12 @@ export default function ResourceOverviewPage() {
                     </Button>
                   </div>
                 ) : (
-                  <>
+                  <div className="overflow-x-auto">
                     <div
-                      className="grid min-w-[760px] gap-5 border-b border-border-button bg-bg-input/50 px-5 py-3 text-xs text-text-secondary"
+                      className="grid min-w-[560px] gap-3 border-b border-border-button bg-bg-input/50 px-5 py-3 text-xs text-text-secondary"
                       style={{
                         gridTemplateColumns:
-                          'minmax(180px, 1.2fr) 120px minmax(240px, 2fr) 156px',
+                          'minmax(120px, 1fr) 90px minmax(160px, 1.3fr) 132px',
                       }}
                     >
                       <span>{t('cognitiveWargame.resource.name')}</span>
@@ -622,15 +617,22 @@ export default function ResourceOverviewPage() {
                       </span>
                     </div>
                     {isSkills
-                      ? renderRows(filteredSkills, 'skill')
-                      : renderRows(filteredTools, 'tool')}
-                  </>
+                      ? renderRows(pagedSkills, 'skill')
+                      : renderRows(pagedTools, 'tool')}
+                  </div>
                 )}
+                <div className="mt-4">
+                  <IntellectPagination
+                    current={currentPage}
+                    pageSize={pageSize}
+                    total={paginationTotal}
+                    onChange={handlePaginationChange}
+                  />
+                </div>
               </CardContent>
             </Card>
           )}
-        </main>
-      </div>
+      </main>
       <ToolDetailDialog tool={toolDetail} onClose={() => setToolDetail(null)} />
       {testError && (
         <p className="text-sm text-state-error">{testError}</p>

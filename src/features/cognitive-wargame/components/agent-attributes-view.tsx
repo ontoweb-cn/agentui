@@ -110,7 +110,7 @@ function buildSkillUrl(
     skill: skill.id,
   });
   if (skill.category) params.set('category', skill.category);
-  return `/cognitive-wargame/resources?${params.toString()}`;
+  return `/cognitive-wargame/resources/skills?${params.toString()}`;
 }
 
 async function findSkill(reference: SkillReference): Promise<SkillResource | null> {

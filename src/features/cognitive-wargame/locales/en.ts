@@ -322,6 +322,8 @@ export default {
         create: 'New Agent',
         refresh: 'Refresh',
         searchPlaceholder: 'Search agent_id/name',
+        tableView: 'Table view',
+        cardView: 'Card view',
       },
       table: {
         agentId: 'Agent ID',
@@ -330,6 +332,14 @@ export default {
         status: 'Status',
         updatedAt: 'Updated',
         actions: 'Actions',
+      },
+      running: 'Running',
+      notRunning: 'Not running',
+      cardTable: {
+        action: 'Action',
+        interface: 'Interface',
+        target: 'Target',
+        result: 'Result',
       },
       type: {
         individual: 'Individual',

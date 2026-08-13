@@ -118,7 +118,7 @@ export default function SkillAssignPanel({ agentId }: SkillAssignPanelProps) {
               className="flex items-center justify-between rounded border border-border-button bg-bg-input/50 px-3 py-2"
             >
               <Link
-                to={`/cognitive-wargame/resources?type=skills&category=${s.category}&skill=${s.skill_id}`}
+                to={`/cognitive-wargame/resources/skills?type=skills&category=${s.category}&skill=${s.skill_id}`}
                 className="flex min-w-0 items-center gap-2 text-accent-primary underline underline-offset-2"
               >
                 <FileCode2 className="size-4 shrink-0" />

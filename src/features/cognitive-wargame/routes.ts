@@ -10,6 +10,9 @@ import type { LazyRouteConfig } from '../_types';
 export const WargameRoutes = {
   Dashboard: '/cognitive-wargame',
   Resources: '/cognitive-wargame/resources',
+  ResourceSkills: '/cognitive-wargame/resources/skills',
+  ResourceTools: '/cognitive-wargame/resources/tools',
+  ResourceModels: '/cognitive-wargame/resources/models',
   Settings: '/cognitive-wargame/settings',
   Scenarios: '/cognitive-wargame/scenarios',
   ScenarioDetail: '/cognitive-wargame/scenarios/:id',
@@ -48,7 +51,19 @@ const routes: LazyRouteConfig[] = [
   },
   {
     path: WargameRoutes.Resources,
-    Component: () => import('./pages/resource-overview-page'),
+    Component: () => import('./pages/resource-index-page'),
+  },
+  {
+    path: WargameRoutes.ResourceSkills,
+    Component: () => import('./pages/resource-skills-page'),
+  },
+  {
+    path: WargameRoutes.ResourceTools,
+    Component: () => import('./pages/resource-tools-page'),
+  },
+  {
+    path: WargameRoutes.ResourceModels,
+    Component: () => import('./pages/resource-models-page'),
   },
   {
     path: WargameRoutes.Settings,

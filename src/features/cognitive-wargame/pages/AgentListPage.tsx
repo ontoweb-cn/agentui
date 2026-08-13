@@ -1,6 +1,7 @@
 /**
  * AgentListPage - Agent register list for G-16.
  */
+import { cn } from '@/lib/utils';
 import { EmptyCard } from '@/components/empty/empty';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,7 +34,17 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowRight, RefreshCw } from 'lucide-react';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import {
+  Activity,
+  ArrowRight,
+  Eye,
+  LayoutGrid,
+  List,
+  Pencil,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { t } from 'i18next';
@@ -80,6 +91,7 @@ export default function AgentListPage() {
   const [typeFilter, setTypeFilter] = useState<string>(ALL_FILTER);
   const [statusFilter, setStatusFilter] = useState<string>(ALL_FILTER);
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -94,6 +106,7 @@ export default function AgentListPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const runningAgentIds = useMemo(() => new Set<string>(), []);
 
   const load = useCallback(async () => {
     setError(null);
@@ -336,11 +349,178 @@ export default function AgentListPage() {
                   className="w-60"
                 />
               </div>
+              <ToggleGroup
+                type="single"
+                value={viewMode}
+                onValueChange={(value) => {
+                  if (value) {
+                    setViewMode(value as 'table' | 'cards');
+                  }
+                }}
+                variant="outline"
+                size="sm"
+                className="ml-auto self-end"
+              >
+                <ToggleGroupItem
+                  value="table"
+                  title={t('cognitiveWargame.agents.list.tableView')}
+                  aria-label={t('cognitiveWargame.agents.list.tableView')}
+                >
+                  <List className="size-4" />
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="cards"
+                  title={t('cognitiveWargame.agents.list.cardView')}
+                  aria-label={t('cognitiveWargame.agents.list.cardView')}
+                >
+                  <LayoutGrid className="size-4" />
+                </ToggleGroupItem>
+              </ToggleGroup>
             </div>
 
             <Spin spinning={agentsLoading}>
               {filteredAgents.length === 0 ? (
                 <EmptyCard title={t('cognitiveWargame.agents.empty')} className="w-full" />
+              ) : viewMode === 'cards' ? (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {filteredAgents.map((agent) => (
+                    <Card
+                      key={agent.agent_id}
+                      className={cn(
+                        'cursor-pointer transition-colors hover:border-accent-primary',
+                        selectedAgentId === agent.agent_id && 'border-accent-primary',
+                      )}
+                      onClick={() => void selectAgent(agent.agent_id)}
+                    >
+                      <CardHeader>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <CardTitle className="truncate text-base">
+                              {agent.name}
+                            </CardTitle>
+                            <p className="mt-1 truncate font-mono text-xs text-text-disabled">
+                              {agent.agent_id}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 gap-1.5">
+                            <Badge variant="outline">
+                              {typeLabel(agent.agent_type)}
+                            </Badge>
+                            <Badge variant={statusVariant(agent.status)}>
+                              {statusLabel(agent.status)}
+                            </Badge>
+                            <span
+                              title={
+                                runningAgentIds.has(agent.agent_id)
+                                  ? t('cognitiveWargame.agents.running', {
+                                      defaultValue: '运行中',
+                                    })
+                                  : t('cognitiveWargame.agents.notRunning', {
+                                      defaultValue: '未运行',
+                                    })
+                              }
+                              className={cn(
+                                'inline-flex size-7 items-center justify-center rounded',
+                                runningAgentIds.has(agent.agent_id)
+                                  ? 'text-accent-primary'
+                                  : 'text-text-disabled',
+                              )}
+                            >
+                              <Activity className="size-4" />
+                            </span>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="overflow-hidden rounded border border-border-button">
+                          <table className="w-full border-collapse text-[11px]">
+                            <thead>
+                              <tr className="border-b border-border-button bg-bg-input/50 text-left text-text-secondary">
+                                <th className="px-2 py-1.5 font-normal">
+                                  {t('cognitiveWargame.agents.cardTable.action', {
+                                    defaultValue: '动作',
+                                  })}
+                                </th>
+                                <th className="px-2 py-1.5 font-normal">
+                                  {t(
+                                    'cognitiveWargame.agents.cardTable.interface',
+                                    {
+                                      defaultValue: '接口',
+                                    },
+                                  )}
+                                </th>
+                                <th className="px-2 py-1.5 font-normal">HTTP</th>
+                                <th className="px-2 py-1.5 font-normal">code</th>
+                                <th className="px-2 py-1.5 font-normal">
+                                  {t('cognitiveWargame.agents.cardTable.target', {
+                                    defaultValue: '目标',
+                                  })}
+                                </th>
+                                <th className="px-2 py-1.5 font-normal">
+                                  {t('cognitiveWargame.agents.cardTable.result', {
+                                    defaultValue: '结果',
+                                  })}
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr className="text-text-disabled">
+                                <td className="px-2 py-1.5">-</td>
+                                <td className="px-2 py-1.5">-</td>
+                                <td className="px-2 py-1.5">-</td>
+                                <td className="px-2 py-1.5">-</td>
+                                <td className="px-2 py-1.5">-</td>
+                                <td className="px-2 py-1.5">-</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                        <div className="mt-4 flex items-center justify-between gap-3">
+                          <span className="text-xs text-text-disabled">
+                            {agent.updated_at ?? '-'}
+                          </span>
+                          <div
+                            className="flex shrink-0 items-center gap-2"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              title={t('cognitiveWargame.common.viewDetail')}
+                              aria-label={t('cognitiveWargame.common.viewDetail')}
+                              onClick={() =>
+                                navigate(WargamePath.agentDetail(agent.agent_id))
+                              }
+                            >
+                              <Eye className="size-3.5" />
+                            </Button>
+                            <RequireRole>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                title={t('cognitiveWargame.agents.detail.edit')}
+                                aria-label={t('cognitiveWargame.agents.detail.edit')}
+                                onClick={() => openEdit(agent)}
+                              >
+                                <Pencil className="size-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="text-text-error"
+                                title={t('cognitiveWargame.agents.detail.delete')}
+                                aria-label={t('cognitiveWargame.agents.detail.delete')}
+                                onClick={() => void handleDelete(agent)}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </RequireRole>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               ) : (
                 <Table>
                   <TableHeader>

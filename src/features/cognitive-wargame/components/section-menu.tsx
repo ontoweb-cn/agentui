@@ -3,15 +3,18 @@ import {
   BarChart3,
   ClipboardCheck,
   FileBarChart,
+  FileCode2,
   GitGraph,
   LayoutDashboard,
   PackageSearch,
   PlaySquare,
   ScrollText,
   Settings,
+  Settings2,
   SlidersHorizontal,
   Tags,
   Users,
+  Wrench,
 } from 'lucide-react';
 import type { ComponentType, PropsWithChildren } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -63,8 +66,28 @@ export default function WargameSectionLayout({ children }: PropsWithChildren) {
     {
       id: 'resources',
       label: t('cognitiveWargame.sectionMenu.resources', '资源'),
-      path: WargameRoutes.Resources,
+      path: WargameRoutes.ResourceSkills,
       icon: PackageSearch,
+      children: [
+        {
+          id: 'resource-skills',
+          label: t('cognitiveWargame.resource.skills', 'Skills'),
+          path: WargameRoutes.ResourceSkills,
+          icon: FileCode2,
+        },
+        {
+          id: 'resource-tools',
+          label: t('cognitiveWargame.resource.tools', 'Tools'),
+          path: WargameRoutes.ResourceTools,
+          icon: Wrench,
+        },
+        {
+          id: 'resource-models',
+          label: t('cognitiveWargame.resource.modelConfig', '模型配置'),
+          path: WargameRoutes.ResourceModels,
+          icon: Settings2,
+        },
+      ],
     },
     {
       id: 'scenarios',

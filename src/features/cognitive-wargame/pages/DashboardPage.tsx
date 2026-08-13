@@ -411,7 +411,7 @@ const DashboardPage: React.FC = () => {
             {t('cognitiveWargame.resource.title')}
           </h2>
           <Link
-            to="/cognitive-wargame/resources"
+            to={WargameRoutes.ResourceSkills}
             className="text-sm text-text-secondary underline"
           >
             {t('cognitiveWargame.common.viewDetail')}
@@ -422,18 +422,19 @@ const DashboardPage: React.FC = () => {
             title={t('cognitiveWargame.resource.skills')}
             value={skillCount ?? '-'}
             description={t('cognitiveWargame.resource.skillsSummary')}
-            to="/cognitive-wargame/resources"
+            to={WargameRoutes.ResourceSkills}
           />
           <ResourceSummaryCard
             title={t('cognitiveWargame.resource.tools')}
             value={toolCount ?? '-'}
             description={t('cognitiveWargame.resource.toolsSummary')}
-            to="/cognitive-wargame/resources"
+            to={WargameRoutes.ResourceTools}
           />
           <ResourceSummaryCard
             title={t('cognitiveWargame.resource.modelConfig')}
             value={t('cognitiveWargame.resource.pending')}
             description={t('cognitiveWargame.resource.modelConfigSummary')}
+            to={WargameRoutes.ResourceModels}
           />
         </div>
       </section>

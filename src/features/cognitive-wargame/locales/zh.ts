@@ -321,6 +321,8 @@ export default {
         create: '新建 Agent',
         refresh: '刷新',
         searchPlaceholder: '搜索 agent_id/名称',
+        tableView: '列表视图',
+        cardView: '卡片视图',
       },
       table: {
         agentId: 'Agent ID',
@@ -329,6 +331,14 @@ export default {
         status: '状态',
         updatedAt: '更新时间',
         actions: '操作',
+      },
+      running: '运行中',
+      notRunning: '未运行',
+      cardTable: {
+        action: '动作',
+        interface: '接口',
+        target: '目标',
+        result: '结果',
       },
       type: {
         individual: '个人',

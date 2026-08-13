@@ -5,6 +5,7 @@
  * 使用 shadcn Dialog / Input / Textarea / Button 组件。
  */
 import { EmptyCard } from '@/components/empty/empty';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -22,6 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { IntellectPagination } from '@/components/ui/intellect-pagination';
 import { Spin } from '@/components/ui/spin';
 import {
   Table,
@@ -32,14 +34,24 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { api, type Scenario } from '../api';
 import WargameSectionLayout from '../components/section-menu';
 import { WargamePath } from '../routes';
 import { useWargameStore } from '../store';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { t } from 'i18next';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import {
+  Activity,
+  ClipboardCheck,
+  Eye,
+  LayoutGrid,
+  List,
+  Play,
+  Trash2,
+} from 'lucide-react';
 
 interface CreateFormData {
   name: string;
@@ -56,6 +68,8 @@ const DEFAULT_FORM: CreateFormData = {
   redForce: '红方',
   blueForce: '蓝方',
 };
+
+const DEFAULT_PAGE_SIZE = 10;
 
 const RUNNING_TASK_STATUS = new Set(['pending', 'running']);
 const FINISHED_TASK_STATUS = new Set([
@@ -81,17 +95,24 @@ const ScenarioListPage: React.FC = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState<CreateFormData>(DEFAULT_FORM);
   const [creating, setCreating] = useState(false);
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [actionError, setActionError] = useState<string | null>(null);
   const [approvalBusy, setApprovalBusy] = useState<string | null>(null);
   const [executingTasks, setExecutingTasks] = useState<Record<string, string>>(
     {},
   );
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   // 审批人身份：X-Actor 头透传当前用户 id（落 submitted_by，评审 #3 修复提交侧）
   const { data: userInfo } = useFetchUserInfo();
 
+  const load = useCallback(() => {
+    return fetchScenarios(pageSize, (currentPage - 1) * pageSize);
+  }, [currentPage, fetchScenarios, pageSize]);
+
   useEffect(() => {
-    fetchScenarios(20, 0);
-  }, [fetchScenarios]);
+    void load();
+  }, [load]);
 
   useEffect(() => {
     const entries = Object.entries(executingTasks).filter(([, taskId]) =>
@@ -111,7 +132,7 @@ const ScenarioListPage: React.FC = () => {
                 delete next[scenarioId];
                 return next;
               });
-              void fetchScenarios(20, 0);
+              void load();
             }
           })
           .catch((err) => {
@@ -126,7 +147,7 @@ const ScenarioListPage: React.FC = () => {
     }, 2000);
 
     return () => window.clearInterval(timer);
-  }, [executingTasks, fetchScenarios]);
+  }, [executingTasks, load]);
 
   const handleCreate = async () => {
     if (!createForm.name.trim()) {
@@ -155,7 +176,7 @@ const ScenarioListPage: React.FC = () => {
       });
       setCreateOpen(false);
       setCreateForm(DEFAULT_FORM);
-      await fetchScenarios(20, 0);
+      await load();
     } catch (err) {
       setActionError(
         err instanceof Error ? err.message : t('cognitiveWargame.scenario.createFailed'),
@@ -169,7 +190,7 @@ const ScenarioListPage: React.FC = () => {
     if (!window.confirm(t('cognitiveWargame.scenario.deleteConfirm'))) return;
     try {
       await api.deleteScenario(id);
-      await fetchScenarios(20, 0);
+      await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     }
@@ -182,7 +203,7 @@ const ScenarioListPage: React.FC = () => {
     try {
       const task = await api.executeScenario(id);
       setExecutingTasks((current) => ({ ...current, [id]: task.task_id }));
-      await fetchScenarios(20, 0);
+      await load();
     } catch (err) {
       setExecutingTasks((current) => {
         const next = { ...current };
@@ -220,6 +241,11 @@ const ScenarioListPage: React.FC = () => {
     } finally {
       setApprovalBusy(null);
     }
+  };
+
+  const handlePaginationChange = (page: number, size: number) => {
+    setCurrentPage(page);
+    setPageSize(size);
   };
 
   return (
@@ -334,7 +360,7 @@ const ScenarioListPage: React.FC = () => {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <Button variant="outline" onClick={() => fetchScenarios(20, 0)}>
+          <Button variant="outline" onClick={() => void load()}>
             {t('cognitiveWargame.common.refresh')}
           </Button>
         </div>
@@ -346,9 +372,45 @@ const ScenarioListPage: React.FC = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">
-            {t('cognitiveWargame.scenario.listTitle')} ({total})
-          </CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="text-lg">
+              {t('cognitiveWargame.scenario.listTitle')} ({total})
+            </CardTitle>
+            <ToggleGroup
+              type="single"
+              value={viewMode}
+              onValueChange={(value) => {
+                if (value) {
+                  setViewMode(value as 'table' | 'cards');
+                }
+              }}
+              variant="outline"
+              size="sm"
+            >
+              <ToggleGroupItem
+                value="table"
+                title={t('cognitiveWargame.scenario.tableView', {
+                  defaultValue: '列表视图',
+                })}
+                aria-label={t('cognitiveWargame.scenario.tableView', {
+                  defaultValue: '列表视图',
+                })}
+              >
+                <List className="size-4" />
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="cards"
+                title={t('cognitiveWargame.scenario.cardView', {
+                  defaultValue: '卡片视图',
+                })}
+                aria-label={t('cognitiveWargame.scenario.cardView', {
+                  defaultValue: '卡片视图',
+                })}
+              >
+                <LayoutGrid className="size-4" />
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </div>
         </CardHeader>
         <CardContent>
           <Spin spinning={loading}>
@@ -357,6 +419,139 @@ const ScenarioListPage: React.FC = () => {
                 title={t('cognitiveWargame.common.empty')}
                 className="w-full"
               />
+            ) : viewMode === 'cards' ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {scenarios.map((s) => {
+                  const executing =
+                    s.id in executingTasks || s.status === 'running';
+
+                  return (
+                    <Card
+                      key={s.id}
+                      className="transition-colors hover:border-accent-primary"
+                    >
+                      <CardHeader>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <CardTitle className="truncate text-base">
+                              {s.name}
+                            </CardTitle>
+                            <p className="mt-1 truncate font-mono text-xs text-text-disabled">
+                              {s.id}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <Badge variant="outline">{s.status ?? '-'}</Badge>
+                            <span
+                              title={
+                                executing
+                                  ? t('cognitiveWargame.scenario.executing', {
+                                      defaultValue: '正在推演',
+                                    })
+                                  : t('cognitiveWargame.scenario.notExecuting', {
+                                      defaultValue: '未执行推演',
+                                    })
+                              }
+                              className={
+                                executing
+                                  ? 'text-accent-primary'
+                                  : 'text-text-disabled'
+                              }
+                            >
+                              <Activity className="size-4" />
+                            </span>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="line-clamp-2 min-h-10 text-sm leading-5 text-text-secondary">
+                          {s.description ?? '-'}
+                        </p>
+                        <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-text-secondary">
+                          <div>
+                            <div className="text-text-disabled">
+                              {t('cognitiveWargame.scenario.roundsLimit')}
+                            </div>
+                            <div className="mt-1">{s.rounds_limit ?? '-'}</div>
+                          </div>
+                          <div>
+                            <div className="text-text-disabled">
+                              {t('cognitiveWargame.scenario.redForce')}
+                            </div>
+                            <div className="mt-1">{s.red_force ?? '-'}</div>
+                          </div>
+                          <div>
+                            <div className="text-text-disabled">
+                              {t('cognitiveWargame.scenario.blueForce')}
+                            </div>
+                            <div className="mt-1">{s.blue_force ?? '-'}</div>
+                          </div>
+                        </div>
+                        <div className="mt-4 flex items-center justify-between gap-3">
+                          <span className="text-xs text-text-disabled">
+                            {s.created_at ?? '-'}
+                          </span>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              title={t('cognitiveWargame.common.viewDetail')}
+                              aria-label={t('cognitiveWargame.common.viewDetail')}
+                              onClick={() =>
+                                navigate(WargamePath.scenarioDetail(s.id))
+                              }
+                            >
+                              <Eye className="size-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              disabled={executing}
+                              title={
+                                executing
+                                  ? t('cognitiveWargame.scenario.executing', {
+                                      defaultValue: '正在推演',
+                                    })
+                                  : t('cognitiveWargame.common.execute')
+                              }
+                              aria-label={
+                                executing
+                                  ? t('cognitiveWargame.scenario.executing', {
+                                      defaultValue: '正在推演',
+                                    })
+                                  : t('cognitiveWargame.common.execute')
+                              }
+                              onClick={() => handleExecute(s.id)}
+                            >
+                              <Play className="size-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              disabled={approvalBusy === s.id}
+                              title={t('cognitiveWargame.approval.submit')}
+                              aria-label={t('cognitiveWargame.approval.submit')}
+                              onClick={() => handleSubmitApproval(s)}
+                            >
+                              <ClipboardCheck className="size-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-text-error"
+                              title={t('cognitiveWargame.common.delete')}
+                              aria-label={t('cognitiveWargame.common.delete')}
+                              onClick={() => handleDelete(s.id)}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
             ) : (
               <Table>
                 <TableHeader>
@@ -448,6 +643,14 @@ const ScenarioListPage: React.FC = () => {
               </Table>
             )}
           </Spin>
+          <div className="mt-4">
+            <IntellectPagination
+              current={currentPage}
+              pageSize={pageSize}
+              total={total}
+              onChange={handlePaginationChange}
+            />
+          </div>
         </CardContent>
       </Card>
       </div>
