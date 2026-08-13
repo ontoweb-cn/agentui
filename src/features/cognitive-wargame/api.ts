@@ -30,6 +30,9 @@ function createWargameClient(): AxiosInstance {
     baseURL: WARGAME_BASE_URL,
     timeout: 300000,
     headers: { 'Content-Type': 'application/json' },
+    // v1.3 cookie-based：同源携带 imt_token cookie（HttpOnly，企业版写操作需 member token
+    // 触发 role_guard 角色校验）。社区版无 cookie 不受影响（靠 LAN bypass / AUTH_ENABLED=False）。
+    withCredentials: true,
   });
 
   instance.interceptors.request.use((config) => {
@@ -881,16 +884,11 @@ export const api = {
     );
   },
 
-  /** 删除 Skill（hard 默认 true，已分配则返回 409）。 */
-  deleteSkill(
-    category: ResourceCategory,
-    skillId: string,
-    hard: boolean = true,
-  ) {
+  /** 删除 Skill（硬删，已分配则返回 409）。后端不接受 hard 参数（v1.3）。 */
+  deleteSkill(category: ResourceCategory, skillId: string) {
     return unwrap<{ deleted: boolean }>(
       client.delete(
         `/skills/${encodeURIComponent(category)}/${encodeURIComponent(skillId)}`,
-        { params: { hard } },
       ),
     );
   },
