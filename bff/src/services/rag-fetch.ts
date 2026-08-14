@@ -4,7 +4,7 @@
 // 与 intellect-rag-client.proxy 三处共用的 token 逻辑)。
 //
 // 设计:
-// - token 优先级:调用方显式 Authorization > 动态 token(ragTokenProvider) > fallbackStaticToken
+// - token 优先级:调用方显式 Authorization > 会话 token(sessionToken, imt_*) > 动态 token(ragTokenProvider) > fallbackStaticToken
 // - 401 重试:仅当 token 来自动态 token 时才 invalidate + 重新 login + 重试一次
 //   (静态 JWT 过期重试无意义;调用方显式 token 由调用方自行管理)
 // - body 缓冲到 Buffer 以支持 401 重试(ReadableStream 单次消费,不缓冲无法重发)

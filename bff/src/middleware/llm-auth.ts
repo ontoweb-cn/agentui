@@ -3,7 +3,7 @@
 //
 // 修复 P0-1(认证绕过)+ P1-5(无 RBAC):
 // authMiddleware 仅校验 Authorization header / imt_token cookie 的"存在性",
-// 对 /proxy/* 透传路由足够(上游 intellect-rag 会拒绝无效 token),
+// 对 /proxy/* 透传路由仅存在性校验(上游 401 被 proxy.ts 吞成空数据返回,并未真正拒绝),
 // 但 /llm/* 路由使用 BFF 自己的 adminToken 调上游,用户 token 从未转发也从未校验,
 // 导致任何发送 `Authorization: Bearer x` 的请求都能执行 admin 操作。
 //
