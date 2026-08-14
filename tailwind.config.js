@@ -8,6 +8,7 @@ module.exports = {
     './src/pages/**/*.tsx',
     './src/components/**/*.tsx',
     './src/layouts/**/*.tsx',
+    './src/features/**/*.{ts,tsx}',
   ],
   theme: {
     container: {

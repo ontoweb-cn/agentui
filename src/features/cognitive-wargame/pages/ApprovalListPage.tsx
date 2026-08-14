@@ -46,7 +46,7 @@ import { t } from 'i18next';
 import { useCallback, useEffect, useState } from 'react';
 
 const STATUS_OPTIONS = [
-  '',
+  'all',
   'pending',
   'approved',
   'rejected',
@@ -75,7 +75,7 @@ const ApprovalListPage: React.FC = () => {
     try {
       const data = await api.getApprovals({
         resource_type: 'scenario',
-        status: statusFilter || undefined,
+        status: statusFilter === 'all' ? undefined : statusFilter,
         limit: 100,
       });
       setApprovals(data.approvals ?? []);

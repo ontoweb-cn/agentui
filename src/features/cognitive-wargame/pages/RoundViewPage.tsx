@@ -74,6 +74,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
@@ -161,6 +162,44 @@ const RoundViewPage: React.FC = () => {
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [injectOpen, setInjectOpen] = useState(false);
   const [inject, setInject] = useState<InjectForm>(DEFAULT_INJECT);
+  // 历史信息 Tabs 当前激活项（控制面板内，受控以支持回合历史自动跟随）
+  const [historyTab, setHistoryTab] = useState('interventions');
+
+  // 实时事件流 / 回合历史滚动跟随（上滑超 40px 暂停跟随，回到底部恢复）
+  const liveViewportRef = useRef<HTMLDivElement>(null);
+  const liveFollowRef = useRef(true);
+  const roundsViewportRef = useRef<HTMLDivElement>(null);
+  const roundsFollowRef = useRef(true);
+
+  const handleLiveScroll = useCallback(() => {
+    const vp = liveViewportRef.current;
+    if (!vp) return;
+    liveFollowRef.current =
+      vp.scrollHeight - vp.scrollTop - vp.clientHeight < 40;
+  }, []);
+
+  const handleRoundsScroll = useCallback(() => {
+    const vp = roundsViewportRef.current;
+    if (!vp) return;
+    roundsFollowRef.current =
+      vp.scrollHeight - vp.scrollTop - vp.clientHeight < 40;
+  }, []);
+
+  // 实时事件流：内容更新且用户未上翻时自动滚到底部（最新在底部）
+  useEffect(() => {
+    const vp = liveViewportRef.current;
+    if (vp && liveFollowRef.current) {
+      vp.scrollTop = vp.scrollHeight;
+    }
+  }, [liveEvents]);
+
+  // 回合历史：数据刷新且当前激活该 tab、用户未上翻时自动滚到底部
+  useEffect(() => {
+    const vp = roundsViewportRef.current;
+    if (historyTab === 'rounds' && vp && roundsFollowRef.current) {
+      vp.scrollTop = vp.scrollHeight;
+    }
+  }, [history, historyTab]);
 
   // SSE 跟随：控制面板打开时订阅该想定，否则订阅当前选中的想定
   const sseScenarioId = controlScenarioId ?? (id ?? null);
@@ -204,8 +243,8 @@ const RoundViewPage: React.FC = () => {
   // SSE 事件回调：分发到 store + 维护实时事件流
   const handleEvent = useCallback(
     (event: CognitiveEvent) => {
-      // 实时事件流（新事件置顶，截断至 MAX_LIVE_EVENTS）
-      setLiveEvents((prev) => [event, ...prev].slice(0, MAX_LIVE_EVENTS));
+      // 实时事件流（时间升序：最新在底部，截断保留最新 MAX_LIVE_EVENTS 条）
+      setLiveEvents((prev) => [...prev, event].slice(-MAX_LIVE_EVENTS));
 
       switch (event.type) {
         case 'anomaly.detected':
@@ -365,13 +404,14 @@ const RoundViewPage: React.FC = () => {
     return () => window.clearInterval(timer);
   }, [pageScenarios, refreshTaskStatuses]);
 
-  // 是否"正在推演"：任务状态为 running/pending/started 或已暂停
+  // 是否"正在推演"：任务状态为 running/pending/started，或 running 中处于暂停
   const isRunning = (s: Scenario): boolean => {
     const st = taskStatusMap[s.id];
     if (!st) return false;
     const status = (st.status ?? '').toLowerCase();
     return (
-      ['running', 'pending', 'started'].includes(status) || st.paused === true
+      ['running', 'pending', 'started'].includes(status) ||
+      (status === 'running' && st.paused === true)
     );
   };
 
@@ -393,7 +433,7 @@ const RoundViewPage: React.FC = () => {
     return ['done', 'failed', 'canceled'].includes(status) ? st.status : null;
   };
 
-  // 实时事件流按轮次分组（最新轮次在前，无轮次事件归"其他"）
+  // 实时事件流按轮次分组（轮次升序：最新轮次在底部，无轮次事件归"其他"）
   const groupedLiveEvents = useMemo(() => {
     const groups = new Map<string, CognitiveEvent[]>();
     for (const ev of liveEvents) {
@@ -409,7 +449,7 @@ const RoundViewPage: React.FC = () => {
     entries.sort((a, b) => {
       if (a[0] === 'other') return 1;
       if (b[0] === 'other') return -1;
-      return Number(b[0]) - Number(a[0]);
+      return Number(a[0]) - Number(b[0]);
     });
     return entries;
   }, [liveEvents]);
@@ -459,6 +499,29 @@ const RoundViewPage: React.FC = () => {
       const targetId = controlScenarioId ?? id;
       if (!targetId) return Promise.resolve();
       return api.resumeScenario(targetId);
+    });
+
+  const handleCancel = () =>
+    runAction(t('cognitiveWargame.director.cancelSuccess'), async () => {
+      const targetId = controlScenarioId ?? id;
+      if (!targetId) return;
+      const taskId = taskStatusMap[targetId]?.task_id;
+      if (!taskId) {
+        throw new Error(
+          t('cognitiveWargame.director.cancelNoTask', {
+            defaultValue: '未找到运行中任务',
+          }),
+        );
+      }
+      const resp = await api.cancelScenario(targetId, taskId);
+      if (resp && resp.canceled === false) {
+        throw new Error(
+          t('cognitiveWargame.director.cancelRejected', {
+            defaultValue: '取消请求未生效',
+          }),
+        );
+      }
+      await refreshTaskStatuses([targetId]);
     });
 
   const handleInject = async () => {
@@ -874,14 +937,14 @@ const RoundViewPage: React.FC = () => {
           open
           onOpenChange={(open) => !open && setControlScenarioId(null)}
         >
-          <DialogContent className="flex h-[92vh] max-h-[92vh] w-[calc(100vw_-_2rem)] max-w-[calc(100vw_-_2rem)] flex-col overflow-hidden">
+          <DialogContent className="flex h-[80vh] max-h-[80vh] w-[85vw] max-w-[85vw] flex-col overflow-hidden">
             <DialogHeader>
               <DialogTitle>
                 {t('cognitiveWargame.director.controlPanel')} ·{' '}
                 {controlScenario.name}
               </DialogTitle>
             </DialogHeader>
-            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-2">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 py-2">
 
                   {actionMsg && (
                     <p className="text-sm text-text-secondary">{actionMsg}</p>
@@ -891,20 +954,29 @@ const RoundViewPage: React.FC = () => {
                   )}
 
                   {/* 控制面板 + 实时事件流 */}
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-                    <Card className="flex min-h-0 flex-col lg:col-span-2">
+                  <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-5">
+                    <Card className="flex h-full min-h-0 flex-col lg:col-span-2">
                       <CardHeader>
                         <CardTitle className="text-lg">
                           {t('cognitiveWargame.director.controlPanel')}
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="flex flex-col gap-3">
-                        <Button
-                          onClick={handleStart}
-                          disabled={acting || controlRunning}
-                        >
-                          {t('cognitiveWargame.director.startExecution')}
-                        </Button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            onClick={handleStart}
+                            disabled={acting || controlRunning}
+                          >
+                            {t('cognitiveWargame.director.startExecution')}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={handleCancel}
+                            disabled={acting || !controlRunning}
+                          >
+                            {t('cognitiveWargame.director.cancelExecution')}
+                          </Button>
+                        </div>
                         <div className="grid grid-cols-2 gap-2">
                           <Button
                             variant="outline"
@@ -931,14 +1003,18 @@ const RoundViewPage: React.FC = () => {
                       </CardContent>
                     </Card>
 
-                    <Card className="flex h-[42vh] min-h-0 flex-col lg:col-span-3">
+                    <Card className="flex h-[40vh] min-h-0 flex-col lg:h-full lg:col-span-3">
                       <CardHeader>
                         <CardTitle className="text-lg">
                           {t('cognitiveWargame.director.liveEvents')}
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="min-h-0 flex-1">
-                        <ScrollArea className="h-full">
+                        <ScrollArea
+                          className="h-full"
+                          viewportRef={liveViewportRef}
+                          onViewportScroll={handleLiveScroll}
+                        >
                           {liveEvents.length === 0 ? (
                             <div className="text-text-secondary">
                               {t('cognitiveWargame.director.noLiveEvents')}
@@ -995,7 +1071,11 @@ const RoundViewPage: React.FC = () => {
                   </div>
 
                   {/* 干预历史 / 异常告警 / 回合历史 */}
-                  <Tabs defaultValue="interventions" className="mt-4">
+                  <Tabs
+                    value={historyTab}
+                    onValueChange={setHistoryTab}
+                    className="mt-0 flex-none"
+                  >
                     <TabsList>
                       <TabsTrigger value="interventions">
                         {t('cognitiveWargame.director.interventionHistory')} (
@@ -1013,7 +1093,7 @@ const RoundViewPage: React.FC = () => {
 
                     {/* 干预历史 */}
                     <TabsContent value="interventions">
-                      <Card className="h-[30vh]">
+                      <Card className="h-[26vh]">
                         <CardContent className="h-full overflow-y-auto">
                           {interventions.length === 0 ? (
                             <div className="py-4 text-text-secondary">
@@ -1063,7 +1143,7 @@ const RoundViewPage: React.FC = () => {
 
                     {/* 异常告警 */}
                     <TabsContent value="anomalies">
-                      <Card className="h-[30vh]">
+                      <Card className="h-[26vh]">
                         <CardContent className="h-full overflow-y-auto">
                           {anomalies.length === 0 ? (
                             <div className="py-4 text-text-secondary">
@@ -1111,8 +1191,12 @@ const RoundViewPage: React.FC = () => {
 
                     {/* 回合历史 */}
                     <TabsContent value="rounds">
-                      <Card className="h-[30vh]">
-                        <CardContent className="h-full overflow-y-auto">
+                      <Card className="h-[26vh]">
+                        <CardContent
+                          ref={roundsViewportRef}
+                          onScroll={handleRoundsScroll}
+                          className="h-full overflow-y-auto"
+                        >
                           <Spin spinning={historyLoading}>
                             {history.length === 0 ? (
                               <div className="py-4 text-text-secondary">

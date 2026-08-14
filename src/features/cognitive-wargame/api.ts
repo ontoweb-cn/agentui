@@ -658,6 +658,19 @@ export const api = {
     );
   },
 
+  /** 终止推演（导演台取消任务，P3.3-4）。 */
+  cancelScenario(id: string, taskId: string) {
+    return unwrap<{
+      task_id?: string;
+      canceled?: boolean;
+      actually_stopped?: boolean;
+    }>(
+      client.post(`/scenarios/${id}/cancel`, null, {
+        params: { task_id: taskId },
+      }),
+    );
+  },
+
   /** 注入干预（P3.3-1 导演台干预）。 */
   injectIntervention(id: string, req: InterventionRequest) {
     return unwrap<Record<string, unknown>>(
