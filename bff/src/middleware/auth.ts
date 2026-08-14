@@ -27,9 +27,20 @@ export async function authMiddleware(c: Context, next: Next) {
     return;
   }
 
+  // 方案 A (B3 fail-closed): flag 开启(企业版模式)时只认 imt_token cookie,
+  // 禁止「任意 Authorization 头即放行」——否则任意 Authorization 都能过 BFF(配合 B4 禁降级,关闭提权面)。
+  if (process.env.BFF_ENABLE_IMT_CANVAS_AGENTS === 'true') {
+    const cookie = getCookie(c, AUTH_COOKIE_NAME);
+    if (cookie) {
+      await next();
+      return;
+    }
+    return c.json({ code: 401, message: 'Unauthorized: missing session cookie' }, 401);
+  }
+
   const auth = c.req.header('Authorization');
 
-  // 社区版:前端传 JWT token 在 Authorization header 中
+  // RAG 版:前端传 JWT token 在 Authorization header 中
   if (auth) {
     await next();
     return;

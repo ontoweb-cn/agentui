@@ -288,9 +288,12 @@ harnessStore.load()
     }, 60_000);
     tenantCheckTimer.unref(); // 不阻塞进程退出
 
-    // 预热 RAG token(后台异步,失败不阻塞 BFF 启动)
-    const { ragTokenProvider } = await import('./services/rag-token-provider');
-    ragTokenProvider.login().catch(() => {});
+    // 预热 RAG token(后台异步,失败不阻塞 BFF 启动)。
+    // 方案 A (B6): 企业版(flag 开启)走 imt_,无需预热 RAG admin token。
+    if (process.env.BFF_ENABLE_IMT_CANVAS_AGENTS !== 'true') {
+      const { ragTokenProvider } = await import('./services/rag-token-provider');
+      ragTokenProvider.login().catch(() => {});
+    }
   })
   .catch((err) => {
     console.error('[BFF] FATAL: Failed to load stores, exiting:', err);
