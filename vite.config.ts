@@ -168,6 +168,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: Number(env.PORT) || 9391,
       strictPort: false,
+      allowedHosts: true,
       hmr: {
         overlay: false,
       },
