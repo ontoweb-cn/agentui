@@ -5,6 +5,7 @@
 > **范围**: AgentUI BFF 的 `INTELLECT_RAG_ADMIN_EMAIL` / `INTELLECT_RAG_ADMIN_PASSWORD` 与 intellect-team 已登录身份的关系
 > **关联文档**:
 > - [技术评审](./enterprise-rag-admin-credential-analysis-review.md)（C1–C2 / I1–I6 已吸收）
+> - [RAG 侧验证清单](./enterprise-rag-admin-credential-analysis-rag-verify-checklist.md)（§9 待核对项展开，可交 intellect-rag-app 仓执行）
 > - [specs/011-team-rag-tenant-consistency/spec.md](../specs/011-team-rag-tenant-consistency/spec.md)（方案 B：`sessionToken` + `intellectTenantId`；当时非目标为保留 admin JWT 兜底）
 > - [specs/006-frontend-login-adaptation/auth-flow.md](../specs/006-frontend-login-adaptation/auth-flow.md)（`imt_` token 登录流程）
 > - [docs/identity-model-migration-frontend-impact.md](./identity-model-migration-frontend-impact.md)（身份同步与双 ID）
@@ -218,13 +219,13 @@ TEAM 侧已有先例：`llm-proxy.ts` 用 `API_SERVER_KEY` / `INTELLECT_LLM_API_
 
 ## 9. RAG 侧待核对
 
-本仓库不含 intellect-rag-app 源码，须在 RAG 仓验证：
+本仓库不含 intellect-rag-app 源码，须在 RAG 仓验证。已展开为可交付的验证清单（含验证位置/方法/判定标准/回传格式），见 [RAG 侧验证清单](./enterprise-rag-admin-credential-analysis-rag-verify-checklist.md)。下列 5 条与其 V1–V5 一一对应：
 
-1. `ensure_team_user` 是否把 TEAM 的 `admin`/`owner` 写成 `tenant_membership.role`，还是一律 `member`（spec 011 §8 示意图；非本仓证据）。
-2. 是否还有接口只认 `User.is_superuser` / RAG UUID，而不认 `tenant_membership.role`。
-3. `from_intellect_team_session` 是否覆盖画布、知识库、tenant 管理等全部代理路径。
-4. 首次 `imt_` 访问是否保证调用 `ensure_team_user`（spec 011 指向 `intellect-rag-app/api/apps/__init__.py`）。
-5. RAG `/health`（或 adapter 所用健康端点）是否要求 JWT。
+1. `ensure_team_user` 是否把 TEAM 的 `admin`/`owner` 写成 `tenant_membership.role`，还是一律 `member`（spec 011 §8 示意图；非本仓证据）。（清单 V1）
+2. 是否还有接口只认 `User.is_superuser` / RAG UUID，而不认 `tenant_membership.role`。（清单 V2）
+3. `from_intellect_team_session` 是否覆盖画布、知识库、tenant 管理等全部代理路径。（清单 V3）
+4. 首次 `imt_` 访问是否保证调用 `ensure_team_user`（spec 011 指向 `intellect-rag-app/api/apps/__init__.py`）。（清单 V4）
+5. RAG `/health`（或 adapter 所用健康端点）是否要求 JWT。（清单 V5）
 
 若 (1)(2) 未完成：挂上 session 中间件后，画布/KB 会从「超管成功」变成「用户身份」——普通成员可见性变严，TEAM admin 访问部分管理接口可能 403。这是预期行为变化，需要观察 ownership，而不是回退超管。
 
