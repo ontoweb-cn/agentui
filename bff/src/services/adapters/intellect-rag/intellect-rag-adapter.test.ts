@@ -124,6 +124,25 @@ describe('IntellectRagAdapter', () => {
       expect(init.headers.get('X-Intellect-Tenant')).toBeNull();
     });
 
+    // 方案 A (V1): intellectRole 注入测试
+    it('ctx.intellectRole 存在时注入 X-Intellect-Role 头', async () => {
+      mockFetch.mockResolvedValueOnce(makeJsonResponse([]));
+      const ctxWithRole: BackendContext = {
+        ...ctx,
+        intellectRole: 'admin',
+      };
+      await adapter.listAgents(ctxWithRole);
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers.get('X-Intellect-Role')).toBe('admin');
+    });
+
+    it('ctx.intellectRole 缺失时不注入 X-Intellect-Role 头', async () => {
+      mockFetch.mockResolvedValueOnce(makeJsonResponse([]));
+      await adapter.listAgents(ctx);
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers.get('X-Intellect-Role')).toBeNull();
+    });
+
     it('ctx.sessionToken 存在时优先用 sessionToken 而非 adminToken', async () => {
       mockFetch.mockResolvedValueOnce(makeJsonResponse([]));
       const ctxWithSession: BackendContext = {

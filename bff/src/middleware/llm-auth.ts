@@ -99,9 +99,10 @@ export function createLlmAuthMiddleware(options: { requireAdmin: boolean }) {
     }
 
     // Step 4: RBAC 检查
-    if (requireAdmin && info.role !== 'admin') {
+    // owner 与 admin 均视为管理员(与 RAG _is_tenant_admin / 认知兵棋一致;owner 为最高角色)。
+    if (requireAdmin && info.role !== 'admin' && info.role !== 'owner') {
       return c.json(
-        { code: 403, message: 'Forbidden: admin role required', data: null },
+        { code: 403, message: 'Forbidden: admin or owner role required', data: null },
       );
     }
 
