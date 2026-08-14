@@ -16,6 +16,7 @@
 import { EmptyCard } from '@/components/empty/empty';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   Card,
   CardContent,
@@ -51,6 +52,8 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { LayoutGrid, List, RefreshCw } from 'lucide-react';
 import {
   api,
   type InterventionRequest,
@@ -136,6 +139,8 @@ const RoundViewPage: React.FC = () => {
   // 列表工具条状态
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
 
   // 控制面板 Dialog：当前打开控制面板的想定 ID（仅"正在推演"的想定行可打开）
   const [controlScenarioId, setControlScenarioId] = useState<string | null>(null);
@@ -330,15 +335,15 @@ const RoundViewPage: React.FC = () => {
   }, [scenarios, search]);
 
   // 当前页数据（客户端分页）
-  const totalPages = Math.max(1, Math.ceil(filteredScenarios.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filteredScenarios.length / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const pageScenarios = useMemo(
     () =>
       filteredScenarios.slice(
-        (safeCurrentPage - 1) * PAGE_SIZE,
-        safeCurrentPage * PAGE_SIZE,
+        (safeCurrentPage - 1) * pageSize,
+        safeCurrentPage * pageSize,
       ),
-    [filteredScenarios, safeCurrentPage],
+    [filteredScenarios, safeCurrentPage, pageSize],
   );
 
   // 搜索变化时回到第一页
@@ -507,6 +512,15 @@ const RoundViewPage: React.FC = () => {
               </Badge>
             )}
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchScenarios(MAX_SCENARIOS_LIMIT, 0)}
+            disabled={loading}
+          >
+            <RefreshCw className="size-4" />
+            {t('cognitiveWargame.common.refresh')}
+          </Button>
         </div>
 
         {/* 想定列表：搜索 / 轮次 / 列表 / 分页 合并为一个大框 */}
@@ -515,14 +529,40 @@ const RoundViewPage: React.FC = () => {
             <CardTitle className="text-lg">
               {t('cognitiveWargame.scenario.listTitle')}
             </CardTitle>
-            <Button
+            <ToggleGroup
+              type="single"
+              value={viewMode}
+              onValueChange={(value) => {
+                if (value) {
+                  setViewMode(value as 'table' | 'cards');
+                }
+              }}
               variant="outline"
               size="sm"
-              onClick={() => fetchScenarios(MAX_SCENARIOS_LIMIT, 0)}
-              disabled={loading}
             >
-              {t('cognitiveWargame.common.refresh')}
-            </Button>
+              <ToggleGroupItem
+                value="table"
+                title={t('cognitiveWargame.rounds.tableView', {
+                  defaultValue: '列表视图',
+                })}
+                aria-label={t('cognitiveWargame.rounds.tableView', {
+                  defaultValue: '列表视图',
+                })}
+              >
+                <List className="size-4" />
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="cards"
+                title={t('cognitiveWargame.rounds.cardView', {
+                  defaultValue: '卡片视图',
+                })}
+                aria-label={t('cognitiveWargame.rounds.cardView', {
+                  defaultValue: '卡片视图',
+                })}
+              >
+                <LayoutGrid className="size-4" />
+              </ToggleGroupItem>
+            </ToggleGroup>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
@@ -546,6 +586,69 @@ const RoundViewPage: React.FC = () => {
                   }
                   className="w-full"
                 />
+              ) : viewMode === 'cards' ? (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {pageScenarios.map((s) => {
+                    const running = isRunning(s);
+                    const finishedStatus = taskStatusText(s);
+
+                    return (
+                      <Card
+                        key={s.id}
+                        className={cn(
+                          'cursor-pointer transition-colors hover:border-accent-primary',
+                          id === s.id && 'border-accent-primary',
+                        )}
+                        onClick={() => handleSelectScenario(s.id)}
+                      >
+                        <CardHeader>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <CardTitle className="truncate text-base">
+                                {s.name}
+                              </CardTitle>
+                              <p className="mt-1 truncate font-mono text-xs text-text-disabled">
+                                {s.id}
+                              </p>
+                            </div>
+                            <Badge
+                              variant={running ? 'success' : 'outline'}
+                            >
+                              {running
+                                ? t('cognitiveWargame.rounds.running')
+                                : finishedStatus ?? s.status ?? '-'}
+                            </Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="line-clamp-2 min-h-10 text-sm leading-5 text-text-secondary">
+                            {s.description ?? '-'}
+                          </p>
+                          <div className="mt-4 flex items-center justify-between gap-3">
+                            <span className="text-xs text-text-disabled">
+                              {t('cognitiveWargame.scenario.roundsLimit')}:{' '}
+                              {s.rounds_limit ?? '-'}
+                            </span>
+                            {running && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(
+                                  e: ReactMouseEvent<HTMLButtonElement>,
+                                ) => {
+                                  e.stopPropagation();
+                                  setControlScenarioId(s.id);
+                                }}
+                              >
+                                {t('cognitiveWargame.director.controlPanel')}
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
               ) : (
                 <Table>
                   <TableHeader>
@@ -606,10 +709,12 @@ const RoundViewPage: React.FC = () => {
             </Spin>
             <IntellectPagination
               current={safeCurrentPage}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               total={filteredScenarios.length}
-              onChange={(page) => setCurrentPage(page)}
-              showSizeChanger={false}
+              onChange={(page, nextPageSize) => {
+                setCurrentPage(page);
+                setPageSize(nextPageSize);
+              }}
             />
           </CardContent>
         </Card>

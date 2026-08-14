@@ -41,7 +41,7 @@ import { WargamePath } from '../routes';
 import { useWargameStore } from '../store';
 import authorizationUtil from '@/utils/authorization-util';
 import { t } from 'i18next';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import {
   Activity,
@@ -70,6 +70,7 @@ const DEFAULT_FORM: CreateFormData = {
 };
 
 const DEFAULT_PAGE_SIZE = 10;
+const MAX_SCENARIOS_LIMIT = 100;
 
 const RUNNING_TASK_STATUS = new Set(['pending', 'running']);
 const FINISHED_TASK_STATUS = new Set([
@@ -90,7 +91,7 @@ function createScenarioId(name: string) {
 }
 
 const ScenarioListPage: React.FC = () => {
-  const { scenarios, loading, total, fetchScenarios } = useWargameStore();
+  const { scenarios, loading, fetchScenarios } = useWargameStore();
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState<CreateFormData>(DEFAULT_FORM);
@@ -112,8 +113,8 @@ const ScenarioListPage: React.FC = () => {
   const actorId = authorizationUtil.getUserInfoObject()?.id;
 
   const load = useCallback(() => {
-    return fetchScenarios(pageSize, (currentPage - 1) * pageSize);
-  }, [currentPage, fetchScenarios, pageSize]);
+    return fetchScenarios(MAX_SCENARIOS_LIMIT, 0);
+  }, [fetchScenarios]);
 
   useEffect(() => {
     void load();
@@ -297,6 +298,17 @@ const ScenarioListPage: React.FC = () => {
     setPageSize(size);
   };
 
+  const totalPages = Math.max(1, Math.ceil(scenarios.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pagedScenarios = useMemo(
+    () =>
+      scenarios.slice(
+        (safeCurrentPage - 1) * pageSize,
+        safeCurrentPage * pageSize,
+      ),
+    [safeCurrentPage, pageSize, scenarios],
+  );
+
   return (
     <WargameSectionLayout>
       <div className="flex flex-col gap-4 p-6">
@@ -423,7 +435,7 @@ const ScenarioListPage: React.FC = () => {
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle className="text-lg">
-              {t('cognitiveWargame.scenario.listTitle')} ({total})
+              {t('cognitiveWargame.scenario.listTitle')} ({scenarios.length})
             </CardTitle>
             <ToggleGroup
               type="single"
@@ -470,7 +482,7 @@ const ScenarioListPage: React.FC = () => {
               />
             ) : viewMode === 'cards' ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {scenarios.map((s) => {
+                {pagedScenarios.map((s) => {
                   const executing =
                     s.id in executingTasks || s.status === 'running';
 
@@ -626,7 +638,7 @@ const ScenarioListPage: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {scenarios.map((s) => {
+                  {pagedScenarios.map((s) => {
                     const executing =
                       s.id in executingTasks ||
                       s.status === 'running' ||
@@ -724,9 +736,9 @@ const ScenarioListPage: React.FC = () => {
           </Spin>
           <div className="mt-4">
             <IntellectPagination
-              current={currentPage}
+              current={safeCurrentPage}
               pageSize={pageSize}
-              total={total}
+              total={scenarios.length}
               onChange={handlePaginationChange}
             />
           </div>

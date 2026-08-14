@@ -223,6 +223,8 @@ export default {
       roundsPlaceholder: 'Enter rounds limit',
       noMatch: 'No matching scenarios',
       running: 'Running',
+      tableView: 'Table view',
+      cardView: 'Card view',
       scenarioId: 'Scenario ID',
       totalAgents: 'Total agents',
     },

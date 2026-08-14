@@ -33,7 +33,7 @@ export function IntellectPagination({
   const [currentPageSize, setCurrentPageSize] = useState('10');
 
   const sizeChangerOptions: IntellectSelectOptionType[] = useMemo(() => {
-    return [10, 20, 50, 100].map((x) => ({
+    return [5, 10, 20, 50, 100].map((x) => ({
       label: <span>{t('pagination.page', { page: x })}</span>,
       value: x.toString(),
     }));

@@ -223,6 +223,8 @@ export default {
       roundsPlaceholder: '输入回合上限',
       noMatch: '没有匹配的想定',
       running: '正在推演',
+      tableView: '列表视图',
+      cardView: '卡片视图',
       scenarioId: '想定 ID',
       totalAgents: 'Agent 数量',
     },
