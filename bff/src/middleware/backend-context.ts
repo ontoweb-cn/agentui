@@ -54,14 +54,17 @@ export const backendContextMiddleware: MiddlewareHandler = async (c, next) => {
     );
   }
 
-  // BFF-P0-1: 从 AuthSession 解析 member_id (token → /api/members/me)。
+  // BFF-P0-1: 从 AuthSession 解析 member_id + role (token → /api/members/me)。
   // 仅企业版 (authMode=intellect-enterprise) 下解析,RAG 版不调用。
   // 解析失败不阻塞(留空),由下游 adapter 按需处理。
   try {
-    const { resolveMemberIdFromContext } = await import('../services/member-id-resolver');
-    const memberId = await resolveMemberIdFromContext(c);
-    if (memberId) {
-      ctx.intellectUserId = memberId;
+    const { resolveMemberInfoFromContext } = await import('../services/member-id-resolver');
+    const info = await resolveMemberInfoFromContext(c);
+    if (info?.memberId) {
+      ctx.intellectUserId = info.memberId;
+    }
+    if (info?.role) {
+      ctx.intellectRole = info.role;
     }
   } catch (_err) {
     // member-id-resolver 不可用时静默跳过(intellect-rag 单租户场景)

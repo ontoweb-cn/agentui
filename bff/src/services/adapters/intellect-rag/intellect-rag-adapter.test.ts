@@ -250,12 +250,12 @@ describe('IntellectRagAdapter', () => {
   });
 
   describe('healthCheck', () => {
-    it('调 GET {baseUrl}/health 返回 true(200)', async () => {
+    it('调 GET {baseUrl}/api/v1/system/healthz 返回 true(200)', async () => {
       mockFetch.mockResolvedValueOnce(makeJsonResponse({ status: 'ok' }));
       const result = await adapter.healthCheck();
       expect(result).toBe(true);
       const [url] = mockFetch.mock.calls[0];
-      expect(url).toBe('http://localhost:9380/health');
+      expect(url).toBe('http://localhost:9380/api/v1/system/healthz');
     });
 
     it('上游非 200 返回 false', async () => {

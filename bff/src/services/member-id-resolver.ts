@@ -137,9 +137,9 @@ export async function resolveMemberId(
  * @returns member_id,或 undefined(无 session/后端配置缺失/解析失败)
  *          RAG 版直接返回 undefined(不需要 member_id)
  */
-export async function resolveMemberIdFromContext(c: {
+export async function resolveMemberInfoFromContext(c: {
   get: (key: string) => unknown;
-}): Promise<string | undefined> {
+}): Promise<MemberInfo | undefined> {
   const session = getAuthSession(c);
   if (!session) {
     return undefined;
@@ -164,5 +164,12 @@ export async function resolveMemberIdFromContext(c: {
   }
 
   // v9 BFF-P2-4:传 backendId 用作 cache 复合 key
-  return resolveMemberId(session.backendId, session.token, backend.endpoint);
+  return resolveMemberInfo(session.backendId, session.token, backend.endpoint);
+}
+
+export async function resolveMemberIdFromContext(c: {
+  get: (key: string) => unknown;
+}): Promise<string | undefined> {
+  const info = await resolveMemberInfoFromContext(c);
+  return info?.memberId;
 }
