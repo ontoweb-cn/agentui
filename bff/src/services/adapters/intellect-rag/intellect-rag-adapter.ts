@@ -204,10 +204,11 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
       // RAG 匿名健康端点 /api/v1/system/healthz(无 @login_required,
       // 见 intellect-rag-app/api/apps/restful_apis/system_api.py:230)。
       // 注意:根 /health 在 RAG 源码中不存在,勿改回。
-      const response = await fetchWithRagToken(`${this.baseUrl}/api/v1/system/healthz`, {
+      // 匿名端点无需注入 token,直接用 fetch(避免向公开端点发送 adminToken)。
+      const response = await fetch(`${this.baseUrl}/api/v1/system/healthz`, {
         method: 'GET',
-        headers: this.buildHeaders(),
-      }, { fallbackStaticToken: this.adminToken });
+        headers: { Accept: 'application/json' },
+      });
       return response.ok;
     } catch {
       return false;
