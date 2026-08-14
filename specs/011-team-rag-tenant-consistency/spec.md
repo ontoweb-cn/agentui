@@ -25,7 +25,7 @@ intellect-team（企业版 gateway）与 intellect-rag（RAG/画布引擎）共�
 **非目标**：
 - 不重构 intellect-team 的多租户模型（保持 Independent-DB + K8s instance-per-tenant）
 - 不重构 intellect-rag 的 `tenant_membership` 表结构
-- 不消除 admin JWT 兜底路径（保持向后兼容）
+- 不消除 admin JWT 兜底路径（保持向后兼容）。后续评估见 [docs/enterprise-rag-admin-credential-analysis.md](../../docs/enterprise-rag-admin-credential-analysis.md)
 
 ## 3. 改进方案
 
@@ -225,3 +225,4 @@ imt_ token 路径
 - intellect-team 租户模型：`intellect-team/intellect-storage/src/tenants.rs`、`intellect-team/intellect-gateway/src/config.rs`
 - intellect-rag SubjectContext：`intellect-rag-app/api/identity/context.py`、`intellect-rag-app/api/utils/api_utils.py`、`intellect-rag-app/api/utils/sync_membership.py`
 - 现有 spec：`specs/005-bff-auth-default-tenant/spec.md`（缺省 TenantID=0）、`specs/006-frontend-login-adaptation/auth-flow.md`（imt_ token 流程）
+- 后续分析（是否取消 EMAIL/PASSWORD 超管兜底）：[docs/enterprise-rag-admin-credential-analysis.md](../../docs/enterprise-rag-admin-credential-analysis.md)
