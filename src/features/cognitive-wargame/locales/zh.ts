@@ -99,6 +99,7 @@ export default {
       modelConfig: '模型配置',
       modelConfigSummary: '模型配置功能正在建设中',
       pending: '待开发',
+      all: '全部',
       category: '分类',
       name: '名称',
       description: '描述',
