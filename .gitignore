@@ -31,7 +31,7 @@ coverage/
 # 临时文件
 .tmp/
 tmp_*.py
-
 # KANBAN 进度集成联调测试产物
 .tmp-gateway-home/
 src/features/cognitive-wargame/.test-write
+vite-dev.log

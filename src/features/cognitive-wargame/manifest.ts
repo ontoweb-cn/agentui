@@ -40,30 +40,7 @@ const definition: ModuleDefinition = {
       pathMap: [WargameRoutes.Rounds, WargameRoutes.RoundView],
       testId: 'nav-cw-rounds',
     },
-    {
-      path: WargameRoutes.Metrics,
-      labelKey: 'cognitiveWargame.nav.metrics',
-      pathMap: [WargameRoutes.Metrics, WargameRoutes.MetricsView],
-      testId: 'nav-cw-metrics',
-    },
-    {
-      path: WargameRoutes.KG,
-      labelKey: 'cognitiveWargame.nav.kg',
-      pathMap: [WargameRoutes.KG, WargameRoutes.KGView],
-      testId: 'nav-cw-kg',
-    },
-    {
-      path: WargameRoutes.Reports,
-      labelKey: 'cognitiveWargame.nav.reports',
-      pathMap: [WargameRoutes.Reports, WargameRoutes.ReportView],
-      testId: 'nav-cw-reports',
-    },
-    {
-      path: WargameRoutes.Playback,
-      labelKey: 'cognitiveWargame.nav.playback',
-      pathMap: [WargameRoutes.Playback, WargameRoutes.PlaybackView],
-      testId: 'nav-cw-playback',
-    },
+
     {
       path: WargameRoutes.Approvals,
       labelKey: 'cognitiveWargame.nav.approvals',

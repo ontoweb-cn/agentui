@@ -1,14 +1,17 @@
 /**
- * RoundViewPage — 导演台（P3.0-5 重写）。
+ * RoundViewPage 推演监控 / 导演台（P3.0-5 重写：想定列表 + 主从联动 Tab 视图）。
  *
- * 布局：想定信息栏 + 控制面板/实时事件流（左右分栏）+ 底部 Tab（干预历史/异常告警/回合历史/任务进度）。
+ * 布局：
+ * - 想定列表大框：标题（想定列表）内嵌 搜索（名称/ID/描述），刷新按钮在框右上角
+ * - 想定列表：一次拉取全部想定（limit 100），每页 5 条前端分页；行点击选中并同步 URL（/rounds/:id）
+ * - 选中想定后下方展开卡片：基本信息 / 历史回放 / 态势分析 / 知识图谱 / 评估报告
  *
- * - 控制面板：启动推演 / 暂停 / 恢复 / 注入干预（叙事注入·状态修改·策略否决）
+ * - 正在推演：每 10s 轮询 /scenarios/{id}/status，行内显示"正在推演"徽章 + 控制面板按钮
+ * - 控制面板 Dialog：启动推演 / 暂停 / 恢复 / 注入干预（叙事注入/状态修改/否决策略）
  * - 实时事件流：useSseEvents 订阅，anomaly.detected/intervention.applied/round.* 实时展示
  * - 干预历史：store.interventions（SSE 增量 + fetchInterventions 全量）
  * - 异常告警：store.anomalies（SSE anomaly.detected 增量）
  * - 回合历史：api.getMetricsHistory
- * - 任务进度：useKanbanProgress 2s 轮询 + KanbanProgressTree 渲染（v3.1 阶段二任务 2.5）
  */
 import { EmptyCard } from '@/components/empty/empty';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +30,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { IntellectPagination } from '@/components/ui/intellect-pagination';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -47,18 +51,36 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { api, type InterventionRequest, type Metrics } from '../api';
-import { KanbanProgressTree } from '../components/KanbanProgressTree';
+import {
+  api,
+  type InterventionRequest,
+  type Metrics,
+  type Scenario,
+  type ScenarioTaskStatus,
+} from '../api';
+import ScenarioKGView from '../components/scenario-kg-view';
+import ScenarioMetricsView from '../components/scenario-metrics-view';
+import ScenarioPlaybackView from '../components/scenario-playback-view';
+import ScenarioReportView from '../components/scenario-report-view';
 import WargameSectionLayout from '../components/section-menu';
-import { useKanbanProgress } from '../hooks/use-kanban-progress';
 import { useSseEvents, type CognitiveEvent } from '../hooks/use-sse-events';
-import { WargameRoutes } from '../routes';
+import { WargamePath } from '../routes';
 import { useWargameStore } from '../store';
 import { t } from 'i18next';
-import { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 
 const MAX_LIVE_EVENTS = 50;
+
+const PAGE_SIZE = 5;
+const MAX_SCENARIOS_LIMIT = 100;
+const TASK_POLL_INTERVAL_MS = 5000;
 
 type InterventionKind = InterventionRequest['type'];
 
@@ -90,10 +112,13 @@ const DEFAULT_INJECT: InjectForm = {
   fieldValue: '',
   strategyId: '',
 };
-
 const RoundViewPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const {
+    scenarios,
+    loading,
     currentScenario,
     loadScenario,
     currentRound,
@@ -105,16 +130,25 @@ const RoundViewPage: React.FC = () => {
     addAnomaly,
     clearEvents,
     setCurrentTaskId,
+    fetchScenarios,
   } = useWargameStore();
 
-  // KANBAN 进度轮询（v3.1 阶段二任务 2.5）：2s 轮询 task 树 + status_counts
-  const {
-    tasks: kanbanTasks,
-    statusCounts: kanbanCounts,
-    loading: kanbanLoading,
-    error: kanbanError,
-  } = useKanbanProgress(id);
+  // 列表工具条状态
+  const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
+  // 控制面板 Dialog：当前打开控制面板的想定 ID（仅"正在推演"的想定行可打开）
+  const [controlScenarioId, setControlScenarioId] = useState<string | null>(null);
+  // 想定最近推演任务状态（轮询 /status，用于显示"正在推演"）
+  const [taskStatusMap, setTaskStatusMap] = useState<
+    Record<string, ScenarioTaskStatus>
+  >({});
+
+  // 基本信息（完整详情）
+  const [scenarioDetail, setScenarioDetail] = useState<Scenario | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  // 导演控制台状态
   const [liveEvents, setLiveEvents] = useState<CognitiveEvent[]>([]);
   const [history, setHistory] = useState<Metrics[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -123,16 +157,44 @@ const RoundViewPage: React.FC = () => {
   const [injectOpen, setInjectOpen] = useState(false);
   const [inject, setInject] = useState<InjectForm>(DEFAULT_INJECT);
 
-  const refreshHistory = useCallback(async () => {
-    if (!id) return;
+  // SSE 跟随：控制面板打开时订阅该想定，否则订阅当前选中的想定
+  const sseScenarioId = controlScenarioId ?? (id ?? null);
+
+  const refreshHistory = useCallback(async (scenarioId: string) => {
+    if (!scenarioId) return;
     setHistoryLoading(true);
     try {
-      const h = await api.getMetricsHistory(id).catch(() => [] as Metrics[]);
+      const h = await api
+        .getMetricsHistory(scenarioId)
+        .catch(() => [] as Metrics[]);
       setHistory(h);
     } finally {
       setHistoryLoading(false);
     }
-  }, [id]);
+  }, []);
+
+  // 想定任务状态：拉取指定想定的推演任务状态（轮询 + SSE 事件触发）
+  const refreshTaskStatuses = useCallback(async (ids: string[]) => {
+    const entries = await Promise.all(
+      ids.map(async (scenarioId) => {
+        try {
+          return [
+            scenarioId,
+            await api.getScenarioTaskStatus(scenarioId),
+          ] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    setTaskStatusMap((prev) => {
+      const next = { ...prev };
+      for (const entry of entries) {
+        if (entry) next[entry[0]] = entry[1];
+      }
+      return next;
+    });
+  }, []);
 
   // SSE 事件回调：分发到 store + 维护实时事件流
   const handleEvent = useCallback(
@@ -156,17 +218,22 @@ const RoundViewPage: React.FC = () => {
             (event.payload as { round_num?: number }).round_num ?? event.round_id;
           if (roundNum) {
             setCurrentRound(roundNum);
-            refreshHistory();
+            refreshHistory(sseScenarioId ?? '');
+          }
+          if (sseScenarioId) {
+            refreshTaskStatuses([sseScenarioId]);
           }
           break;
         }
         case 'scenario.canceled':
           // R3: 真正中断（未 RUNNING），清除当前任务
           setCurrentTaskId(null);
+          if (sseScenarioId) {
+            refreshTaskStatuses([sseScenarioId]);
+          }
           break;
         case 'scenario.cancel_requested':
           // R3: RUNNING 任务请求取消（仅标记），任务仍在运行，保留 taskId
-          // UI 可显示"取消请求已提交"提示，由后续迭代补
           break;
         case 'scenario.round.started': {
           // R4: 回合开始，更新 currentRound 以反映进行中的回合
@@ -175,45 +242,183 @@ const RoundViewPage: React.FC = () => {
           if (startedRoundNum) {
             setCurrentRound(startedRoundNum);
           }
+          if (sseScenarioId) {
+            refreshTaskStatuses([sseScenarioId]);
+          }
           break;
         }
         case 'system.degraded':
-          // F23: Redis 降级警告，事件已入 liveEvents 流，无需额外处理
+          // F23: Redis 降级告警，事件已入 liveEvents 流，无需额外处理
           break;
         default:
           break;
       }
     },
-    // refreshHistory 随 id 变化重建；store action 为 zustand 稳定引用，无需入 deps
-    [refreshHistory, addAnomaly, addIntervention, setCurrentRound, setCurrentTaskId],
+    // refreshHistory 随 id 变化重建；store action 为 zustand 稳定引用，无需全量 deps
+    [
+      refreshHistory,
+      refreshTaskStatuses,
+      sseScenarioId,
+      addAnomaly,
+      addIntervention,
+      setCurrentRound,
+      setCurrentTaskId,
+    ],
   );
 
   const { connected, error } = useSseEvents({
-    scenarioId: id ?? null,
+    scenarioId: sseScenarioId,
     onEvent: handleEvent,
   });
 
+  // 想定列表：一次性拉取全部想定（后端 limit 上限 100），前端按每页 5 条分页
+  useEffect(() => {
+    fetchScenarios(MAX_SCENARIOS_LIMIT, 0);
+  }, [fetchScenarios]);
+
+  // 从想定管理"执行过程"跳转而来（?control=1）：自动打开该想定的控制面板
+  useEffect(() => {
+    if (searchParams.get('control') === '1' && id) {
+      setControlScenarioId(id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 选中想定：加载完整详情并重置事件流（干预历史/回合历史由控制面板 Dialog 按需加载）
   useEffect(() => {
     if (!id) {
       clearEvents();
+      setScenarioDetail(null);
       return;
     }
     clearEvents();
     loadScenario(id);
-    fetchInterventions(id);
-    refreshHistory();
+    setDetailLoading(true);
+    api
+      .getScenario(id)
+      .then(setScenarioDetail)
+      .catch(() => setScenarioDetail(null))
+      .finally(() => setDetailLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // 打开控制面板：重置事件流并加载该想定的干预历史 / 回合历史
+  useEffect(() => {
+    if (!controlScenarioId) {
+      setLiveEvents([]);
+      return;
+    }
+    clearEvents();
+    setLiveEvents([]);
+    fetchInterventions(controlScenarioId);
+    refreshHistory(controlScenarioId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlScenarioId]);
+
+  // 客户端过滤：搜索词（名称 / ID / 描述）
+  const filteredScenarios = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return scenarios.filter((s) => {
+      if (
+        q &&
+        !`${s.id} ${s.name} ${s.description ?? ''}`.toLowerCase().includes(q)
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [scenarios, search]);
+
+  // 当前页数据（客户端分页）
+  const totalPages = Math.max(1, Math.ceil(filteredScenarios.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageScenarios = useMemo(
+    () =>
+      filteredScenarios.slice(
+        (safeCurrentPage - 1) * PAGE_SIZE,
+        safeCurrentPage * PAGE_SIZE,
+      ),
+    [filteredScenarios, safeCurrentPage],
+  );
+
+  // 搜索变化时回到第一页
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
+  // 想定任务状态轮询：每 5s 拉取当前页想定的推演状态，用于显示"正在推演"
+
+
+  useEffect(() => {
+    const ids = pageScenarios.map((s) => s.id);
+    if (ids.length === 0) return;
+    refreshTaskStatuses(ids);
+    const timer = window.setInterval(
+      () => refreshTaskStatuses(ids),
+      TASK_POLL_INTERVAL_MS,
+    );
+    return () => window.clearInterval(timer);
+  }, [pageScenarios, refreshTaskStatuses]);
+
+  // 是否"正在推演"：任务状态为 running/pending/started 或已暂停
+  const isRunning = (s: Scenario): boolean => {
+    const st = taskStatusMap[s.id];
+    if (!st) return false;
+    const status = (st.status ?? '').toLowerCase();
+    return (
+      ['running', 'pending', 'started'].includes(status) || st.paused === true
+    );
+  };
+
+  // 当前打开控制面板 Dialog 的想定
+  const controlScenario = controlScenarioId
+    ? scenarios.find((s) => s.id === controlScenarioId) ?? null
+    : null;
+
+  // 控制面板对应想定是否正在执行（启动按钮置灰）
+  const controlRunning = controlScenario
+    ? isRunning(controlScenario)
+    : false;
+
+  // 任务终态文本（running 由徽章展示；idle 等同未执行，保持列表状态）
+  const taskStatusText = (s: Scenario): string | null => {
+    const st = taskStatusMap[s.id];
+    if (!st) return null;
+    const status = (st.status ?? '').toLowerCase();
+    return ['done', 'failed', 'canceled'].includes(status) ? st.status : null;
+  };
+
+  // 实时事件流按轮次分组（最新轮次在前，无轮次事件归"其他"）
+  const groupedLiveEvents = useMemo(() => {
+    const groups = new Map<string, CognitiveEvent[]>();
+    for (const ev of liveEvents) {
+      const roundNum =
+        ev.round_id ??
+        (ev.payload as { round_num?: number } | undefined)?.round_num;
+      const key = roundNum == null ? 'other' : String(roundNum);
+      const list = groups.get(key);
+      if (list) list.push(ev);
+      else groups.set(key, [ev]);
+    }
+    const entries = [...groups.entries()];
+    entries.sort((a, b) => {
+      if (a[0] === 'other') return 1;
+      if (b[0] === 'other') return -1;
+      return Number(b[0]) - Number(a[0]);
+    });
+    return entries;
+  }, [liveEvents]);
+
 
   const runAction = async (label: string, fn: () => Promise<unknown>) => {
     setActing(true);
     setActionMsg(null);
     try {
       await fn();
-      setActionMsg(`✅ ${label}`);
+      setActionMsg(`✓ ${label}`);
     } catch (err) {
       setActionMsg(
-        `❌ ${label}: ${err instanceof Error ? err.message : String(err)}`,
+        `✗ ${label}: ${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
       setActing(false);
@@ -222,352 +427,646 @@ const RoundViewPage: React.FC = () => {
 
   const handleStart = () =>
     runAction(t('cognitiveWargame.director.executionStarted'), async () => {
-      const task = await api.executeScenario(id!);
+      const targetId = controlScenarioId ?? id;
+      if (!targetId) return;
+      const task = await api.executeScenario(targetId);
       setCurrentTaskId(task.task_id);
-      await loadScenario(id!);
+      setTaskStatusMap((prev) => ({
+        ...prev,
+        [targetId]: {
+          scenario_id: targetId,
+          status: 'running',
+          task_id: task.task_id,
+        },
+      }));
+      await loadScenario(targetId);
     });
 
   const handlePause = () =>
-    runAction(t('cognitiveWargame.director.pauseSuccess'), () =>
-      api.pauseScenario(id!),
-    );
+    runAction(t('cognitiveWargame.director.pauseSuccess'), () => {
+      const targetId = controlScenarioId ?? id;
+      if (!targetId) return Promise.resolve();
+      return api.pauseScenario(targetId);
+    });
 
   const handleResume = () =>
-    runAction(t('cognitiveWargame.director.resumeSuccess'), () =>
-      api.resumeScenario(id!),
-    );
+    runAction(t('cognitiveWargame.director.resumeSuccess'), () => {
+      const targetId = controlScenarioId ?? id;
+      if (!targetId) return Promise.resolve();
+      return api.resumeScenario(targetId);
+    });
 
   const handleInject = async () => {
+    const targetId = controlScenarioId ?? id;
+    if (!targetId) return;
     const req = buildInterventionRequest(inject);
     setActing(true);
     setActionMsg(null);
     try {
-      await api.injectIntervention(id!, req);
-      setActionMsg(`✅ ${t('cognitiveWargame.director.injectSuccess')}`);
+      await api.injectIntervention(targetId, req);
+      setActionMsg(`✓ ${t('cognitiveWargame.director.injectSuccess')}`);
       setInjectOpen(false);
       setInject(DEFAULT_INJECT);
-      await fetchInterventions(id!);
+      await fetchInterventions(targetId);
     } catch (err) {
       setActionMsg(
-        `❌ ${t('cognitiveWargame.director.injectFailed')}: ${err instanceof Error ? err.message : String(err)}`,
+        `✗ ${t('cognitiveWargame.director.injectFailed')}: ${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
       setActing(false);
     }
   };
 
-  // 无 id（/rounds index 路由）：提示选择想定
-  if (!id) {
-    return (
-      <div className="flex flex-col gap-3 p-6">
-        <EmptyCard
-          title={t('cognitiveWargame.director.selectScenarioFirst')}
-          className="w-full"
-        />
-        <Link
-          to={WargameRoutes.Scenarios}
-          className="text-text-primary underline"
-        >
-          {t('cognitiveWargame.scenario.listTitle')} →
-        </Link>
-      </div>
-    );
-  }
+  const handleSelectScenario = (scenarioId: string) => {
+    if (id === scenarioId) return;
+    navigate(WargamePath.roundView(scenarioId));
+  };
 
-  const scenarioName = currentScenario?.name ?? id;
-  const scenarioStatus = currentScenario?.status ?? '-';
-  // KANBAN 状态摘要：done / total
-  const kanbanTotal = kanbanCounts
-    ? Object.values(kanbanCounts).reduce((a, b) => a + b, 0)
-    : 0;
-  const kanbanDone = kanbanCounts?.done ?? 0;
+  const selectedScenario =
+    scenarioDetail ??
+    currentScenario ??
+    scenarios.find((s) => s.id === id) ??
+    null;
+
+  const hasFilters = search.trim() !== '';
 
   return (
     <WargameSectionLayout>
       <div className="flex flex-col gap-4 p-6">
-      {/* 想定信息栏 */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-medium">
-            {t('cognitiveWargame.director.title')} · {scenarioName}
-          </h1>
-          <Badge variant="secondary">{scenarioStatus}</Badge>
-          <Badge variant="outline">
-            {t('cognitiveWargame.common.round')}: {currentRound || '-'}
-          </Badge>
+        {/* 标题 + 连接状态 */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-medium">
+              {t('cognitiveWargame.director.title')}
+            </h1>
+            {id && (
+              <Badge variant={connected ? 'success' : 'destructive'}>
+                {connected
+                  ? t('cognitiveWargame.sse.connected')
+                  : t('cognitiveWargame.sse.disconnected')}
+              </Badge>
+            )}
+          </div>
         </div>
-        <Badge variant={connected ? 'success' : 'destructive'}>
-          {connected
-            ? t('cognitiveWargame.sse.connected')
-            : t('cognitiveWargame.sse.disconnected')}
-        </Badge>
-      </div>
 
-      {actionMsg && (
-        <p className="text-sm text-text-secondary">{actionMsg}</p>
-      )}
-      {error && (
-        <p className="text-sm text-text-error">{error.message}</p>
-      )}
-
-      {/* 控制面板 + 实时事件流 */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* 控制面板 */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
+        {/* 想定列表：搜索 / 轮次 / 列表 / 分页 合并为一个大框 */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">
-              {t('cognitiveWargame.director.controlPanel')}
+              {t('cognitiveWargame.scenario.listTitle')}
             </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            <Button onClick={handleStart} disabled={acting}>
-              {t('cognitiveWargame.director.startExecution')}
-            </Button>
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" onClick={handlePause} disabled={acting}>
-                {t('cognitiveWargame.director.pauseExecution')}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleResume}
-                disabled={acting}
-              >
-                {t('cognitiveWargame.director.resumeExecution')}
-              </Button>
-            </div>
             <Button
               variant="outline"
-              onClick={() => setInjectOpen(true)}
-              disabled={acting}
+              size="sm"
+              onClick={() => fetchScenarios(MAX_SCENARIOS_LIMIT, 0)}
+              disabled={loading}
             >
-              {t('cognitiveWargame.director.injectNarrative')}
+              {t('cognitiveWargame.common.refresh')}
             </Button>
-          </CardContent>
-        </Card>
-
-        {/* 实时事件流 */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-lg">
-              {t('cognitiveWargame.director.liveEvents')}
-            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-72">
-              {liveEvents.length === 0 ? (
-                <div className="text-text-secondary">
-                  {t('cognitiveWargame.director.noLiveEvents')}
-                </div>
-              ) : (
-                <ul className="flex flex-col gap-2">
-                  {liveEvents.map((ev, idx) => (
-                    <li
-                      key={`${ev.timestamp}-${idx}`}
-                      className="rounded border border-border-button p-2 text-sm"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary">{ev.type}</Badge>
-                        {ev.round_id != null && (
-                          <span className="text-text-secondary">
-                            {t('cognitiveWargame.common.round')} {ev.round_id}
-                          </span>
-                        )}
-                      </div>
-                      {Object.keys(ev.payload).length > 0 && (
-                        <pre className="mt-1 max-h-32 overflow-auto text-xs text-text-secondary">
-                          {JSON.stringify(ev.payload, null, 2)}
-                        </pre>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </ScrollArea>
-          </CardContent>
-        </Card>
-      </div>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+              <div className="flex flex-1 flex-col gap-2">
+                <Label>{t('cognitiveWargame.rounds.search')}</Label>
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t('cognitiveWargame.rounds.searchPlaceholder')}
+                />
+              </div>
+            </div>
 
-      {/* 底部 Tab：干预历史 / 异常告警 / 回合历史 / 任务进度 */}
-      <Tabs defaultValue="interventions">
-        <TabsList>
-          <TabsTrigger value="interventions">
-            {t('cognitiveWargame.director.interventionHistory')} (
-            {interventions.length})
-          </TabsTrigger>
-          <TabsTrigger value="anomalies">
-            {t('cognitiveWargame.director.anomalyAlerts')} ({anomalies.length})
-          </TabsTrigger>
-          <TabsTrigger value="rounds">
-            {t('cognitiveWargame.director.roundHistory')} ({history.length})
-          </TabsTrigger>
-          <TabsTrigger value="progress">
-            {t('cognitiveWargame.director.taskProgress')} ({kanbanTasks.length})
-          </TabsTrigger>
-        </TabsList>
-
-        {/* 干预历史 */}
-        <TabsContent value="interventions">
-          <Card>
-            <CardContent>
-              {interventions.length === 0 ? (
-                <div className="py-4 text-text-secondary">
-                  {t('cognitiveWargame.director.noInterventions')}
-                </div>
+            <Spin spinning={loading}>
+              {pageScenarios.length === 0 ? (
+                <EmptyCard
+                  title={
+                    hasFilters
+                      ? t('cognitiveWargame.rounds.noMatch')
+                      : t('cognitiveWargame.common.empty')
+                  }
+                  className="w-full"
+                />
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>
-                        {t('cognitiveWargame.common.type')}
-                      </TableHead>
-                      <TableHead>
-                        {t('cognitiveWargame.common.round')}
-                      </TableHead>
-                      <TableHead>
-                        {t('cognitiveWargame.common.reason')}
-                      </TableHead>
-                      <TableHead>
-                        {t('cognitiveWargame.common.operator')}
-                      </TableHead>
-                      <TableHead>
-                        {t('cognitiveWargame.common.createdAt')}
-                      </TableHead>
+                      <TableHead>{t('cognitiveWargame.scenario.name')}</TableHead>
+                      <TableHead>{t('cognitiveWargame.scenario.description')}</TableHead>
+                      <TableHead>{t('cognitiveWargame.common.status')}</TableHead>
+                      <TableHead>{t('cognitiveWargame.scenario.roundsLimit')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {interventions.map((iv) => (
-                      <TableRow key={iv.log_id}>
-                        <TableCell>{iv.intervention_type}</TableCell>
-                        <TableCell>{iv.round_num ?? '-'}</TableCell>
-                        <TableCell className="max-w-xs truncate">
-                          {iv.reason ?? '-'}
+                    {pageScenarios.map((s) => (
+                      <TableRow
+                        key={s.id}
+                        className={
+                          id === s.id
+                            ? 'cursor-pointer bg-bg-input/60'
+                            : 'cursor-pointer'
+                        }
+                        onClick={() => handleSelectScenario(s.id)}
+                      >
+                        <TableCell className="font-medium">{s.name}</TableCell>
+                        <TableCell>
+                          <span
+                            className="block max-w-[280px] truncate"
+                            title={s.description}
+                          >
+                            {s.description || '-'}
+                          </span>
                         </TableCell>
-                        <TableCell>{iv.operator ?? '-'}</TableCell>
-                        <TableCell>{iv.created_at ?? '-'}</TableCell>
+                        <TableCell>
+                          {isRunning(s) ? (
+                            <div className="flex items-center gap-2">
+                              <Badge variant="success">
+                                {t('cognitiveWargame.rounds.running')}
+                              </Badge>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e: ReactMouseEvent<HTMLButtonElement>) => {
+                                  e.stopPropagation();
+                                  setControlScenarioId(s.id);
+                                }}
+                              >
+                                {t('cognitiveWargame.director.controlPanel')}
+                              </Button>
+                            </div>
+                          ) : (
+                            taskStatusText(s) ?? (s.status || '-')
+                          )}
+                        </TableCell>
+                        <TableCell>{s.rounds_limit ?? '-'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </Spin>
+            <IntellectPagination
+              current={safeCurrentPage}
+              pageSize={PAGE_SIZE}
+              total={filteredScenarios.length}
+              onChange={(page) => setCurrentPage(page)}
+              showSizeChanger={false}
+            />
+          </CardContent>
+        </Card>
 
-        {/* 异常告警 */}
-        <TabsContent value="anomalies">
+        {/* 选中想定：展开卡片 */}
+        {id && (
           <Card>
-            <CardContent>
-              {anomalies.length === 0 ? (
-                <div className="py-4 text-text-secondary">
-                  {t('cognitiveWargame.director.noAnomalies')}
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <CardTitle className="text-lg">
+                    {t('cognitiveWargame.director.title')} ·{' '}
+                    {selectedScenario?.name ?? id}
+                  </CardTitle>
+                  <Badge variant="secondary">
+                    {selectedScenario?.status || '-'}
+                  </Badge>
+                  <Badge variant="outline">
+                    {t('cognitiveWargame.common.round')}: {currentRound || '-'}
+                  </Badge>
                 </div>
-              ) : (
-                <ul className="flex flex-col gap-2 py-2">
-                  {anomalies.map((a, idx) => (
-                    <li
-                      key={`${a.timestamp}-${idx}`}
-                      className="rounded border border-border-button p-3"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant={
-                            a.severity === 'critical'
-                              ? 'destructive'
-                              : 'secondary'
-                          }
-                        >
-                          {a.severity === 'critical'
-                            ? t('cognitiveWargame.anomaly.critical')
-                            : t('cognitiveWargame.anomaly.warning')}
-                        </Badge>
-                        <span className="font-medium">{a.type}</span>
-                        <span className="text-text-secondary">
-                          {t('cognitiveWargame.common.round')} {a.round_num}
-                        </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate(WargamePath.scenarioDetail(id))}
+                >
+                  {t('cognitiveWargame.common.viewDetail')}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="info">
+                <TabsList>
+                  <TabsTrigger value="info">
+                    {t('cognitiveWargame.agents.detail.basicInfo')}
+                  </TabsTrigger>
+                  <TabsTrigger value="playback">
+                    {t('cognitiveWargame.playback.title')}
+                  </TabsTrigger>
+                  <TabsTrigger value="metrics">
+                    {t('cognitiveWargame.metrics.title')}
+                  </TabsTrigger>
+                  <TabsTrigger value="kg">
+                    {t('cognitiveWargame.kg.title')}
+                  </TabsTrigger>
+                  <TabsTrigger value="reports">
+                    {t('cognitiveWargame.report.title')}
+                  </TabsTrigger>
+                </TabsList>
+
+                {/* Tab 1: 基本信息 */}
+                <TabsContent value="info">
+                  <Spin spinning={detailLoading}>
+                    <dl className="grid gap-4 text-sm md:grid-cols-2 xl:grid-cols-3">
+                      <div>
+                        <dt className="text-text-secondary">
+                          {t('cognitiveWargame.rounds.scenarioId')}
+                        </dt>
+                        <dd className="break-all font-mono">
+                          {selectedScenario?.id ?? id}
+                        </dd>
                       </div>
-                      {a.detail?.message ? (
-                        <p className="mt-1 text-sm text-text-secondary">
-                          {String(a.detail.message)}
-                        </p>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
+                      <div>
+                        <dt className="text-text-secondary">
+                          {t('cognitiveWargame.scenario.name')}
+                        </dt>
+                        <dd>{selectedScenario?.name ?? '-'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">
+                          {t('cognitiveWargame.common.status')}
+                        </dt>
+                        <dd>{selectedScenario?.status || '-'}</dd>
+                      </div>
+                      <div className="md:col-span-2 xl:col-span-3">
+                        <dt className="text-text-secondary">
+                          {t('cognitiveWargame.scenario.description')}
+                        </dt>
+                        <dd className="break-all">
+                          {selectedScenario?.description || '-'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">
+                          {t('cognitiveWargame.scenario.roundsLimit')}
+                        </dt>
+                        <dd>{selectedScenario?.rounds_limit ?? '-'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">
+                          {t('cognitiveWargame.scenario.roundsCompleted')}
+                        </dt>
+                        <dd>{selectedScenario?.rounds_completed ?? '-'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">
+                          {t('cognitiveWargame.scenario.redForce')}
+                        </dt>
+                        <dd>{selectedScenario?.red_force ?? '-'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">
+                          {t('cognitiveWargame.scenario.blueForce')}
+                        </dt>
+                        <dd>{selectedScenario?.blue_force ?? '-'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">
+                          {t('cognitiveWargame.rounds.totalAgents')}
+                        </dt>
+                        <dd>{selectedScenario?.total_agents ?? '-'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">
+                          {t('cognitiveWargame.common.createdAt')}
+                        </dt>
+                        <dd>{selectedScenario?.created_at ?? '-'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-text-secondary">
+                          {t('cognitiveWargame.common.updatedAt')}
+                        </dt>
+                        <dd>{selectedScenario?.updated_at ?? '-'}</dd>
+                      </div>
+                    </dl>
+                  </Spin>
+                </TabsContent>
+
+                {/* Tab 3: 历史回放 */}
+                <TabsContent value="playback">
+                  <ScenarioPlaybackView scenarioId={id} />
+                </TabsContent>
+
+                {/* Tab 4: 态势分析 */}
+                <TabsContent value="metrics">
+                  <ScenarioMetricsView scenarioId={id} />
+                </TabsContent>
+
+                {/* Tab 5: 知识图谱 */}
+                <TabsContent value="kg">
+                  <ScenarioKGView scenarioId={id} />
+                </TabsContent>
+
+                {/* Tab 6: 评估报告 */}
+                <TabsContent value="reports">
+                  <ScenarioReportView scenarioId={id} />
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
-        </TabsContent>
+        )}
+      </div>
 
-        {/* 回合历史 */}
-        <TabsContent value="rounds">
-          <Card>
-            <CardContent>
-              <Spin spinning={historyLoading}>
-                {history.length === 0 ? (
-                  <div className="py-4 text-text-secondary">
-                    {t('cognitiveWargame.common.empty')}
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>
-                          {t('cognitiveWargame.common.round')}
-                        </TableHead>
-                        <TableHead>
-                          {t('cognitiveWargame.metrics.redScore')}
-                        </TableHead>
-                        <TableHead>
-                          {t('cognitiveWargame.metrics.blueScore')}
-                        </TableHead>
-                        <TableHead>
-                          {t('cognitiveWargame.metrics.redCognitive')}
-                        </TableHead>
-                        <TableHead>
-                          {t('cognitiveWargame.metrics.blueCognitive')}
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {history.map((m) => (
-                        <TableRow key={m.round}>
-                          <TableCell>{m.round}</TableCell>
-                          <TableCell>{m.red_score ?? '-'}</TableCell>
-                          <TableCell>{m.blue_score ?? '-'}</TableCell>
-                          <TableCell>{m.red_cognitive ?? '-'}</TableCell>
-                          <TableCell>{m.blue_cognitive ?? '-'}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </Spin>
-            </CardContent>
-          </Card>
-        </TabsContent>
+      {/* 控制面板 Dialog：仅"正在推演"的想定行可打开 */}
+      {controlScenario && (
+        <Dialog
+          open
+          onOpenChange={(open) => !open && setControlScenarioId(null)}
+        >
+          <DialogContent className="flex h-[92vh] max-h-[92vh] w-[calc(100vw_-_2rem)] max-w-[calc(100vw_-_2rem)] flex-col overflow-hidden">
+            <DialogHeader>
+              <DialogTitle>
+                {t('cognitiveWargame.director.controlPanel')} ·{' '}
+                {controlScenario.name}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-2">
 
-        {/* 任务进度（v3.1 阶段二任务 2.5） */}
-        <TabsContent value="progress">
-          <Card>
-            <CardContent>
-              {kanbanError ? (
-                <div className="py-4 text-text-error">{kanbanError}</div>
-              ) : (
-                <Spin spinning={kanbanLoading}>
-                  {kanbanCounts && kanbanTotal > 0 && (
-                    <div className="py-2 text-sm text-text-secondary">
-                      {kanbanDone}/{kanbanTotal} {t('cognitiveWargame.director.taskDoneLabel')}
-                    </div>
+                  {actionMsg && (
+                    <p className="text-sm text-text-secondary">{actionMsg}</p>
                   )}
-                  <KanbanProgressTree tasks={kanbanTasks} />
-                </Spin>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                  {error && (
+                    <p className="text-sm text-text-error">{error.message}</p>
+                  )}
 
-      {/* 注入干预 Dialog */}
+                  {/* 控制面板 + 实时事件流 */}
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+                    <Card className="flex min-h-0 flex-col lg:col-span-2">
+                      <CardHeader>
+                        <CardTitle className="text-lg">
+                          {t('cognitiveWargame.director.controlPanel')}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="flex flex-col gap-3">
+                        <Button
+                          onClick={handleStart}
+                          disabled={acting || controlRunning}
+                        >
+                          {t('cognitiveWargame.director.startExecution')}
+                        </Button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={handlePause}
+                            disabled={acting}
+                          >
+                            {t('cognitiveWargame.director.pauseExecution')}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={handleResume}
+                            disabled={acting}
+                          >
+                            {t('cognitiveWargame.director.resumeExecution')}
+                          </Button>
+                        </div>
+                        <Button
+                          variant="outline"
+                          onClick={() => setInjectOpen(true)}
+                          disabled={acting}
+                        >
+                          {t('cognitiveWargame.director.injectNarrative')}
+                        </Button>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="flex h-[42vh] min-h-0 flex-col lg:col-span-3">
+                      <CardHeader>
+                        <CardTitle className="text-lg">
+                          {t('cognitiveWargame.director.liveEvents')}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="min-h-0 flex-1">
+                        <ScrollArea className="h-full">
+                          {liveEvents.length === 0 ? (
+                            <div className="text-text-secondary">
+                              {t('cognitiveWargame.director.noLiveEvents')}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col gap-3">
+                              {groupedLiveEvents.map(([roundKey, events]) => (
+                                <div
+                                  key={roundKey}
+                                  className="rounded border border-border-button p-3"
+                                >
+                                  <div className="mb-2 flex items-center gap-2">
+                                    <Badge variant="outline">
+                                      {roundKey === 'other'
+                                        ? t(
+                                            'cognitiveWargame.director.otherEvents',
+                                          )
+                                        : `${t(
+                                            'cognitiveWargame.common.round',
+                                          )} ${roundKey}`}
+                                    </Badge>
+                                  </div>
+                                  <ul className="flex flex-col gap-2">
+                                    {events.map((ev, idx) => (
+                                      <li
+                                        key={`${ev.timestamp}-${idx}`}
+                                        className="rounded border border-border-button p-2 text-sm"
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <Badge variant="secondary">
+                                            {ev.type}
+                                          </Badge>
+                                          {ev.timestamp && (
+                                            <span className="text-xs text-text-secondary">
+                                              {ev.timestamp}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {Object.keys(ev.payload).length > 0 && (
+                                          <pre className="mt-1 max-h-32 overflow-auto text-xs text-text-secondary">
+                                            {JSON.stringify(ev.payload, null, 2)}
+                                          </pre>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </ScrollArea>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* 干预历史 / 异常告警 / 回合历史 */}
+                  <Tabs defaultValue="interventions" className="mt-4">
+                    <TabsList>
+                      <TabsTrigger value="interventions">
+                        {t('cognitiveWargame.director.interventionHistory')} (
+                        {interventions.length})
+                      </TabsTrigger>
+                      <TabsTrigger value="anomalies">
+                        {t('cognitiveWargame.director.anomalyAlerts')} (
+                        {anomalies.length})
+                      </TabsTrigger>
+                      <TabsTrigger value="rounds">
+                        {t('cognitiveWargame.director.roundHistory')} (
+                        {history.length})
+                      </TabsTrigger>
+                    </TabsList>
+
+                    {/* 干预历史 */}
+                    <TabsContent value="interventions">
+                      <Card className="h-[30vh]">
+                        <CardContent className="h-full overflow-y-auto">
+                          {interventions.length === 0 ? (
+                            <div className="py-4 text-text-secondary">
+                              {t('cognitiveWargame.director.noInterventions')}
+                            </div>
+                          ) : (
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>
+                                    {t('cognitiveWargame.common.type')}
+                                  </TableHead>
+                                  <TableHead>
+                                    {t('cognitiveWargame.common.round')}
+                                  </TableHead>
+                                  <TableHead>
+                                    {t('cognitiveWargame.common.reason')}
+                                  </TableHead>
+                                  <TableHead>
+                                    {t('cognitiveWargame.common.operator')}
+                                  </TableHead>
+                                  <TableHead>
+                                    {t('cognitiveWargame.common.createdAt')}
+                                  </TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {interventions.map((iv) => (
+                                  <TableRow key={iv.log_id}>
+                                    <TableCell>
+                                      {iv.intervention_type}
+                                    </TableCell>
+                                    <TableCell>{iv.round_num ?? '-'}</TableCell>
+                                    <TableCell className="max-w-xs truncate">
+                                      {iv.reason ?? '-'}
+                                    </TableCell>
+                                    <TableCell>{iv.operator ?? '-'}</TableCell>
+                                    <TableCell>{iv.created_at ?? '-'}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                    {/* 异常告警 */}
+                    <TabsContent value="anomalies">
+                      <Card className="h-[30vh]">
+                        <CardContent className="h-full overflow-y-auto">
+                          {anomalies.length === 0 ? (
+                            <div className="py-4 text-text-secondary">
+                              {t('cognitiveWargame.director.noAnomalies')}
+                            </div>
+                          ) : (
+                            <ul className="flex flex-col gap-2 py-2">
+                              {anomalies.map((a, idx) => (
+                                <li
+                                  key={`${a.timestamp}-${idx}`}
+                                  className="rounded border border-border-button p-3"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <Badge
+                                      variant={
+                                        a.severity === 'critical'
+                                          ? 'destructive'
+                                          : 'secondary'
+                                      }
+                                    >
+                                      {a.severity === 'critical'
+                                        ? t('cognitiveWargame.anomaly.critical')
+                                        : t('cognitiveWargame.anomaly.warning')}
+                                    </Badge>
+                                    <span className="font-medium">
+                                      {a.type}
+                                    </span>
+                                    <span className="text-text-secondary">
+                                      {t('cognitiveWargame.common.round')}{' '}
+                                      {a.round_num}
+                                    </span>
+                                  </div>
+                                  {a.detail?.message ? (
+                                    <p className="mt-1 text-sm text-text-secondary">
+                                      {String(a.detail.message)}
+                                    </p>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                    {/* 回合历史 */}
+                    <TabsContent value="rounds">
+                      <Card className="h-[30vh]">
+                        <CardContent className="h-full overflow-y-auto">
+                          <Spin spinning={historyLoading}>
+                            {history.length === 0 ? (
+                              <div className="py-4 text-text-secondary">
+                                {t('cognitiveWargame.common.empty')}
+                              </div>
+                            ) : (
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>
+                                      {t('cognitiveWargame.common.round')}
+                                    </TableHead>
+                                    <TableHead>
+                                      {t('cognitiveWargame.metrics.redScore')}
+                                    </TableHead>
+                                    <TableHead>
+                                      {t('cognitiveWargame.metrics.blueScore')}
+                                    </TableHead>
+                                    <TableHead>
+                                      {t('cognitiveWargame.metrics.redCognitive')}
+                                    </TableHead>
+                                    <TableHead>
+                                      {t('cognitiveWargame.metrics.blueCognitive')}
+                                    </TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {history.map((m) => (
+                                    <TableRow key={m.round}>
+                                      <TableCell>{m.round}</TableCell>
+                                      <TableCell>
+                                        {m.red_score ?? '-'}
+                                      </TableCell>
+                                      <TableCell>
+                                        {m.blue_score ?? '-'}
+                                      </TableCell>
+                                      <TableCell>
+                                        {m.red_cognitive ?? '-'}
+                                      </TableCell>
+                                      <TableCell>
+                                        {m.blue_cognitive ?? '-'}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            )}
+                          </Spin>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+                  </Tabs>
+
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+{/* 注入干预 Dialog */}
       <Dialog open={injectOpen} onOpenChange={setInjectOpen}>
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
@@ -738,7 +1237,6 @@ const RoundViewPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      </div>
     </WargameSectionLayout>
   );
 };

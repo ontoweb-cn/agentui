@@ -111,6 +111,7 @@ export default defineConfig(({ mode }) => {
       // Expose to client code via import.meta.env
       'import.meta.env.API_PROXY_SCHEME': JSON.stringify('python'),
       // cognitive-wargame SSE 直连地址(开发环境绕过 Vite proxy 直连后端)
+      // 开发模式:import-analysis 会注入 import.meta.env 对象,define 键必须以 import.meta.env. 开头
       'import.meta.env.WARGAME_SSE_HOST': JSON.stringify(wargameHost),
       'import.meta.env.WARGAME_SSE_PORT': JSON.stringify(wargamePort),
       // Keep backward compatibility
