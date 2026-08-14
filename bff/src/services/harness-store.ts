@@ -66,6 +66,8 @@ const backendConfigSchema = z.object({
   // 配合 TokenVault 使用:有值时优先从 vault 读取对应类型凭据。
   // 未设置或 vault 未命中时回退 adminTokenEnvVar(现有逻辑,向后兼容)。
   credentialKind: z.enum(['bearer-token', 'email-password']).optional(),
+  // 方案 A (B5 解耦): 允许无静态 token 时仍加载(企业版画布 backend 走 imt_)。
+  allowEmptyToken: z.boolean().optional(),
   // spec-010 v8 A3-9: Intellect 企业版实例级 Tenant ID(可选,仅 type='intellect-enterprise' 需要)。
   // 来源:intellect-team gateway 的 INTELLECT_TENANT_ID env var(Rust 版本要求 32 位 hex)。
   // 注意:与 BffTenant.intellectTenantId(实际是 team_id,命名遗留)不同,这是实例级标识。
@@ -170,13 +172,15 @@ export class JSONFileHarnessStore implements HarnessStore, HarnessStoreListConfi
         adminToken = process.env[config.adminTokenEnvVar];
       }
 
-      if (!adminToken) {
+      if (!adminToken && !config.allowEmptyToken) {
         // 凭据缺失:跳过该后端,console.warn 告警(FR-023),不抛异常
         console.warn(
           `[harness-store] Backend "${config.id}" skipped: env var ${config.adminTokenEnvVar} not set`,
         );
         continue;
       }
+      // 方案 A (B5 解耦): allowEmptyToken 且无静态 token 时置空串(企业版用户走 imt_,不需静态 token)。
+      adminToken = adminToken ?? '';
 
       // 读 env:projectToken(可选,P4+ 预留)
       let projectToken: string | undefined;

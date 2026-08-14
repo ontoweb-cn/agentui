@@ -122,6 +122,12 @@ export interface HarnessBackendConfig {
    */
   credentialKind?: 'bearer-token' | 'email-password';
   /**
+   * 方案 A (B5 解耦): 允许该后端在无静态 adminToken 时仍加载(不 skip)。
+   * 企业版 RAG canvas backend 用户走 imt_,不需静态 token;置 true 避免画布 503。
+   * 仅企业版画布后端应设置,RAG 版后端保持默认 false(无 token 时 skip 给出清晰信号)。
+   */
+  allowEmptyToken?: boolean;
+  /**
    * Intellect 企业版实例级 Tenant ID（仅 type='intellect-enterprise' 需要）。
    * 来源：intellect-team gateway 的 INTELLECT_TENANT_ID env var。
    * BFF 注入到 X-Intellect-Tenant 头,让 intellect-rag 的 SubjectContext.tenant_id

@@ -210,6 +210,19 @@ describe('JSONFileHarnessStore', () => {
       );
     });
 
+    it('方案 A (B5): allowEmptyToken=true 时无 adminToken 也加载(不 skip)', async () => {
+      setFsFile({ backends: [{ ...validBackendConfig, allowEmptyToken: true }] });
+      // 不设置 HARNESS_INTELLECT_RAG_ADMIN_TOKEN
+
+      const store = new JSONFileHarnessStore();
+      await store.load();
+
+      const backends = store.list();
+      expect(backends).toHaveLength(1);
+      expect(backends[0].id).toBe('intellect-rag-default');
+      expect(backends[0].adminToken).toBe('');
+    });
+
     it('部分后端 env 缺失时只跳过缺失的,保留有 env 的', async () => {
       setFsFile({ backends: [validBackendConfig, enterpriseBackendConfig] });
       setEnv({
