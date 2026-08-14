@@ -30,6 +30,9 @@ function createWargameClient(): AxiosInstance {
     baseURL: WARGAME_BASE_URL,
     timeout: 300000,
     headers: { 'Content-Type': 'application/json' },
+    // v1.3 cookie-based：同源携带 imt_token cookie（HttpOnly，企业版写操作需 member token
+    // 触发 role_guard 角色校验）。社区版无 cookie 不受影响（靠 LAN bypass / AUTH_ENABLED=False）。
+    withCredentials: true,
   });
 
   instance.interceptors.request.use((config) => {
@@ -432,6 +435,32 @@ export interface ToolListResponse {
   tools: ToolResource[];
   total: number;
   categories: Array<{ name: string; label?: string; count: number }>;
+}
+
+/** KANBAN 任务（v3.1 阶段二，对应 wargamesrv /kanban/progress 返回的 task 节点）。 */
+export interface KanbanTask {
+  id: string;
+  title: string;
+  status: string;
+  tenant: string | null;
+  board_id: string | null;
+  metadata?: {
+    task_kind?: 'root' | 'round' | 'narrative' | 'propagation' | 'conversation';
+    round_num?: number;
+  };
+  created_at: number;
+  completed_at: number | null;
+}
+
+/** KANBAN 状态计数（对应 /kanban/stats 返回的 status_counts）。 */
+export interface KanbanStatusCounts {
+  todo: number;
+  ready: number;
+  running: number;
+  blocked: number;
+  done: number;
+  archived: number;
+  [key: string]: number;
 }
 
 async function unwrap<T>(p: Promise<{ data: ApiResult<T> | T }>): Promise<T> {
@@ -881,16 +910,11 @@ export const api = {
     );
   },
 
-  /** 删除 Skill（hard 默认 true，已分配则返回 409）。 */
-  deleteSkill(
-    category: ResourceCategory,
-    skillId: string,
-    hard: boolean = true,
-  ) {
+  /** 删除 Skill（硬删，已分配则返回 409）。后端不接受 hard 参数（v1.3）。 */
+  deleteSkill(category: ResourceCategory, skillId: string) {
     return unwrap<{ deleted: boolean }>(
       client.delete(
         `/skills/${encodeURIComponent(category)}/${encodeURIComponent(skillId)}`,
-        { params: { hard } },
       ),
     );
   },
@@ -1049,6 +1073,24 @@ export const api = {
         `/agents/${agentId}/skills/${encodeURIComponent(skillCategory)}/${encodeURIComponent(skillId)}`,
       ),
     );
+  },
+
+  // ── KANBAN 进度（v3.1 阶段二）──────────────────────────────
+
+  /** 获取 KANBAN task 树（轮询用）。 */
+  async getKanbanProgress(scenarioId: string) {
+    const resp = await client.get(`/kanban/progress`, {
+      params: { scenario_id: scenarioId },
+    });
+    return resp.data as KanbanTask[];
+  },
+
+  /** 获取 KANBAN 状态统计。 */
+  async getKanbanStats(scenarioId: string) {
+    const resp = await client.get(`/kanban/stats`, {
+      params: { scenario_id: scenarioId },
+    });
+    return resp.data as KanbanStatusCounts;
   },
 };
 
