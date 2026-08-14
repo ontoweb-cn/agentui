@@ -62,6 +62,8 @@ intellect-team（企业版 gateway）与 intellect-rag（RAG/画布引擎）共�
 - `headers` 默认 None，未传时走原 env var 逻辑。
 - 现有调用方（仅测试文件）不传 headers，行为不变。
 
+> **回填修正（2026-08-14，据 rag-app 源码取证）**：`from_intellect_team_session` **不在 rag-app 的请求路径上被调用**（仅测试引用）。它实际在 intellect-team 侧插件被调用（`plugins/rag/intellect-rag/__init__.py:161`、`plugins/dsl/intellect-dsl/tools.py:315`）。rag-app 内部请求路径的实际载体是 `_load_user`（`current_user` 解析器，识别 `imt_` token）+ `resolve_tenant_id`（`api/utils/tenant_utils.py`，统一 header > env > `current_user.id` 解析链）+ `get_subject_context_from_request → SubjectContext.from_parts`。故「三个 tenant_id 路径一致」的实际生效函数是 `resolve_tenant_id`，而非 `from_intellect_team_session`。
+
 ### 改进 3 (P1)：RAG `tenant_api.py` 改为角色判断
 
 **目标**：让 imt_ 路径下 tenant 管理 API 也能通过权限检查。
@@ -200,6 +202,8 @@ intellect-team gateway
      ├─ api_utils.py (HTTP 主路径): header > env > current_user.id
      ├─ sync_membership.py: header > env > current_user.id
      └─ context.py from_intellect_team_session (改进 2): header > env > None
+        (回填修正:三条路径现统一走 tenant_utils.resolve_tenant_id,
+         from_intellect_team_session 不在 rag-app 请求路径,见改进 2 回填修正)
         ↓
      SubjectContext.tenant_id == intellect-team INTELLECT_TENANT_ID ✅
 
