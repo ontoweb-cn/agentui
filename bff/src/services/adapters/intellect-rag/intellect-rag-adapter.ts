@@ -201,10 +201,14 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
 
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await fetchWithRagToken(`${this.baseUrl}/health`, {
+      // RAG 匿名健康端点 /api/v1/system/healthz(无 @login_required,
+      // 见 intellect-rag-app/api/apps/restful_apis/system_api.py:230)。
+      // 注意:根 /health 在 RAG 源码中不存在,勿改回。
+      // 匿名端点无需注入 token,直接用 fetch(避免向公开端点发送 adminToken)。
+      const response = await fetch(`${this.baseUrl}/api/v1/system/healthz`, {
         method: 'GET',
-        headers: this.buildHeaders(),
-      }, { fallbackStaticToken: this.adminToken });
+        headers: { Accept: 'application/json' },
+      });
       return response.ok;
     } catch {
       return false;
@@ -324,6 +328,7 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
     // 构造 headers:身份头 + 不含 Content-Type(让 fetch 自动设 multipart boundary)
     const headers: Record<string, string> = {};
     if (ctx?.intellectUserId) headers['X-Intellect-User'] = ctx.intellectUserId;
+    if (ctx?.intellectRole) headers['X-Intellect-Role'] = ctx.intellectRole;
     if (ctx?.intellectTeamId) headers['X-Intellect-Team'] = ctx.intellectTeamId;
     if (ctx?.intellectProjectId) headers['X-Intellect-Project'] = ctx.intellectProjectId;
     if (ctx?.intellectTenantId) headers['X-Intellect-Tenant'] = ctx.intellectTenantId;
@@ -422,12 +427,16 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
     headers.delete('X-Intellect-Team');
     headers.delete('X-Intellect-Project');
     headers.delete('X-Intellect-Tenant');
+    headers.delete('X-Intellect-Role');
     // 删除客户端 Authorization,统一由 fetchWithRagToken 注入(动态 token > adminToken)
     headers.delete('Authorization');
     // D1.2 B: proxy 路径(canvas 上传/下载)也注入身份头,
     // 与 buildHeaders() 保持一致。
     if (ctx?.intellectUserId) {
       headers.set('X-Intellect-User', ctx.intellectUserId);
+    }
+    if (ctx?.intellectRole) {
+      headers.set('X-Intellect-Role', ctx.intellectRole);
     }
     if (ctx?.intellectTeamId) {
       headers.set('X-Intellect-Team', ctx.intellectTeamId);
@@ -471,6 +480,9 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
     // 安全: member_id 来自服务端 token→/api/members/me 解析,非客户端 X-User-Id header。
     if (ctx?.intellectUserId) {
       headers['X-Intellect-User'] = ctx.intellectUserId;
+    }
+    if (ctx?.intellectRole) {
+      headers['X-Intellect-Role'] = ctx.intellectRole;
     }
     // D1.2 B (identity-model-migration): intellect-rag-app 已开始消费
     // X-Intellect-Team / X-Intellect-Project 头(visibility=team/project)。

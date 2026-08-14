@@ -28,6 +28,12 @@ export interface ProxyRequest {
    */
   intellectUserId?: string;
   /**
+   * 方案 A (V1): 解析后的 member role (来自 token → /api/members/me 的 role 字段)。
+   * 设置后注入 X-Intellect-Role header,让 intellect-rag 首次建 membership 时写正确角色。
+   * 仅企业版下传入,RAG 版为 undefined。
+   */
+  intellectRole?: string;
+  /**
    * D1.2 B (identity-model-migration): 实例内 Team 组织隔离 ID。
    * 来自 BffTenant.intellectTenantId(经 backend-context 中间件过滤 "0" 缺省值)。
    * 设置后注入 X-Intellect-Team header,让 intellect-rag-app 在 KB ownership
@@ -74,12 +80,16 @@ export async function proxy(path: string, req: ProxyRequest): Promise<Response> 
   headers.delete('X-Intellect-Team');
   headers.delete('X-Intellect-Project');
   headers.delete('X-Intellect-Tenant');
+  headers.delete('X-Intellect-Role');
   headers.delete('Authorization');
 
   // BFF-P0-1 / D1.2 B / 方案 B: 注入服务端解析的 member_id / team_id / project_id / tenant_id
   // (intellect-rag-app 据此设置 KB ownership 字段,避免静默降级为 private)
   if (req.intellectUserId) {
     headers.set('X-Intellect-User', req.intellectUserId);
+  }
+  if (req.intellectRole) {
+    headers.set('X-Intellect-Role', req.intellectRole);
   }
   if (req.intellectTeamId) {
     headers.set('X-Intellect-Team', req.intellectTeamId);

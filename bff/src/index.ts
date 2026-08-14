@@ -161,7 +161,14 @@ app.route('/', proxyRoutes);
 // Canvas DSL 编辑(POST/PUT/DELETE agents)保留透传(Principle III Layer 3)。
 // BackendContext 中间件仅挂载到 /agents/* (US3),不影响 /proxy/v1/* 透传路由。
 // 挂载点 '/' 与 proxyRoutes 并列,路径前缀不冲突(/agents/* vs /proxy/v1/*)。
+// 方案 A 阶段一:企业版画布/agents 的 imt_ 透传开关。默认关闭(零行为变化)。
+// RAG 侧验证清单 V1–V4 回填确认后置为 'true',使 /canvas/* /agents/* 挂上
+// authSessionMiddleware,企业版已登录请求以 imt_(而非 RAG 超管 JWT)访问 intellect-rag。
+// 见 docs/enterprise-rag-admin-credential-analysis.md 方案 A。
+const enableImtCanvasAgents = process.env.BFF_ENABLE_IMT_CANVAS_AGENTS === 'true';
+
 app.use('/agents/*', authMiddleware);
+if (enableImtCanvasAgents) app.use('/agents/*', authSessionMiddleware);
 app.use('/agents/*', backendContextMiddleware);
 app.route('/', bffAgentRoutes);
 
@@ -191,6 +198,7 @@ app.route('/', capabilitiesRoutes);
 // 中间件:authMiddleware(鉴权) + backendContextMiddleware(租户上下文注入,缺失回退 default)
 // 挂载点 '/' 与其他路由并列,路径前缀不冲突(/canvas/* vs /agents/* / /admin/* / /capabilities/*)
 app.use('/canvas/*', authMiddleware);
+if (enableImtCanvasAgents) app.use('/canvas/*', authSessionMiddleware);
 app.use('/canvas/*', backendContextMiddleware);
 app.route('/', canvasRoutes);
 

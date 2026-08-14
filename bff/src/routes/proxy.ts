@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { proxy as proxyToUpstream, type ProxyRequest } from '../services/intellect-rag-client';
 import { streamResponse } from '../utils/response';
-import { resolveMemberIdFromContext } from '../services/member-id-resolver';
+import { resolveMemberInfoFromContext } from '../services/member-id-resolver';
 import { getAuthSession } from '../middleware/auth-session';
 import type { BackendStore, HarnessStore } from '../types';
 
@@ -55,10 +55,13 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
     ? '?' + c.req.url.split('?')[1]
     : '';
 
-  // BFF-P0-1: 解析 member_id (仅企业版,解析失败不阻塞)
+  // BFF-P0-1: 解析 member_id + role (仅企业版,解析失败不阻塞)
   let intellectUserId: string | undefined;
+  let intellectRole: string | undefined;
   try {
-    intellectUserId = await resolveMemberIdFromContext(c);
+    const info = await resolveMemberInfoFromContext(c);
+    intellectUserId = info?.memberId;
+    intellectRole = info?.role;
   } catch (_err) {
     // 解析失败静默跳过(intellect-rag 单租户场景不需要 member_id)
   }
@@ -122,6 +125,7 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
     body: c.req.raw.body,
     query: queryString,
     intellectUserId,
+    intellectRole,
     intellectTeamId,
     intellectProjectId,
     intellectTenantId,

@@ -112,6 +112,13 @@ export interface BackendContext {
    */
   intellectUserId?: string;
   /**
+   * Intellect 企业版解析后的 member role (来自 token → /api/members/me 的 role 字段)。
+   * 值:'owner' | 'admin' | 'member'(intellect-team role)。Adapter 据此注入
+   * X-Intellect-Role header,让 intellect-rag 在首次建 membership 时写正确角色。
+   * 仅企业版有值,RAG 版为 undefined。安全:绝不信任客户端传入,必须服务端解析。
+   */
+  intellectRole?: string;
+  /**
    * Intellect 企业版实例内 Team ID(组织隔离场景必填)。
    * Adapter 用此值注入 `X-Intellect-Team` 头。
    * 注意:intellect-team 接受 team_id(而非 slug),值为 intellect-team DB 中 teams.id。
