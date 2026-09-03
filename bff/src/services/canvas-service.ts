@@ -23,6 +23,7 @@ import type { BackendContext } from '../types/tenant';
 import type { IAdapterRegistry } from './adapter-registry-types';
 import type { ICanvasAdapter, IHarnessAdapter } from '../types/adapter';
 import { isCanvasAdapter } from '../types/adapter';
+import type { Session } from '../types/domain';
 import type {
   CanvasAgent,
   CanvasTemplate,
@@ -118,6 +119,40 @@ export class CanvasService {
   async updateTags(ctx: BackendContext, id: string, body: UpdateTagsBody): Promise<void> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<void>('PUT', `/api/v1/agents/${encodeURIComponent(id)}/tags`, body, ctx);
+  }
+
+  // -------------------------------------------------------------------------
+  // Agent sessions and execution
+  // -------------------------------------------------------------------------
+
+  async createSession(ctx: BackendContext, agentId: string, title?: string): Promise<Session> {
+    return this.resolveAdapter(ctx).createSession(ctx, agentId, title);
+  }
+
+  async listSessions(ctx: BackendContext, agentId: string): Promise<Session[]> {
+    return this.resolveAdapter(ctx).listSessions(ctx, agentId);
+  }
+
+  async getSession(ctx: BackendContext, agentId: string, sessionId: string): Promise<Session> {
+    return this.resolveAdapter(ctx).getSession(ctx, agentId, sessionId);
+  }
+
+  async deleteSession(ctx: BackendContext, agentId: string, sessionId: string): Promise<void> {
+    return this.resolveAdapter(ctx).deleteSession(ctx, agentId, sessionId);
+  }
+
+  async streamAgentCompletion(ctx: BackendContext, body: unknown): Promise<Response> {
+    const adapter = this.resolveAdapter(ctx);
+    return adapter.proxy(
+      'POST',
+      '/api/v1/agents/chat/completions',
+      {
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body: new Response(JSON.stringify(body ?? {})).body,
+        query: '',
+      },
+      ctx,
+    );
   }
 
   // -------------------------------------------------------------------------

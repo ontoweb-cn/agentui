@@ -13,6 +13,56 @@ const LLM_API_KEY = process.env.INTELLECT_LLM_API_KEY
   || process.env.HARNESS_INTELLECT_ENTERPRISE_API_SERVER_KEY
   || '';
 
+type GatewayProviderRecord = Record<string, unknown>;
+
+const normalizeModelTypes = (provider: GatewayProviderRecord): string[] => {
+  const rawTypes =
+    provider.model_types ?? provider.model_type ?? provider.model_type_list;
+  const values = Array.isArray(rawTypes)
+    ? rawTypes
+    : typeof rawTypes === 'string'
+      ? rawTypes.split(/[,\s/|]+/)
+      : [];
+  const normalized = values
+    .map((type) => String(type).trim())
+    .filter(Boolean);
+  return Array.from(new Set(normalized.length > 0 ? normalized : ['chat']));
+};
+
+const normalizeProviderList = (providers: unknown): unknown => {
+  if (!Array.isArray(providers)) return providers;
+  return providers.map((item) => {
+    if (!item || typeof item !== 'object') return item;
+
+    const provider = item as GatewayProviderRecord;
+    const name =
+      provider.name ??
+      provider.display_name ??
+      provider.id ??
+      provider.provider_name ??
+      '';
+    const baseUrl = provider.base_url;
+    const url =
+      provider.url ??
+      (typeof baseUrl === 'string' && baseUrl
+        ? { default: baseUrl }
+        : { default: '' });
+
+    return {
+      ...provider,
+      name: String(name),
+      model_types: normalizeModelTypes(provider),
+      url,
+    };
+  });
+};
+
+const isLegacyInstanceListPath = (path: string): boolean =>
+  /^\/v1\/admin\/providers\/[^/]+\/instances$/.test(path);
+
+const isLegacyInstanceModelsPath = (path: string): boolean =>
+  /^\/v1\/admin\/providers\/[^/]+\/instances\/[^/]+\/models$/.test(path);
+
 export const llmProxyRoutes = new Hono();
 
 // 匹配 LLM 专用路径,转发到 intellect-team :8642
@@ -34,6 +84,14 @@ for (const p of llmPaths) {
     const upstreamPath = c.req.path.replace('/proxy/v1/', '/v1/admin/');
     const query = c.req.url.includes('?') ? '?' + c.req.url.split('?')[1] : '';
     const url = `${LLM_BASE}${upstreamPath}${query}`;
+
+    if (
+      method === 'GET' &&
+      (isLegacyInstanceListPath(upstreamPath) ||
+        isLegacyInstanceModelsPath(upstreamPath))
+    ) {
+      return c.json({ code: 0, data: [], message: 'success' });
+    }
 
     // 始终使用 BFF 的 admin token 与 Rust gateway 通信，不透传前端的 JWT/cookie。
     // Rust gateway 的 auth 体系独立(intellect-team profile token / imt_* member token)，
@@ -94,6 +152,9 @@ for (const p of llmPaths) {
             break;
           }
         }
+      }
+      if (method === 'GET' && upstreamPath === '/v1/admin/providers') {
+        data = normalizeProviderList(data);
       }
       return c.json({ code: 0, data, message: 'success' });
     } catch (err) {

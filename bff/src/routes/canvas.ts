@@ -214,6 +214,76 @@ canvasRoutes.post('/canvas', async (c) => {
 // /canvas/:id — parameterized routes
 // ---------------------------------------------------------------------------
 
+canvasRoutes.post('/canvas/chat/completions', async (c) => {
+  const service = getCanvasService(c);
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const upstream = await service.streamAgentCompletion(
+      resolveBackendContext(c),
+      body,
+    );
+    return streamResponse(upstream);
+  } catch (err) {
+    return handleCanvasError(c, err as Error);
+  }
+});
+
+canvasRoutes.get('/canvas/:id/sessions', async (c) => {
+  const service = getCanvasService(c);
+  try {
+    const id = c.req.param('id');
+    const result = await service.listSessions(resolveBackendContext(c), id);
+    return c.json(result);
+  } catch (err) {
+    return handleCanvasError(c, err as Error);
+  }
+});
+
+canvasRoutes.post('/canvas/:id/sessions', async (c) => {
+  const service = getCanvasService(c);
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json().catch(() => ({}));
+    const title = typeof body?.name === 'string' ? body.name : body?.title;
+    const result = await service.createSession(
+      resolveBackendContext(c),
+      id,
+      title,
+    );
+    return c.json(result);
+  } catch (err) {
+    return handleCanvasError(c, err as Error);
+  }
+});
+
+canvasRoutes.get('/canvas/:id/sessions/:sessionId', async (c) => {
+  const service = getCanvasService(c);
+  try {
+    const id = c.req.param('id');
+    const sessionId = c.req.param('sessionId');
+    const result = await service.getSession(
+      resolveBackendContext(c),
+      id,
+      sessionId,
+    );
+    return c.json(result);
+  } catch (err) {
+    return handleCanvasError(c, err as Error);
+  }
+});
+
+canvasRoutes.delete('/canvas/:id/sessions/:sessionId', async (c) => {
+  const service = getCanvasService(c);
+  try {
+    const id = c.req.param('id');
+    const sessionId = c.req.param('sessionId');
+    await service.deleteSession(resolveBackendContext(c), id, sessionId);
+    return c.json({ code: 0, message: 'ok' });
+  } catch (err) {
+    return handleCanvasError(c, err as Error);
+  }
+});
+
 canvasRoutes.get('/canvas/:id', async (c) => {
   const service = getCanvasService(c);
   try {

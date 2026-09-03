@@ -242,7 +242,7 @@ export const useSendAgentMessage = ({
   const inputs = useSelectBeginNodeDataInputs();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const { send, answerList, done, stopOutputMessage, resetAnswerList } =
-    useSendMessageBySSE(url || api.agentChatCompletion);
+    useSendMessageBySSE(url || api.canvasAgentChatCompletion);
   const firstAnswer = answerList[0];
   const messageId = useMemo(() => {
     return firstAnswer?.message_id;

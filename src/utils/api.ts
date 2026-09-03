@@ -278,13 +278,14 @@ export default {
 
   // flow — spec-008: 画布相关 endpoint 已迁到 bffCanvas
   listAgentTemplate: `${bffCanvas}/templates`,
-  listAgents: `${bffAgents}`,
+  listAgents: `${bffCanvas}`,
   listAgentTags: `${bffCanvas}/tags`,
   updateAgentTags: (agentId: string) => `${bffCanvas}/${agentId}/tags`,
   createAgent: `${bffCanvas}`,
   updateAgent: (agentId: string) => `${bffCanvas}/${agentId}`,
   deleteAgent: (agentId: string) => `${bffCanvas}/${agentId}`,
   agentChatCompletion: `${bffAgents}/chat/completions`,
+  canvasAgentChatCompletion: `${bffCanvas}/chat/completions`,
   // v1.3.0 工具审批:POST /api/bff/agents/:agentId/runs/:runId/approval
   agentRunApproval: (agentId: string, runId: string) =>
     `${bffAgents}/${agentId}/runs/${runId}/approval`,
@@ -305,13 +306,19 @@ export default {
   fetchVersionList: (id: string) => `${bffCanvas}/${id}/versions`,
   fetchVersion: (agentId: string, versionId: string) =>
     `${bffCanvas}/${agentId}/versions/${versionId}`,
-  getAgent: (id: string) => `${bffAgents}/${id}`,
+  getAgent: (id: string) => `${bffCanvas}/${id}`,
   uploadAgentFile: (id?: string) => `${bffCanvas}/${id}/upload`,
   createAgentSession: (agentId: string) => `${bffAgents}/${agentId}/sessions`,
+  createCanvasAgentSession: (agentId: string) =>
+    `${bffCanvas}/${agentId}/sessions`,
   fetchAgentLogs: (canvasId: string) => `${restAPIv1}/canvas/${canvasId}/sessions`,
   fetchAgentSessions: (agentId: string) => `${bffAgents}/${agentId}/sessions`,
+  fetchCanvasAgentSessions: (agentId: string) =>
+    `${bffCanvas}/${agentId}/sessions`,
   fetchAgentSessionById: (agentId: string, sessionId: string) =>
     `${bffAgents}/${agentId}/sessions/${sessionId}`,
+  fetchCanvasAgentSessionById: (agentId: string, sessionId: string) =>
+    `${bffCanvas}/${agentId}/sessions/${sessionId}`,
   patchAgentSession: (agentId: string, sessionId: string) =>
     `${bffAgents}/${agentId}/sessions/${sessionId}`,
   fetchAgentSessionMessages: (agentId: string, sessionId: string) =>

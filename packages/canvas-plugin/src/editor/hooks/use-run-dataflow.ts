@@ -13,7 +13,7 @@ export function useRunDataflow({
 }: {
   showLogSheet: () => void;
 } & Pick<UseFetchLogReturnType, 'setMessageId'>) {
-  const { send } = useSendMessageBySSE(api.agentChatCompletion);
+  const { send } = useSendMessageBySSE(api.canvasAgentChatCompletion);
   const { id } = useParams();
   const { saveGraph, loading } = useSaveGraph();
   const [uploadedFileData, setUploadedFileData] =
