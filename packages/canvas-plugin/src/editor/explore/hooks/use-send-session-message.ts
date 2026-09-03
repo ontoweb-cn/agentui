@@ -104,18 +104,18 @@ export const useSendSessionMessage = () => {
           name: sessionName,
         });
 
-        exploreSessionId = result.id;
-
-        setSessionId(result.id, false);
+        if (result?.id) {
+          exploreSessionId = result.id;
+          setSessionId(result.id, false);
+        }
 
         setTimeout(() => {
           isCreatingSession.current = false;
         }, 100);
       } catch (error) {
         isCreatingSession.current = false;
-        sonnerMessage.error('Failed to create session');
+        sonnerMessage.warning('Session will be created when the agent runs');
         console.error('Failed to create session:', error);
-        return;
       }
     }
 

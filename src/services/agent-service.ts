@@ -118,7 +118,7 @@ const methods = {
     method: 'post',
   },
   createAgentSession: {
-    url: api.createAgentSession,
+    url: api.createCanvasAgentSession,
     method: 'post',
   },
 } as const;
