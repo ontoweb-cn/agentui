@@ -44,7 +44,12 @@ export function useRunDataflow({
 
         return msgId;
       } else {
-        message.error(get(res, 'data.message', ''));
+        message.error(
+          get(res, 'data.message') ||
+            get(res, 'data.data.outputs._ERROR') ||
+            get(res, 'data.data._ERROR') ||
+            'Dataflow run failed',
+        );
       }
     },
     [id, saveGraph, send, setMessageId, setUploadedFileData, showLogSheet],
