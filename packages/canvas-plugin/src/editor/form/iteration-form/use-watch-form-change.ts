@@ -1,14 +1,7 @@
 import { useEffect } from 'react';
 import { UseFormReturn, useWatch } from 'react-hook-form';
 import useGraphStore from '../../store';
-import { OutputArray, OutputObject } from './interface';
-
-export function transferToObject(list: OutputArray) {
-  return list.reduce<OutputObject>((pre, cur) => {
-    pre[cur.name] = { ref: cur.ref, type: cur.type };
-    return pre;
-  }, {});
-}
+import { convertIterationOutputsToObject } from './utils';
 
 export function useWatchFormChange(id?: string, form?: UseFormReturn) {
   let values = useWatch({ control: form?.control });
@@ -21,7 +14,7 @@ export function useWatchFormChange(id?: string, form?: UseFormReturn) {
       console.log('🚀 ~ useEffect ~ values:', values);
       const nextValues: any = {
         ...values,
-        outputs: transferToObject(values.outputs),
+        outputs: convertIterationOutputsToObject(values.outputs),
       };
 
       updateNodeForm(id, nextValues);
