@@ -5,9 +5,10 @@ import { initialDocGeneratorValues } from '../../constant';
 export const useValues = (node?: Node) => {
   const values = useMemo(() => {
     const supportedOutputFormats = ['pdf', 'docx', 'txt', 'markdown', 'html'];
+    const formValues = (node?.data.form ?? {}) as Record<string, any>;
     const nextValues = {
       ...initialDocGeneratorValues,
-      ...(node?.data.form ?? {}),
+      ...formValues,
     };
 
     return {
@@ -16,9 +17,9 @@ export const useValues = (node?: Node) => {
         : initialDocGeneratorValues.output_format,
       content: nextValues.content,
       filename: nextValues.filename,
-      header_text: nextValues.header_text,
-      footer_text: nextValues.footer_text,
-      watermark_text: nextValues.watermark_text,
+      header_text: nextValues.header_text ?? formValues.header ?? '',
+      footer_text: nextValues.footer_text ?? formValues.footer ?? '',
+      watermark_text: nextValues.watermark_text ?? formValues.watermark ?? '',
       add_page_numbers: nextValues.add_page_numbers,
       add_timestamp: nextValues.add_timestamp,
       include_download_info_in_content:
