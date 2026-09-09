@@ -37,7 +37,7 @@ function VariableAggregatorForm({ node }: INextOperatorForm) {
   const appendItem = useCallback(() => {
     const nextGroup: VariableAggregatorFormSchemaType['groups'][number] = {
       group_name: `Group${fields.length}`,
-      variables: [],
+      variables: [{ value: '' }],
       type: undefined,
     };
     const groups = [...(form.getValues('groups') ?? []), nextGroup];
@@ -76,6 +76,7 @@ function VariableAggregatorForm({ node }: INextOperatorForm) {
               key={field.id}
               name={`groups.${idx}`}
               parentIndex={idx}
+              nodeId={node?.id}
               removeParent={remove}
             ></DynamicGroupVariable>
           ))}
