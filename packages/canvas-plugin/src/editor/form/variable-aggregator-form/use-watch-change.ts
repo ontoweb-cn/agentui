@@ -12,7 +12,8 @@ export function useWatchFormChange(
 
   useEffect(() => {
     if (id && form?.formState.isDirty) {
-      const outputs = values.groups?.reduce(
+      const latestValues = form.getValues();
+      const outputs = latestValues.groups?.reduce(
         (pre, cur) => {
           if (cur.group_name) {
             pre[cur.group_name] = {
@@ -25,7 +26,7 @@ export function useWatchFormChange(
         {} as Record<string, Record<string, any>>,
       );
 
-      replaceNodeForm(id, { ...values, outputs: outputs ?? {} });
+      replaceNodeForm(id, { ...latestValues, outputs: outputs ?? {} });
     }
   }, [form?.formState.isDirty, id, replaceNodeForm, values]);
 }
