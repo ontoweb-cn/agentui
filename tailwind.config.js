@@ -9,6 +9,7 @@ module.exports = {
     './src/components/**/*.tsx',
     './src/layouts/**/*.tsx',
     './src/features/**/*.{ts,tsx}',
+    './packages/canvas-plugin/src/**/*.{ts,tsx}',
   ],
   theme: {
     container: {
