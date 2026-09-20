@@ -4,7 +4,7 @@
 import { Hono } from 'hono';
 
 const INTELLECT_LLM_HOST = process.env.INTELLECT_TEAM_HOST || 'localhost';
-const INTELLECT_LLM_PORT = process.env.INTELLECT_TEAM_PORT || '8642';
+const INTELLECT_LLM_PORT = process.env.INTELLECT_TEAM_PORT || '9091';
 const LLM_BASE = `http://${INTELLECT_LLM_HOST}:${INTELLECT_LLM_PORT}`;
 
 // intellect-team 共享 enterprise + llm endpoint,
@@ -65,7 +65,7 @@ const isLegacyInstanceModelsPath = (path: string): boolean =>
 
 export const llmProxyRoutes = new Hono();
 
-// 匹配 LLM 专用路径,转发到 intellect-team :8642
+// 匹配 LLM 专用路径,转发到 intellect-team :9091
 // 路径前缀 /proxy/v1 映射到 intellect-team /v1
 // /proxy/v1/providers/* 覆盖 providers CRUD + key + verify + models
 // /proxy/v1/health/keys 覆盖 key 健康摘要(GatewayProviderPanel 使用)

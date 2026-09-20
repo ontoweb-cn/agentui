@@ -1425,7 +1425,7 @@ AgentUI 需要支持不同的 Agent Harness 后端：
 └──────────────────────────────────────────────────────────────────┘
               ↓                              ↓
 ┌─────────────────────────┐    ┌─────────────────────────────────┐
-│  Intellect (:9380)        │    │  Intellect 企业版 (:8642)       │
+│  Intellect (:9380)        │    │  Intellect 企业版 (:9091)       │
 │  ├── Agent/Canvas/Dataset│   │  ├── /v1/chat/completions       │
 │  └── 画布引擎（唯一）   │    │  ├── /v1/capabilities           │
 │                         │    │  ├── /api/sessions              │
@@ -1821,7 +1821,7 @@ bff/src/
 **外部依赖**：无（核心层只用到 Intellect 已有的 `/v1/*` 和 `/api/sessions/*`）
 
 **验收标准**：
-- BFF 可连接 Intellect 企业版 :8642
+- BFF 可连接 Intellect 企业版 :9091
 - `listAgents()` 返回 Intellect 模型列表
 - `createSession()` 创建会话成功
 - `sendMessage()` 流式返回正常

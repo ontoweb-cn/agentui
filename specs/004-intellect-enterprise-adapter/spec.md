@@ -12,7 +12,7 @@
 
 ### User Story 1 - 企业版 Agent 列表与能力探测 (Priority: P1)
 
-运维在 P2 Admin 页面新增一个 `intellect-enterprise` 类型后端(指向 intellect-team :8642),BFF 启动时通过 Adapter 调用 `GET /v1/models` 与 `GET /v1/capabilities` 完成对接验证。租户绑定该后端后,前端通过 `useHarnessCapabilities` 拿到企业版能力(canvas=false,编码 Agent 能力),前端据此隐藏画布入口、显示编码 Agent 入口。
+运维在 P2 Admin 页面新增一个 `intellect-enterprise` 类型后端(指向 intellect-team :9091),BFF 启动时通过 Adapter 调用 `GET /v1/models` 与 `GET /v1/capabilities` 完成对接验证。租户绑定该后端后,前端通过 `useHarnessCapabilities` 拿到企业版能力(canvas=false,编码 Agent 能力),前端据此隐藏画布入口、显示编码 Agent 入口。
 
 **Why this priority**:Adapter 能对接企业版、能力探测正确是后续所有功能(会话/流式对话)的前置。无此能力探测,前端无法区分 RAG 与企业版,条件渲染失效。
 
@@ -118,7 +118,7 @@
 
 ## Assumptions
 
-- **intellect-team 实例可达**:P3 冒烟测试需要 intellect-team 运行在 localhost:8642,配置了 `API_SERVER_KEY` 和至少一个 Team/Project;若环境不可用,仅跑 Mock 单元测试
+- **intellect-team 实例可达**:P3 冒烟测试需要 intellect-team 运行在 localhost:9091,配置了 `API_SERVER_KEY` 和至少一个 Team/Project;若环境不可用,仅跑 Mock 单元测试
 - **API_SERVER_KEY 鉴权生效**:intellect-team `/api/sessions/*` 端点接受 `Authorization: Bearer ${API_SERVER_KEY}`(Principle VIII),P3 不实现 `imt_p_*` 项目级 token
 - **BffTenant 已扩展 Team/Project 组织隔离字段**:P3 假设 `BffTenant` 已含 `intellectTeamId` / `intellectProjectId` 字段(若 P0/P1 未加,P3 spec-plan 阶段补齐 data-model)
 - **复用 P1 StreamChunk 类型**:P3 不修改 `StreamChunk` 类型定义,仅启用 `tool_progress` 字段(P1 已预留)

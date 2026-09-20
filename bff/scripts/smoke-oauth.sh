@@ -1,6 +1,6 @@
 #!/bin/bash
 # AU5: OAuth E2E 冒烟测试(企业版第三方登录)
-# 前置:BFF :9390 + mock-intellect-team :8642 已启动
+# 前置:BFF :9390 + mock-intellect-team :9091 已启动
 # 覆盖:渠道列表 → 发起跳转(state cookie) → CSRF 防护 → 回调签发 → /auth/me 验证
 BFF=http://localhost:9390
 COOKIE_JAR=$(mktemp)

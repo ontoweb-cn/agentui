@@ -907,7 +907,7 @@ async def test_team_lifecycle(api_client, admin_token):
 └─────────────────────────────────────────────────┘
                     ↓
 ┌─────────────────────────────────────────────────┐
-│  Intellect 企业版 (:8642)                       │
+│  Intellect 企业版 (:9091)                       │
 │  └── plugins/platforms/api_server/adapter.py    │
 │      ├── 已有：/v1/*, /api/sessions/*           │
 │      └── 新增：/api/teams/*, /api/projects/*    │

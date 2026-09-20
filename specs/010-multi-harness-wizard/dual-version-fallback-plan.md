@@ -302,7 +302,7 @@ const TEST_TENANT_ID = '00000000000000000000000000000000';  // 32 位 hex,符合
 ```markdown
 | BackendType | ProtocolFamily | SSE 解析器 | 端口 | Python 兼容性 |
 |-------------|---------------|-----------|------|---------------|
-| intellect-enterprise | intellect-enterprise | parseIntellectEnterpriseRunEventsSSE | 8642 | ⚠️ 部分功能降级(见 dual-version-fallback-plan.md §5) |
+| intellect-enterprise | intellect-enterprise | parseIntellectEnterpriseRunEventsSSE | 9091 | ⚠️ 部分功能降级(见 dual-version-fallback-plan.md §5) |
 ```
 
 ---

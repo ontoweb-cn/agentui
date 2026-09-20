@@ -14,7 +14,7 @@
 
 AgentUI 的 Hono BFF 是**双后端透明代理**(见 `bff/src/routes/proxy.ts`):
 - `:9380` = intellect-rag-app(Python, RAG 增强 chat、KB 上传)
-- `:8642` = intellect-team Gateway(Rust, 纯 LLM chat、会话 REST)
+- `:9091` = intellect-team Gateway(Rust, 纯 LLM chat、会话 REST)
 
 因此 RAG 相关的阻塞点不只在 intellect-team 侧,还会**传导到前端行为**:AgentUI 当前依赖的通道(`/v1/chat/completions`、`/v1/rag/*` proxy、`useUploadAndParseFile`)正是部分阻塞点所在的路径。
 

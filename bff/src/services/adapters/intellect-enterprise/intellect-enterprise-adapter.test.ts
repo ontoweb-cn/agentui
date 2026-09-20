@@ -40,7 +40,7 @@ const backend: HarnessBackend = {
   id: 'intellect-enterprise-default',
   name: 'Intellect Enterprise Default',
   type: 'intellect-enterprise',
-  endpoint: 'http://localhost:8642',
+  endpoint: 'http://localhost:9091',
   adminTokenEnvVar: 'HARNESS_INTELLECT_ENTERPRISE_ADMIN_TOKEN',
   capabilities: {
     canvas: false,

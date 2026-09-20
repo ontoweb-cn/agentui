@@ -86,7 +86,7 @@ AgentUI 当前与 Intellect RAG 深度耦合，需支持多种 Agent Harness 后
 └──────────────────────────────────────────────────────────────────┘
               ↓                              ↓
 ┌─────────────────────────┐    ┌─────────────────────────────────┐
-│  Intellect RAG (:9380)  │    │  Intellect 企业版 (:8642)       │
+│  Intellect RAG (:9380)  │    │  Intellect 企业版 (:9091)       │
 │  ├── Agent/Canvas/Dataset│   │  ├── /v1/chat/completions       │
 │  └── 画布引擎（唯一）   │    │  ├── /v1/capabilities           │
 │                         │    │  ├── /api/sessions              │
@@ -1281,7 +1281,7 @@ interface HarnessBackend {
   id: string;
   name: string;
   type: 'intellect-rag' | 'intellect-enterprise' | 'intellect-llm' | 'intellect-community' | 'hermes' | 'kag' | 'agent-scope';
-  endpoint: string;                // http://localhost:9380 / http://localhost:8642
+  endpoint: string;                // http://localhost:9380 / http://localhost:9091
   adminTokenEnvVar: string;        // token 引用(环境变量名,不存明文)
   capabilities: HarnessCapabilities;
   credentialKind: 'bearer-token' | 'email-password';
@@ -1540,7 +1540,7 @@ function AgentPage() {
 **外部依赖**：无（核心层只用到 Intellect 已有的 `/v1/*` 和 `/api/sessions/*`）
 
 **验收标准**：
-- ✅ BFF 可连接 Intellect 企业版 :8642(healthCheck 调 `/health`)
+- ✅ BFF 可连接 Intellect 企业版 :9091(healthCheck 调 `/health`)
 - ✅ `listAgents()` 返回 Intellect 模型列表(调 `/v1/models`,不可达降级空数组)
 - ✅ `createSession()` 创建会话成功(调 `POST /api/sessions`)
 - ✅ `sendMessage()` 流式返回正常(调 `/api/sessions/{id}/chat/stream`,parseIntellectEnterpriseSSE 解析)

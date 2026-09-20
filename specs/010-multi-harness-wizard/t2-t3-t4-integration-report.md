@@ -2,7 +2,7 @@
 
 > **执行日期**: 2026-07-29
 > **执行方**: AgentUI 团队
-> **后端**: http://localhost:8642(intellect-gateway v0.6.8,PID 45404,启动于 23:23:41)
+> **后端**: http://localhost:9091(intellect-gateway v0.6.8,PID 45404,启动于 23:23:41)
 > **BFF**: http://localhost:9390(AgentUI BFF 实例)
 > **状态**: ✅ **T2 全部通过(E4 Blocker 已解除)**
 
@@ -14,7 +14,7 @@
 
 | 组件 | 地址 | 状态 |
 |------|------|------|
-| Python 后端 | http://localhost:8642 | ✅ 运行中(200) |
+| Python 后端 | http://localhost:9091 | ✅ 运行中(200) |
 | BFF | http://localhost:9390 | ✅ 运行中(200) |
 | 前端 | http://localhost:9392 | ✅ 运行中(200) |
 | BFF 单元测试 | `npm test` | ✅ 559/559 通过 |

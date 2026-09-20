@@ -16,7 +16,7 @@ function makeBackend(overrides: Partial<HarnessBackend> = {}): HarnessBackend {
     id: 'intellect-enterprise-default',
     name: 'Intellect Enterprise (Default)',
     type: 'intellect-enterprise',
-    endpoint: 'http://localhost:8642',
+    endpoint: 'http://localhost:9091',
     adminTokenEnvVar: 'HARNESS_INTELLECT_ENTERPRISE_API_SERVER_KEY',
     capabilities: {
       canvas: false,
@@ -70,7 +70,7 @@ describe('validateTenantConfigs', () => {
     expect(ok).toBe(true);
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const [url, init] = mockFetch.mock.calls[0];
-    expect(url).toBe('http://localhost:8642/api/tenant/info');
+    expect(url).toBe('http://localhost:9091/api/tenant/info');
     expect(init.method).toBe('GET');
     // 公开端点,不注入 Authorization
     expect(init.headers.Authorization).toBeUndefined();
@@ -169,7 +169,7 @@ describe('validateTenantConfigs', () => {
 
   it('endpoint 去掉尾部斜杠', async () => {
     const backend = makeBackend({
-      endpoint: 'http://localhost:8642/',
+      endpoint: 'http://localhost:9091/',
       intellectTenantId: '00000000000000000000000000000000',
     });
     mockFetch.mockResolvedValueOnce(makeTenantInfoResponse('00000000000000000000000000000000'));
@@ -177,6 +177,6 @@ describe('validateTenantConfigs', () => {
     await validateTenantConfigs(makeStore([backend]));
 
     const [url] = mockFetch.mock.calls[0];
-    expect(url).toBe('http://localhost:8642/api/tenant/info');
+    expect(url).toBe('http://localhost:9091/api/tenant/info');
   });
 });

@@ -16,7 +16,7 @@ AgentUI 是一个 **Agent Harness 前端**，最初与 Intellect 强耦合，正
 
 - **前端**：单页应用（SPA），Vite + React 18 + TypeScript
 - **BFF**：Hono 实现的 Node 服务（端口 3001），承载 Admin 接管逻辑、适配器层、路由聚合
-- **后端**：Intellect Python API（9380）/ Intellect Admin（9381）/ Intellect 企业版 API（8642）
+- **后端**：Intellect Python API（9380）/ Intellect Admin（9381）/ Intellect 企业版 API（9091）
 
 整体三层结构：
 
@@ -37,7 +37,7 @@ AgentUI 是一个 **Agent Harness 前端**，最初与 Intellect 强耦合，正
 │  后端集群                                                   │
 │  - Intellect API  :9380  (业务核心 + 画布编排)               │
 │  - Intellect Admin :9381 (强耦合管理：用户/服务/沙箱/版本)   │
-│  - Intellect 企业版 :8642 (Team/Project + OpenAI SSE)      │
+│  - Intellect 企业版 :9091 (Team/Project + OpenAI SSE)      │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -699,7 +699,7 @@ app.route('/api/admin', adminRoutes);
 ### 17.4 SSE 流式
 
 - 以 Intellect OpenAI 兼容 SSE 为基础
-- Intellect 通过其 `api_server` (port 8642) 暴露 OpenAI 兼容接口
+- Intellect 通过其 `api_server` (port 9091) 暴露 OpenAI 兼容接口
 - 前端 SSE 解析逻辑（`eventsource-parser`）不动
 
 ---
@@ -791,7 +791,7 @@ app.route('/api/admin', adminRoutes);
 3. **BFF 鉴权增强**：当前 `authMiddleware` 仅做透传，多租户阶段需引入 TenantContext。
 4. **Storybook 覆盖**：基础组件库（`ui/`）需补齐 stories。
 5. **测试覆盖**：当前 hooks 有少量测试，需扩大覆盖。
-6. **`intellect-llm-adapter` 架构违规（Phase 3 实验性代码）**：[bff/src/services/adapters/intellect-llm/intellect-llm-adapter.ts](file:///Users/simon/workspace/agentui/bff/src/services/adapters/intellect-llm/intellect-llm-adapter.ts) 是 Intellect Gateway LLM API 的 HTTP 客户端（chat/embeddings/rerank/models + Provider/Key/Model Admin API），但**未实现 `IHarnessAdapter` 接口、未注册到 AdapterRegistry、无测试、未走 spec 流程**。更严重的是被前端 3 个文件直接 import 并 `new IntellectLlmAdapter()`（[src/pages/user-setting/setting-model/index.tsx](file:///Users/simon/project/agentui/src/pages/user-setting/setting-model/index.tsx)、[src/pages/user-setting/setting-model/components/gateway-provider-panel.tsx](file:///Users/simon/project/agentui/src/pages/user-setting/setting-model/components/gateway-provider-panel.tsx)、[src/hooks/use-fetch-gateway-models.ts](file:///Users/simon/project/agentui/src/hooks/use-fetch-gateway-models.ts)），绕过 BFF 直接请求 intellect-gateway（:8642），违反 Constitution Principle I（BFF-Mediated Frontend）。此外 `adminToken` 通过 `import.meta.env.VITE_INTELLECT_LLM_API_KEY` 注入前端 bundle，存在 admin API key 浏览器端暴露风险。`bff/data/harness-backends.json` 中 `type: "intellect-llm"` 条目不在 `BackendType` 联合类型（`'intellect-rag' | 'intellect-enterprise'`）中，capabilities 形状也不匹配 `HarnessCapabilities`，属于死配置。**治理方向**：若正式纳入，需扩展 `BackendType`、注册 factory、补 spec 与测试、将前端调用迁移到 BFF 路由；若废弃，需删除文件与 `harness-backends.json` 中的死配置条目。
+6. **`intellect-llm-adapter` 架构违规（Phase 3 实验性代码）**：[bff/src/services/adapters/intellect-llm/intellect-llm-adapter.ts](file:///Users/simon/workspace/agentui/bff/src/services/adapters/intellect-llm/intellect-llm-adapter.ts) 是 Intellect Gateway LLM API 的 HTTP 客户端（chat/embeddings/rerank/models + Provider/Key/Model Admin API），但**未实现 `IHarnessAdapter` 接口、未注册到 AdapterRegistry、无测试、未走 spec 流程**。更严重的是被前端 3 个文件直接 import 并 `new IntellectLlmAdapter()`（[src/pages/user-setting/setting-model/index.tsx](file:///Users/simon/project/agentui/src/pages/user-setting/setting-model/index.tsx)、[src/pages/user-setting/setting-model/components/gateway-provider-panel.tsx](file:///Users/simon/project/agentui/src/pages/user-setting/setting-model/components/gateway-provider-panel.tsx)、[src/hooks/use-fetch-gateway-models.ts](file:///Users/simon/project/agentui/src/hooks/use-fetch-gateway-models.ts)），绕过 BFF 直接请求 intellect-gateway（:9091），违反 Constitution Principle I（BFF-Mediated Frontend）。此外 `adminToken` 通过 `import.meta.env.VITE_INTELLECT_LLM_API_KEY` 注入前端 bundle，存在 admin API key 浏览器端暴露风险。`bff/data/harness-backends.json` 中 `type: "intellect-llm"` 条目不在 `BackendType` 联合类型（`'intellect-rag' | 'intellect-enterprise'`）中，capabilities 形状也不匹配 `HarnessCapabilities`，属于死配置。**治理方向**：若正式纳入，需扩展 `BackendType`、注册 factory、补 spec 与测试、将前端调用迁移到 BFF 路由；若废弃，需删除文件与 `harness-backends.json` 中的死配置条目。
 
 ---
 

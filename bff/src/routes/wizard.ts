@@ -72,7 +72,7 @@ const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
     type: 'intellect-enterprise',
     label: 'Intellect Enterprise',
     description: 'Team/Project + multi-tenant',
-    defaultEndpoint: 'http://localhost:8642',
+    defaultEndpoint: 'http://localhost:9091',
     // spec-010 v8.3:memory/mcp 能力与 spec.md §3.2 对齐
     // intellect-enterprise 集成 intellect-rag 插件,具备 canvas 和 knowledgeBase 能力
     capabilities: { canvas: true, knowledgeBase: true, memory: true, mcp: true, multiTenant: true, modelManagement: true },
@@ -92,7 +92,7 @@ const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
     label: 'Intellect Community',
     description: 'Pure Agent runtime (OpenAI-compatible)',
     // spec-010 v8.3:默认 endpoint 与 spec.md §9.2 对齐(与 intellect-enterprise 同源)
-    defaultEndpoint: 'http://localhost:8642',
+    defaultEndpoint: 'http://localhost:9091',
     capabilities: { canvas: false, knowledgeBase: false, memory: false, mcp: false, multiTenant: false, modelManagement: false },
     credentialKind: 'bearer-token',
   },
@@ -101,7 +101,7 @@ const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
     label: 'HERMES',
     description: 'HERMES protocol backend',
     // spec-010 v8.3:默认 endpoint 与 spec.md §9.2 对齐(部署时需改端口,避免与 intellect-enterprise 冲突)
-    defaultEndpoint: 'http://localhost:8642',
+    defaultEndpoint: 'http://localhost:9091',
     capabilities: { canvas: false, knowledgeBase: false, memory: true, mcp: true, multiTenant: false, modelManagement: false },
     credentialKind: 'bearer-token',
   },

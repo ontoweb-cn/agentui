@@ -17,7 +17,7 @@
 │                                                         │
 │  /api/bff/auth/* ──┬── authMode=intellect-rag ──────────┼──▶ intellect-rag (:9380)
 │                    │                                    │     /api/v1/auth/*
-│                    └── authMode=intellect-enterprise ───┼──▶ intellect-team (:8642)
+│                    └── authMode=intellect-enterprise ───┼──▶ intellect-team (:9091)
 │                                                         │     /api/members/*
 │  /api/bff/agents/* ── IntellectRagAdapter ──────────────┼──▶ intellect-rag
 │  /api/bff/agents/* ── IntellectEnterpriseAdapter ───────┼──▶ intellect-team
@@ -172,7 +172,7 @@ Recommended implementation order for the intellect-team team:
 
 Once intellect-team P4a endpoints are ready:
 
-1. Start intellect-team on `:8642` with `API_SERVER_KEY` configured
+1. Start intellect-team on `:9091` with `API_SERVER_KEY` configured
 2. Start BFF with `HARNESS_INTELLECT_ENTERPRISE_API_SERVER_KEY` set
 3. Run smoke tests from `specs/005-bff-auth-default-tenant/quickstart.md`
 4. Verify: login → cookie → /auth/me → session create → SSE chat

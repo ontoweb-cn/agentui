@@ -147,7 +147,7 @@ app.use('/proxy/*', authMiddleware);
 // 传递 sessionToken 给 fetchWithRagToken(优先于 admin JWT,实现真实身份透传)。
 // 不阻塞:无 cookie 时仅不注入 session,不影响公开接口 /proxy/v1/system/config。
 app.use('/proxy/*', authSessionMiddleware);
-// LLM Gateway 代理:模型管理 /providers /models 等 → intellect-team :8642。
+// LLM Gateway 代理:模型管理 /providers /models 等 → intellect-team :9091。
 // 智能体编排运行时仍读取 intellect-rag-app 模型配置；默认让模型提供商页面走 RAG。
 // 仅当显式设置 BFF_MODEL_PROVIDER_SOURCE=gateway 时，才把模型管理路由转给 Gateway。
 const modelProviderSource = process.env.BFF_MODEL_PROVIDER_SOURCE || 'rag';

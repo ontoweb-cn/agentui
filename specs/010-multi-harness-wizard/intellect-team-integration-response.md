@@ -214,7 +214,7 @@ Python clarify SSE event payload **必须包含** `session_id` 顶层字段:
 ### 测试前置条件
 
 1. Intellect-Team Phase 1(B1+B3+B4+B5+E4+B2)+ Phase 2(M1+M2+M5+E1+E3+M3+M4+M6)代码完成 ✅
-2. Python 后端部署可访问(默认 `http://localhost:8642`)✅(intellect-gateway v0.6.8)
+2. Python 后端部署可访问(默认 `http://localhost:9091`)✅(intellect-gateway v0.6.8)
 3. BFF 配置 `intellect-enterprise` backend 指向 Python 实例 ✅
 4. 测试账号:32 位 hex tenant_id + API_SERVER_KEY ✅
 
@@ -311,7 +311,7 @@ npm run dev
 # Step 6: Rust 实例回归(用于 E1/E3 验证 + Rust 兼容性回归)
 # 6.1 启动 Rust 后端(intellect-team Rust 版本)
 cd ~/workspace/intellect-team
-cargo run --bin api_server  # 默认监听 8642
+cargo run --bin api_server  # 默认监听 9091
 
 # 6.2 切换 BFF backend 指向 Rust 实例(修改 bff/data/harness-backends.json 的 endpoint,
 #     或通过 Admin UI 编辑 backend 配置,确保 type=intellect-enterprise 且 endpoint 指向 Rust)

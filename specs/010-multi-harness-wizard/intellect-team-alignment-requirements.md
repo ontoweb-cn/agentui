@@ -25,7 +25,7 @@
 
 **AgentUI 现状认知**（供 Intellect-Team 参考）：
 - BFF SSE 解析器 `parse-intellect-enterprise-run-events-sse.ts` 注释明确引用 Rust `api_server.rs` 作为权威源
-- AgentUI 近期测试均基于 Rust 版本（:8642）
+- AgentUI 近期测试均基于 Rust 版本（:9091）
 - Rust `api_server.rs`（8032 行）已超越 Python `adapter.py`（5611 行）成为主版本
 
 ---

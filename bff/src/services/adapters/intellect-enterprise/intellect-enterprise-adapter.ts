@@ -79,7 +79,7 @@ function toIsoString(v: unknown): string {
 
 /**
  * Intellect 企业版 Adapter 实现。
- * 封装 intellect-team REST API 调用,baseUrl 形如 'http://localhost:8642'。
+ * 封装 intellect-team REST API 调用,baseUrl 形如 'http://localhost:9091'。
  */
 export class IntellectEnterpriseAdapter implements IHarnessAdapter {
   readonly backendId: string;

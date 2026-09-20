@@ -37,7 +37,7 @@ const baseBackend: HarnessBackend = {
   id: 'hermes-default',
   name: 'Hermes (Default)',
   type: 'hermes',
-  endpoint: 'http://127.0.0.1:8642',
+  endpoint: 'http://127.0.0.1:9091',
   adminTokenEnvVar: 'HERMES_TOKEN',
   capabilities: {
     canvas: false,
@@ -121,7 +121,7 @@ describe('HermesAdapter', () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url, init] = mockFetch.mock.calls[0];
-      expect(url).toBe('http://127.0.0.1:8642/v1/chat/completions');
+      expect(url).toBe('http://127.0.0.1:9091/v1/chat/completions');
       const body = JSON.parse(init.body as string);
       expect(body.model).toBe('hermes');
       expect(body.messages).toEqual([{ role: 'user', content: 'hello' }]);

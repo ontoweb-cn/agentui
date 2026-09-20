@@ -25,7 +25,7 @@ AgentUI 需支持多个 Agent Harness 后端（Intellect RAG、Intellect Agent �
   - **认证机制**：`@login_required`（Intellect 自有 session），非 Bearer token
   - model 字段需映射到 Intellect RAG 的 `llm_id`，且需校验 `get_api_key`
 
-### 2.2 intellect-team（端口 8642）— 作为"提供方"且更标准
+### 2.2 intellect-team（端口 9091）— 作为"提供方"且更标准
 
 文件：[intellect-team/plugins/platforms/api_server/adapter.py](file:///Users/simon/workspace/intellect-team/plugins/platforms/api_server/adapter.py)
 计划文档：[intellect-team/.plans/openai-api-server.md](file:///Users/simon/workspace/intellect-team/.plans/openai-api-server.md)（已落地实现）
@@ -83,14 +83,14 @@ AgentUI (前端)
   │  SSE 流式对话（OpenAI 兼容格式）
   ▼
 BFF (Hono, 3001) — IntellectTeamAdapter (IHarnessAdapter)
-  │  POST http://intellect-team:8642/v1/chat/completions
+  │  POST http://intellect-team:9091/v1/chat/completions
   │  Headers:
   │    Authorization: Bearer <API_SERVER_KEY>
   │    X-Intellect-Team: <team_id>
   │    X-Intellect-Project: <project_id>
   │    X-Intellect-Session-Id: <session_id>
   ▼
-intellect-team (8642) — OpenAI 兼容 API Server
+intellect-team (9091) — OpenAI 兼容 API Server
   │  Agent 推理 + 工具调用 + 技能 + 记忆 + cron
   ▼
 Intellect RAG (9380) — RAG/Canvas/数据集能力（可选，作为 intellect-team 的工具源 via MCP）
@@ -152,7 +152,7 @@ export class IntellectTeamAdapter implements IHarnessAdapter {
 
 **阶段 1：BFF Adapter 接入（P0）**
 - BFF 新建 `IntellectTeamAdapter`，实现 `IHarnessAdapter` 接口
-- 配置 intellect-team 实例地址（8642）+ `API_SERVER_KEY`，采用三层存储策略（环境变量 + JSON + 运行时内存），加密延后（与项目既有策略一致）
+- 配置 intellect-team 实例地址（9091）+ `API_SERVER_KEY`，采用三层存储策略（环境变量 + JSON + 运行时内存），加密延后（与项目既有策略一致）
 - 实现 `chatStream`（SSE 透传）+ `getCapabilities` + `listSessions`
 - Team/Project 绑定：BFF Tenant → intellect-team 的 `X-Intellect-Team`，Project → `X-Intellect-Project`
 
@@ -435,9 +435,9 @@ intellect-team 的 `/api/sessions` 存储在实例本地磁盘或附连存储（
 const adapter = new IntellectTeamAdapter({
   registry: new PooledRegistry({
     instances: [
-      'http://intellect-team-1:8642',
-      'http://intellect-team-2:8642',
-      'http://intellect-team-3:8642',
+      'http://intellect-team-1:9091',
+      'http://intellect-team-2:9091',
+      'http://intellect-team-3:9091',
     ],
     // 哈希分发保证会话亲和性，同时实现负载均衡
     strategy: 'hash',

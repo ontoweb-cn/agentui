@@ -164,7 +164,7 @@ describe('validateForm', () => {
       ...validRagForm,
       id: 'intellect-enterprise-default',
       type: 'intellect-enterprise' as BackendType,
-      endpoint: 'http://localhost:8642',
+      endpoint: 'http://localhost:9091',
       adminTokenEnvVar: 'HARNESS_INTELLECT_ENTERPRISE_API_SERVER_KEY',
       capabilities: enterpriseCapabilities,
     });
@@ -176,7 +176,7 @@ describe('validateForm', () => {
       ...validRagForm,
       id: 'enterprise-ok',
       type: 'intellect-enterprise' as BackendType,
-      endpoint: 'http://localhost:8642',
+      endpoint: 'http://localhost:9091',
       adminTokenEnvVar: 'HARNESS_KEY',
       capabilities: { ...enterpriseCapabilities, canvas: true, knowledgeBase: true },
     };
