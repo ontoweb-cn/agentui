@@ -30,9 +30,9 @@ function DocGeneratorForm({ node }: INextOperatorForm) {
     output_format: z.string().default('pdf'),
     content: z.string().min(1, 'Content is required'),
     filename: z.string().optional(),
-    header: z.string().optional(),
-    footer: z.string().optional(),
-    watermark: z.string().optional(),
+    header_text: z.string().optional(),
+    footer_text: z.string().optional(),
+    watermark_text: z.string().optional(),
     add_page_numbers: z.boolean(),
     add_timestamp: z.boolean(),
     include_download_info_in_content: z.boolean(),
@@ -189,7 +189,7 @@ function DocGeneratorForm({ node }: INextOperatorForm) {
 
               <FormField
                 control={form.control}
-                name="header"
+                name="header_text"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Header Text</FormLabel>
@@ -203,7 +203,7 @@ function DocGeneratorForm({ node }: INextOperatorForm) {
 
               <FormField
                 control={form.control}
-                name="footer"
+                name="footer_text"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Footer Text</FormLabel>
@@ -217,7 +217,7 @@ function DocGeneratorForm({ node }: INextOperatorForm) {
               {outputFormat === 'pdf' && (
                 <FormField
                   control={form.control}
-                  name="watermark"
+                  name="watermark_text"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>{t('flow.watermarkText')}</FormLabel>

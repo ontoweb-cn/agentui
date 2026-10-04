@@ -150,7 +150,7 @@
 - **前端业务代码零改动**:"零改动"指业务逻辑零改动,API 路径常量改动(一行)不计入,这是 Constitution Principle I 明确的例外
 - **环境变量管理**:开发者本地通过 `.env` 文件管理环境变量,生产环境通过部署平台注入,P0 不涉及生产部署
 - **现有 BFF 路由保留**:P0 不删除/不改写现有 `agent.ts`/`session.ts`/`admin.ts`/`health.ts` 路由,只在 `index.ts` 新增挂载代理路由
-- **Intellect 企业版后端暂不可达**:P0 不要求 Intellect 企业版(:8642)实际运行,默认配置只含 Intellect RAG;企业版后端条目在 P3 实施时通过 Admin 页面新增
+- **Intellect 企业版后端暂不可达**:P0 不要求 Intellect 企业版(:9091)实际运行,默认配置只含 Intellect RAG;企业版后端条目在 P3 实施时通过 Admin 页面新增
 - **回滚策略**:P0-前置的回滚机制是"前端 API 常量改回 `/api/v1`",BFF 代理路由保留不影响;P0 存储层的回滚是"删除新文件",不涉及现有路由
 - **依赖 Constitution**:本 spec 不重复 Constitution 已锁定的技术决策(命名/目录/SSE 双协议/Token 安全),只声明 WHAT,技术细节由 Constitution + design doc 提供
 - **P0 范围严格边界**:P0 不实现 IntellectRagAdapter / IntellectEnterpriseAdapter / Adapter Registry / 任何新路由(除代理)/ 任何前端 Admin 页面 / useHarnessCapabilities hook —— 这些分别属于 P1/P2/P3

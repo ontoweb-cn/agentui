@@ -123,32 +123,26 @@ function StringTransformForm({ node }: INextOperatorForm) {
               )}
             />
           )}
-          <FormField
-            control={form.control}
-            name="delimiters"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('flow.delimiters')}</FormLabel>
-                <FormControl>
-                  {isSplit ? (
+          {isSplit && (
+            <FormField
+              control={form.control}
+              name="delimiters"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('flow.delimiters')}</FormLabel>
+                  <FormControl>
                     <MultiSelect
                       options={DelimiterOptions}
                       onValueChange={field.onChange}
                       defaultValue={field.value as string[]}
                       variant="inverted"
-                      // {...field}
                     />
-                  ) : (
-                    <IntellectSelect
-                      {...field}
-                      options={DelimiterOptions}
-                    ></IntellectSelect>
-                  )}
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
           <FormField
             control={form.control}
             name="outputs"

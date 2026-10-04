@@ -10,7 +10,7 @@ import { AgentRoutes } from '@/features/agents/routes';
 const canvasModule: ModuleDefinition = {
   name: 'canvas',
   order: 40,
-  enabled: (ctx) => ctx.capabilities.has('canvas'),
+  enabled: (ctx) => ctx.capabilities.size === 0 || ctx.capabilities.has('canvas'),
 
   routes: [
     // 画布编辑器 — /agent/:id

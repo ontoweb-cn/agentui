@@ -202,7 +202,7 @@ describe('harness-admin 路由 (P2 US1)', () => {
         id: 'intellect-enterprise-1',
         name: 'Enterprise (no env)',
         type: 'intellect-enterprise',
-        endpoint: 'http://localhost:8642',
+        endpoint: 'http://localhost:9091',
         adminTokenEnvVar: 'HARNESS_ENTERPRISE_KEY',
         capabilities: { ...ragCapabilities, canvas: false, multiTenant: true },
       };

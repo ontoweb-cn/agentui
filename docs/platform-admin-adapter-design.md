@@ -730,7 +730,7 @@ export class IntellectEnterprisePlatformAdminAdapter implements IPlatformAdminAd
 
   constructor(
     private backend: HarnessBackend,
-    private client: IntellectClient,  // 封装 8642 调用
+    private client: IntellectClient,  // 封装 9091 调用
   ) {}
 
   version(): IVersionAdmin {

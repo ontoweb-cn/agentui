@@ -90,7 +90,8 @@ export const useNavigatePage = () => {
 
   const navigateToAgent = useCallback(
     (id: string, category?: AgentCategory) => () => {
-      navigate(`${Routes.Agent}/${id}?${AgentQuery.Category}=${category}`);
+      const agentCategory = category ?? AgentCategory.AgentCanvas;
+      navigate(`${Routes.Agent}/${id}?${AgentQuery.Category}=${agentCategory}`);
     },
     [navigate],
   );

@@ -10,7 +10,7 @@
 
 **字段**:
 - `backendId: string` — 后端 ID(从 HarnessBackend.id)
-- `baseUrl: string` — intellect-team endpoint(如 `http://localhost:8642`),去除尾部 `/`
+- `baseUrl: string` — intellect-team endpoint(如 `http://localhost:9091`),去除尾部 `/`
 - `apiServerKey: string` — intellect-team 全局 API Key(从 env `API_SERVER_KEY` 注入,Constitution Principle VIII)
 - `capabilities: HarnessCapabilities` — 后端能力(从 HarnessBackend.capabilities,canvas=false)
 - `httpClient: IntellectEnterpriseHttpClient` — HTTP 客户端封装(实体 2)
@@ -108,7 +108,7 @@
 HarnessBackend (P0, JSON+env)
     │
     ├── type: 'intellect-enterprise'
-    ├── endpoint: 'http://localhost:8642'
+    ├── endpoint: 'http://localhost:9091'
     ├── adminTokenEnvVar: 'API_SERVER_KEY'  → env 注入 adminToken
     └── capabilities: { canvas:false, multiTenant:true, ... }
          │

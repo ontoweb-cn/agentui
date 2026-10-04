@@ -2,15 +2,7 @@ import { IntellectNodeType } from '@/interfaces/database/agent';
 import { isEmpty } from 'lodash';
 import { useMemo } from 'react';
 import { initialIterationValues } from '../../constant';
-import { OutputObject } from './interface';
-
-function convertToArray(outputObject: OutputObject) {
-  return Object.entries(outputObject).map(([key, value]) => ({
-    name: key,
-    ref: value.ref,
-    type: value.type,
-  }));
-}
+import { convertIterationOutputsToArray } from './utils';
 
 export function useValues(node?: IntellectNodeType) {
   const values = useMemo(() => {
@@ -20,7 +12,10 @@ export function useValues(node?: IntellectNodeType) {
       return { ...initialIterationValues, outputs: [] };
     }
 
-    return { ...formData, outputs: convertToArray(formData.outputs) };
+    return {
+      ...formData,
+      outputs: convertIterationOutputsToArray(formData.outputs),
+    };
   }, [node?.data?.form]);
 
   return values;

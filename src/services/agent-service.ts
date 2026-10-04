@@ -12,7 +12,7 @@ const {
   updateAgent: updateAgentApi,
   listAgents,
   deleteAgent,
-  agentChatCompletion,
+  canvasAgentChatCompletion,
   resetAgent,
   listAgentTemplate,
   testDbConnect,
@@ -21,7 +21,7 @@ const {
   fetchVersionList,
   fetchVersion,
   getAgent,
-  fetchAgentSessions,
+  fetchCanvasAgentSessions,
   fetchExternalAgentInputs,
   prompt,
   cancelDataflow,
@@ -63,7 +63,7 @@ const methods = {
     method: 'delete',
   },
   agentChatCompletion: {
-    url: agentChatCompletion,
+    url: canvasAgentChatCompletion,
     method: 'post',
   },
   listAgentTemplate: {
@@ -98,7 +98,7 @@ const methods = {
     method: 'get',
   },
   fetchAgentLogs: {
-    url: fetchAgentSessions,
+    url: fetchCanvasAgentSessions,
     method: 'get',
   },
   fetchExternalAgentInputs: {
@@ -118,7 +118,7 @@ const methods = {
     method: 'post',
   },
   createAgentSession: {
-    url: api.createAgentSession,
+    url: api.createCanvasAgentSession,
     method: 'post',
   },
 } as const;
@@ -162,7 +162,7 @@ export const fetchAgentLogsByCanvasId = (
 };
 
 export const fetchAgentLogsById = (canvasId: string, sessionId: string) => {
-  return request.get(api.fetchAgentSessionById(canvasId, sessionId));
+  return request.get(api.fetchCanvasAgentSessionById(canvasId, sessionId));
 };
 
 export const fetchPipeLineList = (params: IPipeLineListRequest) => {
@@ -177,11 +177,11 @@ export const fetchWebhookTrace = (
 };
 
 export function createAgentSession({ id, name }: { id: string; name: string }) {
-  return request.post(api.createAgentSession(id), { data: { name } });
+  return request.post(api.createCanvasAgentSession(id), { data: { name } });
 }
 
 export const deleteAgentSession = (canvasId: string, sessionId: string) => {
-  return request.delete(api.fetchAgentSessionById(canvasId, sessionId));
+  return request.delete(api.fetchCanvasAgentSessionById(canvasId, sessionId));
 };
 
 export const uploadAgentFile = (agentId: string, data: FormData) => {

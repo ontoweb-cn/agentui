@@ -572,7 +572,7 @@ Admin 登录页 `src/pages/admin/login.tsx` 走独立认证流,与 BFF /auth/* �
 - logout → `{logged_out: true}`
 - 登出后 /auth/me → **401 Unauthorized**(token 已失效)
 
-企业版(mock-intellect-team :8642):
+企业版(mock-intellect-team :9091):
 - register → `{member_id, registration_pending}`
 - login → `{member_id, display_name, role, email}` + Set-Cookie
 - /auth/me → 用户信息(via cookie)

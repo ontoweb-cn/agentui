@@ -18,7 +18,7 @@
      ]
    }
    ```
-4. **启动**:BFF(9390)+ mock-intellect-team(8642,P4a 扩展 member 端点)
+4. **启动**:BFF(9390)+ mock-intellect-team(9091,P4a 扩展 member 端点)
 
 ## 场景 1:企业版密码登录(US1)
 

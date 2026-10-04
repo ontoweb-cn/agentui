@@ -13,6 +13,7 @@ import {
   BuildQueryVariableOptions,
   useFilterQueryVariableOptionsByTypes,
 } from '../../hooks/use-get-begin-query';
+import useGraphStore from '../../store';
 import { GroupedSelectWithSecondaryMenu } from './select-with-secondary-menu';
 
 // Union type to support both JsonSchemaDataType and VariableType for filtering
@@ -43,6 +44,7 @@ export function QueryVariable({
 }: QueryVariableProps) {
   const { t } = useTranslation();
   const form = useFormContext();
+  const nodes = useGraphStore((state) => state.nodes);
 
   const finalOptions = useFilterQueryVariableOptionsByTypes({
     types,
@@ -53,18 +55,31 @@ export function QueryVariable({
   const renderWidget = (
     value?: string,
     handleChange?: (value: string) => void,
-  ) => (
-    <GroupedSelectWithSecondaryMenu
-      options={finalOptions as any}
-      value={value}
-      onChange={(val) => {
-        handleChange?.(val);
-        onChange?.(val);
-      }}
-      // allowClear
-      types={types as any}
-    ></GroupedSelectWithSecondaryMenu>
-  );
+  ) => {
+    const [sourceNodeId, outputName] = value?.split('@') ?? [];
+    const sourceNode = nodes.find((node) => node.id === sourceNodeId);
+    const fallbackSelectedItem = value
+      ? {
+          value,
+          label: outputName || value,
+          parentLabel: sourceNode?.data?.name,
+        }
+      : undefined;
+
+    return (
+      <GroupedSelectWithSecondaryMenu
+        options={finalOptions as any}
+        value={value}
+        fallbackSelectedItem={fallbackSelectedItem}
+        onChange={(val) => {
+          handleChange?.(val);
+          onChange?.(val);
+        }}
+        // allowClear
+        types={types as any}
+      ></GroupedSelectWithSecondaryMenu>
+    );
+  };
 
   if (pureQuery) {
     renderWidget(value, onChange);

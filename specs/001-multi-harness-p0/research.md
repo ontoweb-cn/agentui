@@ -163,7 +163,7 @@ P0 不引入 Vitest,BFF 测试策略为 `tsc --noEmit` + 手工冒烟。Vitest �
 
 ```http
 POST /api/sessions/{session_id}/chat/stream HTTP/1.1
-Host: localhost:8642
+Host: localhost:9091
 Authorization: Bearer ${API_SERVER_KEY}
 X-Intellect-Team: <team_id>
 X-Intellect-Project: <project_id>

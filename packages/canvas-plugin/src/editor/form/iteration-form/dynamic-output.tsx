@@ -10,8 +10,8 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Separator } from '@/components/ui/separator';
-import { Operator } from '@agentui/canvas-plugin/constant';
 import { IntellectNodeType } from '@/interfaces/database/agent';
+import { Operator } from '@agentui/canvas-plugin/constant';
 import { t } from 'i18next';
 import { isEmpty } from 'lodash';
 import { X } from 'lucide-react';
@@ -29,7 +29,7 @@ interface IProps {
 export function DynamicOutputForm({ node }: IProps) {
   const { t } = useTranslation();
   const form = useFormContext();
-  const { nodes } = useGraphStore((state) => state);
+  const { nodes, updateNodeForm } = useGraphStore((state) => state);
 
   const childNodeIds = nodes
     .filter(
@@ -79,7 +79,16 @@ export function DynamicOutputForm({ node }: IProps) {
               hideLabel
               className="w-2/5"
               onChange={(val) => {
-                form.setValue(typeField, `Array<${getType(val)}>`);
+                const type = `Array<${getType(val)}>`;
+                form.setValue(typeField, type, { shouldDirty: true });
+
+                const outputName = form.getValues(nameField);
+                if (node?.id && outputName) {
+                  updateNodeForm(node.id, { ref: val, type }, [
+                    'outputs',
+                    outputName,
+                  ]);
+                }
               }}
               nodeIds={childNodeIds}
             ></QueryVariable>

@@ -98,7 +98,7 @@ export default function Agents() {
               value={filterValue}
             >
               <DropdownMenu>
-                <DropdownMenuTrigger data-testid="create-agent">
+                <DropdownMenuTrigger asChild data-testid="create-agent">
                   <Button>
                     <Plus className="size-[1em]" />
                     {t('flow.createGraph')}

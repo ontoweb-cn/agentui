@@ -567,7 +567,9 @@ export const buildDslGlobalVariables = (
 };
 
 export const receiveMessageError = (res: any) =>
-  res && (res?.response.status !== 200 || res?.data?.code !== 0);
+  res &&
+  (res?.response.status !== 200 ||
+    (typeof res?.data?.code === 'number' && res.data.code !== 0));
 
 // Replace the id in the object with text
 export const replaceIdWithText = (

@@ -117,6 +117,26 @@ export function getLatestError(eventList: IEventList) {
   );
 }
 
+function getSendErrorMessage(res: any) {
+  const candidates = [
+    get(res, 'data.message'),
+    get(res, 'data.data.message'),
+    get(res, 'data.data.outputs._ERROR'),
+    get(res, 'data.data._ERROR'),
+  ];
+  const msg = candidates.find(
+    (x) => typeof x === 'string' && x.trim().length > 0,
+  );
+  if (msg) return msg;
+
+  const code = get(res, 'data.code');
+  const status = get(res, 'response.status');
+  const displayCode = code && code !== 0 ? code : status;
+  return displayCode
+    ? `Agent run failed (${displayCode})`
+    : 'Agent run failed';
+}
+
 export const useGetBeginNodePrologue = () => {
   const getNode = useGraphStore((state) => state.getNode);
   const formData = get(getNode(BeginId), 'data.form', {});
@@ -242,7 +262,7 @@ export const useSendAgentMessage = ({
   const inputs = useSelectBeginNodeDataInputs();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const { send, answerList, done, stopOutputMessage, resetAnswerList } =
-    useSendMessageBySSE(url || api.agentChatCompletion);
+    useSendMessageBySSE(url || api.canvasAgentChatCompletion);
   const firstAnswer = answerList[0];
   const messageId = useMemo(() => {
     return firstAnswer?.message_id;
@@ -336,7 +356,7 @@ export const useSendAgentMessage = ({
         clearUploadResponseList();
 
         if (receiveMessageError(res)) {
-          sonnerMessage.error(res?.data?.message ?? '');
+          sonnerMessage.error(getSendErrorMessage(res));
 
           // cancel loading
           setValue(message.content);

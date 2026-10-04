@@ -2,25 +2,31 @@ import { IntellectFormItem } from '@/components/intellect-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Trash2 } from 'lucide-react';
+import { useCallback } from 'react';
 import { useFieldArray, useFormContext } from 'react-hook-form';
 import { useGetVariableLabelOrTypeByValue } from '../../hooks/use-get-begin-query';
+import useGraphStore from '../../store';
 import { QueryVariable } from '../components/query-variable';
 import { NameInput } from './name-input';
+import { VariableAggregatorFormSchemaType } from './schema';
 
 type DynamicGroupVariableProps = {
-  name: string;
+  name: `groups.${number}`;
   parentIndex: number;
+  nodeId?: string;
   removeParent: (index: number) => void;
 };
 
 export function DynamicGroupVariable({
   name,
   parentIndex,
+  nodeId,
   removeParent,
 }: DynamicGroupVariableProps) {
-  const form = useFormContext();
+  const form = useFormContext<VariableAggregatorFormSchemaType>();
+  const replaceNodeForm = useGraphStore((state) => state.replaceNodeForm);
 
-  const variableFieldName = `${name}.variables`;
+  const variableFieldName = `${name}.variables` as const;
 
   const { getType } = useGetVariableLabelOrTypeByValue();
 
@@ -29,8 +35,49 @@ export function DynamicGroupVariable({
     control: form.control,
   });
 
-  const firstValue = form.getValues(`${variableFieldName}.0.value`);
+  const firstValue = form.getValues(`${variableFieldName}.0.value` as const);
   const firstType = getType(firstValue);
+
+  const buildOutputs = useCallback(
+    (groups: VariableAggregatorFormSchemaType['groups']) => {
+      return groups.reduce(
+        (pre, cur) => {
+          if (cur.group_name) {
+            pre[cur.group_name] = {
+              type: cur.type,
+            };
+          }
+
+          return pre;
+        },
+        {} as Record<string, Record<string, any>>,
+      );
+    },
+    [],
+  );
+
+  const handleAppendVariable = useCallback(() => {
+    const nextVariable = { value: '' };
+    const groups = form.getValues('groups') ?? [];
+    const nextGroups = groups.map((group, index) =>
+      index === parentIndex
+        ? {
+            ...group,
+            variables: [...(group.variables ?? []), nextVariable],
+          }
+        : group,
+    );
+
+    append(nextVariable);
+
+    if (nodeId) {
+      replaceNodeForm(nodeId, {
+        ...form.getValues(),
+        groups: nextGroups,
+        outputs: buildOutputs(nextGroups),
+      });
+    }
+  }, [append, buildOutputs, form, nodeId, parentIndex, replaceNodeForm]);
 
   return (
     <section className="py-3 group space-y-3">
@@ -66,7 +113,7 @@ export function DynamicGroupVariable({
           <Button
             variant={'ghost'}
             type="button"
-            onClick={() => append({ value: '' })}
+            onClick={handleAppendVariable}
           >
             <Plus />
           </Button>
@@ -84,7 +131,7 @@ export function DynamicGroupVariable({
               onChange={(val) => {
                 const type = getType(val);
                 if (type && index === 0) {
-                  form.setValue(`${name}.type`, type, {
+                  form.setValue(`${name}.type` as const, type, {
                     shouldDirty: true,
                   });
                 }

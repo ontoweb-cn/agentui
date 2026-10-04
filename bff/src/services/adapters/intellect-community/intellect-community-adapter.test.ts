@@ -40,7 +40,7 @@ const baseBackend: HarnessBackend = {
   id: 'intellect-community-default',
   name: 'Intellect Community (Default)',
   type: 'intellect-community',
-  endpoint: 'http://127.0.0.1:8642',
+  endpoint: 'http://127.0.0.1:9091',
   adminTokenEnvVar: 'INTELLECT_COMMUNITY_TOKEN',
   capabilities: {
     canvas: false,
@@ -179,7 +179,7 @@ describe('IntellectCommunityAdapter', () => {
       // 第一条 fetch 调用 /v1/chat/completions
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url, init] = mockFetch.mock.calls[0];
-      expect(url).toBe('http://127.0.0.1:8642/v1/chat/completions');
+      expect(url).toBe('http://127.0.0.1:9091/v1/chat/completions');
       expect(init.method).toBe('POST');
       const body = JSON.parse(init.body as string);
       expect(body.model).toBe('intellect-agent');
@@ -219,7 +219,7 @@ describe('IntellectCommunityAdapter', () => {
       const ok = await adapter.healthCheck();
       expect(ok).toBe(true);
       expect(mockFetch.mock.calls[0][0]).toBe(
-        'http://127.0.0.1:8642/v1/models',
+        'http://127.0.0.1:9091/v1/models',
       );
     });
 

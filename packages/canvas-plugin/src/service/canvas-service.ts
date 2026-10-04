@@ -12,7 +12,7 @@ const {
   createAgent,
   updateAgent: updateAgentApi,
   deleteAgent,
-  agentChatCompletion,
+  canvasAgentChatCompletion,
   resetAgent,
   listAgentTemplate,
   testDbConnect,
@@ -20,7 +20,7 @@ const {
   fetchVersionList,
   fetchVersion,
   getAgent,
-  fetchAgentSessions,
+  fetchCanvasAgentSessions,
   fetchExternalAgentInputs,
   prompt,
   cancelDataflow,
@@ -34,19 +34,19 @@ const methods = {
   fetchVersion:     { url: (c: { agentId: string; versionId: string }) => fetchVersion(c.agentId, c.versionId), method: 'get' },
   resetAgent:       { url: resetAgent,       method: 'post' },
   deleteAgent:      { url: deleteAgent,      method: 'delete' },
-  agentChatCompletion: { url: agentChatCompletion, method: 'post' },
+  agentChatCompletion: { url: canvasAgentChatCompletion, method: 'post' },
   listAgentTemplate:   { url: listAgentTemplate,   method: 'get'  },
   testDbConnect:    { url: testDbConnect,    method: 'post' },
   debugSingle:      { url: (c: { agentId: string; componentId: string }) => api.debug(c.agentId, c.componentId), method: 'post' },
   uploadAgentFile:  { url: (c: { agentId: string }) => api.uploadAgentFile(c.agentId), method: 'post' },
   trace:            { url: (c: { agentId: string; messageId: string }) => trace(c.agentId, c.messageId), method: 'get' },
   inputForm:        { url: (c: { agentId: string; componentId: string }) => api.inputForm(c.agentId, c.componentId), method: 'get' },
-  fetchAgentLogs:   { url: fetchAgentSessions, method: 'get' },
+  fetchAgentLogs:   { url: fetchCanvasAgentSessions, method: 'get' },
   fetchExternalAgentInputs: { url: fetchExternalAgentInputs, method: 'get' },
   fetchPrompt:      { url: prompt,           method: 'get'  },
   cancelDataflow:   { url: cancelDataflow,   method: 'post' },
   cancelCanvas:     { url: cancelCanvas,     method: 'post' },
-  createAgentSession: { url: api.createAgentSession, method: 'post' },
+  createAgentSession: { url: api.createCanvasAgentSession, method: 'post' },
 } as const;
 
 const canvasService = registerNextServer<keyof typeof methods>(methods);
@@ -65,7 +65,7 @@ export const fetchAgentLogsByCanvasId = (canvasId: string, params: IAgentLogsReq
   request.get(methods.fetchAgentLogs.url(canvasId), { params });
 
 export const fetchAgentLogsById = (canvasId: string, sessionId: string) =>
-  request.get(api.fetchAgentSessionById(canvasId, sessionId));
+  request.get(api.fetchCanvasAgentSessionById(canvasId, sessionId));
 
 export const fetchPipeLineList = (params: IPipeLineListRequest) =>
   request.get(api.listAgents, { params });
@@ -74,10 +74,10 @@ export const fetchWebhookTrace = (id: string, params: IAgentWebhookTraceRequest)
   request.get(api.fetchWebhookTrace(id), { params });
 
 export const createAgentSession = ({ id, name }: { id: string; name: string }) =>
-  request.post(api.createAgentSession(id), { data: { name } });
+  request.post(api.createCanvasAgentSession(id), { data: { name } });
 
 export const deleteAgentSession = (canvasId: string, sessionId: string) =>
-  request.delete(api.fetchAgentSessionById(canvasId, sessionId));
+  request.delete(api.fetchCanvasAgentSessionById(canvasId, sessionId));
 
 export const uploadAgentFile = (agentId: string, data: FormData) =>
   request(api.uploadAgentFile(agentId), { method: 'post', data });

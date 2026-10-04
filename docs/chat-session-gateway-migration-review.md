@@ -167,7 +167,7 @@
 | 普通 chat CRUD + session | `/proxy/v1/chats/*` | **intellect-rag-app** :9380 | 透传到 intellect-rag-app `/api/v1/chats/*` |
 | 普通 chat completions | `/proxy/v1/chat/completions` | **intellect-rag-app** :9380 | 透传到 intellect-rag-app `/api/v1/chat/completions` |
 | Agent session | `/agents/{id}/sessions/*` | **intellect-rag-app** :9380 | IntellectRagAdapter → intellect-rag-app |
-| LLM providers/models | `/proxy/v1/providers*` | **intellect-team** :8642 | LLM 模型管理 |
+| LLM providers/models | `/proxy/v1/providers*` | **intellect-team** :9091 | LLM 模型管理 |
 
 **认知纠正**：当前 chat 请求**全部走 intellect-rag-app**，而非 intellect-team Gateway。chat-session-gap-analysis 中提到的"透传到 intellect-team Gateway"实际上是透传到 intellect-rag-app（命名混淆）。
 

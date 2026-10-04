@@ -15,16 +15,16 @@
 |------|----|----|
 | 项目 | github.com/NousResearch/hermes-agent | [github.com/NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) |
 | 协议 | OpenAI-compatible API Server | 项目 README + 多个第三方部署指南 |
-| **默认端口** | **8642**（API Server） + 9119（监控/metrics） | Docker compose `ports: "8642:8642", "9119:9119"` |
+| **默认端口** | **9091**（API Server） + 9119（监控/metrics） | Docker compose `ports: "9091:9091", "9119:9119"` |
 | 鉴权 | Bearer token，`Authorization: Bearer <key>` | 与 spec §3.3 一致 |
 | SSE 格式 | OpenAI Chat Completions 标准 `choices[0].delta.content` | OpenAI 兼容 |
 | 工具调用 | OpenAI function calling（mcp=true 依据） | OpenAI 兼容 |
 | 端点 | `POST /v1/chat/completions`、`GET /v1/models`、`GET /health` | OpenAI 兼容 |
 
 **关键结论**：
-- HERMES 默认端口 **8642 与 intellect-enterprise 冲突**（intellect-team `.plans/openai-api-server.md` L204 同样为 8642）。
+- HERMES 默认端口 **9091 与 intellect-enterprise 冲突**（intellect-team `.plans/openai-api-server.md` L204 同样为 9091）。
 - 两者协议完全相同（OpenAI 兼容 + Bearer），Adapter 实现可完全复用 `OpenAICompatibleBaseAdapter`。
-- 端口冲突在实际部署中通过用户配置不同端口解决，spec §3.1 端口列写"任意"可保留，但建议在 quickstart 中提示"默认 8642 与 intellect-enterprise 冲突，部署时需修改"。
+- 端口冲突在实际部署中通过用户配置不同端口解决，spec §3.1 端口列写"任意"可保留，但建议在 quickstart 中提示"默认 9091 与 intellect-enterprise 冲突，部署时需修改"。
 
 ### 1.2 AgentScope
 
@@ -44,7 +44,7 @@
 
 ### 1.3 R1 对 spec 的影响
 
-- spec §3.1 表格 `hermes` / `agent-scope` 的"端口"列由"任意"明确为"任意（hermes 默认 8642，agent-scope 默认 5000）"。
+- spec §3.1 表格 `hermes` / `agent-scope` 的"端口"列由"任意"明确为"任意（hermes 默认 9091，agent-scope 默认 5000）"。
 - spec §3.2 能力矩阵 `hermes.mcp=true` / `agent-scope.mcp=true` 依据确认（基于 OpenAI function calling）。
 - spec §3.3 鉴权表 Bearer token 确认。
 - **无需修订接口设计**：C-P2/C-P3 直接继承 `OpenAICompatibleBaseAdapter` 即可。
@@ -142,7 +142,7 @@ async def kb_retrieve(query: str) -> str
 |------|----|----|
 | 项目 | `intellect-agent`（社区版） | `/Users/simon/project/intellect-team` 本地仓库 |
 | 协议 | OpenAI-compatible API Server | `gateway/platforms/api_server.py` 实际实现 |
-| **默认端口** | **8642** | `.plans/openai-api-server.md` L204 + `scripts/setup_open_webui.sh` L35 `intellect_API_PORT="${intellect_API_PORT:-8642}"` |
+| **默认端口** | **9091** | `.plans/openai-api-server.md` L204 + `scripts/setup_open_webui.sh` L35 `intellect_API_PORT="${intellect_API_PORT:-9091}"` |
 | 鉴权 | Bearer token，`API_SERVER_KEY` env var | 与 spec §3.3 一致 |
 | SSE 格式 | OpenAI 标准 | OpenAI 兼容 |
 | 端点 | `POST /v1/chat/completions`、`POST /v1/responses`、`GET /v1/models`、`GET /health` | `gateway/platforms/api_server.py` |
@@ -152,11 +152,11 @@ async def kb_retrieve(query: str) -> str
 
 - `intellect-community` 与 `intellect-enterprise` **同源**于 intellect-agent 项目（同一仓库 `/Users/simon/project/intellect-team`）。
 - `intellect-enterprise` 是企业版部署（启用 multiTenant + Team/Project + Rust Gateway），`intellect-community` 是社区版部署（纯 Agent 运行时，无 multiTenant）。
-- 两者使用相同端口 8642 合理：实际部署中不会同时存在（同一 binary 不同配置）。
+- 两者使用相同端口 9091 合理：实际部署中不会同时存在（同一 binary 不同配置）。
 
 ### 3.3 R3 对 spec 的影响
 
-- spec §3.1 表格 `intellect-community` 端口列从"任意"改为"任意（默认 8642，与 intellect-enterprise 同源）"。
+- spec §3.1 表格 `intellect-community` 端口列从"任意"改为"任意（默认 9091，与 intellect-enterprise 同源）"。
 - spec §3.2 能力矩阵 `intellect-community` 全 false 确认（社区版无 canvas/KB/multiTenant）。
 - **无需修订接口设计**：C-P1 直接继承 `OpenAICompatibleBaseAdapter`。
 
@@ -179,8 +179,8 @@ async def kb_retrieve(query: str) -> str
 
 | # | 位置 | 当前 | 修订为 | 原因 |
 |---|------|------|-------|------|
-| m1 | §3.1 intellect-community 端口 | 任意 | 任意（默认 8642，与 intellect-enterprise 同源） | R3 确认 |
-| m2 | §3.1 hermes 端口 | 任意 | 任意（默认 8642，与 intellect-enterprise 冲突） | R1 确认 |
+| m1 | §3.1 intellect-community 端口 | 任意 | 任意（默认 9091，与 intellect-enterprise 同源） | R3 确认 |
+| m2 | §3.1 hermes 端口 | 任意 | 任意（默认 9091，与 intellect-enterprise 冲突） | R1 确认 |
 | m3 | §3.1 agent-scope 端口 | 任意 | 任意（默认 5000） | R1 确认 |
 | m4 | §3.1 KAG 行 端口 | 任意 | 任意（MCP SSE 默认 3000；product UI 8887） | R2 确认 |
 
@@ -190,14 +190,14 @@ async def kb_retrieve(query: str) -> str
 |---|------|------|
 | R1 | HERMES/KAG/AgentScope 特殊请求头未确认 | ✅ **已解决**：HERMES/AgentScope 用标准 Bearer；KAG 用 MCP（无 HTTP 头） |
 | R2 | KAG KB API 端点格式未确认 | ✅ **已解决**：KAG 无 REST KB API，仅 MCP 工具 `kb_retrieve(query)`；需修订 spec §3.2/§4.1（见 4.1 M3-M6） |
-| R3 | intellect-community 默认端口未确认 | ✅ **已解决**：默认 8642，与 intellect-enterprise 同源 |
+| R3 | intellect-community 默认端口未确认 | ✅ **已解决**：默认 9091，与 intellect-enterprise 同源 |
 
 ### 4.4 新增风险
 
 | # | 风险 | 影响 Phase | 处置 |
 |---|------|-----------|------|
 | R11 | KAG 协议族分类错误（spec §3.1 假设 OpenAI 兼容，实际 MCP） | C-P4 | **C-P4 实施前必须修订 spec**：选项 A（推荐）/B/C 见 §2.5 |
-| R12 | HERMES 默认端口与 intellect-enterprise 冲突（均 8642） | C-P2 | quickstart 提示用户修改端口；spec §3.1 注明默认值 |
+| R12 | HERMES 默认端口与 intellect-enterprise 冲突（均 9091） | C-P2 | quickstart 提示用户修改端口；spec §3.1 注明默认值 |
 | R13 | intellect-community 与 intellect-enterprise 同源同端口 | C-P1 | spec §3.1 注明"同源，不会同时部署"；Admin 表单可加交叉校验 |
 
 ---
@@ -207,7 +207,7 @@ async def kb_retrieve(query: str) -> str
 ### 5.1 C-P1: IntellectCommunityAdapter（无 Blocker）
 
 - 直接继承 `OpenAICompatibleBaseAdapter`
-- 默认 endpoint: `http://127.0.0.1:8642`
+- 默认 endpoint: `http://127.0.0.1:9091`
 - 鉴权: Bearer token via `API_SERVER_KEY`
 - 协议族: `openai-compatible`
 - 工时: ~0.5 人日
@@ -215,7 +215,7 @@ async def kb_retrieve(query: str) -> str
 ### 5.2 C-P2: HermesAdapter（无 Blocker）
 
 - 直接继承 `OpenAICompatibleBaseAdapter`
-- 默认 endpoint: `http://127.0.0.1:8642`（quickstart 提示冲突）
+- 默认 endpoint: `http://127.0.0.1:9091`（quickstart 提示冲突）
 - 鉴权: Bearer token
 - 协议族: `openai-compatible`
 - 工时: ~0.5 人日
@@ -276,7 +276,7 @@ C-P1, C-P2, C-P3（并行，无 Blocker）
 
 ### R1 HERMES
 - [NousResearch/hermes-agent GitHub](https://github.com/NousResearch/hermes-agent)
-- 第三方部署指南（Docker compose ports: 8642, 9119）
+- 第三方部署指南（Docker compose ports: 9091, 9119）
 
 ### R1 AgentScope
 - AgentScope 官方文档（默认端口 5000，OpenAI 兼容）
@@ -290,7 +290,7 @@ C-P1, C-P2, C-P3（并行，无 Blocker）
 
 ### R3 intellect-community
 - `/Users/simon/project/intellect-team`（intellect-agent 社区版本地仓库）
-- `.plans/openai-api-server.md` L204 `port: 8642`
-- `scripts/setup_open_webui.sh` L35 `intellect_API_PORT="${intellect_API_PORT:-8642}"`
+- `.plans/openai-api-server.md` L204 `port: 9091`
+- `scripts/setup_open_webui.sh` L35 `intellect_API_PORT="${intellect_API_PORT:-9091}"`
 - `gateway/platforms/api_server.py`（实际实现）
 - `CLAUDE.md` L30 `OpenAI-compatible /v1/chat/completions`

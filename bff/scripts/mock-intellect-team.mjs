@@ -25,7 +25,7 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 
-const PORT = 8642;
+const PORT = 9091;
 const API_SERVER_KEY = 'test-api-server-key-smoke';
 
 const sessions = new Map();

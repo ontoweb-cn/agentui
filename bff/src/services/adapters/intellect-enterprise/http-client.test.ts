@@ -53,7 +53,7 @@ describe('IntellectEnterpriseHttpClient', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     client = new IntellectEnterpriseHttpClient(
-      'http://localhost:8642',
+      'http://localhost:9091',
       'test-api-server-key',
     );
   });
@@ -225,7 +225,7 @@ describe('IntellectEnterpriseHttpClient', () => {
       // 填充 128 条未过期的缓存(已达上限)
       const now = Date.now();
       for (let i = 0; i < 128; i++) {
-        cache.set(`http://localhost:8642|tenant-${i}`, {
+        cache.set(`http://localhost:9091|tenant-${i}`, {
           valid: true,
           expiresAt: now + 60_000, // 1 分钟后过期(未过期)
         });
@@ -248,7 +248,7 @@ describe('IntellectEnterpriseHttpClient', () => {
 
       // 验证:写入新条目后,清理了一个最早过期条目,总数 ≤ 128
       expect(cache.size).toBe(128);
-      expect(cache.has('http://localhost:8642|tenant-new')).toBe(true);
+      expect(cache.has('http://localhost:9091|tenant-new')).toBe(true);
     });
 
     it('第一轮清理优先清理过期条目', async () => {
@@ -261,12 +261,12 @@ describe('IntellectEnterpriseHttpClient', () => {
       const now = Date.now();
       // 填充 127 条未过期 + 1 条已过期
       for (let i = 0; i < 127; i++) {
-        cache.set(`http://localhost:8642|tenant-${i}`, {
+        cache.set(`http://localhost:9091|tenant-${i}`, {
           valid: true,
           expiresAt: now + 60_000,
         });
       }
-      cache.set('http://localhost:8642|tenant-expired', {
+      cache.set('http://localhost:9091|tenant-expired', {
         valid: true,
         expiresAt: now - 1000, // 已过期
       });
@@ -287,10 +287,10 @@ describe('IntellectEnterpriseHttpClient', () => {
 
       // 验证:第一轮清理了过期条目,新条目写入,总数 = 128(127 + 1 - 1 + 1)
       expect(cache.size).toBe(128);
-      expect(cache.has('http://localhost:8642|tenant-expired')).toBe(false);
-      expect(cache.has('http://localhost:8642|tenant-new')).toBe(true);
+      expect(cache.has('http://localhost:9091|tenant-expired')).toBe(false);
+      expect(cache.has('http://localhost:9091|tenant-new')).toBe(true);
       // 未过期的条目应保留
-      expect(cache.has('http://localhost:8642|tenant-0')).toBe(true);
+      expect(cache.has('http://localhost:9091|tenant-0')).toBe(true);
     });
   });
 });

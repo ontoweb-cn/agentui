@@ -86,6 +86,23 @@ export type IChatEvent = INodeEvent | IMessageEvent | IMessageEndEvent;
 
 export type IEventList = Array<IChatEvent>;
 
+const getSseErrorMessage = (payload: any, fallback = 'Request failed') => {
+  const candidates = [
+    payload?.message,
+    payload?.data?.message,
+    payload?.data?.outputs?._ERROR,
+    payload?.data?._ERROR,
+    payload?.error,
+  ];
+  const msg = candidates.find(
+    (x) => typeof x === 'string' && x.trim().length > 0,
+  );
+  if (msg) return msg;
+
+  const code = payload?.code ?? payload?.status;
+  return code ? `${fallback} (${code})` : fallback;
+};
+
 export const useSendMessageBySSE = (url: string) => {
   const [answerList, setAnswerList] = useState<IEventList>([]);
   const [done, setDone] = useState(true);
@@ -190,7 +207,7 @@ export const useSendMessageBySSE = (url: string) => {
               const val = JSON.parse(payload);
 
               if (typeof val?.code === 'number' && val.code !== 0) {
-                message.error(val.message);
+                message.error(getSseErrorMessage(val));
               }
               lastEventData = val as ResponseType;
 

@@ -116,7 +116,10 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
 
   // 方案 B: 从 AuthSession 提取会话 token (imt_*),优先于 admin JWT 传递给 intellect-rag。
   const authSession = getAuthSession(c);
-  const sessionToken = authSession?.token;
+  const sessionToken =
+    process.env.BFF_ENABLE_IMT_CANVAS_AGENTS === 'true'
+      ? authSession?.token
+      : undefined;
 
   // 构造透传请求
   const proxyReq: ProxyRequest = {

@@ -104,7 +104,7 @@
                            │ httpx + Bearer token
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  intellect-gateway (Rust, :8642)                                 │
+│  intellect-gateway (Rust, :9091)                                 │
 │  /v1/intellect/agents*  （11 条原生 Rust handler 路由）           │
 │  - RBAC：写操作需 Admin/Owner，Profile 模式 bypass               │
 │  - tenant_id 来自 Bearer token 的 AuthContext                    │
@@ -118,7 +118,7 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-> **端口对应**：wargamesrv `:9385`（FastAPI，cognitive-wargame 仓库），intellect-gateway `:8642`（Rust，intellect-team 仓库）。前端开发时通过 Vite proxy 将 `/api/v1/wargame` 代理到 wargamesrv `:9385`，wargamesrv 再用 httpx 转发到 gateway `:8642`。
+> **端口对应**：wargamesrv `:9385`（FastAPI，cognitive-wargame 仓库），intellect-gateway `:9091`（Rust，intellect-team 仓库）。前端开发时通过 Vite proxy 将 `/api/v1/wargame` 代理到 wargamesrv `:9385`，wargamesrv 再用 httpx 转发到 gateway `:9091`。
 
 ### 2.2 前端分层架构
 

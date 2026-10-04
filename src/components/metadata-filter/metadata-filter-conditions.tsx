@@ -203,7 +203,7 @@ export function MetadataFilterConditions({
       <div className="flex items-center justify-between">
         <FormLabel>{t('chat.conditions')}</FormLabel>
         <DropdownMenu>
-          <DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild>
             <Button variant={'ghost'} type="button">
               <Plus />
             </Button>

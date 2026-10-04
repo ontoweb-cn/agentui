@@ -4,7 +4,7 @@
 
 ## 前置条件
 
-1. **intellect-team 运行**(localhost:8642):
+1. **intellect-team 运行**(localhost:9091):
    - 配置 `API_SERVER_KEY` 环境变量
    - 创建至少一个 Team(记录 team_id)
    - 启用 `/api/sessions/*` 端点
@@ -31,7 +31,7 @@
    - id: `intellect-enterprise-default`
    - name: `Intellect Enterprise Default`
    - type: `intellect-enterprise`
-   - endpoint: `http://localhost:8642`
+   - endpoint: `http://localhost:9091`
    - adminTokenEnvVar: `HARNESS_INTELLECT_ENTERPRISE_ADMIN_TOKEN`
    - capabilities: canvas=false, knowledgeBase=false, memory=true, mcp=true, multiTenant=true, modelManagement=false
 4. 提交

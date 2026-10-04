@@ -102,8 +102,8 @@ describe('E2E — Multi-Tenant Header Propagation via IntellectEnterpriseHttpCli
     records = [];
     fetchMock = makeRecordingFetch(records);
     vi.stubGlobal('fetch', fetchMock);
-    clientA = new IntellectEnterpriseHttpClient('http://tenant-001.local:8642', 'sk-test');
-    clientB = new IntellectEnterpriseHttpClient('http://tenant-002.local:8642', 'sk-test');
+    clientA = new IntellectEnterpriseHttpClient('http://tenant-001.local:9091', 'sk-test');
+    clientB = new IntellectEnterpriseHttpClient('http://tenant-002.local:9091', 'sk-test');
   });
 
   afterEach(() => {
@@ -144,7 +144,7 @@ describe('E2E — Multi-Tenant Header Propagation via IntellectEnterpriseHttpCli
   });
 
   it('omits team/project/user headers for minimal context', async () => {
-    const clientDefault = new IntellectEnterpriseHttpClient('http://tenant-default.local:8642', 'sk-test');
+    const clientDefault = new IntellectEnterpriseHttpClient('http://tenant-default.local:9091', 'sk-test');
     await clientDefault.request('POST', '/api/sessions', CTX_MINIMAL, { title: 'Default' });
 
     const req = lastReq();
@@ -203,7 +203,7 @@ describe('E2E — Multi-Tenant Header Propagation via IntellectEnterpriseHttpCli
       intellectSessionKey: 'key-full',
     };
     // Use a client that points to tenant-full to pass ensureTenantValid
-    const clientFull = new IntellectEnterpriseHttpClient('http://tenant-full.local:8642', 'sk-full');
+    const clientFull = new IntellectEnterpriseHttpClient('http://tenant-full.local:9091', 'sk-full');
     await clientFull.request('POST', '/v1/rag/retrieval', fullCtx, { query: 'test' });
 
     const req = lastReq();

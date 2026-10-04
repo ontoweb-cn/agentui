@@ -317,10 +317,10 @@
 ### C-0：前置 research（R1/R2/R3）
 
 - [x] **任务**: 完成三协议 research，输出 [research.md](./research.md)
-- [x] **R1 HERMES**: Nous Research Hermes Agent，OpenAI 兼容，默认端口 8642（与 intellect-enterprise 冲突），Bearer 鉴权
+- [x] **R1 HERMES**: Nous Research Hermes Agent，OpenAI 兼容，默认端口 9091（与 intellect-enterprise 冲突），Bearer 鉴权
 - [x] **R1 AgentScope**: OpenAI 兼容，默认端口 5000，Bearer 鉴权（可选）
 - [x] **R2 KAG**: **重大发现** — KAG v0.8.0 无 OpenAI 兼容入口，无 REST KB CRUD API；仅通过 MCP 协议暴露 `qa_pipeline(query)` + `kb_retrieve(query)` 两个工具，MCP SSE 默认端口 3000
-- [x] **R3 intellect-community**: intellect-agent 社区版，OpenAI 兼容，默认端口 8642（与 intellect-enterprise 同源同端口）
+- [x] **R3 intellect-community**: intellect-agent 社区版，OpenAI 兼容，默认端口 9091（与 intellect-enterprise 同源同端口）
 - [x] **结论**:
   - C-P1/C-P2/C-P3 无 Blocker，直接继承 `OpenAICompatibleBaseAdapter`
   - **C-P4 需先评审 spec 修订方案**（research.md §2.5 选项 A/B/C）
@@ -329,12 +329,12 @@
 
 ### C-P1：intellect-community Adapter（无 Blocker）
 
-- [x] **前置**: C-0 research 完成（R3 确认默认端口 8642）
+- [x] **前置**: C-0 research 完成（R3 确认默认端口 9091）
 - [x] **任务**: 实现 IntellectCommunityAdapter
 - [x] **文件**: `bff/src/services/adapters/intellect-community/intellect-community-adapter.ts`
 - [x] **实施细节**:
   - 继承 `OpenAICompatibleBaseAdapter`
-  - 默认 endpoint: `http://127.0.0.1:8642`（与 intellect-enterprise 同源，不会同时部署）
+  - 默认 endpoint: `http://127.0.0.1:9091`（与 intellect-enterprise 同源，不会同时部署）
   - 鉴权: Bearer token via `API_SERVER_KEY`
   - 协议族: `openai-compatible`
   - adapterKind: `harness-core`（社区版无 canvas/KB/multiTenant）
@@ -350,7 +350,7 @@
 - [x] **文件**: `bff/src/services/adapters/hermes/hermes-adapter.ts`
 - [x] **实施细节**:
   - 继承 `OpenAICompatibleBaseAdapter`
-  - 默认 endpoint: `http://127.0.0.1:8642`（quickstart 需提示与 intellect-enterprise 冲突）
+  - 默认 endpoint: `http://127.0.0.1:9091`（quickstart 需提示与 intellect-enterprise 冲突）
   - 鉴权: Bearer token
   - 协议族: `openai-compatible`
   - adapterKind: `harness-core`
@@ -559,11 +559,11 @@ Phase X(联调,依赖 Intellect-Team Phase 1+2 完成):
 |---|------|-----------|------|
 | R1 | HERMES/KAG/AgentScope 特殊请求头未确认 | C | ✅ **已解决**（C-0 research）：HERMES/AgentScope 用标准 Bearer；KAG 用 MCP（无 HTTP 头） |
 | R2 | KAG KB API 端点格式未确认 | C-P4 | ✅ **已解决**（C-0 research）：KAG 无 REST KB API，仅 MCP 工具 `kb_retrieve(query)`；需修订 spec §3.2/§4.1 |
-| R3 | intellect-community 默认端口未确认 | C-P1 | ✅ **已解决**（C-0 research）：默认 8642，与 intellect-enterprise 同源 |
+| R3 | intellect-community 默认端口未确认 | C-P1 | ✅ **已解决**（C-0 research）：默认 9091，与 intellect-enterprise 同源 |
 | R7 | Intellect-Team 两版本不兼容 | X-2 | ✅ 已解决:Intellect-Team 已承诺 4 周内完成 P0+P1 对齐,兜底方案永久归档 |
 | R8 | RunRegistry 活跃 run 校验阻塞管理员 | B-8, B-9 | YAGNI,未来可新增"强制切换" |
 | R9 | Intellect-Team Phase 1 延期(E4/B2 风险高) | Phase X | 监控进度,若延期则 Phase X 顺延,不影响 AgentUI 自身 Phase A-D |
 | R10 | B2 clarify SSE event 未携带 session_id | Phase X-T2 | 已在 X-3 中明确要求 Intellect-Team 的 payload 必须含 session_id 或 clarify_id 格式为 `{session_id}:{timestamp_ms}` |
 | **R11** | **KAG 协议族分类错误**（spec §3.1 假设 OpenAI 兼容，实际 MCP） | C-P4 | ✅ **spec 修订完成**(v8.3):KAG 协议族改为 `mcp-protocol`,KagAdapter 改继承 `MCPBaseAdapter`。待 spec-012 完成 `MCPBaseAdapter`+`IMCPAdapter` 接口设计后实施 C-P4。spec-012 设计已完成(2026-07-30),Phase 1 实施待执行 |
-| **R12** | HERMES 默认端口与 intellect-enterprise 冲突（均 8642） | C-P2 | quickstart 提示用户修改端口；spec §3.1 注明默认值 |
+| **R12** | HERMES 默认端口与 intellect-enterprise 冲突（均 9091） | C-P2 | quickstart 提示用户修改端口；spec §3.1 注明默认值 |
 | **R13** | intellect-community 与 intellect-enterprise 同源同端口 | C-P1 | spec §3.1 注明"同源，不会同时部署"；Admin 表单可加交叉校验 |

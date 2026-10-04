@@ -6,7 +6,7 @@
  * 来源(C-0 research R3):
  * - 项目: intellect-agent 社区版(/Users/simon/project/intellect-team 同一仓库)
  * - 协议: OpenAI-compatible API Server(gateway/platforms/api_server.py)
- * - 默认端口: 8642(与 intellect-enterprise 同源,不会同时部署)
+ * - 默认端口: 9091(与 intellect-enterprise 同源,不会同时部署)
  * - 鉴权: Bearer token via API_SERVER_KEY env var
  * - 端点: POST /v1/chat/completions, GET /v1/models, GET /health
  *

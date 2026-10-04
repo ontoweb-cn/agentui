@@ -33,6 +33,7 @@ import { StructuredOutputSecondaryMenu } from './structured-output-secondary-men
 type Item = {
   label: string;
   value: string;
+  parentLabel?: string | React.ReactNode;
 };
 
 type Option = {
@@ -53,6 +54,7 @@ interface GroupedSelectWithSecondaryMenuProps {
   onChange?: (value: string) => void;
   placeholder?: string;
   types?: JsonSchemaDataType[];
+  fallbackSelectedItem?: Item;
 }
 
 export function GroupedSelectWithSecondaryMenu({
@@ -61,6 +63,7 @@ export function GroupedSelectWithSecondaryMenu({
   onChange,
   placeholder,
   types,
+  fallbackSelectedItem,
 }: GroupedSelectWithSecondaryMenuProps) {
   const { t } = useTranslation();
   const [open, setOpen] = React.useState(false);
@@ -77,6 +80,10 @@ export function GroupedSelectWithSecondaryMenu({
 
   if (!selectedItem && value) {
     selectedItem = findAgentStructuredOutputLabel(value, flattenedOptions);
+  }
+
+  if (!selectedItem && value) {
+    selectedItem = fallbackSelectedItem;
   }
 
   // Handle clear click
@@ -108,8 +115,12 @@ export function GroupedSelectWithSecondaryMenu({
         >
           {value ? (
             <div className="truncate flex items-center gap-1">
-              <span>{get(selectedItem, 'parentLabel')}</span>
-              <span className="text-text-disabled">/</span>
+              {get(selectedItem, 'parentLabel') && (
+                <>
+                  <span>{get(selectedItem, 'parentLabel')}</span>
+                  <span className="text-text-disabled">/</span>
+                </>
+              )}
               <span className="text-accent-primary">{selectedItem?.label}</span>
             </div>
           ) : (

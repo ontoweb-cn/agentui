@@ -6,7 +6,7 @@
  * 来源(C-0 research R1):
  * - 项目: github.com/NousResearch/hermes-agent
  * - 协议: OpenAI-compatible API Server
- * - 默认端口: 8642(与 intellect-enterprise 冲突,部署时需修改)
+ * - 默认端口: 9091(与 intellect-enterprise 冲突,部署时需修改)
  * - 鉴权: Bearer token
  * - 端点: POST /v1/chat/completions, GET /v1/models, GET /health
  *

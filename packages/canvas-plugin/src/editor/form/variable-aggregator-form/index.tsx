@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { memo, useCallback } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { initialDataOperationsValues } from '../../constant';
+import { initialVariableAggregatorValues } from '../../constant';
 import { useFormValues } from '../../hooks/use-form-values';
 import { INextOperatorForm } from '../../interface';
 import useGraphStore from '../../store';
@@ -18,9 +18,9 @@ import { useWatchFormChange } from './use-watch-change';
 
 function VariableAggregatorForm({ node }: INextOperatorForm) {
   const { t } = useTranslation();
-  const getNode = useGraphStore((state) => state.getNode);
+  const { getNode, replaceNodeForm } = useGraphStore((state) => state);
 
-  const defaultValues = useFormValues(initialDataOperationsValues, node);
+  const defaultValues = useFormValues(initialVariableAggregatorValues, node);
 
   const form = useForm<VariableAggregatorFormSchemaType>({
     defaultValues: defaultValues,
@@ -35,8 +35,31 @@ function VariableAggregatorForm({ node }: INextOperatorForm) {
   });
 
   const appendItem = useCallback(() => {
-    append({ group_name: `Group${fields.length}`, variables: [] });
-  }, [append, fields.length]);
+    const nextGroup: VariableAggregatorFormSchemaType['groups'][number] = {
+      group_name: `Group${fields.length}`,
+      variables: [{ value: '' }],
+      type: undefined,
+    };
+    const groups = [...(form.getValues('groups') ?? []), nextGroup];
+    append(nextGroup);
+
+    if (node?.id) {
+      const outputs = groups.reduce(
+        (pre, cur) => {
+          if (cur.group_name) {
+            pre[cur.group_name] = {
+              type: cur.type,
+            };
+          }
+
+          return pre;
+        },
+        {} as Record<string, Record<string, any>>,
+      );
+
+      replaceNodeForm(node.id, { ...form.getValues(), groups, outputs });
+    }
+  }, [append, fields.length, form, node?.id, replaceNodeForm]);
 
   const outputList = buildOutputList(
     getNode(node?.id)?.data.form.outputs ?? {},
@@ -53,6 +76,7 @@ function VariableAggregatorForm({ node }: INextOperatorForm) {
               key={field.id}
               name={`groups.${idx}`}
               parentIndex={idx}
+              nodeId={node?.id}
               removeParent={remove}
             ></DynamicGroupVariable>
           ))}

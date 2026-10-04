@@ -65,14 +65,14 @@ export function VersionDialog({
 
   return (
     <Dialog open onOpenChange={hideModal}>
-      <DialogContent className="max-w-[900px]">
+      <DialogContent className="w-[calc(100vw-3rem)] max-w-[1200px]">
         <DialogHeader>
           <DialogTitle className="text-base">
             {t('flow.historyVersion')}
           </DialogTitle>
         </DialogHeader>
-        <section className="flex gap-8 relative">
-          <div className="w-72 max-h-[60vh] overflow-auto min-h-[40vh]">
+        <section className="relative flex h-[60vh] min-w-0 gap-8">
+          <div className="h-full w-72 shrink-0 overflow-auto">
             {loading ? (
               <Spin className="top-1/2"></Spin>
             ) : (
@@ -94,7 +94,7 @@ export function VersionDialog({
               </ul>
             )}
           </div>
-          <div className="relative flex-1 ">
+          <div className="relative min-w-0 flex-1">
             {versionLoading ? (
               <Spin className="top-1/2" />
             ) : (
@@ -102,8 +102,10 @@ export function VersionDialog({
                 <CardContent className="h-full p-5 flex flex-col">
                   <section className="flex justify-between pb-2">
                     <div>
-                      <div className="flex">
-                        <span className="pb-1 truncate">{agent?.title}</span>
+                      <div className="flex min-w-0">
+                        <span className="min-w-0 pb-1 truncate">
+                          {agent?.title}
+                        </span>
                         {agent?.release && (
                           <IntellectTooltip tooltip={t('flow.productionTooltip')}>
                             <Button className="bg-accent-primary-5 ml-3">
@@ -125,7 +127,7 @@ export function VersionDialog({
                       <ArrowDownToLine />
                     </Button>
                   </section>
-                  <section className="relative flex-1">
+                  <section className="relative min-w-0 flex-1">
                     <ReactFlowProvider key={`flow-${selectedId}`}>
                       <ReactFlow
                         connectionMode={ConnectionMode.Loose}

@@ -486,7 +486,7 @@ describe('wizard 路由 (B-3)', () => {
         body: JSON.stringify({
           name: 'Enterprise',
           type: 'intellect-enterprise',
-          endpoint: 'http://localhost:8642',
+          endpoint: 'http://localhost:9091',
           credentialKind: 'bearer-token',
           token: 'ent-token',
           // P3-m4 修复:32 位 hex 格式(Rust 版本要求)
@@ -512,7 +512,7 @@ describe('wizard 路由 (B-3)', () => {
         body: JSON.stringify({
           name: 'Enterprise',
           type: 'intellect-enterprise',
-          endpoint: 'http://localhost:8642',
+          endpoint: 'http://localhost:9091',
           credentialKind: 'bearer-token',
           token: 'ent-token',
           // P3-m4 修复:32 位 hex 格式
@@ -541,7 +541,7 @@ describe('wizard 路由 (B-3)', () => {
         body: JSON.stringify({
           name: 'Enterprise',
           type: 'intellect-enterprise',
-          endpoint: 'http://localhost:8642',
+          endpoint: 'http://localhost:9091',
           credentialKind: 'bearer-token',
           token: 'ent-token',
           intellectTenantId: '0123456789abcdef0123456789abcdef',
@@ -562,7 +562,7 @@ describe('wizard 路由 (B-3)', () => {
         body: JSON.stringify({
           name: 'Enterprise',
           type: 'intellect-enterprise',
-          endpoint: 'http://localhost:8642',
+          endpoint: 'http://localhost:9091',
           credentialKind: 'bearer-token',
           token: 'ent-token',
           // 缺 intellectTenantId
@@ -581,7 +581,7 @@ describe('wizard 路由 (B-3)', () => {
         body: JSON.stringify({
           name: 'Enterprise',
           type: 'intellect-enterprise',
-          endpoint: 'http://localhost:8642',
+          endpoint: 'http://localhost:9091',
           credentialKind: 'bearer-token',
           token: 'ent-token',
           intellectTenantId: 'not-hex',
