@@ -59,6 +59,8 @@ spec:
               value: "9380"
             - name: PYTHON_ADMIN_PORT
               value: "9381"
+            - name: INTELLECT_RAG_URL
+              value: "http://intellect-rag:9380"
 
             # ---- cognitive-wargame 后端 ----
             - name: WARGAME_HOST

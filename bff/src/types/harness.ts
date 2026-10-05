@@ -136,6 +136,11 @@ export interface HarnessBackendConfig {
    * 这是实例级标识,单实例单 tenant。
    */
   intellectTenantId?: string;
+  /**
+   * 方案 A: intellect-enterprise 绑定的伴生 RAG 后端 ID。
+   * 必须指向 type=intellect-rag 的 HarnessBackend.id。URL/凭据存在那条 rag backend 上,本字段只存引用。
+   */
+  ragBackendId?: string;
   /** 备注(可选,如 intellect-llm 共享 endpoint 说明) */
   comment?: string;
 }

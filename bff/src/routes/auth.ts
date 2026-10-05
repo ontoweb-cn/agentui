@@ -24,6 +24,7 @@ import type { AuthSession } from '../types/auth';
 import { AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE } from '../types/auth';
 import type { AuthMode } from '../types/tenant';
 import { getAuthSession, AUTH_SESSION_KEY } from '../middleware/auth-session';
+import { getRagBaseUrl } from '../utils/rag-base-url';
 
 /**
  * OAuth state cookie 名(用于 CSRF 防护,在 /auth/login/:channel 时写入,
@@ -126,16 +127,6 @@ function getEnterpriseBackend(
     baseUrl: backend.endpoint,
     apiServerKey: backend.adminToken,
   };
-}
-
-/**
- * 获取社区版后端 baseUrl。
- * intellect-rag 当前为单实例,从环境变量读取(保留向后兼容)。
- */
-function getRagBaseUrl(): string {
-  const ragHost = process.env.INTELLECT_RAG_HOST || 'localhost';
-  const ragPort = process.env.PYTHON_API_PORT || '9380';
-  return `http://${ragHost}:${ragPort}`;
 }
 
 /**

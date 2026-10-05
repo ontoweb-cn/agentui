@@ -109,57 +109,98 @@ interface HarnessBackendFormValues {
   endpoint: string;
   capabilities: HarnessCapabilities;
   defaultForTenant?: boolean;
+  ragEndpoint?: string;
+  ragApiKey?: string;
 }
 
-const useHarnessBackendFormSchema = () => {
+const useHarnessBackendFormSchema = (requireRagApiKey: boolean) => {
   const { t } = useTranslation();
   return useMemo(
     () =>
-      z.object({
-        id: z
-          .string()
-          .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, t('admin.harnessBackends.idHint')),
-        name: z.string().min(1, t('admin.harnessBackends.nameRequired')),
-        // spec-010 v8 A3-2: 支持 6 类后端表单录入(intellect-llm 不进表单)
-        type: z.enum([
-          'intellect-rag',
-          'intellect-enterprise',
-          'intellect-community',
-          'hermes',
-          'kag',
-          'agent-scope',
-        ]),
-        endpoint: z.string().url(t('admin.harnessBackends.endpointHint')),
-        // adminTokenEnvVar 不再进表单:BFF 始终自动生成 HARNESS_<ID>_TOKEN
-        capabilities: z.object({
-          canvas: z.boolean(),
-          knowledgeBase: z.boolean(),
-          memory: z.boolean(),
-          mcp: z.boolean(),
-          multiTenant: z.boolean(),
-          modelManagement: z.boolean(),
+      z
+        .object({
+          id: z
+            .string()
+            .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, t('admin.harnessBackends.idHint')),
+          name: z.string().min(1, t('admin.harnessBackends.nameRequired')),
+          // intellect-rag 仍可出现在已有伴生插件的编辑表单,不进新增下拉。
+          type: z.enum([
+            'intellect-rag',
+            'intellect-enterprise',
+            'intellect-community',
+            'hermes',
+            'kag',
+            'agent-scope',
+          ]),
+          endpoint: z.string().url(t('admin.harnessBackends.endpointHint')),
+          // adminTokenEnvVar 不再进表单:BFF 始终自动生成 HARNESS_<ID>_TOKEN
+          capabilities: z.object({
+            canvas: z.boolean(),
+            knowledgeBase: z.boolean(),
+            memory: z.boolean(),
+            mcp: z.boolean(),
+            multiTenant: z.boolean(),
+            modelManagement: z.boolean(),
+          }),
+          defaultForTenant: z.boolean().optional(),
+          ragEndpoint: z.string().optional(),
+          ragApiKey: z.string().optional(),
+        })
+        .superRefine((data, ctx) => {
+          if (data.type !== 'intellect-enterprise') return;
+          if (!data.ragEndpoint?.trim() || !/^https?:\/\//.test(data.ragEndpoint.trim())) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['ragEndpoint'],
+              message: t('admin.harnessBackends.ragEndpointRequired', {
+                defaultValue: 'RAG plugin endpoint must be an http(s) URL',
+              }),
+            });
+          }
+          if (requireRagApiKey && !data.ragApiKey?.trim()) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['ragApiKey'],
+              message: t('admin.harnessBackends.ragApiKeyRequired', {
+                defaultValue: 'RAG API key is required',
+              }),
+            });
+          }
         }),
-        defaultForTenant: z.boolean().optional(),
-      }),
-    [t],
+    [t, requireRagApiKey],
   );
 };
 
 const DEFAULT_FORM_VALUES: HarnessBackendFormValues = {
   id: '',
   name: '',
-  type: 'intellect-rag',
-  endpoint: 'http://localhost:9380',
+  type: 'intellect-enterprise',
+  endpoint: 'http://localhost:9091',
   capabilities: {
     canvas: true,
     knowledgeBase: true,
     memory: true,
-    mcp: false,
-    multiTenant: false,
-    modelManagement: false,
+    mcp: true,
+    multiTenant: true,
+    modelManagement: true,
   },
   defaultForTenant: false,
+  ragEndpoint: 'http://localhost:9380',
+  ragApiKey: '',
 };
+
+function toHarnessPayload(values: HarnessBackendFormValues): HarnessBackendFormValues {
+  const payload = { ...values };
+  if (payload.type !== 'intellect-enterprise') {
+    delete payload.ragEndpoint;
+    delete payload.ragApiKey;
+    return payload;
+  }
+  if (!payload.ragApiKey?.trim()) {
+    delete payload.ragApiKey;
+  }
+  return payload;
+}
 
 // ---------------------------------------------------------------------------
 // Capability switch field helper
@@ -208,14 +249,15 @@ function AdminHarnessBackends() {
   const [switchRole, setSwitchRole] = useState<'primary' | 'canvas'>('primary');
   const [switchTenantId, setSwitchTenantId] = useState('');
 
-  const schema = useHarnessBackendFormSchema();
+  const createSchema = useHarnessBackendFormSchema(true);
+  const editSchema = useHarnessBackendFormSchema(!itemToAction?.ragBackendId);
   const createForm = useForm<HarnessBackendFormValues>({
     defaultValues: DEFAULT_FORM_VALUES,
-    resolver: zodResolver(schema),
+    resolver: zodResolver(createSchema),
   });
   const editForm = useForm<HarnessBackendFormValues>({
     defaultValues: DEFAULT_FORM_VALUES,
-    resolver: zodResolver(schema),
+    resolver: zodResolver(editSchema),
   });
 
   // ----- List query -----
@@ -228,7 +270,7 @@ function AdminHarnessBackends() {
   // ----- Mutations -----
   const createMutation = useMutation({
     mutationFn: (values: HarnessBackendFormValues) =>
-      createHarnessBackend(values),
+      createHarnessBackend(toHarnessPayload(values)),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['admin/listHarnessBackends'],
@@ -246,7 +288,12 @@ function AdminHarnessBackends() {
     }: {
       id: string;
       values: Omit<HarnessBackendFormValues, 'id'>;
-    }) => updateHarnessBackend(id, values),
+    }) => {
+      const payload = toHarnessPayload({ ...values, id });
+      const { id: _omitId, ...rest } = payload;
+      void _omitId;
+      return updateHarnessBackend(id, rest);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['admin/listHarnessBackends'],
@@ -314,6 +361,8 @@ function AdminHarnessBackends() {
         // 注:adminTokenEnvVar 由 BFF 自动生成,编辑表单不再展示/提交
         capabilities: itemToAction.capabilities,
         defaultForTenant: itemToAction.defaultForTenant,
+        ragEndpoint: itemToAction.ragEndpoint || 'http://localhost:9380',
+        ragApiKey: '',
       });
     }
   }, [itemToAction, editModalOpen, editForm]);
@@ -360,6 +409,20 @@ function AdminHarnessBackends() {
             {info.getValue()}
           </code>
         ),
+      }),
+      columnHelper.accessor('ragEndpoint', {
+        header: () =>
+          t('admin.harnessBackends.ragEndpoint', {
+            defaultValue: 'RAG endpoint',
+          }),
+        cell: (info) => {
+          const value = info.getValue();
+          return value ? (
+            <code className="text-xs text-text-secondary">{value}</code>
+          ) : (
+            <span className="text-xs text-text-secondary">—</span>
+          );
+        },
       }),
       columnHelper.accessor('adminTokenEnvVar', {
         header: () => t('admin.harnessBackends.adminTokenEnvVar'),
@@ -466,6 +529,18 @@ function AdminHarnessBackends() {
         id={isEdit ? 'harness-backend-edit-form' : 'harness-backend-create-form'}
         onSubmit={form.handleSubmit((values) => {
           if (isEdit && itemToAction) {
+            if (
+              values.type === 'intellect-enterprise' &&
+              !itemToAction.ragBackendId &&
+              !values.ragApiKey?.trim()
+            ) {
+              form.setError('ragApiKey', {
+                message: t('admin.harnessBackends.ragApiKeyRequired', {
+                  defaultValue: 'RAG API key is required',
+                }),
+              });
+              return;
+            }
             const { id: _omit, ...rest } = values;
             void _omit;
             updateMutation.mutate({ id: itemToAction.id, values: rest });
@@ -485,7 +560,7 @@ function AdminHarnessBackends() {
                 <Input
                   {...field}
                   disabled={isEdit}
-                  placeholder="intellect-rag-default"
+                  placeholder="intellect-enterprise-default"
                   className="bg-bg-input border-border-button"
                 />
               </FormControl>
@@ -515,14 +590,20 @@ function AdminHarnessBackends() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>{t('admin.harnessBackends.type')}</FormLabel>
-              <Select value={field.value} onValueChange={field.onChange}>
+              <Select
+                value={field.value}
+                onValueChange={field.onChange}
+                disabled={isEdit && field.value === 'intellect-rag'}
+              >
                 <FormControl>
                   <SelectTrigger className="bg-bg-input border-border-button">
                     <SelectValue />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="intellect-rag">intellect-rag</SelectItem>
+                  {isEdit && field.value === 'intellect-rag' && (
+                    <SelectItem value="intellect-rag">intellect-rag</SelectItem>
+                  )}
                   <SelectItem value="intellect-enterprise">
                     intellect-enterprise
                   </SelectItem>
@@ -558,6 +639,65 @@ function AdminHarnessBackends() {
             </FormItem>
           )}
         />
+        {form.watch('type') === 'intellect-enterprise' && (
+          <>
+            <FormField
+              control={form.control}
+              name="ragEndpoint"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('admin.harnessBackends.ragEndpoint', {
+                      defaultValue: 'RAG plugin endpoint',
+                    })}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="http://localhost:9380"
+                      className="bg-bg-input border-border-button"
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('admin.harnessBackends.ragEndpointHint', {
+                      defaultValue:
+                        'Intellect RAG plugin URL (canvas + knowledge base)',
+                    })}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="ragApiKey"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('admin.harnessBackends.ragApiKey', {
+                      defaultValue: 'RAG API key',
+                    })}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="password"
+                      placeholder={
+                        isEdit
+                          ? t('admin.harnessBackends.ragApiKeyKeep', {
+                              defaultValue: 'Leave blank to keep current key',
+                            })
+                          : 'rag-...'
+                      }
+                      className="bg-bg-input border-border-button"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </>
+        )}
         <div>
           <FormLabel className="text-sm font-medium mb-2">
             {t('admin.harnessBackends.capabilities')}

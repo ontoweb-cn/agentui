@@ -11,6 +11,7 @@
 // - X-Intellect-* 头由调用方在 init.headers 中预先注入,本函数不感知
 
 import { ragTokenProvider } from './rag-token-provider';
+import { isImtCanvasAgentsEnabled } from '../utils/feature-flags';
 
 /**
  * 解析 RAG token:优先用自动登录的动态 token,
@@ -102,8 +103,8 @@ export async function fetchWithRagToken(
     // current_user.id == member_id,消除双 ID 体系
     headers.set('Authorization', `Bearer ${options.sessionToken}`);
     tokenSource = 'session';
-  } else if (process.env.BFF_ENABLE_IMT_CANVAS_AGENTS === 'true') {
-    // 方案 A (B4 禁降级): flag 开启时,无 session 的请求不降级到 admin JWT。
+  } else if (isImtCanvasAgentsEnabled()) {
+    // 方案 A (B4 禁降级): flag 默认开启时,无 session 的请求不降级到 admin JWT。
     // 企业版无有效会话应 401,而非以进程级超管身份执行(关闭提权面)。
     tokenSource = 'none';
   } else {

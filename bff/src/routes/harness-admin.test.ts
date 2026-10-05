@@ -17,6 +17,7 @@ import type {
 } from '../types/harness';
 import type { BffTenant } from '../types/tenant';
 import type { HarnessStoreListConfigs } from '../types/harness-admin';
+import type { ITokenVault } from '../services/token-vault';
 // spec-010 v8 修改 6 (D2):测试需要操作 RunRegistry 状态
 import {
   registerRun,
@@ -63,11 +64,13 @@ const tenant1: BffTenant = {
 const validForm = {
   id: 'intellect-rag-new',
   name: 'New Backend',
-  type: 'intellect-rag' as const,
-  endpoint: 'http://localhost:9382',
+  type: 'intellect-enterprise' as const,
+  endpoint: 'http://localhost:9091',
   adminTokenEnvVar: 'HARNESS_NEW_TOKEN',
   capabilities: ragCapabilities,
   defaultForTenant: false,
+  ragEndpoint: 'http://localhost:9380',
+  ragApiKey: 'rag-api-key-secret',
 };
 
 // ---------------------------------------------------------------------------
@@ -78,11 +81,14 @@ interface MockStores {
   harnessStore: HarnessStore & HarnessStoreListConfigs;
   backendStore: BackendStore;
   registry: IAdapterRegistry;
+  vault: ITokenVault;
   loadMock: Mock;
   saveConfigMock: Mock;
   invalidateMock: Mock;
   setHarnessBindingMock: Mock;
   setCanvasBindingMock: Mock;
+  setCredentialsMock: Mock;
+  deleteCredentialsMock: Mock;
 }
 
 function createMockStores(
@@ -95,6 +101,9 @@ function createMockStores(
   const invalidateMock = vi.fn();
   const setHarnessBindingMock = vi.fn().mockResolvedValue(undefined);
   const setCanvasBindingMock = vi.fn().mockResolvedValue(undefined);
+
+  const setCredentialsMock = vi.fn().mockResolvedValue(undefined);
+  const deleteCredentialsMock = vi.fn().mockResolvedValue(undefined);
 
   const harnessStore: HarnessStore & HarnessStoreListConfigs = {
     load: loadMock,
@@ -129,15 +138,25 @@ function createMockStores(
     getCanvasBackendForBackend: vi.fn() as unknown as IAdapterRegistry['getCanvasBackendForBackend'],
   };
 
+  const vault: ITokenVault = {
+    getCredentials: vi.fn().mockResolvedValue(null),
+    setCredentials: setCredentialsMock,
+    deleteCredentials: deleteCredentialsMock,
+    listBackendIds: vi.fn().mockResolvedValue([]),
+  };
+
   return {
     harnessStore,
     backendStore,
     registry,
+    vault,
     loadMock,
     saveConfigMock,
     invalidateMock,
     setHarnessBindingMock,
     setCanvasBindingMock,
+    setCredentialsMock,
+    deleteCredentialsMock,
   };
 }
 
@@ -145,6 +164,7 @@ interface TestVariables {
   harnessStore: HarnessStore;
   backendStore: BackendStore;
   adapterRegistry: IAdapterRegistry;
+  tokenVault?: ITokenVault;
 }
 
 function createApp(stores: MockStores): Hono<{ Variables: TestVariables }> {
@@ -153,6 +173,7 @@ function createApp(stores: MockStores): Hono<{ Variables: TestVariables }> {
     c.set('harnessStore', stores.harnessStore as HarnessStore);
     c.set('backendStore', stores.backendStore);
     c.set('adapterRegistry', stores.registry);
+    c.set('tokenVault', stores.vault);
     await next();
   });
   app.route('/', harnessAdminRoutes as unknown as Hono<{ Variables: TestVariables }>);
@@ -194,6 +215,42 @@ describe('harness-admin 路由 (P2 US1)', () => {
       });
       // ready 字段存在
       expect(typeof body.data[0].ready).toBe('boolean');
+    });
+
+    it('enterprise 列表项带伴生 ragEndpoint(不含 API Key)', async () => {
+      const companionConfig: HarnessBackendConfig = {
+        id: 'ent-1-rag',
+        name: 'Ent RAG',
+        type: 'intellect-rag',
+        endpoint: 'http://localhost:9380',
+        adminTokenEnvVar: 'HARNESS_ENT_1_RAG_TOKEN',
+        capabilities: ragCapabilities,
+      };
+      const enterpriseConfig: HarnessBackendConfig = {
+        id: 'ent-1',
+        name: 'Enterprise',
+        type: 'intellect-enterprise',
+        endpoint: 'http://localhost:9091',
+        adminTokenEnvVar: 'HARNESS_ENT_1_TOKEN',
+        capabilities: { ...ragCapabilities, multiTenant: true },
+        ragBackendId: 'ent-1-rag',
+      };
+      stores = createMockStores(
+        [enterpriseConfig, companionConfig],
+        [
+          { ...enterpriseConfig, adminToken: 'ent-token' },
+          { ...companionConfig, adminToken: 'rag-secret' },
+        ],
+      );
+      app = createApp(stores);
+
+      const res = await app.request('/admin/harness-backends', {
+        headers: { Authorization: 'Bearer test' },
+      });
+      const body = await res.json();
+      const ent = body.data.find((b: { id: string }) => b.id === 'ent-1');
+      expect(ent.ragEndpoint).toBe('http://localhost:9380');
+      expect(JSON.stringify(body)).not.toContain('rag-secret');
     });
 
     it('ready 状态反映 env token 是否就绪(未就绪的也列出)', async () => {
@@ -241,6 +298,23 @@ describe('harness-admin 路由 (P2 US1)', () => {
   // -------------------------------------------------------------------------
 
   describe('POST /admin/harness-backends', () => {
+    it('type=intellect-rag 返回 400(不作为独立新增类型)', async () => {
+      const ragForm = { ...validForm, type: 'intellect-rag' as const };
+      const res = await app.request('/admin/harness-backends', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(ragForm),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.code).toBe(400);
+      expect(body.message).toContain('intellect-rag');
+      expect(stores.saveConfigMock).not.toHaveBeenCalled();
+    });
+
     it('合法表单新增成功,触发 saveConfig + load 热加载 + invalidate', async () => {
       const res = await app.request('/admin/harness-backends', {
         method: 'POST',
@@ -255,17 +329,29 @@ describe('harness-admin 路由 (P2 US1)', () => {
       expect(body.code).toBe(0);
       expect(body.data.id).toBe('intellect-rag-new');
       expect(body.data.ready).toBe(false); // env 未设置,未就绪
+      expect(body.data.ragBackendId).toBe('intellect-rag-new-rag');
+      expect(body.data.ragEndpoint).toBe('http://localhost:9380');
 
-      // saveConfig 被调用,包含新配置
+      // saveConfig 被调用,包含新配置 + 伴生 RAG
       expect(stores.saveConfigMock).toHaveBeenCalledTimes(1);
       const savedConfigs = stores.saveConfigMock.mock.calls[0][0];
       expect(savedConfigs.find((c: HarnessBackendConfig) => c.id === 'intellect-rag-new')).toBeDefined();
+      const companion = savedConfigs.find((c: HarnessBackendConfig) => c.id === 'intellect-rag-new-rag');
+      expect(companion).toMatchObject({
+        type: 'intellect-rag',
+        endpoint: 'http://localhost:9380',
+      });
+      expect(stores.setCredentialsMock).toHaveBeenCalledWith('intellect-rag-new-rag', {
+        kind: 'bearer-token',
+        token: 'rag-api-key-secret',
+      });
 
       // load 被调用(热加载)
       expect(stores.loadMock).toHaveBeenCalledTimes(1);
 
       // invalidate 被调用(新后端 invalidate no-op,但调用统一接口)
       expect(stores.invalidateMock).toHaveBeenCalledWith('intellect-rag-new');
+      expect(stores.invalidateMock).toHaveBeenCalledWith('intellect-rag-new-rag');
     });
 
     it('id 重复时返回 409', async () => {
@@ -399,6 +485,40 @@ describe('harness-admin 路由 (P2 US1)', () => {
 
       warnSpy.mockRestore();
     });
+
+    it('enterprise 缺少 ragEndpoint 时返回 400', async () => {
+      const { ragEndpoint: _omit, ...rest } = validForm;
+      void _omit;
+      const res = await app.request('/admin/harness-backends', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(rest),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.message).toContain('ragEndpoint');
+      expect(stores.saveConfigMock).not.toHaveBeenCalled();
+    });
+
+    it('enterprise 缺少 ragApiKey 时返回 400', async () => {
+      const { ragApiKey: _omit, ...rest } = validForm;
+      void _omit;
+      const res = await app.request('/admin/harness-backends', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(rest),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.message).toContain('ragApiKey');
+      expect(stores.saveConfigMock).not.toHaveBeenCalled();
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -406,11 +526,69 @@ describe('harness-admin 路由 (P2 US1)', () => {
   // -------------------------------------------------------------------------
 
   describe('PUT /admin/harness-backends/:id', () => {
+    it('已有 intellect-rag 后端可编辑(伴生插件保留 type)', async () => {
+      const updateForm = {
+        name: 'Updated RAG Plugin',
+        type: 'intellect-rag' as const,
+        endpoint: 'http://localhost:9380',
+        capabilities: ragCapabilities,
+        defaultForTenant: false,
+      };
+      const res = await app.request('/admin/harness-backends/intellect-rag-default', {
+        method: 'PUT',
+        headers: {
+          Authorization: 'Bearer test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateForm),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.type).toBe('intellect-rag');
+      expect(body.data.name).toBe('Updated RAG Plugin');
+    });
+
+    it('不能把其他类型改为 intellect-rag', async () => {
+      const enterpriseConfig: HarnessBackendConfig = {
+        id: 'intellect-enterprise-default',
+        name: 'Enterprise',
+        type: 'intellect-enterprise',
+        endpoint: 'http://localhost:9091',
+        adminTokenEnvVar: 'HARNESS_INTELLECT_ENTERPRISE_DEFAULT_TOKEN',
+        capabilities: ragCapabilities,
+      };
+      stores = createMockStores(
+        [enterpriseConfig],
+        [{ ...enterpriseConfig, adminToken: 'ent-token' }],
+      );
+      app = createApp(stores);
+
+      const res = await app.request('/admin/harness-backends/intellect-enterprise-default', {
+        method: 'PUT',
+        headers: {
+          Authorization: 'Bearer test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Enterprise',
+          type: 'intellect-rag',
+          endpoint: 'http://localhost:9380',
+          capabilities: ragCapabilities,
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.message).toContain('intellect-rag');
+      expect(stores.saveConfigMock).not.toHaveBeenCalled();
+    });
+
     it('合法编辑成功,触发 saveConfig + load + invalidate', async () => {
       const updateForm = {
-        ...validForm,
-        id: undefined, // 编辑时 body 不传 id(用路径参数)
         name: 'Updated Name',
+        type: 'intellect-rag' as const,
+        endpoint: 'http://localhost:9380',
+        capabilities: ragCapabilities,
+        defaultForTenant: false,
       };
       const res = await app.request('/admin/harness-backends/intellect-rag-default', {
         method: 'PUT',
@@ -465,9 +643,11 @@ describe('harness-admin 路由 (P2 US1)', () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       // body 中带一个前端尝试污染的 adminTokenEnvVar,应被忽略
       const updateForm = {
-        ...validForm,
-        id: undefined,
         name: 'Updated Name',
+        type: 'intellect-rag' as const,
+        endpoint: 'http://localhost:9380',
+        capabilities: ragCapabilities,
+        defaultForTenant: false,
         adminTokenEnvVar: 'BODY_INJECTED_VAR',
       };
 
@@ -495,6 +675,65 @@ describe('harness-admin 路由 (P2 US1)', () => {
       expect(warnSpy.mock.calls[0][0]).toContain('harness-admin:PUT');
 
       warnSpy.mockRestore();
+    });
+
+    it('编辑 enterprise 时更新伴生 RAG endpoint 并可轮换 API Key', async () => {
+      const companionConfig: HarnessBackendConfig = {
+        id: 'intellect-enterprise-default-rag',
+        name: 'Enterprise RAG',
+        type: 'intellect-rag',
+        endpoint: 'http://localhost:9380',
+        adminTokenEnvVar: 'HARNESS_INTELLECT_ENTERPRISE_DEFAULT_RAG_TOKEN',
+        capabilities: ragCapabilities,
+      };
+      const enterpriseConfig: HarnessBackendConfig = {
+        id: 'intellect-enterprise-default',
+        name: 'Enterprise',
+        type: 'intellect-enterprise',
+        endpoint: 'http://localhost:9091',
+        adminTokenEnvVar: 'HARNESS_INTELLECT_ENTERPRISE_DEFAULT_TOKEN',
+        capabilities: { ...ragCapabilities, multiTenant: true },
+        ragBackendId: companionConfig.id,
+        intellectTenantId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      };
+      stores = createMockStores(
+        [enterpriseConfig, companionConfig],
+        [
+          { ...enterpriseConfig, adminToken: 'ent-token' },
+          { ...companionConfig, adminToken: 'rag-token' },
+        ],
+      );
+      app = createApp(stores);
+
+      const res = await app.request('/admin/harness-backends/intellect-enterprise-default', {
+        method: 'PUT',
+        headers: {
+          Authorization: 'Bearer test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Enterprise',
+          type: 'intellect-enterprise',
+          endpoint: 'http://localhost:9091',
+          capabilities: { ...ragCapabilities, multiTenant: true },
+          ragEndpoint: 'http://rag.internal:9380',
+          ragApiKey: 'rotated-rag-key',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.ragBackendId).toBe('intellect-enterprise-default-rag');
+      expect(body.data.ragEndpoint).toBe('http://rag.internal:9380');
+      expect(body.data.intellectTenantId).toBe('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+      expect(JSON.stringify(body)).not.toContain('rotated-rag-key');
+
+      const savedConfigs = stores.saveConfigMock.mock.calls[0][0] as HarnessBackendConfig[];
+      const savedCompanion = savedConfigs.find((c) => c.id === 'intellect-enterprise-default-rag');
+      expect(savedCompanion?.endpoint).toBe('http://rag.internal:9380');
+      expect(stores.setCredentialsMock).toHaveBeenCalledWith(
+        'intellect-enterprise-default-rag',
+        { kind: 'bearer-token', token: 'rotated-rag-key' },
+      );
     });
   });
 

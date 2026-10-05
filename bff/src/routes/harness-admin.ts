@@ -23,9 +23,12 @@ import { Hono, type Context } from 'hono';
 import type { HarnessStore } from '../types/stores';
 import type { BackendStore } from '../types/stores';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
+import type { ITokenVault } from '../services/token-vault';
 import type { HarnessStoreListConfigs, HarnessBackendWithStatus, HarnessBackendForm } from '../types/harness-admin';
 import type { HarnessBackendConfig } from '../types/harness';
+import { VALIDATION_RULES } from '../types/harness-admin';
 import { validateForm, firstError } from '../services/harness-admin-validation';
+import { buildCompanionRagConfig } from '../services/rag-plugin-backend';
 // spec-010 v8 修改 6 (D2):backend 切换/删除时校验 RunRegistry 活跃 run
 import {
   hasActiveRuns,
@@ -37,6 +40,7 @@ interface HarnessAdminVariables {
   harnessStore: HarnessStore;
   backendStore: BackendStore;
   adapterRegistry: IAdapterRegistry;
+  tokenVault?: ITokenVault;
 }
 
 export const harnessAdminRoutes = new Hono<{ Variables: HarnessAdminVariables }>();
@@ -63,16 +67,49 @@ function getRegistry(c: Context): IAdapterRegistry {
   return c.get('adapterRegistry');
 }
 
+function getVault(c: Context): ITokenVault | undefined {
+  return c.get('tokenVault');
+}
+
 /**
  * 将 HarnessBackendConfig + ready 状态合成 HarnessBackendWithStatus。
  * ready = HarnessStore.list() 中是否含该 backendId(env token 就绪)。
+ * 方案 A: enterprise 的 ragEndpoint 从伴生 rag backend 解析,不含 API Key。
  */
 function withStatus(
   config: HarnessBackendConfig,
   readyBackends: { id: string }[],
+  allConfigs: HarnessBackendConfig[] = [],
 ): HarnessBackendWithStatus {
   const ready = readyBackends.some((b) => b.id === config.id);
-  return { ...config, ready };
+  const ragEndpoint = config.ragBackendId
+    ? allConfigs.find((cfg) => cfg.id === config.ragBackendId)?.endpoint
+    : undefined;
+  return { ...config, ready, ...(ragEndpoint ? { ragEndpoint } : {}) };
+}
+
+function ragEndpointError(ragEndpoint: string | undefined): string | null {
+  if (!ragEndpoint?.trim() || !VALIDATION_RULES.endpoint.pattern.test(ragEndpoint.trim())) {
+    return 'intellect-enterprise 类型必须提供合法 ragEndpoint(http/https URL)';
+  }
+  return null;
+}
+
+function upsertCompanion(
+  configs: HarnessBackendConfig[],
+  enterprise: HarnessBackendConfig,
+  ragEndpoint: string,
+): { next: HarnessBackendConfig[]; companion: HarnessBackendConfig } {
+  const companion = buildCompanionRagConfig({
+    enterpriseId: enterprise.id,
+    enterpriseName: enterprise.name,
+    ragEndpoint: ragEndpoint.trim(),
+  });
+  enterprise.ragBackendId = companion.id;
+  const byId = new Map(configs.map((cfg) => [cfg.id, cfg]));
+  byId.set(enterprise.id, enterprise);
+  byId.set(companion.id, companion);
+  return { next: [...byId.values()], companion };
 }
 
 /**
@@ -137,7 +174,7 @@ harnessAdminRoutes.get('/admin/harness-backends', (c) => {
   const store = getStore(c);
   const configs = store.listConfigs();
   const readyBackends = store.list(); // 仅就绪(含 token,但下面只用 id)
-  const data = configs.map((cfg) => withStatus(cfg, readyBackends));
+  const data = configs.map((cfg) => withStatus(cfg, readyBackends, configs));
   return c.json(ok(data));
 });
 
@@ -174,6 +211,30 @@ harnessAdminRoutes.post('/admin/harness-backends', async (c) => {
 
   const form = body as HarnessBackendForm;
 
+  // RAG 是 enterprise 插件,不接受独立新增。
+  if (form.type === 'intellect-rag') {
+    return c.json(
+      fail(
+        400,
+        'intellect-rag is not a standalone admin type; configure it as the RAG plugin of intellect-enterprise',
+      ),
+      400,
+    );
+  }
+
+  if (form.type === 'intellect-enterprise') {
+    const endpointErr = ragEndpointError(form.ragEndpoint);
+    if (endpointErr) {
+      return c.json(fail(400, endpointErr), 400);
+    }
+    if (!form.ragApiKey?.trim()) {
+      return c.json(
+        fail(400, 'intellect-enterprise 类型必须提供 ragApiKey'),
+        400,
+      );
+    }
+  }
+
   // adminTokenEnvVar 始终由 BFF 自动生成(忽略前端传入,记录 warn)
   warnIfAdminTokenEnvVarProvided('POST', form.id, body as Record<string, unknown>);
   const adminTokenEnvVar = generateAdminTokenEnvVar(form.id);
@@ -189,8 +250,26 @@ harnessAdminRoutes.post('/admin/harness-backends', async (c) => {
     ...(form.defaultForTenant !== undefined ? { defaultForTenant: form.defaultForTenant } : {}),
   };
 
+  let companion: HarnessBackendConfig | undefined;
+  let nextConfigs = [...existing, newConfig];
+  if (form.type === 'intellect-enterprise' && form.ragEndpoint && form.ragApiKey) {
+    const vault = getVault(c);
+    if (!vault) {
+      return c.json(
+        fail(500, 'RAG plugin API key 需要 Token Vault 支持,当前环境未配置 vault'),
+        500,
+      );
+    }
+    const upserted = upsertCompanion(existing, newConfig, form.ragEndpoint);
+    companion = upserted.companion;
+    nextConfigs = upserted.next;
+    await vault.setCredentials(companion.id, {
+      kind: 'bearer-token',
+      token: form.ragApiKey.trim(),
+    });
+  }
+
   // 持久化 + 热加载 + 缓存失效
-  const nextConfigs = [...existing, newConfig];
   try {
     await store.saveConfig(nextConfigs);
     await store.load();
@@ -201,9 +280,16 @@ harnessAdminRoutes.post('/admin/harness-backends', async (c) => {
     );
   }
   registry.invalidate(newConfig.id); // 新后端无缓存,no-op,统一调用
+  if (companion) {
+    registry.invalidate(companion.id);
+    const defaultTenant = backendStore.getBackend('0');
+    if (defaultTenant) {
+      await backendStore.setCanvasBinding('0', companion.id);
+    }
+  }
 
   const readyBackends = store.list();
-  return c.json(ok(withStatus(newConfig, readyBackends)));
+  return c.json(ok(withStatus(newConfig, readyBackends, nextConfigs)));
 });
 
 // ---------------------------------------------------------------------------
@@ -234,13 +320,46 @@ harnessAdminRoutes.put('/admin/harness-backends/:id', async (c) => {
   }
 
   const form = formToValidate as HarnessBackendForm;
+  const prev = existing[idx];
+
+  // 不允许把其他类型改成独立 intellect-rag;已有伴生 rag 可继续编辑。
+  if (form.type === 'intellect-rag' && prev.type !== 'intellect-rag') {
+    return c.json(
+      fail(
+        400,
+        'intellect-rag is not a standalone admin type; configure it as the RAG plugin of intellect-enterprise',
+      ),
+      400,
+    );
+  }
+
+  if (form.type === 'intellect-enterprise') {
+    const needsCreate = !prev.ragBackendId;
+    if (needsCreate) {
+      const endpointErr = ragEndpointError(form.ragEndpoint);
+      if (endpointErr) {
+        return c.json(fail(400, endpointErr), 400);
+      }
+      if (!form.ragApiKey?.trim()) {
+        return c.json(
+          fail(400, 'intellect-enterprise 类型必须提供 ragApiKey'),
+          400,
+        );
+      }
+    } else if (form.ragEndpoint) {
+      const endpointErr = ragEndpointError(form.ragEndpoint);
+      if (endpointErr) {
+        return c.json(fail(400, endpointErr), 400);
+      }
+    }
+  }
 
   // adminTokenEnvVar 始终由 BFF 自动生成(忽略前端传入,记录 warn)
   // 注:PUT 也会重新生成,确保命名规则升级后编辑旧 config 时同步迁移到 HARNESS_<ID>_TOKEN
   warnIfAdminTokenEnvVarProvided('PUT', id, body as Record<string, unknown>);
   const adminTokenEnvVar = generateAdminTokenEnvVar(id);
 
-  // 构造更新后的 config(保留原 id)
+  // 构造更新后的 config(保留原 id 及方案 A / tenant 字段)
   const updatedConfig: HarnessBackendConfig = {
     id, // 只读,用路径参数
     name: form.name,
@@ -249,10 +368,44 @@ harnessAdminRoutes.put('/admin/harness-backends/:id', async (c) => {
     adminTokenEnvVar,
     capabilities: form.capabilities,
     ...(form.defaultForTenant !== undefined ? { defaultForTenant: form.defaultForTenant } : {}),
+    ...(prev.intellectTenantId ? { intellectTenantId: prev.intellectTenantId } : {}),
+    ...(prev.comment ? { comment: prev.comment } : {}),
+    ...(prev.credentialKind ? { credentialKind: prev.credentialKind } : {}),
+    ...(prev.allowEmptyToken !== undefined ? { allowEmptyToken: prev.allowEmptyToken } : {}),
+    ...(prev.projectTokenEnvVar ? { projectTokenEnvVar: prev.projectTokenEnvVar } : {}),
+    ...(prev.ragBackendId ? { ragBackendId: prev.ragBackendId } : {}),
   };
 
+  let nextConfigs = existing.map((cfg, i) => (i === idx ? updatedConfig : cfg));
+  let companion: HarnessBackendConfig | undefined;
+  if (form.type === 'intellect-enterprise' && (form.ragEndpoint || form.ragApiKey)) {
+    const ragEndpoint =
+      form.ragEndpoint?.trim() ||
+      existing.find((cfg) => cfg.id === prev.ragBackendId)?.endpoint;
+    if (ragEndpoint) {
+      const upserted = upsertCompanion(nextConfigs, updatedConfig, ragEndpoint);
+      companion = upserted.companion;
+      nextConfigs = upserted.next;
+    }
+    if (form.ragApiKey?.trim()) {
+      const vault = getVault(c);
+      if (!vault) {
+        return c.json(
+          fail(500, 'RAG plugin API key 需要 Token Vault 支持,当前环境未配置 vault'),
+          500,
+        );
+      }
+      const companionId = companion?.id || updatedConfig.ragBackendId;
+      if (companionId) {
+        await vault.setCredentials(companionId, {
+          kind: 'bearer-token',
+          token: form.ragApiKey.trim(),
+        });
+      }
+    }
+  }
+
   // 持久化 + 热加载 + 缓存失效(旧实例用旧配置,需 invalidate)
-  const nextConfigs = existing.map((cfg, i) => (i === idx ? updatedConfig : cfg));
   try {
     await store.saveConfig(nextConfigs);
     await store.load();
@@ -263,9 +416,12 @@ harnessAdminRoutes.put('/admin/harness-backends/:id', async (c) => {
     );
   }
   registry.invalidate(id);
+  if (companion) {
+    registry.invalidate(companion.id);
+  }
 
   const readyBackends = store.list();
-  return c.json(ok(withStatus(updatedConfig, readyBackends)));
+  return c.json(ok(withStatus(updatedConfig, readyBackends, nextConfigs)));
 });
 
 // ---------------------------------------------------------------------------
@@ -293,17 +449,32 @@ harnessAdminRoutes.delete('/admin/harness-backends/:id', async (c) => {
     );
   }
 
+  const companionId = existing[idx].ragBackendId;
+  if (companionId) {
+    const companionBinding = isBackendBound(backendStore, companionId);
+    if (companionBinding.bound) {
+      return c.json(
+        fail(
+          409,
+          `RAG plugin "${companionId}" 已被 tenant "${companionBinding.tenantId}" 绑定,请先解绑`,
+        ),
+        409,
+      );
+    }
+  }
+
   // spec-010 v8 修改 6 (D2):校验该 backend 是否有 run 记录(含已完成的),
   // 有任何 run 记录时软阻断删除,提示先清理或迁移。
-  if (hasRunsForBackend(id)) {
+  if (hasRunsForBackend(id) || (companionId && hasRunsForBackend(companionId))) {
     return c.json(
       fail(409, '该 backend 仍有 run 记录,请先清理或迁移后再删除'),
       409,
     );
   }
 
-  // 持久化(过滤掉被删的)+ 缓存失效
-  const nextConfigs = existing.filter((_, i) => i !== idx);
+  // 持久化(过滤掉被删的 enterprise + 伴生 RAG)+ 缓存失效
+  const dropIds = new Set([id, ...(companionId ? [companionId] : [])]);
+  const nextConfigs = existing.filter((cfg) => !dropIds.has(cfg.id));
   try {
     await store.saveConfig(nextConfigs);
     // 删除后无需 load(只是少了一个,内存中 backends 仍含旧的就绪的)
@@ -316,6 +487,10 @@ harnessAdminRoutes.delete('/admin/harness-backends/:id', async (c) => {
     );
   }
   registry.invalidate(id);
+  if (companionId) {
+    registry.invalidate(companionId);
+    await getVault(c)?.deleteCredentials(companionId);
+  }
 
   return c.json(ok(null, `Backend "${id}" deleted`));
 });

@@ -140,7 +140,7 @@ async proxy(
 
 ### Rationale
 
-- 当前 `intellect-rag-client.ts`（重命名自 `intellect-client.ts`）的 `proxy()` 用全局 `BASE_URL`(env `INTELLECT_RAG_HOST` + `PYTHON_API_PORT`),不支持多后端
+- 当前 `intellect-rag-client.ts` 的 `proxy()` 用全局 `INTELLECT_RAG_URL`,不支持多后端
 - Adapter 自带 `proxy()` 用实例 `baseUrl`,支持按租户路由到不同 Intellect RAG 实例(Principle II)
 - `adminToken` 覆盖前端 Authorization:画布操作需 admin 权限(创建/编辑/删除画布),前端 user token 权限不足
 

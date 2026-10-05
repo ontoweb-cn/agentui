@@ -391,11 +391,76 @@ describe('AdapterRegistry', () => {
       expect(adapter).toBeInstanceOf(IntellectRagAdapter);
     });
 
-    it('企业版租户无 canvasBackendId → 抛 CanvasBackendNotBoundError', () => {
-      // tenant1 has no canvasBackendId and id !== 'default'
-      expect(() => canvasRegistry.getCanvasBackendForBackend('tenant-1')).toThrow(
+    it('企业版租户无 canvasBackendId 且无 ragBackendId → 抛 CanvasBackendNotBoundError', () => {
+      const enterpriseBackend: HarnessBackend = {
+        ...ragBackend,
+        id: 'intellect-enterprise-1',
+        type: 'intellect-enterprise',
+        capabilities: { ...ragCapabilities, canvas: false, multiTenant: true },
+      };
+      const entTenant: BffTenant = {
+        ...tenant1,
+        id: 'tenant-ent',
+        intellectBackendId: 'intellect-enterprise-1',
+      };
+      const hs = createMockHarnessStore([ragBackend, enterpriseBackend]);
+      const ts = createMockBackendStore([entTenant]);
+      const r = new AdapterRegistry(hs, ts);
+      r.registerFactory('intellect-rag', createRealRagAdapter);
+      r.registerFactory('intellect-enterprise', createFakeAdapter);
+
+      expect(() => r.getCanvasBackendForBackend('tenant-ent')).toThrow(
         CanvasBackendNotBoundError,
       );
+    });
+
+    it('企业版 ragBackendId 指向伴生 RAG → 返回 IntellectRagAdapter', () => {
+      const ragPlugin: HarnessBackend = {
+        ...ragBackend,
+        id: 'intellect-enterprise-1-rag',
+      };
+      const enterpriseBackend: HarnessBackend = {
+        ...ragBackend,
+        id: 'intellect-enterprise-1',
+        type: 'intellect-enterprise',
+        ragBackendId: 'intellect-enterprise-1-rag',
+        capabilities: { ...ragCapabilities, canvas: false, multiTenant: true },
+      };
+      const entTenant: BffTenant = {
+        ...tenant1,
+        id: 'tenant-ent',
+        intellectBackendId: 'intellect-enterprise-1',
+      };
+      const hs = createMockHarnessStore([ragPlugin, enterpriseBackend]);
+      const ts = createMockBackendStore([entTenant]);
+      const r = new AdapterRegistry(hs, ts);
+      r.registerFactory('intellect-rag', createRealRagAdapter);
+      r.registerFactory('intellect-enterprise', createFakeAdapter);
+
+      const adapter = r.getCanvasBackendForBackend('tenant-ent');
+      expect(adapter).toBeInstanceOf(IntellectRagAdapter);
+      expect(adapter.backendId).toBe('intellect-enterprise-1-rag');
+    });
+
+    it("缺省租户 id='0' 无 canvasBackendId → 回退首个 intellect-rag", () => {
+      const defaultTenant: BffTenant = {
+        ...tenant1,
+        id: '0',
+        intellectBackendId: 'intellect-enterprise-1',
+      };
+      const enterpriseBackend: HarnessBackend = {
+        ...ragBackend,
+        id: 'intellect-enterprise-1',
+        type: 'intellect-enterprise',
+        capabilities: { ...ragCapabilities, canvas: false, multiTenant: true },
+      };
+      const hs = createMockHarnessStore([ragBackend, enterpriseBackend]);
+      const ts = createMockBackendStore([defaultTenant]);
+      const r = new AdapterRegistry(hs, ts);
+      r.registerFactory('intellect-rag', createRealRagAdapter);
+
+      const adapter = r.getCanvasBackendForBackend('0');
+      expect(adapter.backendId).toBe('intellect-rag-default');
     });
 
     it('未知租户 ID(非 default 且不在 store 中)→ 抛 TenantNotFoundError', () => {

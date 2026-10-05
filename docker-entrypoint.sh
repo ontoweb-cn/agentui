@@ -6,6 +6,7 @@ export INTELLECT_RAG_HOST="${INTELLECT_RAG_HOST:-intellect-rag}"
 export PYTHON_API_PORT="${PYTHON_API_PORT:-9380}"
 export PYTHON_ADMIN_PORT="${PYTHON_ADMIN_PORT:-9381}"
 export BFF_PORT="${BFF_PORT:-9390}"
+export INTELLECT_RAG_URL="${INTELLECT_RAG_URL:-http://intellect-rag:9380}"
 
 envsubst '${INTELLECT_RAG_HOST} ${PYTHON_API_PORT} ${PYTHON_ADMIN_PORT} ${BFF_PORT}' \
   < /etc/nginx/http.d/default.conf.template \

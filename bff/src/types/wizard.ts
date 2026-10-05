@@ -36,6 +36,10 @@ export interface WizardSetupRequest {
   intellectTenantId?: string;
   // 是否作为默认主后端
   defaultForTenant?: boolean;
+  /** 方案 A: RAG 插件 endpoint(仅 intellect-enterprise) */
+  ragEndpoint?: string;
+  /** 方案 A: RAG 插件 API Key(仅 intellect-enterprise,bearer-token) */
+  ragApiKey?: string;
 }
 
 // Step 4: 探测
@@ -45,12 +49,18 @@ export interface WizardProbeRequest {
   token?: string;
   email?: string;
   password?: string;
+  /** 方案 A: 同时探测 RAG 插件(仅 intellect-enterprise) */
+  ragEndpoint?: string;
+  ragApiKey?: string;
 }
 
 export interface WizardProbeResponse {
   healthy: boolean;
   capabilities?: HarnessCapabilities;
   error?: string;
+  /** TEAM 探测成功时,RAG 插件探测结果(失败不阻断 setup) */
+  ragHealthy?: boolean;
+  ragError?: string;
 }
 
 // Step 5: Setup 响应

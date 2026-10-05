@@ -116,8 +116,7 @@ describe('auth 路由 (P4b US1)', () => {
     vi.clearAllMocks();
     // 默认环境变量
     process.env.INTELLECT_ENTERPRISE_BASE_URL = 'http://mock-enterprise:9381';
-    process.env.INTELLECT_RAG_HOST = 'mock-rag';
-    process.env.PYTHON_API_PORT = '9380';
+    process.env.INTELLECT_RAG_URL = 'http://mock-rag:9380';
   });
 
   afterEach(() => {
