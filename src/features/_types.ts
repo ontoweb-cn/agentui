@@ -16,6 +16,19 @@ export interface NavItem {
   [key: string]: unknown;
 }
 
+/**
+ * APP 插件卡片元数据:声明了 app 字段的模块会出现在"应用"(/applications)列表页。
+ * 挂载路径由插件自治(如 /cognitive-wargame),不要求统一前缀。
+ */
+export interface AppPluginCard {
+  id: string;
+  path: string;
+  labelKey: string;
+  descriptionKey?: string;
+  icon?: ComponentType<{ className?: string }>;
+  order?: number;
+}
+
 export interface FeatureI18n {
   namespaces: string[];
   lazy: Record<string, () => Promise<{ default: any }>>;
@@ -40,6 +53,7 @@ export interface ModuleDefinition {
   order?: number;
   routes: LazyRouteConfig[];
   nav?: NavItem[];
+  app?: AppPluginCard;
   i18n?: FeatureI18n;
   providers?: ComponentType[];
   init?: (ctx: ModuleContext) => void;

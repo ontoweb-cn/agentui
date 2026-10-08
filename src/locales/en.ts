@@ -129,6 +129,7 @@ export default {
       welcome: 'Welcome to',
       dataset: 'Dataset',
       memories: 'Memory',
+      applications: 'Apps',
     },
     skills: {
       title: 'Skills',

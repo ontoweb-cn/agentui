@@ -3,7 +3,7 @@ import { AgentRoutes } from './routes';
 
 const definition: ModuleDefinition = {
   name: 'agents',
-  order: 40,
+  order: 20,
   enabled: () => true,
   routes: [
     {

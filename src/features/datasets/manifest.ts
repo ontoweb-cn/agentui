@@ -3,7 +3,7 @@ import { DatasetRoutes } from './routes';
 
 const definition: ModuleDefinition = {
   name: 'datasets',
-  order: 50,
+  order: 30,
   // Multi-Harness P2 (US2):knowledgeBase=false 时隐藏知识库菜单/路由。
   // capabilities 为空(加载中/未注入)时默认启用(Progressive Enhancement)。
   enabled: (ctx) =>

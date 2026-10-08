@@ -1,4 +1,5 @@
 import type {
+  AppPluginCard,
   LazyRouteConfig,
   ModuleContext,
   ModuleDefinition,
@@ -39,6 +40,12 @@ export function collectRoutes(): LazyRouteConfig[] {
 export function collectNav(): NavItem[] {
   return enabledModules
     .flatMap((m) => m.nav ?? [])
+    .sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+}
+
+export function collectApps(): AppPluginCard[] {
+  return enabledModules
+    .flatMap((m) => (m.app ? [m.app] : []))
     .sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
 }
 

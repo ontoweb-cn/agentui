@@ -113,6 +113,7 @@ export default {
       welcome: '欢迎来到',
       dataset: '知识库',
       memories: '记忆',
+      applications: '应用',
     },
     skills: {
       title: '技能',

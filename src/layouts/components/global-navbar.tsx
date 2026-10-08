@@ -15,7 +15,7 @@ const matchesPath = (pathname: string, candidate: string) =>
   pathname === candidate || pathname.startsWith(`${candidate}/`);
 
 const staticMenuItems = [
-  { path: Routes.Root, name: 'header.Root', icon: LucideHouse },
+  { path: Routes.Root, name: 'header.home', icon: LucideHouse },
 ];
 
 const featureNavItems = collectNav().map((item) => ({

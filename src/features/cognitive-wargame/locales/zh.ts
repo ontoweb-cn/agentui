@@ -2,22 +2,10 @@
  * Cognitive Wargame 插件中文词条。
  *
  * 词条会由 features/_registry 合并进 'translation' 命名空间，
- * 因此页面中以 `t('cognitiveWargame.nav.dashboard')` 形式访问。
+ * 因此页面中以 `t('cognitiveWargame.common.title')` 形式访问。
  */
 export default {
   cognitiveWargame: {
-    nav: {
-      dashboard: '总览仪表盘',
-      resources: '资源总览',
-      scenarios: '想定管理',
-      rounds: '推演监控',
-      metrics: '态势分析',
-      kg: '知识图谱',
-      reports: '评估报告',
-      playback: '历史回放',
-      approvals: '想定审批',
-      agents: 'Agent 管理',
-    },
     common: {
       title: '认知博弈推演',
       subtitle: '红蓝对抗认知域推演与评估',

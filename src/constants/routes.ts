@@ -63,6 +63,7 @@ export enum Routes {
   ChatShare = `${Routes.Chats}/share`,
   ChatWidget = `${Routes.Chats}/widget`,
   UserSetting = '/user-setting',
+  Applications = '/applications',
   DataSetOverview = '/logs',
   DataSetSetting = '/configuration',
   DataflowResult = '/dataflow-result',

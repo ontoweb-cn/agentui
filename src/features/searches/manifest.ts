@@ -3,7 +3,7 @@ import { SearchRoutes } from './routes';
 
 const definition: ModuleDefinition = {
   name: 'searches',
-  order: 30,
+  order: 40,
   enabled: () => true,
   routes: [
     {

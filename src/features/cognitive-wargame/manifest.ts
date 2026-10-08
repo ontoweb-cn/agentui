@@ -4,9 +4,12 @@
  * 字段对齐 `ModuleDefinition`（见 features/_types.ts）：
  * - name/order/enabled 控制插件注册与排序
  * - routes 由 routes.ts 提供懒加载路由
- * - nav 暴露导航项（Dashboard/想定管理/推演监控/态势分析/知识图谱/评估报告/历史回放）
+ * - app 声明为 APP 插件,出现在"应用"(/applications)列表页;
+ *   顶部导航不再直接暴露入口,模块内导航由 components/section-menu.tsx 承担
  * - i18n 提供中英文懒加载词条
  */
+import { Swords } from 'lucide-react';
+
 import type { ModuleDefinition } from '../_types';
 import routes, { WargameRoutes } from './routes';
 
@@ -15,39 +18,13 @@ const definition: ModuleDefinition = {
   order: 50,
   enabled: () => true,
   routes,
-  nav: [
-    {
-      path: WargameRoutes.Dashboard,
-      labelKey: 'cognitiveWargame.nav.dashboard',
-      pathMap: [WargameRoutes.Dashboard],
-      testId: 'nav-cw-dashboard',
-    },
-    {
-      path: WargameRoutes.Scenarios,
-      labelKey: 'cognitiveWargame.nav.scenarios',
-      pathMap: [WargameRoutes.Scenarios, WargameRoutes.ScenarioDetail],
-      testId: 'nav-cw-scenarios',
-    },
-    {
-      path: WargameRoutes.Agents,
-      labelKey: 'cognitiveWargame.nav.agents',
-      pathMap: [WargameRoutes.Agents, WargameRoutes.AgentDetail, WargameRoutes.AgentTypes],
-      testId: 'nav-cw-agents',
-    },
-    {
-      path: WargameRoutes.Rounds,
-      labelKey: 'cognitiveWargame.nav.rounds',
-      pathMap: [WargameRoutes.Rounds, WargameRoutes.RoundView],
-      testId: 'nav-cw-rounds',
-    },
-
-    {
-      path: WargameRoutes.Approvals,
-      labelKey: 'cognitiveWargame.nav.approvals',
-      pathMap: [WargameRoutes.Approvals],
-      testId: 'nav-cw-approvals',
-    },
-  ],
+  app: {
+    id: 'cognitive-wargame',
+    path: WargameRoutes.Dashboard,
+    labelKey: 'cognitiveWargame.common.title',
+    descriptionKey: 'cognitiveWargame.common.subtitle',
+    icon: Swords,
+  },
   i18n: {
     namespaces: ['cognitiveWargame'],
     lazy: {

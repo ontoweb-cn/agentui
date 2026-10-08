@@ -25,6 +25,7 @@ storybook-static
 .trae/
 .specify/
 .agents/
+.zcode/
 
 # 测试覆盖率产物
 coverage/

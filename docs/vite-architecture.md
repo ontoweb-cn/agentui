@@ -1902,9 +1902,10 @@ src/features/
   ├── 读取 ModuleContext（isEnterprise + capabilities）
   ├── 按 enabled(ctx) 过滤 + order 排序 → enabledModules
   ├── 执行各模块 init(ctx)
-  └── 暴露三个聚合器：
+  └── 暴露四个聚合器：
        collectRoutes()      → routes.tsx 拼入 wrapRoutes
        collectNav()         → global-navbar.tsx 合并 menuItems + PathMap
+       collectApps()        → applications 模块的应用列表页（APP 插件卡片）
        collectI18nLazy()    → locales/config.ts 按语言懒加载合并
 ```
 
@@ -1928,9 +1929,19 @@ interface ModuleDefinition {
   order?: number;                            // 菜单/路由排序
   routes: LazyRouteConfig[];                 // 路由（含懒加载 + layout 包裹）
   nav?: NavItem[];                           // 导航菜单项
+  app?: AppPluginCard;                       // APP 插件卡片 → 出现在"应用"列表页
   i18n?: FeatureI18n;                        // 按语言懒加载的 i18n bundle
   providers?: ComponentType[];               // 模块级 Provider
   init?: (ctx: ModuleContext) => void;       // 生命周期：初始化
+}
+
+interface AppPluginCard {
+  id: string;                // 插件唯一标识（用于 testid 等）
+  path: string;              // 站内入口路径，由插件自治（不要求 /apps/ 前缀）
+  labelKey: string;          // 应用名称 i18n key
+  descriptionKey?: string;   // 应用描述 i18n key
+  icon?: ComponentType<{ className?: string }>;  // lucide 图标
+  order?: number;            // 应用列表内排序（默认 100）
 }
 
 interface ModuleContext {
@@ -1938,6 +1949,31 @@ interface ModuleContext {
   capabilities: Set<string>;                 // 来自 BFF /v1/capabilities
 }
 ```
+
+### APP 插件机制（应用页）
+
+顶部导航的「应用」(`/applications`) 是一个 APP 插件列表页，由 `features/applications` 模块渲染，数据来自 `collectApps()`。模块只要在 manifest 里声明 `app` 字段即自动上架，应用页零改动：
+
+```typescript
+// features/cognitive-wargame/manifest.ts（示例）
+{
+  name: 'cognitive-wargame',
+  routes,                       // 路径保持插件自治:/cognitive-wargame/*
+  app: {
+    id: 'cognitive-wargame',
+    path: WargameRoutes.Dashboard,
+    labelKey: 'cognitiveWargame.common.title',
+    descriptionKey: 'cognitiveWargame.common.subtitle',
+    icon: Swords,
+  },
+}
+```
+
+设计约定：
+
+- **导航收敛**：多页面插件（如 cognitive-wargame）不在顶部导航展开多个一级项，模块内导航由插件自己的布局承担（如 `WargameSectionLayout` 左侧边栏）
+- **路径自治**：`app.path` 为站内路径即可，不要求统一 `/apps/` 命名空间
+- **回归保护**：`features/feature-registry.test.ts` 断言顶部导航顺序与 `collectApps()` 内容，order 调整或新模块加入导致菜单变化会被测试拦截
 
 ### 新增功能流程（A 方案后）
 
@@ -1984,8 +2020,10 @@ A 方案的 manifest 接口已与 B 方案对齐，迁移步骤：
 
 - ✅ P0 基建：`_types.ts` + `_registry.ts` + 三个主应用入口改造完成
 - ✅ P1 试点：`memories` feature 迁移完成，复用现有页面组件
-- ✅ 验证：`tsc --noEmit` 零错误，`vite build` 成功，memories chunk 正常分割
-- ⏳ P2 批量：待迁移 `agents → datasets → chats → searches → files`
+- ✅ P2 批量：`agents / chats / datasets / searches / files / canvas / cognitive-wargame` 全部 manifest 化
+- ✅ APP 插件机制：`app` 字段 + `collectApps()` + `/applications` 应用列表页（2026-10，菜单收敛：
+  cognitive-wargame 由 5 个一级导航项收敛为应用插件，顶部导航定为 首页/聊天/智能体/知识库/搜索/记忆/文件管理/应用）
+- ✅ 验证：`tsc --noEmit` 零错误，`vite build` 成功，`feature-registry.test.ts` 守护菜单顺序
 - ⏳ P3 收敛：删除旧 `pages/hooks/services` 中央总线
 - ⏳ P4 可选：升级到 B 方案 npm workspaces
 

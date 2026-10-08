@@ -2,22 +2,10 @@
  * Cognitive Wargame plugin English translations.
  *
  * Merged into the 'translation' namespace by features/_registry;
- * access via `t('cognitiveWargame.nav.dashboard')`.
+ * access via `t('cognitiveWargame.common.title')`.
  */
 export default {
   cognitiveWargame: {
-    nav: {
-      dashboard: 'Dashboard',
-      resources: 'Resources',
-      scenarios: 'Scenarios',
-      rounds: 'Round Monitor',
-      metrics: 'Metrics',
-      kg: 'Knowledge Graph',
-      reports: 'Reports',
-      playback: 'Playback',
-      approvals: 'Approvals',
-      agents: 'Agent Management',
-    },
     common: {
       title: 'Cognitive Wargame',
       subtitle: 'Red-Blue cognitive domain wargaming & evaluation',
