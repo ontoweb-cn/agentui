@@ -85,7 +85,7 @@ npm run dev
 
 启动成功标志:
 ```
-[BFF] OpenKG AgentUI BFF running on http://localhost:9390
+[BFF] INTELLECT BFF running on http://localhost:9390
 ```
 
 ### 终端 2:启动前端

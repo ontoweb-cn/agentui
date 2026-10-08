@@ -69,7 +69,7 @@
 
 - [ ] 已切换到 bff 目录:`cd bff`
 - [ ] 已运行 `npm run dev`
-- [ ] 控制台显示 `[BFF] OpenKG AgentUI BFF running on http://localhost:9390`
+- [ ] 控制台显示 `[BFF] INTELLECT BFF running on http://localhost:9390`
 - [ ] (首次安装)控制台显示 `已启用 Bootstrap 模式` + Token 前 8 位
 
 ### 终端 2:启动前端

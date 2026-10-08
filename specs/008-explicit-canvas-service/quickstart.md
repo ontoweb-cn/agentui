@@ -15,7 +15,7 @@
    ```bash
    cd bff && pnpm dev
    ```
-   预期输出:`[BFF] OpenKG AgentUI BFF running on http://localhost:9390`
+   预期输出:`[BFF] INTELLECT BFF running on http://localhost:9390`
    日志:`[BFF] Stores loaded: N backend(s), M tenant(s)`
 
 2. **Intellect RAG 启动**(端口 9380):

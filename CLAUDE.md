@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with the OpenKG AgentUI frontend.
+This file provides guidance to Claude Code (claude.ai/code) when working with the INTELLECT frontend.
 
 ## Project Overview
 
-OpenKG AgentUI is the Agent Harness frontend for Intellect RAG, built with Vite:
+INTELLECT is the Agent Harness frontend for Intellect RAG, built with Vite:
 - **Framework**: React 18 + TypeScript + Vite 7
 - **Routing**: React Router v7 (lazy-loaded)
 - **Components**: shadcn/ui (locked, do not modify `src/components/ui/`)

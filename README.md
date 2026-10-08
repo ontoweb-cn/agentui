@@ -1,4 +1,4 @@
-# OpenKG AgentUI
+# INTELLECT
 
 A general-purpose application framework for building Agent-based AI applications, powered by the Intellect RAG engine.
 

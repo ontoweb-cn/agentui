@@ -310,7 +310,7 @@ harnessStore.load()
 serve(
   { fetch: app.fetch, port },
   (info) => {
-    console.log(`[BFF] OpenKG AgentUI BFF running on http://localhost:${info.port}`);
+    console.log(`[BFF] INTELLECT BFF running on http://localhost:${info.port}`);
   },
 );
 
