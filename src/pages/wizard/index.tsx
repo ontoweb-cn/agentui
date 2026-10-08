@@ -71,6 +71,8 @@ interface WizardDraft {
   password: string;
   intellectTenantId: string;
   defaultForTenant: boolean;
+  ragEndpoint: string;
+  ragApiKey: string;
 }
 
 const INITIAL_DRAFT: WizardDraft = {
@@ -83,6 +85,8 @@ const INITIAL_DRAFT: WizardDraft = {
   password: '',
   intellectTenantId: '',
   defaultForTenant: true,
+  ragEndpoint: 'http://localhost:9380',
+  ragApiKey: '',
 };
 
 // ---------------------------------------------------------------------------
@@ -361,6 +365,10 @@ function StepConnectionForm({
       const tenantId = draft.intellectTenantId.trim();
       if (!tenantId) return false;
       if (!/^[0-9a-fA-F]{32}$/.test(tenantId)) return false;
+      if (!draft.ragEndpoint.trim() || !/^https?:\/\//.test(draft.ragEndpoint.trim())) {
+        return false;
+      }
+      if (!draft.ragApiKey.trim()) return false;
     }
     return true;
   }, [draft, isEnterprise]);
@@ -389,7 +397,7 @@ function StepConnectionForm({
             id="wizard-name"
             value={draft.name}
             onChange={(e) => update({ name: e.target.value })}
-            placeholder="Intellect RAG Default"
+            placeholder="Intellect Enterprise Default"
           />
           <p className="text-xs text-text-secondary">
             {t('wizard.connection.nameHint', {
@@ -488,6 +496,44 @@ function StepConnectionForm({
             </p>
           </div>
         )}
+
+        {isEnterprise && (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="wizard-rag-endpoint">
+                {t('wizard.connection.ragEndpoint', {
+                  defaultValue: 'RAG plugin endpoint',
+                })}
+              </Label>
+              <Input
+                id="wizard-rag-endpoint"
+                value={draft.ragEndpoint}
+                onChange={(e) => update({ ragEndpoint: e.target.value })}
+                placeholder="http://localhost:9380"
+              />
+              <p className="text-xs text-text-secondary">
+                {t('wizard.connection.ragEndpointHint', {
+                  defaultValue:
+                    'Intellect RAG plugin URL (canvas + knowledge base). Default http://localhost:9380',
+                })}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wizard-rag-api-key">
+                {t('wizard.connection.ragApiKey', {
+                  defaultValue: 'RAG API key',
+                })}
+              </Label>
+              <Input
+                id="wizard-rag-api-key"
+                type="password"
+                value={draft.ragApiKey}
+                onChange={(e) => update({ ragApiKey: e.target.value })}
+                placeholder="rag-..."
+              />
+            </div>
+          </>
+        )}
       </CardContent>
       <CardFooter className="justify-between">
         <Button variant="ghost" onClick={onBack}>
@@ -546,6 +592,25 @@ function StepProbeResult({
                 })}
               </span>
             </div>
+            {probeResult.ragHealthy === false && (
+              <p className="text-sm text-amber-600">
+                {t('wizard.probe.ragWarning', {
+                  defaultValue:
+                    'TEAM is reachable, but the RAG plugin probe failed. You can continue; canvas/KB will work after RAG starts.',
+                })}
+                {probeResult.ragError ? ` (${probeResult.ragError})` : ''}
+              </p>
+            )}
+            {probeResult.ragHealthy === true && (
+              <div className="flex items-center gap-2 text-sm">
+                <LucideCheck className="size-4 text-green-500" />
+                <span>
+                  {t('wizard.probe.ragHealthy', {
+                    defaultValue: 'RAG plugin is reachable',
+                  })}
+                </span>
+              </div>
+            )}
             {probeResult.capabilities && (
               <div className="space-y-2">
                 <p className="text-xs text-text-secondary">
@@ -644,6 +709,14 @@ function StepConfirm({
           <Row
             label={t('wizard.confirm.tenantId', { defaultValue: 'Tenant ID' })}
             value={draft.intellectTenantId}
+          />
+        )}
+        {draft.ragEndpoint && draft.selectedType === 'intellect-enterprise' && (
+          <Row
+            label={t('wizard.confirm.ragEndpoint', {
+              defaultValue: 'RAG plugin endpoint',
+            })}
+            value={draft.ragEndpoint}
           />
         )}
         {setupResult?.envSnippet && (
@@ -754,13 +827,23 @@ function WizardPage() {
     queryFn: async () => (await fetchWizardBackendTypes()).data,
     retry: false,
   });
-  const options = typesData?.options ?? [];
+  // intellect-rag 不作为独立向导类型(RAG 是 enterprise 插件)。BFF 已不返回该项;此处再过滤一次防止旧缓存。
+  const options = (typesData?.options ?? []).filter(
+    (o) => o.type !== 'intellect-rag',
+  );
 
   // 当前选中类型的 option 元数据
   const selectedOption = useMemo(
     () => options.find((o) => o.type === draft.selectedType),
     [options, draft.selectedType],
   );
+
+  useEffect(() => {
+    if (!draft.selectedType || options.length === 0) return;
+    if (!options.some((o) => o.type === draft.selectedType)) {
+      setDraft((prev) => ({ ...prev, selectedType: null }));
+    }
+  }, [options, draft.selectedType]);
 
   // Step 5-6 刷新时检查后端是否已配置,有则跳 /
   const { data: statusData } = useQuery({
@@ -840,6 +923,12 @@ function WizardPage() {
               endpoint: draft.endpoint,
               token: draft.token,
             };
+      if (draft.selectedType === 'intellect-enterprise') {
+        Object.assign(req, {
+          ragEndpoint: draft.ragEndpoint,
+          ragApiKey: draft.ragApiKey,
+        });
+      }
       return (await probeWizardBackend(req)).data;
     },
     onSuccess: (resp) => {
@@ -880,6 +969,9 @@ function WizardPage() {
           : { email: draft.email, password: draft.password }),
         ...(draft.intellectTenantId
           ? { intellectTenantId: draft.intellectTenantId }
+          : {}),
+        ...(draft.selectedType === 'intellect-enterprise'
+          ? { ragEndpoint: draft.ragEndpoint, ragApiKey: draft.ragApiKey }
           : {}),
         defaultForTenant: draft.defaultForTenant,
       };

@@ -1,6 +1,7 @@
 import type { Context, Next } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { AUTH_COOKIE_NAME } from '../types/auth';
+import { isImtCanvasAgentsEnabled } from '../utils/feature-flags';
 
 export async function authMiddleware(c: Context, next: Next) {
   const path = c.req.path;
@@ -27,9 +28,9 @@ export async function authMiddleware(c: Context, next: Next) {
     return;
   }
 
-  // 方案 A (B3 fail-closed): flag 开启(企业版模式)时只认 imt_token cookie,
+  // 方案 A (B3 fail-closed): flag 默认开启时只认 imt_token cookie,
   // 禁止「任意 Authorization 头即放行」——否则任意 Authorization 都能过 BFF(配合 B4 禁降级,关闭提权面)。
-  if (process.env.BFF_ENABLE_IMT_CANVAS_AGENTS === 'true') {
+  if (isImtCanvasAgentsEnabled()) {
     const cookie = getCookie(c, AUTH_COOKIE_NAME);
     if (cookie) {
       await next();

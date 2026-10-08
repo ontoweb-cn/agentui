@@ -56,12 +56,16 @@ export interface WizardProbeRequest {
   token?: string;
   email?: string;
   password?: string;
+  ragEndpoint?: string;
+  ragApiKey?: string;
 }
 
 export interface WizardProbeResponse {
   healthy: boolean;
   capabilities?: HarnessCapabilities;
   error?: string;
+  ragHealthy?: boolean;
+  ragError?: string;
 }
 
 export interface WizardSetupRequest {
@@ -75,6 +79,8 @@ export interface WizardSetupRequest {
   adminTokenEnvVar?: string;
   intellectTenantId?: string;
   defaultForTenant?: boolean;
+  ragEndpoint?: string;
+  ragApiKey?: string;
 }
 
 export interface WizardSetupResponse {

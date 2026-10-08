@@ -30,6 +30,7 @@ import type { HarnessAdapterFactory, IAdapterRegistry } from './adapter-registry
 import { IntellectRagAdapter } from './adapters/intellect-rag/intellect-rag-adapter';
 import { IntellectEnterpriseAdapter } from './adapters/intellect-enterprise/intellect-enterprise-adapter';
 import { MCPBaseAdapter } from './adapters/shared/mcp-base-adapter';
+import { resolveRagBackendId } from './rag-plugin-backend';
 
 export class AdapterRegistry implements IAdapterRegistry {
   private readonly harnessStore: HarnessStore;
@@ -155,47 +156,25 @@ export class AdapterRegistry implements IAdapterRegistry {
     }
 
     const tenant = this.backendStore.getBackend(tenantId);
+    const ragBackendId = resolveRagBackendId(tenant, tenantId, this.harnessStore);
 
-    // 有显式 canvasBackendId:直接按 backendId 获取,断言类型
-    if (tenant?.canvasBackendId) {
-      const adapter = this.resolveAdapter(tenant.canvasBackendId);
+    if (ragBackendId) {
+      const adapter = this.resolveAdapter(ragBackendId);
       if (!(adapter instanceof IntellectRagAdapter)) {
-        const backend = this.harnessStore.get(tenant.canvasBackendId);
+        const backend = this.harnessStore.get(ragBackendId);
         throw new InvalidCanvasBackendError(
           tenantId,
-          tenant.canvasBackendId,
+          ragBackendId,
           backend?.type ?? 'unknown',
         );
       }
       return adapter;
     }
 
-    // 无 canvasBackendId:default 租户回退首个 intellect-rag backend
-    if (tenantId === 'default') {
-      const backends = this.harnessStore.list();
-      const ragBackend = backends.find(
-        (b: { type: string }) => b.type === 'intellect-rag',
-      );
-      if (!ragBackend) {
-        throw new CanvasBackendNotBoundError(tenantId);
-      }
-      const adapter = this.resolveAdapter(ragBackend.id);
-      if (!(adapter instanceof IntellectRagAdapter)) {
-        throw new InvalidCanvasBackendError(
-          tenantId,
-          ragBackend.id,
-          ragBackend.type,
-        );
-      }
-      return adapter;
-    }
-
-    // 租户不存在(非 default 且 backendStore 中找不到)
-    if (!tenant) {
+    if (!tenant && tenantId !== '0' && tenantId !== 'default') {
       throw new TenantNotFoundError(tenantId);
     }
 
-    // 企业版租户未绑定画布
     throw new CanvasBackendNotBoundError(tenantId);
   }
 }

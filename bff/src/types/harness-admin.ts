@@ -33,6 +33,8 @@ import type {
 export interface HarnessBackendWithStatus extends HarnessBackendConfig {
   /** env token 是否就绪(在 HarnessStore.list() 中为 true) */
   ready: boolean;
+  /** 方案 A: 伴生 RAG 的 endpoint(由 ragBackendId 解析,不含 API Key) */
+  ragEndpoint?: string;
 }
 
 /**
@@ -75,6 +77,10 @@ export interface HarnessBackendForm {
   defaultForTenant?: boolean;
   // spec-010 v8 A3-7: 新增 credentialKind
   credentialKind?: 'bearer-token' | 'email-password';
+  /** 方案 A: RAG 插件 endpoint(仅 intellect-enterprise 新增/编辑) */
+  ragEndpoint?: string;
+  /** 方案 A: RAG 插件 API Key(仅提交,不回读) */
+  ragApiKey?: string;
 }
 
 // ---------------------------------------------------------------------------

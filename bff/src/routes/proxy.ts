@@ -4,6 +4,7 @@ import { streamResponse } from '../utils/response';
 import { resolveMemberInfoFromContext } from '../services/member-id-resolver';
 import { getAuthSession } from '../middleware/auth-session';
 import type { BackendStore, HarnessStore } from '../types';
+import { resolveRagBackendId } from '../services/rag-plugin-backend';
 
 interface ProxyVariables {
   backendStore: BackendStore;
@@ -121,6 +122,27 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
       ? authSession?.token
       : undefined;
 
+  let ragBaseUrl: string | undefined;
+  let ragAdminToken: string | undefined;
+  if (backendStore && harnessStore) {
+    const tenant = backendStore.getBackend(backendId);
+    const ragId = resolveRagBackendId(tenant, backendId, harnessStore);
+    if (ragId) {
+      const ragBackend = harnessStore.get(ragId);
+      ragBaseUrl = ragBackend?.endpoint;
+      ragAdminToken = ragBackend?.adminToken;
+    }
+  }
+  if (!ragBaseUrl) {
+    return c.json(
+      {
+        code: 503,
+        message: `Tenant ${backendId} has no canvas backend bound`,
+      },
+      503,
+    );
+  }
+
   // 构造透传请求
   const proxyReq: ProxyRequest = {
     method,
@@ -133,6 +155,8 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
     intellectProjectId,
     intellectTenantId,
     sessionToken,
+    ragBaseUrl,
+    ragAdminToken,
   };
 
   let upstream: Response;

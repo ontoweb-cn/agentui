@@ -7,6 +7,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    setupFiles: ['src/test-setup.ts'],
     // 不watch,CI 友好;本地开发可加 --watch 覆盖
     watch: false,
     // 不污染全局,显式 import { describe, it, expect } from 'vitest'

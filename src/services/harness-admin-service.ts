@@ -64,9 +64,14 @@ export interface HarnessBackendForm {
   adminTokenEnvVar?: string;
   capabilities: HarnessCapabilities;
   defaultForTenant?: boolean;
+  /** 方案 A: 伴生 RAG 的 endpoint(由 ragBackendId 解析,不含 API Key) */
+  ragEndpoint?: string;
+  /** 方案 A: RAG 插件 API Key(仅提交,不回读) */
+  ragApiKey?: string;
+  ragBackendId?: string;
 }
 
-export interface HarnessBackendWithStatus extends Omit<HarnessBackendForm, 'id'> {
+export interface HarnessBackendWithStatus extends Omit<HarnessBackendForm, 'id' | 'ragApiKey'> {
   id: string;
   ready: boolean;
 }

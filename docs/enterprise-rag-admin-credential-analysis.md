@@ -36,7 +36,7 @@
 
 BFF 代理画布、知识库等请求时，历史上需要一份 intellect-rag 管理员 JWT。原先靠环境变量写死 `HARNESS_INTELLECT_RAG_ADMIN_TOKEN`；JWT 会过期，要人工更新。
 
-后来增加 BFF 用管理员账号调 `POST /api/v1/auth/login`，缓存响应头里的 JWT，401 后再登一次。实现见 `bff/src/services/rag-token-provider.ts`。登录目标由 `INTELLECT_RAG_HOST` + `PYTHON_API_PORT` 决定（默认 `localhost:9380`）。
+后来增加 BFF 用管理员账号调 `POST /api/v1/auth/login`，缓存响应头里的 JWT，401 后再登一次。实现见 `bff/src/services/rag-token-provider.ts`。登录目标由 `INTELLECT_RAG_URL` 决定（默认 `http://localhost:9380`）。
 
 这不是仅有的通道：
 

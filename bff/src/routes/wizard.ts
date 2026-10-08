@@ -25,6 +25,7 @@ import type { ITokenVault } from '../services/token-vault';
 import { safeFetch, isUrlSafe, SSRF_PRIVATE_IP_HINT } from '../services/ssrf-guard';
 import { validateTenantConfigs, fetchTenantInfo } from '../services/tenant-validator';
 import { BootstrapTokenManager } from '../services/bootstrap-token';
+import { buildCompanionRagConfig } from '../services/rag-plugin-backend';
 import type { HarnessStoreListConfigs } from '../types/harness-admin';
 import type { HarnessBackendConfig, BackendType, HarnessCapabilities } from '../types/harness';
 import type { AuthMode } from '../types/tenant';
@@ -78,14 +79,8 @@ const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
     capabilities: { canvas: true, knowledgeBase: true, memory: true, mcp: true, multiTenant: true, modelManagement: true },
     credentialKind: 'bearer-token',
   },
-  {
-    type: 'intellect-rag',
-    label: 'Intellect RAG',
-    description: 'Canvas engine + knowledge base',
-    defaultEndpoint: 'http://localhost:9380',
-    capabilities: { canvas: true, knowledgeBase: true, memory: true, mcp: false, multiTenant: false, modelManagement: false },
-    credentialKind: 'bearer-token',
-  },
+  // intellect-rag 不作为独立向导类型:它是 intellect-enterprise 的 RAG 插件,
+  // 由 enterprise setup 创建伴生 backend。Harness type 字面量仍保留。
   // spec-010 v8 新增(待 Phase C 实现 Adapter)
   {
     type: 'intellect-community',
@@ -116,8 +111,46 @@ const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
   },
 ];
 
+/** 伴生 RAG 插件元数据。不出现在 /backend-types,供 probe 与未来 enterprise setup 使用。 */
+const RAG_PLUGIN_OPTION: WizardBackendTypeOption = {
+  type: 'intellect-rag',
+  label: 'Intellect RAG',
+  description: 'Canvas engine + knowledge base (plugin of intellect-enterprise)',
+  defaultEndpoint: 'http://localhost:9380',
+  capabilities: { canvas: true, knowledgeBase: true, memory: true, mcp: false, multiTenant: false, modelManagement: false },
+  credentialKind: 'bearer-token',
+};
+
 function getOptionForType(type: BackendType): WizardBackendTypeOption | undefined {
+  if (type === 'intellect-rag') return RAG_PLUGIN_OPTION;
   return BACKEND_TYPE_OPTIONS.find((o) => o.type === type);
+}
+
+async function probeRagPlugin(
+  ragEndpoint: string,
+  ragApiKey?: string,
+): Promise<{ ragHealthy: boolean; ragError?: string }> {
+  const endpoint = ragEndpoint.replace(/\/$/, '');
+  const safe = await isUrlSafe(endpoint);
+  if (!safe) {
+    return { ragHealthy: false, ragError: `RAG URL 不安全(可能指向私有 IP)。${SSRF_PRIVATE_IP_HINT}` };
+  }
+  try {
+    const headers: Record<string, string> = {};
+    if (ragApiKey) {
+      headers['Authorization'] = `Bearer ${ragApiKey}`;
+    }
+    const resp = await safeFetch(`${endpoint}/v1/models`, {
+      headers,
+      timeoutMs: 5000,
+    });
+    if (resp.ok) {
+      return { ragHealthy: true };
+    }
+    return { ragHealthy: false, ragError: `RAG 上游返回 ${resp.status}` };
+  } catch (err) {
+    return { ragHealthy: false, ragError: (err as Error).message };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -238,9 +271,18 @@ wizardRoutes.post('/admin/wizard/probe', async (c) => {
           { healthy: false, error: '/api/tenant/info 返回空 tenant_id' } satisfies WizardProbeResponse,
         );
       }
+      let ragHealthy: boolean | undefined;
+      let ragError: string | undefined;
+      if (body.ragEndpoint) {
+        const rag = await probeRagPlugin(body.ragEndpoint, body.ragApiKey);
+        ragHealthy = rag.ragHealthy;
+        ragError = rag.ragError;
+      }
       return c.json({
         healthy: true,
         capabilities: option?.capabilities,
+        ragHealthy,
+        ragError,
       } satisfies WizardProbeResponse);
     }
 
@@ -390,6 +432,37 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
         400,
       );
     }
+    if (!req.ragEndpoint?.trim()) {
+      return c.json(
+        { success: false, error: 'intellect-enterprise 类型必须提供 ragEndpoint' } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+    if (!req.ragApiKey?.trim()) {
+      return c.json(
+        { success: false, error: 'intellect-enterprise 类型必须提供 ragApiKey' } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+    const ragEndpointSafe = await isUrlSafe(req.ragEndpoint);
+    if (!ragEndpointSafe) {
+      return c.json(
+        { success: false, error: `RAG URL 不安全(可能指向私有 IP)。${SSRF_PRIVATE_IP_HINT}` } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+  }
+
+  // RAG 是 enterprise 插件,不接受独立向导接入(登录也不走 RAG 社区版账号)。
+  if (req.type === 'intellect-rag') {
+    return c.json(
+      {
+        success: false,
+        error:
+          'intellect-rag is not a standalone wizard type; configure it as the RAG plugin of intellect-enterprise',
+      } satisfies WizardSetupResponse,
+      400,
+    );
   }
 
   const option = getOptionForType(req.type);
@@ -504,11 +577,31 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
     ...(req.defaultForTenant !== undefined ? { defaultForTenant: req.defaultForTenant } : {}),
   };
 
+  let ragConfig: HarnessBackendConfig | undefined;
+  if (req.type === 'intellect-enterprise' && req.ragEndpoint && req.ragApiKey) {
+    if (!vault) {
+      return c.json(
+        { success: false, error: 'RAG plugin API key 需要 Token Vault 支持,当前环境未配置 vault' } satisfies WizardSetupResponse,
+        500,
+      );
+    }
+    ragConfig = buildCompanionRagConfig({
+      enterpriseId: backendId,
+      enterpriseName: req.name,
+      ragEndpoint: req.ragEndpoint,
+    });
+    newConfig.ragBackendId = ragConfig.id;
+    await vault.setCredentials(ragConfig.id, { kind: 'bearer-token', token: req.ragApiKey });
+  }
+
   // 6. 持久化 + 热加载 + 缓存失效
   //    若 existingConfig 存在(重新 setup 场景),用 newConfig 覆盖;否则追加。
-  const nextConfigs = existingConfig
-    ? existing.map((cfg) => (cfg.id === backendId ? newConfig : cfg))
-    : [...existing, newConfig];
+  const configsToUpsert = ragConfig ? [newConfig, ragConfig] : [newConfig];
+  const byId = new Map(existing.map((cfg) => [cfg.id, cfg]));
+  for (const cfg of configsToUpsert) {
+    byId.set(cfg.id, cfg);
+  }
+  const nextConfigs = [...byId.values()];
   try {
     await store.saveConfig(nextConfigs);
     await store.load();
@@ -522,6 +615,9 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
     );
   }
   registry.invalidate(backendId);
+  if (ragConfig) {
+    registry.invalidate(ragConfig.id);
+  }
 
   // 7. spec-010 v8 修改 3:持久化后再触发一次 validateTenantConfigs(确保 load() 后状态正确)
   //    若校验失败,执行回滚:删除刚创建的 config(防止脏状态导致下次启动 fail-fast)
@@ -533,6 +629,10 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
         await store.saveConfig(existing);
         await store.load();
         registry.invalidate(backendId);
+        if (ragConfig) {
+          registry.invalidate(ragConfig.id);
+          await vault?.deleteCredentials(ragConfig.id);
+        }
       } catch (rollbackErr) {
         console.error(
           `[wizard] Rollback failed after tenant validation failure: ${(rollbackErr as Error).message}`,
@@ -577,6 +677,9 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
       defaultTenantId,
     );
   }
+  if (ragConfig) {
+    await bStore.setCanvasBinding(defaultTenantId, ragConfig.id);
+  }
 
   // 8. 首个 backend 创建成功后,失效 bootstrap token(spec §9.4)
   const manager = getBootstrapManager(c);
@@ -584,7 +687,9 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
 
   // 9. 生成 env snippet(展示 .env 片段,用户手动设置或作为 vault 回退参考)
   // P1-3 修复:响应不含 token 明文,始终使用占位符
-  const envSnippet = `# 添加到 .env 文件\n${adminTokenEnvVar}=<your-token>`;
+  const envSnippet = ragConfig
+    ? `# 添加到 .env 文件\n${adminTokenEnvVar}=<your-token>\n${ragConfig.adminTokenEnvVar}=<your-rag-api-key>`
+    : `# 添加到 .env 文件\n${adminTokenEnvVar}=<your-token>`;
 
   return c.json({ success: true, backendId, envSnippet } satisfies WizardSetupResponse);
 });

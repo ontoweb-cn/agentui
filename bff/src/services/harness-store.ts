@@ -73,6 +73,7 @@ const backendConfigSchema = z.object({
   // 注意:与 BffTenant.intellectTenantId(实际是 team_id,命名遗留)不同,这是实例级标识。
   // 校验前置条件:A3-10 已完成测试用例适配(所有测试值改为 32 位 hex),可启用 regex。
   intellectTenantId: z.string().regex(/^[0-9a-fA-F]{32}$/).optional(),
+  ragBackendId: z.string().min(1).optional(),
   comment: z.string().optional(),
 });
 

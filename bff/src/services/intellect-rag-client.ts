@@ -1,8 +1,5 @@
 import { fetchWithRagToken } from './rag-fetch';
-
-const INTELLECT_RAG_HOST = process.env.INTELLECT_RAG_HOST || 'localhost';
-const INTELLECT_PORT = process.env.PYTHON_API_PORT || '9380';
-const BASE_URL = `http://${INTELLECT_RAG_HOST}:${INTELLECT_PORT}`;
+import { getRagBaseUrl } from '../utils/rag-base-url';
 
 // ---------------------------------------------------------------------------
 // Transparent reverse proxy (Multi-Harness P0-前置, Constitution Principle I)
@@ -58,6 +55,10 @@ export interface ProxyRequest {
    * 优先于 admin JWT 传递给 intellect-rag,实现真实身份透传。
    */
   sessionToken?: string;
+  /** 方案 A: 按租户解析的 RAG origin,缺省回退 INTELLECT_RAG_URL */
+  ragBaseUrl?: string;
+  /** 伴生 RAG backend 的 API Key / adminToken */
+  ragAdminToken?: string;
 }
 
 /**
@@ -68,8 +69,8 @@ export interface ProxyRequest {
  * @returns 上游 fetch Response(不调用 .json()/.text(),保留 body ReadableStream)
  */
 export async function proxy(path: string, req: ProxyRequest): Promise<Response> {
-  // 构造上游 URL:BASE_URL + /api/v1/ + path + query
-  const url = `${BASE_URL}/api/v1/${path}${req.query}`;
+  const origin = (req.ragBaseUrl || getRagBaseUrl()).replace(/\/$/, '');
+  const url = `${origin}/api/v1/${path}${req.query}`;
 
   // 复制请求头,删除 host 与客户端可能注入的 X-Intellect-* / Authorization 头。
   // Authorization 由 fetchWithRagToken 统一注入(动态 token 优先,降级 env var),
@@ -106,5 +107,5 @@ export async function proxy(path: string, req: ProxyRequest): Promise<Response> 
     method: req.method,
     headers,
     body: req.body ?? undefined,
-  }, { sessionToken: req.sessionToken });
+  }, { sessionToken: req.sessionToken, fallbackStaticToken: req.ragAdminToken });
 }

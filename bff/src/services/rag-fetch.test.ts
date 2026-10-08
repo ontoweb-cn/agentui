@@ -204,6 +204,24 @@ describe('rag-fetch', () => {
       expect(init.headers.get('Authorization')).toBe('Bearer dynamic-jwt');
     });
 
+    it('方案 A (B4): flag 默认开启(未设置)时无 session 不降级到 admin token', async () => {
+      mockLogin.mockResolvedValue('Bearer dynamic-jwt');
+      mockFetch.mockResolvedValueOnce(makeResponse(200));
+      delete process.env.BFF_ENABLE_IMT_CANVAS_AGENTS;
+      try {
+        await fetchWithRagToken('http://up/api/v1/agents', {
+          method: 'GET',
+          headers: {},
+        }, { sessionToken: undefined, fallbackStaticToken: 'static-admin-token' });
+
+        const [, init] = mockFetch.mock.calls[0];
+        expect(init.headers.get('Authorization')).toBeNull();
+        expect(mockLogin).not.toHaveBeenCalled();
+      } finally {
+        process.env.BFF_ENABLE_IMT_CANVAS_AGENTS = 'false';
+      }
+    });
+
     it('方案 A (B4): BFF_ENABLE_IMT_CANVAS_AGENTS=true 时无 session 不降级到 admin token', async () => {
       mockLogin.mockResolvedValue('Bearer dynamic-jwt');
       mockFetch.mockResolvedValueOnce(makeResponse(200));
@@ -218,7 +236,7 @@ describe('rag-fetch', () => {
         expect(init.headers.get('Authorization')).toBeNull();
         expect(mockLogin).not.toHaveBeenCalled();
       } finally {
-        delete process.env.BFF_ENABLE_IMT_CANVAS_AGENTS;
+        process.env.BFF_ENABLE_IMT_CANVAS_AGENTS = 'false';
       }
     });
   });

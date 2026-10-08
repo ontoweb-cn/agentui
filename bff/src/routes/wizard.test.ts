@@ -206,23 +206,23 @@ describe('wizard 路由 (B-3)', () => {
   // -------------------------------------------------------------------------
 
   describe('GET /admin/wizard/backend-types', () => {
-    it('返回 6 个后端类型选项', async () => {
+    it('返回 5 个后端类型选项(不含独立 intellect-rag)', async () => {
       const res = await app.request('/admin/wizard/backend-types', {
         headers: { Authorization: 'Bearer test' },
       });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.options).toHaveLength(6);
+      expect(body.options).toHaveLength(5);
 
       const types = body.options.map((o: { type: string }) => o.type);
       expect(types).toEqual([
         'kag',
         'intellect-enterprise',
-        'intellect-rag',
         'intellect-community',
         'hermes',
         'agent-scope',
       ]);
+      expect(types).not.toContain('intellect-rag');
     });
 
     it('每个选项含 capabilities + credentialKind', async () => {
@@ -254,7 +254,7 @@ describe('wizard 路由 (B-3)', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://example.com:9380',
           token: 'test-token',
         }),
@@ -274,7 +274,7 @@ describe('wizard 路由 (B-3)', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://example.com:9380',
           token: 'test-token',
         }),
@@ -292,7 +292,7 @@ describe('wizard 路由 (B-3)', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://127.0.0.1:9380',
         }),
       });
@@ -312,7 +312,7 @@ describe('wizard 路由 (B-3)', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://example.com:9380',
         }),
       });
@@ -329,7 +329,7 @@ describe('wizard 路由 (B-3)', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://example.com:9380',
         }),
       });
@@ -353,6 +353,25 @@ describe('wizard 路由 (B-3)', () => {
   // -------------------------------------------------------------------------
 
   describe('POST /admin/wizard/setup', () => {
+    it('type=intellect-rag 返回 400(不作为独立向导类型)', async () => {
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Standalone RAG',
+          type: 'intellect-rag',
+          endpoint: 'http://localhost:9380',
+          credentialKind: 'bearer-token',
+          token: 'test-token',
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(body.error).toContain('intellect-rag');
+      expect(stores.saveConfigMock).not.toHaveBeenCalled();
+    });
+
     it('SSRF 拦截:endpoint 指向私有 IP 时返回 400', async () => {
       vi.mocked(isUrlSafe).mockResolvedValue(false);
 
@@ -361,7 +380,7 @@ describe('wizard 路由 (B-3)', () => {
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'SSRF Test',
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://127.0.0.1:9380',
           credentialKind: 'bearer-token',
           token: 'test-token',
@@ -381,7 +400,7 @@ describe('wizard 路由 (B-3)', () => {
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'My RAG',
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://localhost:9380',
           credentialKind: 'bearer-token',
           token: 'secret-token-123',
@@ -425,7 +444,7 @@ describe('wizard 路由 (B-3)', () => {
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'Test Backend',
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://localhost:9380',
           credentialKind: 'bearer-token',
           token: 'plaintext-secret',
@@ -449,7 +468,7 @@ describe('wizard 路由 (B-3)', () => {
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'Intellect RAG Default', // 生成 backendId = 'intellect-rag-default' (重复)
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://localhost:9380',
           credentialKind: 'bearer-token',
           token: 'token',
@@ -475,9 +494,34 @@ describe('wizard 路由 (B-3)', () => {
       expect(body.success).toBe(false);
     });
 
-    it('intellect-enterprise 类型触发 validateTenantConfigs', async () => {
+    it('intellect-enterprise 缺少 ragEndpoint 或 ragApiKey 返回 400', async () => {
+      const base = {
+        name: 'Enterprise',
+        type: 'intellect-enterprise',
+        endpoint: 'http://localhost:9091',
+        credentialKind: 'bearer-token',
+        token: 'ent-token',
+        intellectTenantId: '0123456789abcdef0123456789abcdef',
+      };
+      const missingEndpoint = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...base, ragApiKey: 'rag-key' }),
+      });
+      expect(missingEndpoint.status).toBe(400);
+      expect((await missingEndpoint.json()).error).toContain('ragEndpoint');
+
+      const missingKey = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...base, ragEndpoint: 'http://localhost:9380' }),
+      });
+      expect(missingKey.status).toBe(400);
+      expect((await missingKey.json()).error).toContain('ragApiKey');
+    });
+
+    it('intellect-enterprise 创建伴生 RAG backend + vault API Key + canvas 绑定', async () => {
       vi.mocked(validateTenantConfigs).mockResolvedValue(true);
-      // P3-m4 修复:fetchTenantInfo 默认返回 null(降级放行),不阻断 setup
       vi.mocked(fetchTenantInfo).mockResolvedValue(null);
 
       const res = await app.request('/admin/wizard/setup', {
@@ -489,16 +533,36 @@ describe('wizard 路由 (B-3)', () => {
           endpoint: 'http://localhost:9091',
           credentialKind: 'bearer-token',
           token: 'ent-token',
-          // P3-m4 修复:32 位 hex 格式(Rust 版本要求)
           intellectTenantId: '0123456789abcdef0123456789abcdef',
+          ragEndpoint: 'http://localhost:9380',
+          ragApiKey: 'rag-api-key-secret',
         }),
       });
       expect(res.status).toBe(200);
       expect(validateTenantConfigs).toHaveBeenCalledTimes(1);
 
-      // 验证保存的 config 含 intellectTenantId
       const savedConfigs = stores.saveConfigMock.mock.calls[0][0] as HarnessBackendConfig[];
-      expect(savedConfigs[0].intellectTenantId).toBe('0123456789abcdef0123456789abcdef');
+      expect(savedConfigs).toHaveLength(2);
+      const enterprise = savedConfigs.find((c) => c.type === 'intellect-enterprise');
+      const rag = savedConfigs.find((c) => c.type === 'intellect-rag');
+      expect(enterprise?.intellectTenantId).toBe('0123456789abcdef0123456789abcdef');
+      expect(enterprise?.ragBackendId).toBe('enterprise-rag');
+      expect(rag?.id).toBe('enterprise-rag');
+      expect(rag?.endpoint).toBe('http://localhost:9380');
+      expect(JSON.stringify(savedConfigs)).not.toContain('rag-api-key-secret');
+
+      expect(stores.setCredentialsMock).toHaveBeenCalledTimes(2);
+      expect(stores.setCredentialsMock).toHaveBeenCalledWith('enterprise', {
+        kind: 'bearer-token',
+        token: 'ent-token',
+      });
+      expect(stores.setCredentialsMock).toHaveBeenCalledWith('enterprise-rag', {
+        kind: 'bearer-token',
+        token: 'rag-api-key-secret',
+      });
+
+      expect(stores.backendStore.createBackend).toHaveBeenCalled();
+      expect(stores.backendStore.setCanvasBinding).toHaveBeenCalledWith('0', 'enterprise-rag');
     });
 
     it('validateTenantConfigs 失败时返回 400 + 回滚', async () => {
@@ -517,6 +581,8 @@ describe('wizard 路由 (B-3)', () => {
           token: 'ent-token',
           // P3-m4 修复:32 位 hex 格式
           intellectTenantId: '0123456789abcdef0123456789abcdef',
+          ragEndpoint: 'http://localhost:9380',
+          ragApiKey: 'rag-api-key-secret',
         }),
       });
       expect(res.status).toBe(400);
@@ -545,6 +611,8 @@ describe('wizard 路由 (B-3)', () => {
           credentialKind: 'bearer-token',
           token: 'ent-token',
           intellectTenantId: '0123456789abcdef0123456789abcdef',
+          ragEndpoint: 'http://localhost:9380',
+          ragApiKey: 'rag-api-key-secret',
         }),
       });
       expect(res.status).toBe(400);
@@ -601,7 +669,7 @@ describe('wizard 路由 (B-3)', () => {
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'RAG Email',
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://localhost:9380',
           credentialKind: 'email-password',
           email: 'admin@example.com',
@@ -635,7 +703,7 @@ describe('wizard 路由 (B-3)', () => {
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'RAG Email',
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://localhost:9380',
           credentialKind: 'email-password',
           email: 'admin@example.com',
@@ -656,7 +724,7 @@ describe('wizard 路由 (B-3)', () => {
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'RAG Email',
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://localhost:9380',
           credentialKind: 'email-password',
           email: 'admin@example.com',
@@ -677,7 +745,7 @@ describe('wizard 路由 (B-3)', () => {
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'My RAG! @#$% Backend/2026',
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://localhost:9380',
           credentialKind: 'bearer-token',
           token: 'token',
@@ -695,7 +763,7 @@ describe('wizard 路由 (B-3)', () => {
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: '!@#$%',
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://localhost:9380',
           credentialKind: 'bearer-token',
           token: 'token',
@@ -719,7 +787,7 @@ describe('wizard 路由 (B-3)', () => {
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'Auto Gen Var',
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://localhost:9380',
           credentialKind: 'bearer-token',
           token: 'token',
@@ -744,7 +812,7 @@ describe('wizard 路由 (B-3)', () => {
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'Ignore Var',
-          type: 'intellect-rag',
+          type: 'intellect-community',
           endpoint: 'http://localhost:9380',
           credentialKind: 'bearer-token',
           token: 'token',

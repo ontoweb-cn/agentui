@@ -7,6 +7,7 @@
 // - proxy 调用时若遇到 401,自动重新登录刷新 token(并发安全:单 inflight promise)
 //
 // 环境变量:
+//   INTELLECT_RAG_URL            RAG origin(如 http://localhost:9380)
 //   INTELLECT_RAG_ADMIN_EMAIL    管理员邮箱(如 simon@ontoweb.cn)
 //   INTELLECT_RAG_ADMIN_PASSWORD 管理员密码
 //
@@ -14,10 +15,7 @@
 // 不再依赖硬编码的过期 JWT。
 
 import crypto from 'node:crypto';
-
-const INTELLECT_RAG_HOST = process.env.INTELLECT_RAG_HOST || 'localhost';
-const INTELLECT_PORT = process.env.PYTHON_API_PORT || '9380';
-const BASE_URL = `http://${INTELLECT_RAG_HOST}:${INTELLECT_PORT}`;
+import { getRagBaseUrl } from '../utils/rag-base-url';
 
 // ---------------------------------------------------------------------------
 // 密码加密 — 对齐前端 src/utils/index.ts:rsaPsw() 的 RSA + Base64 流程
@@ -108,7 +106,7 @@ class RagTokenProvider {
 
     console.log(`[rag-token] Logging into intellect-rag as ${email}...`);
     const encryptedPassword = encryptPassword(password);
-    const response = await fetch(`${BASE_URL}/api/v1/auth/login`, {
+    const response = await fetch(`${getRagBaseUrl()}/api/v1/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password: encryptedPassword }),

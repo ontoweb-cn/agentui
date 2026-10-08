@@ -18,6 +18,7 @@ import { teamRoutes } from './routes/teams';
 import { projectRoutes } from './routes/projects';
 import { tenantBindingRoutes } from './routes/tenant-bindings';
 import { authSessionMiddleware } from './middleware/auth-session';
+import { isImtCanvasAgentsEnabled } from './utils/feature-flags';
 import { JSONFileHarnessStore } from './services/harness-store';
 import { JSONFileBackendStore } from './services/backend-store';
 import { AdapterRegistry } from './services/adapter-registry';
@@ -116,6 +117,7 @@ app.use('*', async (c, next) => {
   c.set('backendStore', backendStore);
   c.set('adapterRegistry', adapterRegistry);
   c.set('canvasService', canvasService);
+  c.set('tokenVault' as never, tokenVault as never);
   await next();
 });
 
@@ -166,11 +168,10 @@ app.route('/', proxyRoutes);
 // Canvas DSL 编辑(POST/PUT/DELETE agents)保留透传(Principle III Layer 3)。
 // BackendContext 中间件仅挂载到 /agents/* (US3),不影响 /proxy/v1/* 透传路由。
 // 挂载点 '/' 与 proxyRoutes 并列,路径前缀不冲突(/agents/* vs /proxy/v1/*)。
-// 方案 A 阶段一:企业版画布/agents 的 imt_ 透传开关。默认关闭(零行为变化)。
-// RAG 侧验证清单 V1–V4 回填确认后置为 'true',使 /canvas/* /agents/* 挂上
-// authSessionMiddleware,企业版已登录请求以 imt_(而非 RAG 超管 JWT)访问 intellect-rag。
-// 见 docs/enterprise-rag-admin-credential-analysis.md 方案 A。
-const enableImtCanvasAgents = process.env.BFF_ENABLE_IMT_CANVAS_AGENTS === 'true';
+// 方案 A:企业版画布/agents 的 imt_ 透传。默认开启;BFF_ENABLE_IMT_CANVAS_AGENTS=false 关闭。
+// 开启后 /canvas/* /agents/* 挂上 authSessionMiddleware,企业版已登录请求以 imt_
+// (而非 RAG 超管 JWT)访问 intellect-rag。见 docs/enterprise-rag-admin-credential-analysis.md。
+const enableImtCanvasAgents = isImtCanvasAgentsEnabled();
 
 app.use('/agents/*', authMiddleware);
 if (enableImtCanvasAgents) app.use('/agents/*', authSessionMiddleware);
@@ -294,8 +295,8 @@ harnessStore.load()
     tenantCheckTimer.unref(); // 不阻塞进程退出
 
     // 预热 RAG token(后台异步,失败不阻塞 BFF 启动)。
-    // 方案 A (B6): 企业版(flag 开启)走 imt_,无需预热 RAG admin token。
-    if (process.env.BFF_ENABLE_IMT_CANVAS_AGENTS !== 'true') {
+    // 方案 A (B6): flag 默认开启(企业版走 imt_),无需预热 RAG admin token。
+    if (!isImtCanvasAgentsEnabled()) {
       const { ragTokenProvider } = await import('./services/rag-token-provider');
       ragTokenProvider.login().catch(() => {});
     }
