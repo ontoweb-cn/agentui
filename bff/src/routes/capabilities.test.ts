@@ -329,7 +329,7 @@ describe('GET /capabilities — RAG 可用性合并', () => {
     const res = await app.request('/capabilities', {
       headers: {
         Authorization: 'Bearer test',
-        'X-Backend-Id': 'tenant-1',
+        'X-Backend-Id': '0', // 本 describe 的租户 id 为 '0'(回退分支要求)
         'X-User-Id': 'user-1',
       },
     });
@@ -360,5 +360,71 @@ describe('GET /capabilities — RAG 可用性合并', () => {
     expect(enterpriseCapabilities.canvas).toBe(true);
     expect(enterpriseCapabilities.memory).toBe(true);
     expect(enterpriseCapabilities.modelManagement).toBe(true);
+  });
+
+  it('RAG 后端可用时,RAG 依赖能力以 RAG 后端声明为准(而非 enterprise 网关自声明)', async () => {
+    // 场景:enterprise 网关实时自声明 canvas/knowledgeBase/modelManagement=false,
+    // 但租户绑定的 RAG 后端声明这三项为 true → 最终应以 RAG 声明为准
+    const enterpriseDeclared: HarnessCapabilities = {
+      canvas: false,
+      knowledgeBase: false,
+      memory: true,
+      mcp: true,
+      multiTenant: true,
+      modelManagement: false,
+    };
+    const ragBackend: HarnessBackend = {
+      id: 'intellect-rag-default',
+      name: 'Intellect RAG Default',
+      type: 'intellect-rag',
+      endpoint: 'http://localhost:9380',
+      adminTokenEnvVar: 'HARNESS_INTELLECT_RAG_ADMIN_TOKEN',
+      adminToken: 'rag-admin-token',
+      capabilities: {
+        canvas: true,
+        knowledgeBase: true,
+        memory: true,
+        mcp: false,
+        multiTenant: false,
+        modelManagement: true,
+      },
+    };
+    const enterpriseBackend: HarnessBackend = {
+      id: 'intellect-enterprise-default',
+      name: 'Intellect Enterprise Default',
+      type: 'intellect-enterprise',
+      endpoint: 'https://gateway.example.com',
+      adminTokenEnvVar: 'HARNESS_INTELLECT_ENTERPRISE_TOKEN',
+      adminToken: 'enterprise-admin-token',
+      capabilities: { ...enterpriseDeclared },
+    };
+    const tenant: BffTenant = {
+      id: '0',
+      name: 'Default',
+      intellectBackendId: 'intellect-enterprise-default',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const adapter = {
+      backendId: 'intellect-enterprise-default',
+      discoverCapabilities: vi.fn().mockResolvedValue(enterpriseDeclared),
+    };
+    const mocks = createMocks({ tenant, backend: enterpriseBackend, adapter: adapter as never });
+    // store 同时含 enterprise 与 rag 后端(resolveRagBackendId 回退命中 rag)
+    mocks.harnessStore.list = vi.fn(() => [enterpriseBackend, ragBackend]);
+    mocks.harnessStore.get = vi.fn((id: string) =>
+      [enterpriseBackend, ragBackend].find((b) => b.id === id),
+    ) as unknown as HarnessStore['get'];
+
+    const { res, body } = await requestCapabilities(mocks);
+    expect(res.status).toBe(200);
+    expect(body.data.capabilities).toEqual({
+      canvas: true, // RAG 声明覆盖网关的 false
+      knowledgeBase: true,
+      memory: true,
+      mcp: false, // RAG 声明覆盖网关的 true
+      modelManagement: true,
+      multiTenant: true, // enterprise 域能力来自网关声明
+    });
   });
 });

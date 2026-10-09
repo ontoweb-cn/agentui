@@ -19,6 +19,7 @@
 import { Hono } from 'hono';
 import type { HarnessStore } from '../types/stores';
 import type { BackendStore } from '../types/stores';
+import type { HarnessCapabilities } from '../types/harness';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
 import type { CapabilitiesResponse } from '../types/harness-admin';
 import { getBackendContext, BACKEND_CONTEXT_KEY } from '../middleware/backend-context';
@@ -107,16 +108,18 @@ capabilitiesRoutes.get('/capabilities', async (c) => {
   // 避免下方合并逻辑污染 harness store 的配置对象
   const capabilities = { ...await adapter.discoverCapabilities() };
 
-  // RAG 可用性合并:/proxy/v1/* 透传依赖 intellect-rag 后端。租户解析不到
-  // 可用的 intellect-rag(未配置/未绑定 ragBackendId)时,RAG 依赖能力一律置
-  // false,前端据此隐藏知识库/画布/记忆/模型管理等功能,避免必然失败的调用。
+  // RAG 可用性合并:/proxy/v1/* 透传依赖 intellect-rag 后端。
   // multiTenant 属 enterprise 域,不受 RAG 可用性影响。
+  const harnessStore = c.get('harnessStore');
   const ragBackendId = resolveRagBackendId(
     c.get('backendStore').getBackend(tenantId),
     tenantId,
-    c.get('harnessStore'),
+    harnessStore,
   );
   if (!ragBackendId) {
+    // 解析不到可用的 intellect-rag(未配置/未绑定 ragBackendId)时,
+    // RAG 依赖能力一律置 false,前端据此隐藏知识库/画布/记忆/模型管理等功能,
+    // 避免必然失败的调用。
     Object.assign(capabilities, {
       canvas: false,
       knowledgeBase: false,
@@ -124,10 +127,27 @@ capabilitiesRoutes.get('/capabilities', async (c) => {
       mcp: false,
       modelManagement: false,
     });
+  } else {
+    // RAG 后端可用:RAG 依赖能力以 RAG 后端的声明为准。
+    // 主后端为 enterprise 网关时,其 discoverCapabilities(实时探测网关)
+    // 只描述网关自身,不含 RAG 提供的 KB/画布/记忆/模型能力,
+    // 若以网关自声明为准会误判(网关常声明 canvas/knowledgeBase=false)。
+    const ragBackend = harnessStore.get(ragBackendId);
+    if (ragBackend?.type === 'intellect-rag' && ragBackend.capabilities) {
+      // resolveRagBackendId 只会返回 intellect-rag 后端,capabilities 取
+      // HarnessCapabilities 分支(LlmCapabilities 无 mcp 等字段)
+      const ragCaps = ragBackend.capabilities as HarnessCapabilities;
+      Object.assign(capabilities, {
+        canvas: ragCaps.canvas,
+        knowledgeBase: ragCaps.knowledgeBase,
+        memory: ragCaps.memory,
+        mcp: ragCaps.mcp,
+        modelManagement: ragCaps.modelManagement,
+      });
+    }
   }
 
   // 构造响应:补全 backend 元信息(从 Adapter.backendId 反查)
-  const harnessStore = c.get('harnessStore');
   const backend = harnessStore.get(adapter.backendId);
   if (!backend) {
     return c.json(
