@@ -5,16 +5,26 @@ import {
   useFetchSessionManually,
   useGetChatSearchParams,
 } from '@/hooks/use-chat-request';
+import { useSetModalState } from '@/hooks/common-hooks';
 import { IClientConversation } from '@/interfaces/database/chat';
 import { useLayoutMode } from '@/hooks/use-layout-mode';
 import { RootLayoutContainer } from '@/layouts/root-layout';
 import { cn } from '@/lib/utils';
 import { useMount } from 'ahooks';
 import { isEmpty } from 'lodash';
-import { LucideArrowBigLeft, LucideArrowUpRight } from 'lucide-react';
+import {
+  LucideArrowBigLeft,
+  LucideArrowUpRight,
+  LucideSettings,
+} from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useHandleClickConversationCard } from '../hooks/use-click-card';
 import { ChatSettings } from './app-settings/chat-settings';
 import { MultipleChatBox } from './chat-box/next-multiple-chat-box';
@@ -37,6 +47,10 @@ export default function Chat() {
   const { isDebugMode, switchDebugMode } = useSwitchDebugMode();
   const { removeChatBox, addChatBox, chatBoxIds, hasSingleChatBox } =
     useAddChatBox(isDebugMode);
+  // ChatSettings 面板开合状态:齿轮常驻 CardHeader(多模型按钮右侧)作 toggle,
+  // 状态提升到页面层以便头部按钮与面板跨子树共享
+  const { visible: settingsOpen, switchVisible: switchSettingsOpen } =
+    useSetModalState(false);
 
   const { conversationId, isNew } = useGetChatSearchParams();
   const { id: chatId } = useParams();
@@ -125,20 +139,27 @@ export default function Chat() {
 
   const chatContent = (
     <section className="h-full flex flex-col" data-testid="chat-detail">
-      <article className="flex flex-1 min-h-0 pb-9">
+      {/* 卡片四周统一 10px(p-2.5)边距:上(pt) 右(pr) 对齐导航栏/视口缘,下(pb);
+          左侧间隔由 Sessions 的 pr-2.5 提供 */}
+      <article className="flex flex-1 min-h-0 pt-2.5 pr-2.5 pb-2.5">
         <Sessions handleConversationCardClick={handleSessionClick}></Sessions>
 
         <Card className="flex-1 min-w-0 bg-transparent border-none shadow-none h-full">
           <CardContent className="flex p-0 h-full">
-            <Card className="flex flex-col flex-1 bg-transparent min-w-0">
+            {/* 聊天区着色:--bg-list 实色微抬升表面,light #f6f6f7 / dark #38383a,
+                与页面底色(--bg-base)形成分区;气泡/输入框的 --bg-card 叠加在其上形成二层对比 */}
+            <Card className="flex flex-col flex-1 bg-bg-list min-w-0">
               <CardHeader
                 className={cn('p-5', {
                   'border-b-0.5 border-border-button': hasSingleChatBox,
                 })}
               >
-                <CardTitle className="flex justify-between items-center text-base gap-2">
-                  <div className="truncate">{currentConversationName}</div>
+              <CardTitle className="flex justify-between items-center text-base gap-2">
+                <div className="truncate">{currentConversationName}</div>
 
+                {/* 按钮组:justify-between 下若直接追加第三个子元素,
+                    "多模型"会被挤到行中间而非最右 */}
+                <div className="flex items-center gap-2">
                   <Button
                     variant="ghost"
                     onClick={switchDebugMode}
@@ -147,7 +168,26 @@ export default function Chat() {
                     <LucideArrowUpRight />
                     {t('chat.multipleModels')}
                   </Button>
-                </CardTitle>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        disabled={!hasSingleChatBox}
+                        onClick={switchSettingsOpen}
+                        aria-pressed={settingsOpen}
+                        aria-label={t('chat.chatSetting')}
+                        className={cn(settingsOpen && 'text-accent-primary')}
+                        data-testid="chat-settings"
+                      >
+                        <LucideSettings />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t('chat.chatSetting')}</TooltipContent>
+                  </Tooltip>
+                </div>
+              </CardTitle>
               </CardHeader>
               <CardContent className="flex-1 p-0 min-h-0">
                 <SingleChatBox
@@ -158,7 +198,10 @@ export default function Chat() {
               </CardContent>
             </Card>
 
-            <ChatSettings hasSingleChatBox={hasSingleChatBox}></ChatSettings>
+            <ChatSettings
+              visible={settingsOpen}
+              switchVisible={switchSettingsOpen}
+            ></ChatSettings>
           </CardContent>
         </Card>
       </article>
