@@ -7,6 +7,7 @@ import {
 import { IConnectRequestBody } from '@/interfaces/request/file-manager';
 import fileManagerService from '@/services/file-manager-service';
 import { downloadFileFromBlob } from '@/utils/file-util';
+import { useIsCapabilityEnabled } from '@/hooks/use-harness-capabilities';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
 import { useCallback } from 'react';
@@ -184,6 +185,8 @@ export const useFetchFileList = () => {
     ],
     initialData: { files: [], parent_folder: {} as IFolder, total: 0 },
     gcTime: 0,
+    // RAG 依赖:/files 由 /proxy/v1 透传,无 intellect-rag 后端时跳过调用
+    enabled: useIsCapabilityEnabled('knowledgeBase'),
     queryFn: async () => {
       const { data } = await fileManagerService.listFile({
         parent_id: id,

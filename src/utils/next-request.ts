@@ -10,6 +10,7 @@ import axios from 'axios';
 import { convertTheKeysOfTheObjectToSnake, isFormData } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
+import { isRagUnavailableEnvelope } from './rag-unavailable';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
 
@@ -180,6 +181,15 @@ request.interceptors.response.use(
         redirectToLogin();
       }
 
+      return Promise.reject(error);
+    }
+
+    // RAG 后端未绑定的 503:刻意的能力状态信号,静默(不弹全局 toast)。
+    // 前端已按 capability 门控跳过大部分调用,此处仅兜底长尾请求。
+    if (
+      error?.response?.status === 503 &&
+      isRagUnavailableEnvelope(error?.response?.data)
+    ) {
       return Promise.reject(error);
     }
 

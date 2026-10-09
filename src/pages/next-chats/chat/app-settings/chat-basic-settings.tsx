@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
 import { useTranslate } from '@/hooks/common-hooks';
+import { useIsCapabilityEnabled } from '@/hooks/use-harness-capabilities';
 import { prefixName } from '@/utils/form';
 import { getDirAttribute } from '@/utils/text-direction';
 import { useFormContext, useWatch } from 'react-hook-form';
@@ -26,6 +27,7 @@ export default function ChatBasicSetting({
 }: ChatBasicSettingProps) {
   const { t } = useTranslate('chat');
   const form = useFormContext();
+  const knowledgeBase = useIsCapabilityEnabled('knowledgeBase');
 
   const prologueValue = useWatch({
     control: form.control,
@@ -63,9 +65,12 @@ export default function ChatBasicSetting({
           </FormItem>
         )}
       />
-      <KnowledgeBaseFormField
-        name={prefixName(prefix, 'dataset_ids')}
-      ></KnowledgeBaseFormField>
+      {/* RAG 依赖:知识库下拉由 /proxy/v1/datasets 驱动,无 intellect-rag 后端时隐藏 */}
+      {knowledgeBase && (
+        <KnowledgeBaseFormField
+          name={prefixName(prefix, 'dataset_ids')}
+        ></KnowledgeBaseFormField>
+      )}
     </div>
   );
 }

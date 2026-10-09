@@ -5,6 +5,7 @@ import { useHandleFilterSubmit } from '@/components/list-filter-bar/use-handle-f
 import message from '@/components/ui/message';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useHandleSearchChange } from '@/hooks/logic-hooks';
+import { useIsCapabilityEnabled } from '@/hooks/use-harness-capabilities';
 import { useFetchDefaultModelDictionary } from '@/hooks/use-llm-request';
 import memoryService, { updateMemoryById } from '@/services/memory-service';
 import {
@@ -73,6 +74,8 @@ export const useFetchMemoryList = () => {
   if (Array.isArray(owner) && owner.length > 0) {
     requestParams.owner_ids = owner.join(',');
   }
+  // RAG 依赖:/memories 由 /proxy/v1 透传,无 intellect-rag 后端时跳过调用
+  const memory = useIsCapabilityEnabled('memory');
   const { data, isLoading, isError, refetch } = useQuery<
     MemoryListResponse,
     Error
@@ -85,6 +88,7 @@ export const useFetchMemoryList = () => {
       },
       filterValue,
     ],
+    enabled: memory,
     queryFn: async () => {
       const { data: response } = await memoryService.getMemoryList(
         {

@@ -5,6 +5,10 @@ import { Link, useLocation } from 'react-router';
 import { LucideHouse } from 'lucide-react';
 
 import { collectNav } from '@/features/_registry';
+import {
+  CapabilityName,
+  useIsCapabilityEnabled,
+} from '@/hooks/use-harness-capabilities';
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 import { supportsCssAnchor } from '@/utils/css-support';
@@ -18,42 +22,72 @@ const staticMenuItems = [
   { path: Routes.Root, name: 'header.home', icon: LucideHouse },
 ];
 
-const featureNavItems = collectNav().map((item) => ({
-  path: item.path,
-  name: item.labelKey,
-  ...(item.icon ? { icon: item.icon } : {}),
-  ...(item.testId ? { 'data-testid': item.testId } : {}),
-}));
+// 菜单项 → 能力映射:能力为 false(如无 intellect-rag 后端)时隐藏对应入口
+const navCapabilityMap: Record<string, CapabilityName> = {
+  [Routes.Datasets]: 'knowledgeBase',
+  [Routes.Memories]: 'memory',
+  [Routes.Files]: 'knowledgeBase',
+};
 
-const menuItems = [...staticMenuItems, ...featureNavItems];
+/**
+ * 组装导航菜单(静态首页项 + 各 feature 模块 nav),并按能力过滤。
+ * 必须在组件内调用(依赖能力的 useIsCapabilityEnabled),
+ * 不能像旧实现那样在模块加载时求值一次——那会固化空能力下的菜单。
+ */
+function useNavMenu() {
+  const knowledgeBase = useIsCapabilityEnabled('knowledgeBase');
+  const memory = useIsCapabilityEnabled('memory');
+  const capabilityValues: Partial<Record<CapabilityName, boolean>> = {
+    knowledgeBase,
+    memory,
+  };
 
-const PathMap = menuItems.reduce<Record<string, string[]>>((acc, item) => {
-  const featureItem = collectNav().find((f) => f.path === item.path);
-  acc[item.path] = featureItem?.pathMap ?? [item.path];
-  return acc;
-}, {});
+  const menuItems = useMemo(() => {
+    const featureNavItems = collectNav().map((item) => ({
+      path: item.path,
+      name: item.labelKey,
+      ...(item.icon ? { icon: item.icon } : {}),
+      ...(item.testId ? { 'data-testid': item.testId } : {}),
+    }));
+    return [...staticMenuItems, ...featureNavItems].filter((item) => {
+      const cap = navCapabilityMap[item.path];
+      return !cap || capabilityValues[cap] === true;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [knowledgeBase, memory]);
+
+  const pathMap = useMemo(() => {
+    const featureItems = collectNav();
+    return menuItems.reduce<Record<string, string[]>>((acc, item) => {
+      const featureItem = featureItems.find((f) => f.path === item.path);
+      acc[item.path] = featureItem?.pathMap ?? [item.path];
+      return acc;
+    }, {});
+  }, [menuItems]);
+
+  return { menuItems, pathMap };
+}
 
 const GlobalNavbar = supportsCssAnchor
   ? () => {
       const { t } = useTranslation();
       const { pathname } = useLocation();
       const navbarAnchorNamePrefix = useId().replace(/:/g, '');
+      const { menuItems, pathMap } = useNavMenu();
 
       const activePath = useMemo(() => {
         return (
-          Object.keys(PathMap).find((x: string) =>
-            PathMap[x as keyof typeof PathMap].some((y: string) =>
-              matchesPath(pathname, y),
-            ),
+          Object.keys(pathMap).find((x: string) =>
+            pathMap[x].some((y: string) => matchesPath(pathname, y)),
           ) || pathname
         );
-      }, [pathname]);
+      }, [pathname, pathMap]);
 
       const activePathAnchorName = `--${navbarAnchorNamePrefix}${activePath === Routes.Root ? '-root' : activePath.replace('/', '-')}`;
 
       const hasAnyActive = useMemo(
         () => menuItems.some(({ path }) => path === activePath),
-        [activePath],
+        [activePath, menuItems],
       );
 
       return (
@@ -104,16 +138,15 @@ const GlobalNavbar = supportsCssAnchor
   : () => {
       const { t } = useTranslation();
       const { pathname } = useLocation();
+      const { menuItems, pathMap } = useNavMenu();
 
       const activePath = useMemo(() => {
         return (
-          Object.keys(PathMap).find((x: string) =>
-            PathMap[x as keyof typeof PathMap].some((y: string) =>
-              matchesPath(pathname, y),
-            ),
+          Object.keys(pathMap).find((x: string) =>
+            pathMap[x].some((y: string) => matchesPath(pathname, y)),
           ) || pathname
         );
-      }, [pathname]);
+      }, [pathname, pathMap]);
 
       return (
         <nav>

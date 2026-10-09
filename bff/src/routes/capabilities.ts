@@ -29,6 +29,7 @@ import {
   AdapterFactoryNotRegisteredError,
   RegistryNotReadyError,
 } from '../services/adapter-registry-errors';
+import { resolveRagBackendId } from '../services/rag-plugin-backend';
 
 interface CapabilitiesVariables {
   harnessStore: HarnessStore;
@@ -102,7 +103,28 @@ capabilitiesRoutes.get('/capabilities', async (c) => {
   }
 
   // 调用 Adapter 查询能力(P0 静态返回,P3 动态探测)
-  const capabilities = await adapter.discoverCapabilities();
+  // 克隆:discoverCapabilities 可能返回 adapter 缓存的共享引用,
+  // 避免下方合并逻辑污染 harness store 的配置对象
+  const capabilities = { ...await adapter.discoverCapabilities() };
+
+  // RAG 可用性合并:/proxy/v1/* 透传依赖 intellect-rag 后端。租户解析不到
+  // 可用的 intellect-rag(未配置/未绑定 ragBackendId)时,RAG 依赖能力一律置
+  // false,前端据此隐藏知识库/画布/记忆/模型管理等功能,避免必然失败的调用。
+  // multiTenant 属 enterprise 域,不受 RAG 可用性影响。
+  const ragBackendId = resolveRagBackendId(
+    c.get('backendStore').getBackend(tenantId),
+    tenantId,
+    c.get('harnessStore'),
+  );
+  if (!ragBackendId) {
+    Object.assign(capabilities, {
+      canvas: false,
+      knowledgeBase: false,
+      memory: false,
+      mcp: false,
+      modelManagement: false,
+    });
+  }
 
   // 构造响应:补全 backend 元信息(从 Adapter.backendId 反查)
   const harnessStore = c.get('harnessStore');

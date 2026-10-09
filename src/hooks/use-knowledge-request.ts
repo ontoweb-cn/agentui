@@ -1,5 +1,6 @@
 import { useHandleFilterSubmit } from '@/components/list-filter-bar/use-handle-filter-submit';
 import message from '@/components/ui/message';
+import { useIsCapabilityEnabled } from '@/hooks/use-harness-capabilities';
 import { ParseType } from '@/constants/knowledge';
 import { ResponsePostType } from '@/interfaces/database/base';
 import {
@@ -145,6 +146,8 @@ export const useFetchNextKnowledgeListByPage = () => {
       total_datasets: 0,
     },
     gcTime: 0,
+    // RAG 依赖:/datasets 由 /proxy/v1 透传,无 intellect-rag 后端时跳过调用
+    enabled: useIsCapabilityEnabled('knowledgeBase'),
     queryFn: async () => {
       const { data } = await listDataset({
         page_size: pagination.pageSize,
@@ -422,6 +425,8 @@ export const useFetchKnowledgeList = (
     ],
     initialData: [],
     gcTime: 0, // https://tanstack.com/query/latest/docs/framework/react/guides/caching?from=reactQueryV3
+    // RAG 依赖:被 ChatSettings 知识库下拉等消费,无 intellect-rag 后端时跳过调用
+    enabled: useIsCapabilityEnabled('knowledgeBase'),
     queryFn: async () => {
       const { data } = await listDataset(
         keywords

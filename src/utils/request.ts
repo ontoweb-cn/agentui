@@ -11,12 +11,20 @@ import authorizationUtil, {
   redirectToLogin,
 } from '@/utils/authorization-util';
 import notification from '@/utils/notification';
+import {
+  isRagUnavailableEnvelope,
+  isSilentRagUnavailableResponse,
+} from '@/utils/rag-unavailable';
 import { RequestMethod, extend } from 'umi-request';
 import { convertTheKeysOfTheObjectToSnake, isFormData } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
+
+// RAG 后端未绑定的 503:刻意的能力状态信号,不弹全局 toast。
+// 响应拦截器标记 → errorHandler 静默返回(errorHandler 支持同一实例)。
+const silentRagResponses = new WeakSet<Response>();
 
 export const RetcodeMessage = {
   200: i18n.t('message.200'),
@@ -54,10 +62,10 @@ export type ResultCode =
   | 503
   | 504;
 
-const errorHandler = (error: {
+const errorHandler = async (error: {
   response: Response;
   message: string;
-}): Response => {
+}): Promise<Response> => {
   const { response } = error;
   if (error.message === FAILED_TO_FETCH) {
     notification.error({
@@ -66,6 +74,13 @@ const errorHandler = (error: {
     });
   } else {
     if (response && response.status) {
+      // RAG 后端未绑定的 503:刻意的能力状态信号,静默(不弹 toast)
+      if (
+        silentRagResponses.has(response) ||
+        (await isSilentRagUnavailableResponse(response))
+      ) {
+        return response ?? { data: { code: 1999 } };
+      }
       const errorText =
         RetcodeMessage[response.status as ResultCode] || response.statusText;
       const { status, url } = response;
@@ -189,6 +204,12 @@ request.interceptors.response.use(async (response: Response, options) => {
     // 仅当响应显式包含非零 code 时才视为错误。
     // BFF 路由(如 /api/bff/canvas/*)可能返回无 {code,data,message} 信封的原始响应,
     // 此时 data.code 为 undefined,不应触发错误通知(否则会显示 "hint : undefined")。
+    // RAG 后端未绑定的 503 是刻意的能力状态信号:标记后跳过提示,
+    // errorHandler 据此同时静默通用 "Request error 503" toast。
+    if (isRagUnavailableEnvelope(data)) {
+      silentRagResponses.add(response);
+      return response;
+    }
     notification.error({
       message: `${i18n.t('message.hint')} : ${data?.code}`,
       description: data?.message,

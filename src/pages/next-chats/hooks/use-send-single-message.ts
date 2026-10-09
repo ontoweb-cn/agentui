@@ -6,6 +6,7 @@ import {
   useSendMessageWithSse,
 } from '@/hooks/logic-hooks';
 import { useGetChatSearchParams } from '@/hooks/use-chat-request';
+import { useIsCapabilityEnabled } from '@/hooks/use-harness-capabilities';
 import { IMessage } from '@/interfaces/database/chat';
 import api from '@/utils/api';
 import { useCallback, useEffect } from 'react';
@@ -31,10 +32,10 @@ export function useSendSingleMessage({
   Pick<ReturnType<typeof useUploadFile>, 'files' | 'clearFiles'>) {
   const { conversationId } = useGetChatSearchParams();
   const { id: chatId } = useParams();
+  // debug 框恒走 RAG 补全(/proxy/v1/chat/completions),无 RAG 后端时禁止发送
+  const modelManagement = useIsCapabilityEnabled('modelManagement');
 
-  const { send, answer, done } = useSendMessageWithSse();
-
-  const {
+  const { send, answer, done } = useSendMessageWithSse();  const {
     scrollRef,
     messageContainerRef,
     setDerivedMessages,
@@ -112,6 +113,11 @@ export function useSendSingleMessage({
       ...params
     }: NextMessageInputOnPressEnterParameter &
       CreateConversationBeforeSendMessageReturnType) => {
+      // debug 框恒走 RAG 补全(/proxy/v1/chat/completions),无 intellect-rag
+      // 后端时必然 503:在乐观插入用户消息之前拦截,避免孤儿消息上屏
+      if (!modelManagement) {
+        return;
+      }
       const id = uuid();
 
       addNewestQuestion({
@@ -141,7 +147,16 @@ export function useSendSingleMessage({
       }
       clearFiles();
     },
-    [addNewestQuestion, value, files, done, clearFiles, setValue, sendMessage],
+    [
+      addNewestQuestion,
+      value,
+      files,
+      done,
+      clearFiles,
+      setValue,
+      sendMessage,
+      modelManagement,
+    ],
   );
 
   return {

@@ -137,6 +137,9 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
     return c.json(
       {
         code: 503,
+        // 稳定机器标记:前端据此静默该状态(能力门控的兜底安全网),
+        // 避免依赖人类可读的 message 文案做字符串匹配
+        error: 'RAG_UNAVAILABLE',
         message: `Tenant ${backendId} has no canvas backend bound`,
       },
       503,

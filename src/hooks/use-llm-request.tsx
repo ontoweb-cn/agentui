@@ -22,6 +22,7 @@ import {
   IUpdateModelStatusRequestBody,
 } from '@/interfaces/request/llm';
 import llmService from '@/services/llm-service';
+import { useIsCapabilityEnabled } from '@/hooks/use-harness-capabilities';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -68,10 +69,13 @@ export const LlmKeys = {
 };
 
 export const useFetchAvailableProviders = () => {
+  // RAG 依赖:/providers 由 /proxy/v1 透传,无 intellect-rag 后端时跳过调用
+  const modelManagement = useIsCapabilityEnabled('modelManagement');
   const { data, isFetching: loading } = useQuery<IAvailableProvider[]>({
     queryKey: LlmKeys.availableProviders(),
     initialData: [],
     gcTime: 0,
+    enabled: modelManagement,
     queryFn: async () => {
       const params: IListProvidersRequestParams = { available: true };
       const { data } = await llmService.listProviders({ params }, true);
@@ -84,10 +88,12 @@ export const useFetchAvailableProviders = () => {
 };
 
 export const useFetchAddedProviders = () => {
+  const modelManagement = useIsCapabilityEnabled('modelManagement');
   const { data, isFetching: loading } = useQuery<IAvailableProvider[]>({
     queryKey: LlmKeys.addedProviders(),
     initialData: [],
     gcTime: 0,
+    enabled: modelManagement,
     queryFn: async () => {
       const { data } = await llmService.listProviders({ params: {} }, true);
 
@@ -99,10 +105,14 @@ export const useFetchAddedProviders = () => {
 };
 
 export const useFetchAllAddedModels = (modelType?: string) => {
+  // RAG 依赖:/models 由 /proxy/v1 透传(聊天页模型选择器/ChatSettings 数据源),
+  // 无 intellect-rag 后端时跳过调用
+  const modelManagement = useIsCapabilityEnabled('modelManagement');
   const { data, isFetching: loading } = useQuery<IAddedModel[]>({
     queryKey: LlmKeys.allModels(modelType),
     initialData: [],
     gcTime: 0,
+    enabled: modelManagement,
     queryFn: async () => {
       const params: IListAllModelsRequestParams = {};
       if (modelType) {
@@ -455,10 +465,12 @@ export const useUpdateModelStatus = () => {
 };
 
 export const useFetchDefaultModels = () => {
+  const modelManagement = useIsCapabilityEnabled('modelManagement');
   const { data, isFetching: loading } = useQuery<IDefaultModel[]>({
     queryKey: LlmKeys.defaultModels(),
     initialData: [],
     gcTime: 0,
+    enabled: modelManagement,
     queryFn: async () => {
       const { data } = await llmService.listDefaultModels({}, true);
       return data?.data?.models ?? [];

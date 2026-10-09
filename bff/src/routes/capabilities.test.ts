@@ -285,3 +285,80 @@ describe('capabilities 路由 (P2 US2)', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// RAG 可用性合并:租户解析不到 intellect-rag 后端时,RAG 依赖能力置 false
+// ---------------------------------------------------------------------------
+
+describe('GET /capabilities — RAG 可用性合并', () => {
+  const allTrueCapabilities: HarnessCapabilities = {
+    canvas: true,
+    knowledgeBase: true,
+    memory: true,
+    mcp: true,
+    multiTenant: true,
+    modelManagement: true,
+  };
+
+  function createEnterpriseSetup() {
+    const enterpriseCapabilities: HarnessCapabilities = { ...allTrueCapabilities };
+    const enterpriseBackend: HarnessBackend = {
+      id: 'intellect-enterprise-default',
+      name: 'Intellect Enterprise Default',
+      type: 'intellect-enterprise',
+      endpoint: 'https://gateway.example.com',
+      adminTokenEnvVar: 'HARNESS_INTELLECT_ENTERPRISE_TOKEN',
+      // 断言 HarnessBackend.capabilities 联合类型中的 RAG 能力分支
+      capabilities: enterpriseCapabilities,
+    } as HarnessBackend;
+    const tenant: BffTenant = {
+      id: 'tenant-1',
+      name: 'T1',
+      intellectBackendId: 'intellect-enterprise-default',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const adapter = createFakeAdapter(enterpriseBackend);
+    const mocks = createMocks({ tenant, backend: enterpriseBackend, adapter });
+    // store 里只有 enterprise 后端,没有任何 intellect-rag → 四步回退全部落空
+    return { mocks, adapter, enterpriseCapabilities };
+  }
+
+  async function requestCapabilities(mocks: MockSetup) {
+    const app = createApp(mocks);
+    const res = await app.request('/capabilities', {
+      headers: {
+        Authorization: 'Bearer test',
+        'X-Backend-Id': 'tenant-1',
+        'X-User-Id': 'user-1',
+      },
+    });
+    const body = await res.json();
+    return { res, body };
+  }
+
+  it('租户解析不到 intellect-rag 后端时,RAG 依赖能力置 false(multiTenant 保留)', async () => {
+    const { mocks } = createEnterpriseSetup();
+    const { res, body } = await requestCapabilities(mocks);
+    expect(res.status).toBe(200);
+    expect(body.code).toBe(0);
+    expect(body.data.capabilities).toEqual({
+      canvas: false,
+      knowledgeBase: false,
+      memory: false,
+      mcp: false,
+      modelManagement: false,
+      multiTenant: true, // enterprise 域能力不受 RAG 可用性影响
+    });
+  });
+
+  it('合并逻辑不得 mutation discoverCapabilities 返回的共享配置对象', async () => {
+    const { mocks, enterpriseCapabilities } = createEnterpriseSetup();
+    await requestCapabilities(mocks);
+    // discoverCapabilities 返回的是 store 配置的共享引用,必须保持原值
+    expect(enterpriseCapabilities.knowledgeBase).toBe(true);
+    expect(enterpriseCapabilities.canvas).toBe(true);
+    expect(enterpriseCapabilities.memory).toBe(true);
+    expect(enterpriseCapabilities.modelManagement).toBe(true);
+  });
+});

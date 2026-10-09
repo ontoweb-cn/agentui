@@ -3,8 +3,9 @@ import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
 import { HomeIcon } from '@/components/svg-icon';
 import { Segmented, SegmentedValue } from '@/components/ui/segmented';
+import { useIsCapabilityEnabled } from '@/hooks/use-harness-capabilities';
 import { Routes } from '@/routes';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { Agents } from './agent-list';
@@ -33,6 +34,16 @@ export function Applications() {
   const navigate = useNavigate();
   const [listLength, setListLength] = useState(0);
   const [loading, setLoading] = useState(false);
+  // 无 intellect-rag 后端时隐藏 Memory 区块(BFF 能力 memory=false)
+  const memory = useIsCapabilityEnabled('memory');
+
+  // Memory tab 被隐藏时,若当前正停留在该 tab 则回落到 Chat
+  useEffect(() => {
+    if (val === Routes.Memories && !memory) {
+      setVal(Routes.Chats);
+      setListLength(0);
+    }
+  }, [memory, val]);
 
   const handleNavigate = useCallback(
     ({ isCreate }: { isCreate?: boolean }) => {
@@ -46,13 +57,14 @@ export function Applications() {
   );
 
   const options = useMemo(
-    () => [
-      { value: Routes.Chats, label: t('header.chat') },
-      { value: Routes.Searches, label: t('header.search') },
-      { value: Routes.Agents, label: t('header.flow') },
-      { value: Routes.Memories, label: t('header.memories') },
-    ],
-    [t],
+    () =>
+      [
+        { value: Routes.Chats, label: t('header.chat') },
+        { value: Routes.Searches, label: t('header.search') },
+        { value: Routes.Agents, label: t('header.flow') },
+        { value: Routes.Memories, label: t('header.memories') },
+      ].filter((x) => x.value !== Routes.Memories || memory),
+    [t, memory],
   );
 
   const handleChange = (path: SegmentedValue) => {
@@ -103,7 +115,7 @@ export function Applications() {
             setLoading={(loading: boolean) => setLoading(loading)}
           />
         )}
-        {val === Routes.Memories && (
+        {val === Routes.Memories && memory && (
           <MemoryList
             setListLength={(length: number) => setListLength(length)}
             setLoading={(loading: boolean) => setLoading(loading)}
