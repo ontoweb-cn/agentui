@@ -35,6 +35,27 @@ const languageImports: Record<string, () => Promise<{ default: any }>> = {
 const supportedLanguageCodes: Intl.UnicodeBCP47LocaleIdentifier[] =
   Object.keys(languageImports);
 
+// 顶栏语言切换的简称:按钮与下拉菜单展示用,压缩占位宽度。
+// 中文无通用的拉丁短码,按中文产品惯例用单字区分简繁;其余取 ISO 639-1 短码。
+const LANGUAGE_SHORT_NAMES: Record<string, string> = {
+  [LanguageAbbreviation.En]: 'En',
+  [LanguageAbbreviation.Zh]: '中',
+  [LanguageAbbreviation.ZhTraditional]: '繁',
+  [LanguageAbbreviation.Id]: 'Id',
+  [LanguageAbbreviation.Ja]: 'Ja',
+  [LanguageAbbreviation.Es]: 'Es',
+  [LanguageAbbreviation.Vi]: 'Vi',
+  [LanguageAbbreviation.Ru]: 'Ru',
+  [LanguageAbbreviation.PtBr]: 'Pt',
+  [LanguageAbbreviation.De]: 'De',
+  [LanguageAbbreviation.Fr]: 'Fr',
+  [LanguageAbbreviation.It]: 'It',
+  [LanguageAbbreviation.Bg]: 'Bg',
+  [LanguageAbbreviation.Ar]: 'Ar',
+  [LanguageAbbreviation.Tr]: 'Tr',
+  [LanguageAbbreviation.Ko]: 'Ko',
+};
+
 export const supportedLanguages = supportedLanguageCodes.map((code) => {
   const locale = new Intl.Locale(code);
 
@@ -44,6 +65,8 @@ export const supportedLanguages = supportedLanguageCodes.map((code) => {
     displayName: upperFirst(
       new Intl.DisplayNames(locale, { type: 'language' }).of(code)!,
     ),
+    shortName:
+      LANGUAGE_SHORT_NAMES[code] ?? upperFirst(code.split('-')[0] ?? code),
   };
 });
 

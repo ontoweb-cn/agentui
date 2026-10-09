@@ -118,7 +118,6 @@ export default {
       skills: 'Skill',
       flow: 'Agente',
       search: 'Cerca',
-      welcome: 'Benvenuto su',
       dataset: 'Dataset',
       memories: 'Memoria',
     },
@@ -371,7 +370,6 @@ Esempio: un messaggio di 1 KB con embedding a 1024 dimensioni usa ~9 KB. Il limi
       },
     },
     knowledgeList: {
-      welcome: 'Bentornato',
       description: 'Quali dataset userai oggi?',
       createKnowledgeBase: 'Crea dataset',
       name: 'Nome',
@@ -1729,9 +1727,6 @@ Esempio: Virtual Hosted Style`,
       publicKeyMessage: 'Inserisci la chiave pubblica',
       hostMessage: "Inserisci l'host",
       configuration: 'Configurazione',
-      langfuseDescription:
-        'Tracce, valutazioni, gestione dei prompt e metriche per il debug e il miglioramento della tua applicazione LLM.',
-      viewLangfuseSDocumentation: 'Visualizza la documentazione di Langfuse',
       view: 'Visualizza',
       modelsToBeAddedTooltip:
         'Se il tuo fornitore di modelli non è elencato ma dichiara di essere "OpenAI-compatible", seleziona la scheda OpenAI-API-compatible per aggiungere i modelli pertinenti. ',

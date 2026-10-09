@@ -47,6 +47,10 @@ export type CapabilityName = keyof CapabilitiesResponse['capabilities'];
     enabled: !!userId,
     gcTime: 5 * 60 * 1000, // 5 分钟缓存,避免频繁查询
     retry: 1, // 失败重试 1 次(避免短暂不可用导致的体验问题)
+    // 评审改进:失败自愈。retry 用尽后查询以 error 态挂住(gcTime 内不自愈),
+    // 首页会停留在能力 fail-closed 的稀疏态。此处错误态每 15s 静默重发,
+    // 覆盖 BFF 冷启动 503/会话竞态 401/网关探测超时等瞬时失败;成功后停止。
+    refetchInterval: (query) => (query.state.error ? 15_000 : false),
     queryFn: async () => {
       // 显式带 X-Backend-Id / X-User-Id header(US2 必需)
       const { data: res } = await fetchHarnessCapabilities({

@@ -102,7 +102,6 @@ export default {
       fileManager: 'Файлове',
       flow: 'Агент',
       search: 'Търсене',
-      welcome: 'Добре дошли в',
       dataset: 'Данни',
       memories: 'Памет',
     },
@@ -186,7 +185,6 @@ export default {
       },
     },
     knowledgeList: {
-      welcome: 'Добре дошли отново',
       description: 'Кои бази от знания ще използвате днес?',
       createKnowledgeBase: 'Създай набор от данни',
       name: 'Име',
@@ -1314,9 +1312,6 @@ The above is the content you need to summarize.`,
       publicKeyMessage: 'Моля, въведете публичния ключ',
       hostMessage: 'Моля, въведете хоста',
       configuration: 'Конфигурация',
-      langfuseDescription:
-        'Следи, оценки, управление на подсказки и метрики за отстраняване на грешки и подобряване на вашето LLM приложение.',
-      viewLangfuseSDocumentation: 'Вижте документацията на Langfuse',
       view: 'Преглед',
       modelsToBeAddedTooltip:
         'Ако вашият доставчик на модели не е в списъка, но твърди, че е "OpenAI-съвместим", изберете картата OpenAI-API-compatible, за да добавите съответния(те) модел(и).',

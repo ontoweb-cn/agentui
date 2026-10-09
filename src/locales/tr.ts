@@ -118,7 +118,6 @@ export default {
       skills: 'Beceriler',
       flow: 'Ajan',
       search: 'Ara',
-      welcome: 'Hoş geldiniz',
       dataset: 'Dataset',
       memories: 'Bellek',
     },
@@ -369,7 +368,6 @@ Prosedürel Bellek: Öğrenilen beceriler, alışkanlıklar ve otomatik prosedü
       },
     },
     knowledgeList: {
-      welcome: 'Tekrar hoş geldiniz',
       description: 'Bugün hangi datasets kullanacaksınız?',
       createKnowledgeBase: 'Dataset oluştur',
       name: 'Ad',
@@ -1545,9 +1543,6 @@ Bu otomatik etiketleme özelliği, mevcut datasete alanına özgü bilgi katman�
       publicKeyMessage: 'Lütfen ortak anahtarı girin',
       hostMessage: 'Lütfen ana bilgisayarı girin',
       configuration: 'Yapılandırma',
-      langfuseDescription:
-        'LLM uygulamanızı hata ayıklamak ve iyileştirmek için izler, değerlendirmeler, istem yönetimi ve metrikler.',
-      viewLangfuseSDocumentation: 'Langfuse belgelerini görüntüle',
       view: 'Görüntüle',
       modelsToBeAddedTooltip:
         'Model sağlayıcınız listede yoksa ancak "OpenAI uyumlu" olduğunu iddia ediyorsa, ilgili modelleri eklemek için OpenAI-API-uyumlu kartı seçin.',

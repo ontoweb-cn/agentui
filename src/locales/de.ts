@@ -105,7 +105,6 @@ export default {
       fileManager: 'Dateiverwaltung',
       flow: 'Agent',
       search: 'Suche',
-      welcome: 'Willkommen bei',
       dataset: 'Datensatz',
       memories: 'Gedächtnis',
       Memories: 'Gedächtnis',
@@ -183,7 +182,6 @@ Beispiel: Eine 1 KB Nachricht mit 1024-dim Einbettung verwendet ~9 KB. Das Stand
       },
     },
     knowledgeList: {
-      welcome: 'Willkommen zurück',
       description: 'Welche Wissensdatenbanken möchten Sie heute nutzen?',
       createKnowledgeBase: 'Wissensdatenbank erstellen',
       name: 'Name',
@@ -1358,9 +1356,6 @@ Beispiel: Virtual Hosted Style`,
       publicKeyMessage: 'Bitte geben Sie den öffentlichen Schlüssel ein',
       hostMessage: 'Bitte geben Sie den Host ein',
       configuration: 'Konfiguration',
-      langfuseDescription:
-        'Traces, Evals, Prompt-Management und Metriken zum Debuggen und Verbessern Ihrer LLM-Anwendung.',
-      viewLangfuseSDocumentation: 'Langfuse-Dokumentation ansehen',
       view: 'Ansehen',
       modelsToBeAddedTooltip:
         'Wenn Ihr Modellanbieter nicht aufgeführt ist, aber behauptet, „OpenAI-kompatibel“ zu sein, wählen Sie die Karte OpenAI-API-compatible, um das/die entsprechende(n) Modell(e) hinzuzufügen.',

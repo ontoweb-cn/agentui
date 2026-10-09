@@ -69,7 +69,6 @@ export default {
       search: 'Buscar',
     },
     knowledgeList: {
-      welcome: 'Bienvenido de nuevo',
       description: '¿Qué base de conocimiento vamos a usar hoy?',
       createKnowledgeBase: 'Crear base de conocimiento',
       name: 'Nombre',

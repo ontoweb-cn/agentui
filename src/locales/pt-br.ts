@@ -76,7 +76,6 @@ export default {
       search: 'Buscar',
     },
     knowledgeList: {
-      welcome: 'Bem-vindo de volta',
       description: 'Quais bases de conhecimento você usará hoje?',
       createKnowledgeBase: 'Criar base de conhecimento',
       name: 'Nome',

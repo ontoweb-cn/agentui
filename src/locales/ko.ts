@@ -120,7 +120,6 @@ export default {
       skills: '스킬',
       flow: '에이전트',
       search: '검색',
-      welcome: '환영합니다,',
       dataset: '데이터셋',
       memories: '메모리',
     },
@@ -365,7 +364,6 @@ export default {
       },
     },
     knowledgeList: {
-      welcome: '어서 오세요',
       description: '오늘은 어떤 데이터셋을 사용하시겠습니까?',
       createKnowledgeBase: '데이터셋 만들기',
       name: '이름',
@@ -1714,9 +1712,6 @@ export default {
       publicKeyMessage: '공개 키를 입력해 주세요',
       hostMessage: '호스트를 입력해 주세요',
       configuration: '설정',
-      langfuseDescription:
-        'LLM 애플리케이션을 디버그하고 개선하기 위한 추적, 평가, 프롬프트 관리 및 메트릭.',
-      viewLangfuseSDocumentation: 'Langfuse 문서 보기',
       view: '보기',
       modelsToBeAddedTooltip:
         '모델 제공업체가 목록에 없지만 "OpenAI 호환"이라고 하는 경우 OpenAI-API-compatible 카드를 선택하여 관련 모델을 추가하세요. ',

@@ -74,7 +74,6 @@ export default {
       search: 'Cari',
     },
     knowledgeList: {
-      welcome: 'Selamat datang kembali',
       description: 'Basis pengetahuan mana yang akan kita gunakan hari ini?',
       createKnowledgeBase: 'Buat basis pengetahuan',
       name: 'Nama',

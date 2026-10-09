@@ -110,7 +110,6 @@ export default {
       skills: '技能',
       flow: '智能体',
       search: '搜索',
-      welcome: '欢迎来到',
       dataset: '知识库',
       memories: '记忆',
       applications: '应用',
@@ -336,7 +335,6 @@ export default {
       },
     },
     knowledgeList: {
-      welcome: '欢迎回来',
       description: '今天我们要使用哪个知识库？',
       createKnowledgeBase: '创建知识库',
       name: '名称',
@@ -1284,6 +1282,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
       model: '模型提供商',
       systemModelDescription: '请在开始之前完成这些设置',
       dataSources: '数据源',
+      help: '帮助',
       team: '团队',
       system: '系统',
       logout: '登出',
@@ -1483,9 +1482,6 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
       publicKeyMessage: '请输入公钥',
       hostMessage: '请输入 host',
       configuration: '配置',
-      langfuseDescription:
-        '跟踪、评估、提示管理和指标，以调试和改进您的 LLM 应用程序。',
-      viewLangfuseSDocumentation: '查看 Langfuse 的文档',
       view: '查看',
       modelsToBeAddedTooltip:
         '如果你的模型供应商在这里没有列出，但是宣称 OpenAI-compatible，可以通过选择卡片 OpenAI-API-compatible 设置相关模型。',
@@ -2910,10 +2906,6 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
     },
     modeSwitcher: {
       label: '工作模式切换',
-    },
-    threeColumnLayout: {
-      taskListLabel: '任务列表',
-      toolPanelLabel: '工具面板',
     },
   },
 };

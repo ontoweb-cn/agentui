@@ -79,7 +79,6 @@ export default {
       search: 'Tìm kiếm',
     },
     knowledgeList: {
-      welcome: 'Chào mừng trở lại',
       description: 'Chúng ta sẽ sử dụng cơ sở kiến thức nào hôm nay?',
       createKnowledgeBase: 'Tạo cơ sở kiến thức',
       name: 'Tên',

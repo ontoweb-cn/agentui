@@ -1,6 +1,5 @@
 /**
- * @deprecated 此组件已废弃,请使用 TopBar。legacy 模式下仍可使用。
- * spec-013 P1-5: 由 TopBar 替代
+ * 应用顶栏(three-column 布局已移除,此为唯一布局铬)。
  */
 
 // Temporarily hidden: Discord & GitHub logos
@@ -14,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useChangeLanguage } from '@/hooks/logic-hooks';
+import { useTranslation } from 'react-i18next';
 import {
   useFetchUserInfo,
   useListTenant,
@@ -22,10 +22,11 @@ import type { IUserInfo } from '@/interfaces/database/user-setting';
 import { cn } from '@/lib/utils';
 import { TenantRole } from '@/pages/user-setting/constants';
 import { Routes } from '@/routes';
-import { LucideChevronDown, LucideCircleHelp } from 'lucide-react';
+import { LucideChevronDown } from 'lucide-react';
 import React, { useMemo } from 'react';
 import { Link, useLocation } from 'react-router';
 import { BellButton } from './bell-button';
+import { GlobalSearch } from './global-search';
 import GlobalNavbar from './global-navbar';
 import ThemeButton from './theme-button';
 
@@ -39,19 +40,26 @@ export function Header({
 
   const changeLanguage = useChangeLanguage();
 
+  // 语言按钮以 i18n 当前语言为准,而非后端用户资料(userInfo.language)——
+  // 后者仅在 profile 同步时更新,切换语言后不会立即变化,曾导致按钮显示错语言。
+  const { i18n } = useTranslation();
+  const currentLanguage =
+    supportedLanguages.find((x) => x.code === i18n.language) ??
+    supportedLanguages.find(
+      (x) => x.code.split('-')[0] === i18n.language.split('-')[0],
+    );
+
   // 防御性解构:useFetchUserInfo 虽然 initialData:{} 保证 data 非空,
   // 但在极端时序(如 query 被 gcTime:0 回收后重置)下可能为 undefined,
   // 此处给 data 默认值避免解构报错 "Cannot read properties of undefined"
   const { data: userInfo = {} as IUserInfo } = useFetchUserInfo();
-  const { language = 'en', avatar, nickname } = userInfo;
+  const { avatar, nickname } = userInfo;
 
   const { data: tenantData } = useListTenant();
   const hasNotification = useMemo(
     () => tenantData?.some((x) => x.role === TenantRole.Invite),
     [tenantData],
   );
-
-  const currentLanguage = supportedLanguages.find((x) => x.code === language);
 
   // const langItems = LanguageList.map((x) => ({
   //   key: x,
@@ -79,9 +87,13 @@ export function Header({
       <GlobalNavbar />
 
       <div
-        className="flex items-center justify-end gap-4 text-text-badge"
+        className="flex items-center justify-end gap-2 text-text-badge"
         data-testid="auth-status"
       >
+        {/* 评审 P2:全局搜索入口从已删的 TopBar 迁移到 Header,置于菜单右侧 */}
+        <div className="hidden w-[220px] max-w-full md:block">
+          <GlobalSearch />
+        </div>
         {/* Temporarily hidden: Discord & GitHub logos */}
         {/* <a
           className="p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
@@ -101,10 +113,15 @@ export function Header({
           <IconFontFill name="GitHub" />
         </a> */}
 
+        {/* 语言切换:按钮与菜单均用简称压缩占位;title 保留全名供悬停提示 */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button className="flex items-center gap-1" variant="ghost">
-              {currentLanguage?.displayName}
+            <Button
+              className="flex items-center gap-1 min-w-[3.25rem]"
+              variant="ghost"
+              aria-label={`Language: ${currentLanguage?.displayName ?? ''}`}
+            >
+              {currentLanguage?.shortName ?? currentLanguage?.displayName}
               <LucideChevronDown className="size-[1em]" />
             </Button>
           </DropdownMenuTrigger>
@@ -115,22 +132,17 @@ export function Header({
                 key={x.code}
                 onClick={() => changeLanguage(x.code)}
               >
-                {x.displayName}
+                {/* 简称徽标 + 全称:徽标样式与横幅 System 标签同源(backgroundCoreWeak) */}
+                <span className="inline-flex h-5 min-w-8 items-center justify-center rounded-sm bg-backgroundCoreWeak px-1 text-xs font-semibold">
+                  {x.shortName}
+                </span>
+                <span>{x.displayName}</span>
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Button
-          asLink
-          variant="ghost"
-          size="icon"
-          to="https://intellect.ontoweb.cn/docs/dev/category/user-guides"
-          target="_blank"
-          rel="noreferrer noopener"
-        >
-          <LucideCircleHelp className="size-[1em]" />
-        </Button>
+        {/* 帮助"?"入口已迁至用户设置页左侧菜单栏 */}
 
         <ThemeButton />
 
@@ -138,7 +150,7 @@ export function Header({
 
         <Link
           to={Routes.UserSetting}
-          className="relative ms-3"
+          className="relative"
           data-testid="settings-entrypoint"
         >
           <IntellectAvatar

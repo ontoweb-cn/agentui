@@ -113,7 +113,6 @@ export default {
       fileManager: 'Управление файлами',
       flow: 'Агент',
       search: 'Поиск',
-      welcome: 'Добро пожаловать в',
       dataset: 'Датасет',
       memories: 'Память',
     },
@@ -199,7 +198,6 @@ export default {
       },
     },
     knowledgeList: {
-      welcome: 'С возвращением',
       description: 'Какие базы знаний вы будете использовать сегодня?',
       createKnowledgeBase: 'Создать Датасет',
       name: 'Название',
@@ -1422,9 +1420,6 @@ export default {
       publicKeyMessage: 'Пожалуйста, введите публичный ключ',
       hostMessage: 'Пожалуйста, введите хост',
       configuration: 'Конфигурация',
-      langfuseDescription:
-        'Трассировки, оценки, управление промптами и метрики для отладки и улучшения вашего LLM приложения.',
-      viewLangfuseSDocumentation: 'Посмотреть документацию Langfuse',
       view: 'Просмотр',
       modelsToBeAddedTooltip:
         'Если ваш провайдер моделей не указан, но заявляет о "совместимости с OpenAI-API", выберите карточку OpenAI-API-compatible, чтобы добавить соответствующие модели. ',

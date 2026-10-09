@@ -76,10 +76,8 @@ export default {
       fileManager: '文件管理',
       flow: '智能體',
       search: '搜尋',
-      welcome: '歡迎來到',
     },
     knowledgeList: {
-      welcome: '歡迎回來',
       description: '今天我們要使用哪個知識庫？',
       createKnowledgeBase: '創建知識庫',
       name: '名稱',
@@ -762,9 +760,6 @@ export default {
       publicKeyMessage: '請輸入公钥',
       hostMessage: '請輸入 host',
       configuration: '配置',
-      langfuseDescription:
-        '追蹤、評估、提示管理和指標以調試和改進您的 LLM 應用程式。',
-      viewLangfuseSDocumentation: '查看 Langfuse 的文檔',
       view: '查看',
       modelsToBeAddedTooltip:
         '若您的模型供應商未列於此處，但宣稱與 OpenAI 相容，可透過選擇「OpenAI-API-compatible」卡片來設定相關模型。',

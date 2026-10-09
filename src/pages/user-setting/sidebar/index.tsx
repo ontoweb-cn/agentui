@@ -13,6 +13,7 @@ import { Routes } from '@/routes';
 import { TFunction } from 'i18next';
 import {
   LucideBox,
+  LucideCircleHelp,
   LucideMessagesSquare,
   LucideLogOut,
   LucideServer,
@@ -23,6 +24,9 @@ import {
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHandleMenuClick } from './hooks';
+
+// 用户文档入口(原顶栏"?"按钮迁入侧边栏)
+const DOC_URL = 'https://intellect.ontoweb.cn/docs/dev/category/user-guides';
 
 const menuItems = (t: TFunction) => [
   {
@@ -117,6 +121,24 @@ export function SideBar() {
               </li>
             );
           })}
+          {/* 帮助:外链新窗口打开,不走路由菜单高亮 */}
+          <li className="w-full md:w-auto">
+            <Button
+              block
+              asLink
+              variant="ghost"
+              aria-label={t('setting.help')}
+              to={DOC_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="relative h-10 text-base max-md:size-10 max-md:p-0 max-md:justify-center justify-start gap-2.5 px-2 md:px-3"
+            >
+              <span className="flex items-center gap-2.5 max-md:gap-0">
+                <LucideCircleHelp className="size-[1em]" />
+                <span className="hidden md:inline">{t('setting.help')}</span>
+              </span>
+            </Button>
+          </li>
         </ul>
       </nav>
 

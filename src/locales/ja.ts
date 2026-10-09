@@ -74,7 +74,6 @@ export default {
       search: '検索',
     },
     knowledgeList: {
-      welcome: 'お帰りなさい',
       description: '今日はどのナレッジベースを使用しますか？',
       createKnowledgeBase: 'ナレッジベースを作成',
       name: '名前',

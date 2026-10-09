@@ -121,7 +121,6 @@ export default {
       skills: 'Compétences',
       flow: 'Agent',
       search: 'Recherche',
-      welcome: 'Bienvenue sur',
       dataset: 'Base de connaissances',
       memories: 'Mémoire',
     },
@@ -352,7 +351,6 @@ export default {
       },
     },
     knowledgeList: {
-      welcome: 'Bon retour',
       description:
         "Quelles bases de connaissances allez-vous utiliser aujourd'hui ?",
       createKnowledgeBase: 'Créer une base de connaissances',
@@ -1383,9 +1381,6 @@ Applicable lorsque vous avez besoin que le LLM résume le document entier.
       publicKeyMessage: 'Veuillez entrer la clé publique',
       hostMessage: "Veuillez entrer l'hôte",
       configuration: 'Configuration',
-      langfuseDescription:
-        'Traces, évaluations, gestion des prompts et métriques pour déboguer et améliorer votre application LLM.',
-      viewLangfuseSDocumentation: 'Voir la documentation de Langfuse',
       view: 'Voir',
       modelsToBeAddedTooltip:
         'Si votre fournisseur de modèle n\\\'est pas listé mais prétend être "compatible OpenAI", sélectionnez la carte compatible OpenAI-API pour ajouter le(s) modèle(s) pertinent(s).',

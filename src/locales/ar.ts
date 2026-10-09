@@ -111,7 +111,6 @@ export default {
       fileManager: 'الملفات',
       flow: 'الوكيل',
       search: 'البحث',
-      welcome: 'مرحبا بكم في',
       dataset: 'مجموعة البيانات',
       memories: 'الذاكرة',
     },
@@ -194,7 +193,6 @@ export default {
       },
     },
     knowledgeList: {
-      welcome: 'مرحبًا بعودتك',
       description: 'ما هي قواعد المعرفة التي ستستخدمها اليوم؟',
       createKnowledgeBase: 'إنشاء مجموعة بيانات',
       name: 'الاسم',
@@ -1257,9 +1255,6 @@ export default {
       publicKeyMessage: 'الرجاء إدخال المفتاح العام',
       hostMessage: 'الرجاء إدخال المضيف',
       configuration: 'إعدادات',
-      langfuseDescription:
-        'التتبعات والتقييمات والإدارة السريعة والمقاييس لتصحيح أخطاء تطبيق LLM وتحسينه.',
-      viewLangfuseSDocumentation: 'عرض وثائق لانجفيوز',
       view: 'منظر',
       modelsToBeAddedTooltip:
         'إذا لم يكن موفر النموذج الخاص بك مدرجًا ولكنه يدعي أنه "متوافق مع OpenAI"، فحدد البطاقة المتوافقة مع OpenAI-API لإضافة النموذج (النماذج) ذات الصلة.',

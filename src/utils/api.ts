@@ -274,7 +274,6 @@ export default {
   createSystemToken: `${restAPIv1}/system/tokens`,
   removeSystemToken: `${restAPIv1}/system/tokens`,
   getSystemConfig: `${restAPIv1}/system/config`,
-  setLangfuseConfig: `${restAPIv1}/langfuse/api-key`,
 
   // flow — spec-008: 画布相关 endpoint 已迁到 bffCanvas
   listAgentTemplate: `${bffCanvas}/templates`,

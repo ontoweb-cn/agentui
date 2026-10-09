@@ -7,7 +7,6 @@ import {
 } from '@/hooks/use-chat-request';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { IClientConversation } from '@/interfaces/database/chat';
-import { useLayoutMode } from '@/hooks/use-layout-mode';
 import { RootLayoutContainer } from '@/layouts/root-layout';
 import { cn } from '@/lib/utils';
 import { useMount } from 'ahooks';
@@ -35,7 +34,6 @@ import { useSwitchDebugMode } from './use-switch-debug-mode';
 
 export default function Chat() {
   const { t } = useTranslation();
-  const { mode } = useLayoutMode();
   const [currentConversation, setCurrentConversation] =
     useState<IClientConversation>({} as IClientConversation);
 
@@ -210,11 +208,6 @@ export default function Chat() {
       </article>
     </section>
   );
-
-  // three-column 模式下布局由父级 RootLayout 的 ThreeColumnLayout 承载
-  if (mode === 'three-column') {
-    return chatContent;
-  }
 
   return <RootLayoutContainer>{chatContent}</RootLayoutContainer>;
 }

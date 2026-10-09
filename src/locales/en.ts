@@ -126,7 +126,6 @@ export default {
       skills: 'Skills',
       flow: 'Agent',
       search: 'Search',
-      welcome: 'Welcome to',
       dataset: 'Dataset',
       memories: 'Memory',
       applications: 'Apps',
@@ -375,7 +374,6 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       },
     },
     knowledgeList: {
-      welcome: 'Welcome back',
       description: 'Which datasets will you use today?',
       createKnowledgeBase: 'Create dataset',
       name: 'Name',
@@ -1557,6 +1555,7 @@ Example: Virtual Hosted Style`,
       model: 'Model providers',
       systemModelDescription: 'Please complete these settings before beginning',
       dataSources: 'Data sources',
+      help: 'Help',
       team: 'Team',
       system: 'System',
       logout: 'Log out',
@@ -1796,9 +1795,6 @@ Example: Virtual Hosted Style`,
       publicKeyMessage: 'Please enter the public key',
       hostMessage: 'Please enter the host',
       configuration: 'Configuration',
-      langfuseDescription:
-        'Traces, evals, prompt management and metrics to debug and improve your LLM application.',
-      viewLangfuseSDocumentation: "View Langfuse's documentation",
       view: 'View',
       modelsToBeAddedTooltip:
         'If your model provider is not listed but claims to be "OpenAI-compatible", select the OpenAI-API-compatible card to add the relevant model(s). ',
@@ -3527,10 +3523,6 @@ Important structured information may include: names, dates, locations, events, k
     },
     modeSwitcher: {
       label: 'Work mode switcher',
-    },
-    threeColumnLayout: {
-      taskListLabel: 'Task list',
-      toolPanelLabel: 'Tool panel',
     },
   },
 };
