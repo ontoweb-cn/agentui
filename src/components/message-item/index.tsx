@@ -151,26 +151,6 @@ const MessageItem = ({
           )}
 
           <section className="flex min-w-0 gap-2 flex-1 flex-col">
-            {isAssistant ? (
-              index !== 0 && (
-                <AssistantGroupButton
-                  messageId={item.id}
-                  content={messageContent}
-                  prompt={item.prompt}
-                  showLikeButton={showLikeButton}
-                  audioBinary={item.audio_binary}
-                  showLoudspeaker={showLoudspeaker}
-                ></AssistantGroupButton>
-              )
-            ) : (
-              <UserGroupButton
-                content={messageContent}
-                messageId={item.id}
-                removeMessageById={removeMessageById}
-                regenerateMessage={regenerateMessage && handleRegenerateMessage}
-                sendLoading={sendLoading}
-              ></UserGroupButton>
-            )}
             {/* P1：Reasoning 面板（流式中显示 liveReasoning，流完成/历史回看显示 reasoning） */}
             {isAssistant && (item.reasoning || (isStreaming && liveReasoning)) && (
               <ReasoningPanel
@@ -264,6 +244,27 @@ const MessageItem = ({
                   </div>
                 ))}
               </div>
+            )}
+            {/* 快捷按钮置于内容下方：顶部占位行会把首行内容顶得与头像错位 */}
+            {isAssistant ? (
+              index !== 0 && (
+                <AssistantGroupButton
+                  messageId={item.id}
+                  content={messageContent}
+                  prompt={item.prompt}
+                  showLikeButton={showLikeButton}
+                  audioBinary={item.audio_binary}
+                  showLoudspeaker={showLoudspeaker}
+                ></AssistantGroupButton>
+              )
+            ) : (
+              <UserGroupButton
+                content={messageContent}
+                messageId={item.id}
+                removeMessageById={removeMessageById}
+                regenerateMessage={regenerateMessage && handleRegenerateMessage}
+                sendLoading={sendLoading}
+              ></UserGroupButton>
             )}
           </section>
         </div>

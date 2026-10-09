@@ -223,8 +223,8 @@ function MessageItem({
             <div className="size-10 shrink-0" aria-hidden />
           )}
           <section className="flex-col gap-2 flex-1">
-            <div className="flex justify-between items-center">
-              {isShare && isAssistant && (
+            {isShare && isAssistant && (
+              <div className="flex justify-between items-center">
                 <Button
                   variant={'transparent'}
                   onClick={() => setShowThinking((think) => !think)}
@@ -239,49 +239,8 @@ function MessageItem({
                     {showThinking ? <ChevronUp /> : <ChevronDown />}
                   </div>
                 </Button>
-              )}
-              <div className="space-x-1">
-                {isAssistant ? (
-                  <>
-                    {isShare && !sendLoading && !isEmpty(item.content) && (
-                      <AssistantGroupButton
-                        messageId={item.id}
-                        content={messageContent}
-                        prompt={item.prompt}
-                        showLikeButton={showLikeButton}
-                        audioBinary={item.audio_binary}
-                        showLoudspeaker={showLoudspeaker}
-                        showLog={showLog}
-                        attachment={item.attachment}
-                        isShare={isShare}
-                      ></AssistantGroupButton>
-                    )}
-                    {!isShare && (
-                      <AssistantGroupButton
-                        messageId={item.id}
-                        content={messageContent}
-                        prompt={item.prompt}
-                        showLikeButton={showLikeButton}
-                        audioBinary={item.audio_binary}
-                        showLoudspeaker={showLoudspeaker}
-                        showLog={showLog}
-                        attachment={item.attachment}
-                      ></AssistantGroupButton>
-                    )}
-                  </>
-                ) : (
-                  <UserGroupButton
-                    content={messageContent}
-                    messageId={item.id}
-                    removeMessageById={removeMessageById}
-                    regenerateMessage={
-                      regenerateMessage && handleRegenerateMessage
-                    }
-                    sendLoading={sendLoading}
-                  ></UserGroupButton>
-                )}
               </div>
-            </div>
+            )}
 
             {isAssistant &&
               currentEventListWithoutMessageById &&
@@ -332,32 +291,48 @@ function MessageItem({
                 ))}
               </div>
             )}
-            {/* {isAssistant && item.attachment && item.attachment.doc_id && (
-              <div className="w-full flex items-center justify-end">
-                <Button
-                  variant="link"
-                  className="p-1 m-0 h-auto text-text-sub-title-invert"
-                  onClick={async () => {
-                    if (item.attachment?.doc_id) {
-                      try {
-                        const response = await downloadFile({
-                          docId: item.attachment.doc_id,
-                          ext: item.attachment.format,
-                        });
-                        const blob = new Blob([response.data], {
-                          type: response.data.type,
-                        });
-                        downloadFileFromBlob(blob, item.attachment.file_name);
-                      } catch (error) {
-                        console.error('Download failed:', error);
-                      }
-                    }
-                  }}
-                >
-                  <Download size={16} />
-                </Button>
-              </div>
-            )} */}
+            {/* 快捷按钮置于内容下方:顶部占位行会把首行内容顶得与头像错位 */}
+            <div className="space-x-1">
+              {isAssistant ? (
+                <>
+                  {isShare && !sendLoading && !isEmpty(item.content) && (
+                    <AssistantGroupButton
+                      messageId={item.id}
+                      content={messageContent}
+                      prompt={item.prompt}
+                      showLikeButton={showLikeButton}
+                      audioBinary={item.audio_binary}
+                      showLoudspeaker={showLoudspeaker}
+                      showLog={showLog}
+                      attachment={item.attachment}
+                      isShare={isShare}
+                    ></AssistantGroupButton>
+                  )}
+                  {!isShare && (
+                    <AssistantGroupButton
+                      messageId={item.id}
+                      content={messageContent}
+                      prompt={item.prompt}
+                      showLikeButton={showLikeButton}
+                      audioBinary={item.audio_binary}
+                      showLoudspeaker={showLoudspeaker}
+                      showLog={showLog}
+                      attachment={item.attachment}
+                    ></AssistantGroupButton>
+                  )}
+                </>
+              ) : (
+                <UserGroupButton
+                  content={messageContent}
+                  messageId={item.id}
+                  removeMessageById={removeMessageById}
+                  regenerateMessage={
+                    regenerateMessage && handleRegenerateMessage
+                  }
+                  sendLoading={sendLoading}
+                ></UserGroupButton>
+              )}
+            </div>
           </section>
         </div>
       </section>
