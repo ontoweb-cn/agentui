@@ -1,3 +1,5 @@
+import { LucideLayoutGrid } from 'lucide-react';
+
 import type { ModuleDefinition } from '../_types';
 import { ApplicationsRoutes } from './routes';
 
@@ -21,6 +23,7 @@ const definition: ModuleDefinition = {
     {
       path: ApplicationsRoutes.Applications,
       labelKey: 'header.applications',
+      icon: LucideLayoutGrid,
       testId: 'nav-applications',
     },
   ],

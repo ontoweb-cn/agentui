@@ -1,3 +1,5 @@
+import { LucideBot } from 'lucide-react';
+
 import type { ModuleDefinition } from '../_types';
 import { AgentRoutes } from './routes';
 
@@ -34,6 +36,7 @@ const definition: ModuleDefinition = {
     {
       path: AgentRoutes.Agents,
       labelKey: 'header.flow',
+      icon: LucideBot,
       pathMap: [AgentRoutes.Agents, AgentRoutes.AgentTemplates],
       testId: 'nav-agent',
     },

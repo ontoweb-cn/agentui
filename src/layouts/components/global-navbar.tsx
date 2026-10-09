@@ -58,7 +58,7 @@ const GlobalNavbar = supportsCssAnchor
 
       return (
         <nav>
-          <ul className="relative flex items-center p-1 bg-bg-card rounded-full border border-border-button">
+          <ul className="relative flex items-center p-1 rounded-full">
             {menuItems.map(({ path, name, icon: Icon, ...props }) => {
               const isActive = path === activePath;
               const anchorName = `--${navbarAnchorNamePrefix}${path === Routes.Root ? '-root' : path.replace('/', '-')}`;
@@ -69,14 +69,14 @@ const GlobalNavbar = supportsCssAnchor
                     {...props}
                     to={path}
                     className={cn(
-                      'h-10 px-6 text-base inline-flex items-center justify-center',
+                      'h-10 px-4 text-base inline-flex items-center justify-center gap-2',
                       'hover:text-current focus-visible:text-current rounded-full transition-all',
                       isActive && '!text-bg-base',
                     )}
                     aria-current={isActive ? 'page' : undefined}
                   >
-                    {Icon && <Icon className="size-6 stroke-[1.5]" />}
-                    <span className={cn(Icon && 'sr-only')}>{t(name)}</span>
+                    {Icon && <Icon className="size-4 shrink-0 stroke-[1.5]" />}
+                    <span>{t(name)}</span>
                   </Link>
                 </li>
               );
@@ -117,7 +117,7 @@ const GlobalNavbar = supportsCssAnchor
 
       return (
         <nav>
-          <ul className="flex items-center p-1 bg-bg-card rounded-full border border-border-button">
+          <ul className="flex items-center p-1 rounded-full">
             {menuItems.map(({ path, name, icon: Icon, ...props }) => {
               const isActive = path === activePath;
 
@@ -127,7 +127,7 @@ const GlobalNavbar = supportsCssAnchor
                     {...props}
                     to={path}
                     className={cn(
-                      'h-10 px-6 text-base inline-flex items-center justify-center',
+                      'h-10 px-4 text-base inline-flex items-center justify-center gap-2',
                       'hover:text-current focus-visible:text-current rounded-full transition-all',
                       isActive &&
                         '!text-bg-base bg-text-primary border-b-2 border-b-accent-primary',
@@ -135,11 +135,8 @@ const GlobalNavbar = supportsCssAnchor
                     aria-label={t(name)}
                     aria-current={isActive ? 'page' : undefined}
                   >
-                    {Icon ? (
-                      <Icon className="size-6 stroke-[1.5]" />
-                    ) : (
-                      <span>{t(name)}</span>
-                    )}
+                    {Icon && <Icon className="size-4 shrink-0 stroke-[1.5]" />}
+                    <span>{t(name)}</span>
                   </Link>
                 </li>
               );

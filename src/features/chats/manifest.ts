@@ -1,3 +1,5 @@
+import { LucideMessageCircle } from 'lucide-react';
+
 import type { ModuleDefinition } from '../_types';
 import { ChatRoutes } from './routes';
 
@@ -35,6 +37,7 @@ const definition: ModuleDefinition = {
     {
       path: ChatRoutes.Chats,
       labelKey: 'header.chat',
+      icon: LucideMessageCircle,
       pathMap: [ChatRoutes.Chats, ChatRoutes.Chat],
       testId: 'nav-chat',
     },

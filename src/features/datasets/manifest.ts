@@ -1,3 +1,5 @@
+import { LucideDatabase } from 'lucide-react';
+
 import type { ModuleDefinition } from '../_types';
 import { DatasetRoutes } from './routes';
 
@@ -50,6 +52,7 @@ const definition: ModuleDefinition = {
     {
       path: DatasetRoutes.Datasets,
       labelKey: 'header.dataset',
+      icon: LucideDatabase,
       pathMap: [DatasetRoutes.Datasets, DatasetRoutes.DatasetBase],
     },
   ],

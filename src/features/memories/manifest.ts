@@ -1,3 +1,5 @@
+import { LucideBrain } from 'lucide-react';
+
 import type { ModuleDefinition } from '../_types';
 import { MemoriesRoutes } from './routes';
 
@@ -38,6 +40,7 @@ const definition: ModuleDefinition = {
     {
       path: MemoriesRoutes.Memories,
       labelKey: 'header.memories',
+      icon: LucideBrain,
       pathMap: [
         MemoriesRoutes.Memories,
         MemoriesRoutes.Memory,

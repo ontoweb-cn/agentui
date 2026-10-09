@@ -1,3 +1,5 @@
+import { LucideFolderOpen } from 'lucide-react';
+
 import type { ModuleDefinition } from '../_types';
 import { FileRoutes } from './routes';
 
@@ -25,6 +27,7 @@ const definition: ModuleDefinition = {
     {
       path: FileRoutes.Files,
       labelKey: 'header.fileManager',
+      icon: LucideFolderOpen,
       pathMap: [FileRoutes.Files],
     },
   ],

@@ -1,3 +1,5 @@
+import { LucideSearch } from 'lucide-react';
+
 import type { ModuleDefinition } from '../_types';
 import { SearchRoutes } from './routes';
 
@@ -30,6 +32,7 @@ const definition: ModuleDefinition = {
     {
       path: SearchRoutes.Searches,
       labelKey: 'header.search',
+      icon: LucideSearch,
       pathMap: [SearchRoutes.Searches, SearchRoutes.Search],
       testId: 'nav-search',
     },
