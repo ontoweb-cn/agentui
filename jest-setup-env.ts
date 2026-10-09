@@ -13,6 +13,11 @@ import { TextEncoder, TextDecoder } from 'util';
 process.env.VITE_DEFAULT_LANGUAGE_CODE =
   process.env.VITE_DEFAULT_LANGUAGE_CODE || 'en';
 process.env.VITE_BASE_URL = process.env.VITE_BASE_URL || '/';
+// Vite 内置变量 BASE_URL(公开 base 路径,默认 '/'):组件中以
+// `${import.meta.env.BASE_URL}xxx` 拼接资源地址(如 TopBar 的 logo),
+// transformer 将 import.meta.env 替换为 process.env,此处必须注入,
+// 否则拼接结果为 "undefinedxxx"(top-bar logo 断言失败的根因)。
+process.env.BASE_URL = process.env.BASE_URL || '/';
 process.env.VITE_INTELLECT_ENTERPRISE =
   process.env.VITE_INTELLECT_ENTERPRISE || '';
 process.env.DEV = 'true';
