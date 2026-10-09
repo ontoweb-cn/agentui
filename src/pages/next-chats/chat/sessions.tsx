@@ -168,7 +168,9 @@ export function Sessions({ handleConversationCardClick }: SessionProps) {
 
   return (
     <aside
-      className="p-5 pr-2.5 w-[296px] flex flex-col"
+      /* 顶部内边距 2px(pt-0.5):与 CardHeader 对齐,使头像行文字与卡片标题文字同高
+          (两侧文字行盒均距各自容器顶 6px:2px padding + 4px flex 居中) */
+      className="pt-0.5 pb-5 pl-5 pr-2.5 w-[296px] flex flex-col"
       role="complementary"
       data-testid="chat-detail-sessions"
     >

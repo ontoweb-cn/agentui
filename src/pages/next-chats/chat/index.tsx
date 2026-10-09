@@ -139,18 +139,21 @@ export default function Chat() {
 
   const chatContent = (
     <section className="h-full flex flex-col" data-testid="chat-detail">
-      {/* 卡片四周统一 10px(p-2.5)边距:上(pt) 右(pr) 对齐导航栏/视口缘,下(pb);
-          左侧间隔由 Sessions 的 pr-2.5 提供 */}
-      <article className="flex flex-1 min-h-0 pt-2.5 pr-2.5 pb-2.5">
+      {/* 卡片四周统一 10px(p-2.5)边距:右(pr) 下(pb);顶部按需求压缩为 2px(pt-0.5),
+          使 Sessions 与卡片顶部边缘 Y=76px(导航栏 74 + 2) */
+      }
+      <article className="flex flex-1 min-h-0 pt-0.5 pr-2.5 pb-2.5">
         <Sessions handleConversationCardClick={handleSessionClick}></Sessions>
 
         <Card className="flex-1 min-w-0 bg-transparent border-none shadow-none h-full">
           <CardContent className="flex p-0 h-full">
             {/* 聊天区着色:--bg-list 实色微抬升表面,light #f6f6f7 / dark #38383a,
                 与页面底色(--bg-base)形成分区;气泡/输入框的 --bg-card 叠加在其上形成二层对比 */}
+            {/* 头部垂直内边距 2px(py-0.5):标题字形距卡片上下边框约 10px
+                (2px padding + 按钮行居中 4px + 行高半行距 4px) */}
             <Card className="flex flex-col flex-1 bg-bg-list min-w-0">
               <CardHeader
-                className={cn('p-5', {
+                className={cn('px-5 py-0.5', {
                   'border-b-0.5 border-border-button': hasSingleChatBox,
                 })}
               >
