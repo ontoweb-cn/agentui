@@ -24,8 +24,7 @@ export type CapabilityName = keyof CapabilitiesResponse['capabilities'];
  * - userId 未就绪(未登录/会话探测中)时 enabled=false,不发请求
  * - tenantId 变化时自动重新查询
  * - BFF 侧保证:租户解析不到 intellect-rag 后端时,RAG 依赖能力显式为 false
- */
-export function useHarnessCapabilities(): {
+ */export function useHarnessCapabilities(): {
   data?: CapabilitiesResponse;
   isLoading: boolean;
   error?: Error;
@@ -33,9 +32,12 @@ export function useHarnessCapabilities(): {
 } {
   const { data: userInfo } = useFetchUserInfo();
 
-  // userId 从用户中心取(/auth/me);tenantId 取后端切换器选择(缺省 '0')
+  // tenantId 取后端切换器选择(缺省 '0')
   const tenantId = localStorage.getItem(BackendId) || '0';
-  const userId = (userInfo as { id?: string } | undefined)?.id;
+  // userId 字段因模式而异:enterprise /auth/me 返回 member_id(映射自
+  // intellect-team 的 id,无 id 字段);community(RAG /users/me)返回 id
+  const rawUser = userInfo as { id?: string; member_id?: string } | undefined;
+  const userId = rawUser?.member_id ?? rawUser?.id;
 
   const { data, isLoading, error, refetch } = useQuery<
     CapabilitiesResponse,
