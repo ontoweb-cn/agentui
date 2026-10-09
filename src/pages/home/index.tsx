@@ -1,7 +1,6 @@
 import { PageContainer } from '@/layouts/components/page-container';
 import { useIsCapabilityEnabled } from '@/hooks/use-harness-capabilities';
 import { Applications } from './applications';
-import { NextBanner } from './banner';
 import { Datasets } from './datasets';
 
 const Home = () => {
@@ -10,10 +9,6 @@ const Home = () => {
   return (
     <PageContainer>
       <article>
-        <header className="mb-8">
-          <NextBanner />
-        </header>
-
         {knowledgeBase && <Datasets />}
         <Applications />
       </article>
