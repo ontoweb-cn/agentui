@@ -92,10 +92,10 @@ export default {
       displayNamePlaceholder: '请输入显示名称',
       register: '创建账户',
       continue: '继续',
-      title: 'A leading RAG engine for LLM context',
+      title: 'INTELLECT AGENT HARNESS',
       start: '立即开始',
       description:
-        '免费注册以探索顶级 RAG 技术。 创建知识库和人工智能来增强您的业务',
+        '免费注册，构建与编排智能体。创建知识库和工具，赋能您的业务',
       review: '来自 500 多条评论',
     },
     header: {

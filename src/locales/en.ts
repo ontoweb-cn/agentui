@@ -107,10 +107,10 @@ export default {
       displayNamePlaceholder: 'Please input display name',
       register: 'Create an account',
       continue: 'Continue',
-      title: 'A leading RAG engine for LLM context',
+      title: 'INTELLECT AGENT HARNESS',
       start: "Let's get started",
       description:
-        'Sign up for free to explore top RAG technology. Create datasets and AIs to empower your business.',
+        'Sign up for free to build and orchestrate intelligent agents. Create knowledge bases and tools to empower your business.',
       review: 'from 500+ reviews',
       seeAll: 'See all',
     },
