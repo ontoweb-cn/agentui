@@ -1,13 +1,8 @@
 import { IconFontFill } from '@/components/icon-font';
 import { IntellectAvatar } from '@/components/intellect-avatar';
-import ThemeSwitch from '@/components/theme-switch';
 import { Button } from '@/components/ui/button';
-import { Domain } from '@/constants/common';
 import { useLogout } from '@/hooks/use-login-request';
-import {
-  useFetchSystemVersion,
-  useFetchUserInfo,
-} from '@/hooks/use-user-setting-request';
+import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 import { TFunction } from 'i18next';
@@ -21,7 +16,6 @@ import {
   LucideUser,
   LucideUsers,
 } from 'lucide-react';
-import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHandleMenuClick } from './hooks';
 
@@ -70,13 +64,7 @@ const menuItems = (t: TFunction) => [
 export function SideBar() {
   const { data: userInfo } = useFetchUserInfo();
   const { handleMenuClick, active: activeItemKey } = useHandleMenuClick();
-  const { version, fetchSystemVersion } = useFetchSystemVersion();
   const { t } = useTranslation();
-  useEffect(() => {
-    if (location.host !== Domain) {
-      fetchSystemVersion();
-    }
-  }, [fetchSystemVersion]);
   const { logout } = useLogout();
 
   return (
@@ -143,12 +131,6 @@ export function SideBar() {
       </nav>
 
       <footer className="p-2 md:p-6 mt-auto">
-        <div className="hidden md:flex items-center gap-2 mb-6 justify-between">
-          <span className="text-xs text-accent-primary">{version}</span>
-
-          <ThemeSwitch />
-        </div>
-
         <Button
           block
           size="lg"
