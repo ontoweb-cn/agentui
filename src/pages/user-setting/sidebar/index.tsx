@@ -11,6 +11,8 @@ import {
   LucideCircleHelp,
   LucideMessagesSquare,
   LucideLogOut,
+  LucidePanelLeftClose,
+  LucidePanelLeftOpen,
   LucideServer,
   LucideUnplug,
   LucideUser,
@@ -61,30 +63,77 @@ const menuItems = (t: TFunction) => [
   },
 ];
 
-export function SideBar() {
+export function SideBar({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   const { data: userInfo } = useFetchUserInfo();
   const { handleMenuClick, active: activeItemKey } = useHandleMenuClick();
   const { t } = useTranslation();
   const { logout } = useLogout();
 
   return (
-    <aside className="shrink-0 w-16 md:w-[303px] bg-bg-base flex flex-col overflow-hidden">
+    <aside
+      className={cn(
+        'shrink-0 w-16 bg-bg-base flex flex-col overflow-hidden',
+        !collapsed && 'md:w-[303px]',
+      )}
+    >
       <header>
-        <h1 className="px-2 md:px-6 flex gap-2.5 items-center justify-center md:justify-start font-normal">
+        <h1
+          className={cn(
+            'px-2 flex gap-2.5 items-center justify-center font-normal',
+            !collapsed && 'md:justify-start md:px-6',
+            collapsed && 'flex-col py-2',
+          )}
+        >
+          {collapsed && (
+            <Button
+              variant="transparent"
+              size="icon-sm"
+              className="border-0 hidden md:inline-flex"
+              onClick={onToggle}
+              data-testid="user-setting-sidebar-open"
+            >
+              <LucidePanelLeftOpen />
+            </Button>
+          )}
+
           <IntellectAvatar
             avatar={userInfo?.avatar}
             name={userInfo?.nickname}
             isPerson
           />
 
-          <p className="hidden md:block text-sm text-text-primary truncate">
-            {userInfo?.email}
-          </p>
+          {!collapsed && (
+            <>
+              <p className="hidden md:block flex-1 text-sm text-text-primary truncate">
+                {userInfo?.email}
+              </p>
+              <Button
+                variant="transparent"
+                size="icon-sm"
+                className="border-0 hidden md:inline-flex"
+                onClick={onToggle}
+                data-testid="user-setting-sidebar-close"
+              >
+                <LucidePanelLeftClose />
+              </Button>
+            </>
+          )}
         </h1>
       </header>
 
       <nav className="flex-1 overflow-auto mt-4 py-1">
-        <ul className="px-2 md:px-6 flex flex-col gap-2 md:gap-5 items-center md:items-stretch">
+        <ul
+          className={cn(
+            'px-2 flex flex-col gap-2 items-center',
+            !collapsed && 'md:px-6 md:gap-3 md:items-stretch',
+          )}
+        >
           {menuItems(t).map((item) => {
             const { key, icon, label, ...rest } = item;
 
@@ -97,13 +146,21 @@ export function SideBar() {
                   aria-label={label}
                   className={cn(
                     'relative h-10 text-base max-md:size-10 max-md:p-0 max-md:justify-center justify-start gap-2.5 px-2 md:px-3',
+                    collapsed && 'md:size-10 md:p-0 md:justify-center',
                     activeItemKey === key && 'bg-bg-card text-text-primary',
                   )}
                   onClick={handleMenuClick(key)}
                 >
-                  <span className="flex items-center gap-2.5 max-md:gap-0">
+                  <span
+                    className={cn(
+                      'flex items-center gap-2.5 max-md:gap-0',
+                      collapsed && 'md:gap-0',
+                    )}
+                  >
                     {icon}
-                    <span className="hidden md:inline">{label}</span>
+                    <span className={cn('hidden', !collapsed && 'md:inline')}>
+                      {label}
+                    </span>
                   </span>
                 </Button>
               </li>
@@ -119,28 +176,43 @@ export function SideBar() {
               to={DOC_URL}
               target="_blank"
               rel="noreferrer noopener"
-              className="relative h-10 text-base max-md:size-10 max-md:p-0 max-md:justify-center justify-start gap-2.5 px-2 md:px-3"
+              className={cn(
+                'relative h-10 text-base max-md:size-10 max-md:p-0 max-md:justify-center justify-start gap-2.5 px-2 md:px-3',
+                collapsed && 'md:size-10 md:p-0 md:justify-center',
+              )}
             >
-              <span className="flex items-center gap-2.5 max-md:gap-0">
+              <span
+                className={cn(
+                  'flex items-center gap-2.5 max-md:gap-0',
+                  collapsed && 'md:gap-0',
+                )}
+              >
                 <LucideCircleHelp className="size-[1em]" />
-                <span className="hidden md:inline">{t('setting.help')}</span>
+                <span className={cn('hidden', !collapsed && 'md:inline')}>
+                  {t('setting.help')}
+                </span>
               </span>
             </Button>
           </li>
         </ul>
       </nav>
 
-      <footer className="p-2 md:p-6 mt-auto">
+      <footer className="px-2 md:px-6 pb-4 mt-auto">
         <Button
           block
           size="lg"
           variant="transparent"
           aria-label={t('setting.logout')}
-          className="max-md:size-10 max-md:p-0 max-md:mx-auto max-md:justify-center"
+          className={cn(
+            'max-md:size-10 max-md:p-0 max-md:mx-auto max-md:justify-center',
+            collapsed && 'md:size-10 md:p-0 md:mx-auto md:justify-center',
+          )}
           onClick={() => logout()}
         >
-          <LucideLogOut className="size-[1em] md:hidden" />
-          <span className="hidden md:inline">{t('setting.logout')}</span>
+          <LucideLogOut className={cn('size-[1em]', !collapsed && 'md:hidden')} />
+          <span className={cn('hidden', !collapsed && 'md:inline')}>
+            {t('setting.logout')}
+          </span>
         </Button>
       </footer>
     </aside>
