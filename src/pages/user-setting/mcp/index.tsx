@@ -102,7 +102,7 @@ export default function McpServer() {
         </header>
       }
     >
-      <div className="h-full p-5 overflow-x-hidden overflow-y-auto">
+      <div className="h-full p-3 overflow-x-hidden overflow-y-auto">
         {data.mcp_servers?.length ? (
           <>
             {isSelectionMode && (

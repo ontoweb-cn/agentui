@@ -94,7 +94,7 @@ const DataSource = () => {
         </header>
       }
     >
-      <div className="h-full p-5 overflow-x-hidden overflow-y-auto">
+      <div className="h-full p-3 overflow-x-hidden overflow-y-auto">
         <section className="flex flex-col gap-3">
           {categorizedList?.length <= 0 && (
             <div className="text-text-secondary w-full flex justify-center items-center h-20">

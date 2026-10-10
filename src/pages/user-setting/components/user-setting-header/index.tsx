@@ -19,7 +19,7 @@ export function ProfileSettingWrapperCard({
       as="article"
       className="relative w-full border-border-button bg-transparent border-0.5 flex flex-col"
     >
-      <CardHeader className="flex-0 border-b-0.5 border-border-button p-5">
+      <CardHeader className="flex-0 border-b-0.5 border-border-button p-3">
         {header}
       </CardHeader>
 
