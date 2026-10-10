@@ -17,9 +17,9 @@ export const useNavigatePage = () => {
   const navigateToDatasetList = useCallback(
     ({ isCreate = false }: { isCreate?: boolean }) => {
       if (isCreate) {
-        navigate(Routes.Datasets + '?isCreate=true');
+        navigate(Routes.KnowledgeDataset + '?isCreate=true');
       } else {
-        navigate(Routes.Datasets);
+        navigate(Routes.KnowledgeDataset);
       }
     },
     [navigate],
@@ -70,7 +70,7 @@ export const useNavigatePage = () => {
   }, [navigate]);
 
   const navigateToChatList = useCallback(() => {
-    navigate(Routes.Chats);
+    navigate(Routes.TasksChat);
   }, [navigate]);
 
   const navigateToChat = useCallback(
@@ -81,7 +81,7 @@ export const useNavigatePage = () => {
   );
 
   const navigateToAgents = useCallback(() => {
-    navigate(Routes.Agents);
+    navigate(Routes.TasksAgent);
   }, [navigate]);
 
   const navigateToAgentList = useCallback(() => {
@@ -115,7 +115,7 @@ export const useNavigatePage = () => {
   }, [navigate]);
 
   const navigateToSearchList = useCallback(() => {
-    navigate(Routes.Searches);
+    navigate(Routes.KnowledgeSearch);
   }, [navigate]);
 
   const navigateToSearch = useCallback(
@@ -168,7 +168,7 @@ export const useNavigatePage = () => {
 
   const navigateToFiles = useCallback(
     (folderId?: string) => {
-      navigate(`${Routes.Files}?folderId=${folderId}`);
+      navigate(`${Routes.KnowledgeFiles}?folderId=${folderId}`);
     },
     [navigate],
   );

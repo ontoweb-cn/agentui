@@ -117,6 +117,10 @@ export default {
     header: {
       knowledgeBase: 'Dataset',
       chat: 'Chat',
+      tasks: 'Tasks',
+      knowledge: 'Knowledge',
+      collapseSidebar: 'Collapse sidebar',
+      expandSidebar: 'Expand sidebar',
       register: 'Register',
       signin: 'Sign in',
       home: 'Home',

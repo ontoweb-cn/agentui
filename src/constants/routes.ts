@@ -31,6 +31,13 @@ export enum Routes {
   SearchShare = '/search/share',
   Chats = '/chats',
   Chat = '/chat',
+  Tasks = '/tasks',
+  TasksChat = `${Routes.Tasks}/chat`,
+  TasksAgent = `${Routes.Tasks}/agent`,
+  Knowledge = '/knowledge',
+  KnowledgeDataset = `${Routes.Knowledge}/dataset`,
+  KnowledgeFiles = `${Routes.Knowledge}/files`,
+  KnowledgeSearch = `${Routes.Knowledge}/search`,
 
   Skills = '/files/skills',
   ProfileSetting = '/profile-setting',

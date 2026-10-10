@@ -74,7 +74,7 @@ export function Applications() {
   };
 
   return (
-    <section className="mt-12">
+    <section>
       <header className="flex justify-between items-center mb-2.5">
         <h2 className="text-2xl font-semibold">
           <HomeIcon

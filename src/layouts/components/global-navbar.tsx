@@ -22,11 +22,10 @@ const staticMenuItems = [
   { path: Routes.Root, name: 'header.home', icon: LucideHouse },
 ];
 
-// 菜单项 → 能力映射:能力为 false(如无 intellect-rag 后端)时隐藏对应入口
+// 菜单项 → 能力映射:能力为 false 时隐藏对应入口。
+// 知识库/文件管理已并入"知识"hub,入口隐藏在 hub 页内按能力处理,无需在此映射。
 const navCapabilityMap: Record<string, CapabilityName> = {
-  [Routes.Datasets]: 'knowledgeBase',
   [Routes.Memories]: 'memory',
-  [Routes.Files]: 'knowledgeBase',
 };
 
 /**

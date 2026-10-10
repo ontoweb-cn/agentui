@@ -101,6 +101,10 @@ export default {
     header: {
       knowledgeBase: '知识库',
       chat: '聊天',
+      tasks: '任务',
+      knowledge: '知识',
+      collapseSidebar: '收起侧栏',
+      expandSidebar: '展开侧栏',
       register: '注册',
       signin: '登录',
       home: '首页',

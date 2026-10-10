@@ -1,5 +1,6 @@
-import { LucideBot } from 'lucide-react';
+import { Routes } from '@/constants/routes';
 
+import { redirectPreservingSearch } from '../redirect';
 import type { ModuleDefinition } from '../_types';
 import { AgentRoutes } from './routes';
 
@@ -21,8 +22,9 @@ const definition: ModuleDefinition = {
       Component: () => import('@/layouts/root-layout'),
       children: [
         {
+          // 智能体列表已并入任务 hub(/tasks/agent),旧链接带 query 重定向
           path: AgentRoutes.Agents,
-          Component: () => import('@/pages/agents'),
+          loader: redirectPreservingSearch(Routes.TasksAgent),
         },
         {
           path: AgentRoutes.AgentTemplates,
@@ -30,15 +32,6 @@ const definition: ModuleDefinition = {
           Component: () => import('@/pages/agents/agent-templates'),
         },
       ],
-    },
-  ],
-  nav: [
-    {
-      path: AgentRoutes.Agents,
-      labelKey: 'header.flow',
-      icon: LucideBot,
-      pathMap: [AgentRoutes.Agents, AgentRoutes.AgentTemplates],
-      testId: 'nav-agent',
     },
   ],
   i18n: {

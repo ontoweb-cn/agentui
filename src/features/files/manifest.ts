@@ -1,5 +1,6 @@
-import { LucideFolderOpen } from 'lucide-react';
+import { Routes } from '@/constants/routes';
 
+import { redirectPreservingSearch } from '../redirect';
 import type { ModuleDefinition } from '../_types';
 import { FileRoutes } from './routes';
 
@@ -13,22 +14,15 @@ const definition: ModuleDefinition = {
       Component: () => import('@/layouts/root-layout'),
       children: [
         {
+          // 文件管理列表已并入知识 hub(/knowledge/files),旧链接带 query 重定向
           path: FileRoutes.Files,
-          Component: () => import('@/pages/files'),
+          loader: redirectPreservingSearch(Routes.KnowledgeFiles),
         },
         {
           path: FileRoutes.Skills,
           Component: () => import('@/pages/skills'),
         },
       ],
-    },
-  ],
-  nav: [
-    {
-      path: FileRoutes.Files,
-      labelKey: 'header.fileManager',
-      icon: LucideFolderOpen,
-      pathMap: [FileRoutes.Files],
     },
   ],
   i18n: {

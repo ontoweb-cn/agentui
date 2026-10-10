@@ -1,5 +1,6 @@
-import { LucideDatabase } from 'lucide-react';
+import { Routes } from '@/constants/routes';
 
+import { redirectPreservingSearch } from '../redirect';
 import type { ModuleDefinition } from '../_types';
 import { DatasetRoutes } from './routes';
 
@@ -16,8 +17,9 @@ const definition: ModuleDefinition = {
       Component: () => import('@/layouts/root-layout'),
       children: [
         {
+          // 知识库列表已并入知识 hub(/knowledge/dataset),旧链接带 query 重定向
           path: DatasetRoutes.Datasets,
-          Component: () => import('@/pages/datasets'),
+          loader: redirectPreservingSearch(Routes.KnowledgeDataset),
         },
         {
           path: DatasetRoutes.DatasetBase,
@@ -46,14 +48,6 @@ const definition: ModuleDefinition = {
           ],
         },
       ],
-    },
-  ],
-  nav: [
-    {
-      path: DatasetRoutes.Datasets,
-      labelKey: 'header.dataset',
-      icon: LucideDatabase,
-      pathMap: [DatasetRoutes.Datasets, DatasetRoutes.DatasetBase],
     },
   ],
   i18n: {

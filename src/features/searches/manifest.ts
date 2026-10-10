@@ -1,5 +1,6 @@
-import { LucideSearch } from 'lucide-react';
+import { Routes } from '@/constants/routes';
 
+import { redirectPreservingSearch } from '../redirect';
 import type { ModuleDefinition } from '../_types';
 import { SearchRoutes } from './routes';
 
@@ -17,8 +18,9 @@ const definition: ModuleDefinition = {
       Component: () => import('@/layouts/root-layout'),
       children: [
         {
+          // 搜索列表已并入知识 hub(/knowledge/search),旧链接带 query 重定向
           path: SearchRoutes.Searches,
-          Component: () => import('@/pages/next-searches'),
+          loader: redirectPreservingSearch(Routes.KnowledgeSearch),
         },
         {
           path: `${SearchRoutes.Search}/:id`,
@@ -26,15 +28,6 @@ const definition: ModuleDefinition = {
           Component: () => import('@/pages/next-search'),
         },
       ],
-    },
-  ],
-  nav: [
-    {
-      path: SearchRoutes.Searches,
-      labelKey: 'header.search',
-      icon: LucideSearch,
-      pathMap: [SearchRoutes.Searches, SearchRoutes.Search],
-      testId: 'nav-search',
     },
   ],
   i18n: {

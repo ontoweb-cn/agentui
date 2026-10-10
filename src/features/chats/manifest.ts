@@ -1,5 +1,6 @@
-import { LucideMessageCircle } from 'lucide-react';
+import { Routes } from '@/constants/routes';
 
+import { redirectPreservingSearch } from '../redirect';
 import type { ModuleDefinition } from '../_types';
 import { ChatRoutes } from './routes';
 
@@ -23,23 +24,9 @@ const definition: ModuleDefinition = {
       Component: () => import('@/pages/next-chats/chat'),
     },
     {
-      path: '/',
-      Component: () => import('@/layouts/root-layout'),
-      children: [
-        {
-          path: ChatRoutes.Chats,
-          Component: () => import('@/pages/next-chats'),
-        },
-      ],
-    },
-  ],
-  nav: [
-    {
+      // 聊天列表已并入任务 hub(/tasks/chat),旧链接带 query 重定向
       path: ChatRoutes.Chats,
-      labelKey: 'header.chat',
-      icon: LucideMessageCircle,
-      pathMap: [ChatRoutes.Chats, ChatRoutes.Chat],
-      testId: 'nav-chat',
+      loader: redirectPreservingSearch(Routes.TasksChat),
     },
   ],
   i18n: {

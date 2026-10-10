@@ -57,7 +57,8 @@ export function Datasets() {
                 }
               </CardSineLineContainer>
             )}
-            {kbs?.length <= 0 && (
+            {/* 后端对无数据集账号返回 data:null,此处需同时覆盖 null 与 [] */}
+            {!kbs?.length && (
               <EmptyAppCard
                 type={EmptyCardType.Dataset}
                 onClick={() => navigateToDatasetList({ isCreate: true })}
