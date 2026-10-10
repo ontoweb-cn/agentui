@@ -7,7 +7,7 @@ export const healthRoutes = new Hono();
 healthRoutes.get('/', (c) => {
   return c.json({
     status: 'ok',
-    service: 'openkg-agentui-bff',
+    service: 'intellect-agentui-bff',
     timestamp: new Date().toISOString(),
   });
 });
@@ -21,7 +21,7 @@ healthRoutes.get('/readiness', (c) => {
   return c.json(
     {
       status: overall,
-      service: 'openkg-agentui-bff',
+      service: 'intellect-agentui-bff',
       tenants: getAllTenantStatuses(),
       timestamp: new Date().toISOString(),
     },
