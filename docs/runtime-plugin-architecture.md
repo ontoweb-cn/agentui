@@ -82,7 +82,17 @@
 - wizard 双逻辑 bug(`dae20e4`):setup 未授权 500(中间件缺 return)、RAG 探测前缀与 adapter 矛盾(子路径部署无解,已对齐 + 401 不回退语义);
 - 认证审计四项(`f515dde`):详见 §2.2——除验证型中间件外,含 proxy flag 语义统一(缺陷 B)、teams/projects 改 store 解析消除双事实源(缺陷 C)、上游 401 透传与网关错误区分(缺陷 D)。
 
-## 五、未完成任务清单
+## 五、当前运行态(本机开发环境)
+
+| 服务 | 端口 | 说明 |
+|---|---|---|
+| agentui vite dev | 9391 | 含 wargame 热更(`VITE_PLUGIN_DEV_ENTRIES` 已启用) |
+| BFF | 9390 | 绑定 127.0.0.1;对接 ai.wust.edu.cn gateway/kb |
+| wargamesrv | 9385 | 插件后端(PG 86 想定 + Redis 事件桥) |
+| 插件 dev server | 9395 | web/agentui `npm run dev` |
+| 冒烟容器 agentui-smoke | 8080 | 发版验证用,看完可 `docker rm -f` |
+
+## 六、未完成任务清单
 
 ### 近期(待决策/环境)
 

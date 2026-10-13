@@ -341,6 +341,8 @@ export function activate(ctx: PluginContext) {
 
 ## 九、遗留与延后项
 
+> 权威任务清单以 [runtime-plugin-architecture.md](./runtime-plugin-architecture.md) §六 为准;本节为方案时点的原始判断,仅保留决策轨迹。
+
 1. **物理拆仓**(§3.1 触发条件驱动);
 2. **插件市场/远程索引**(对齐 QwenPaw `market/` + OSS index.json 模式,届时再设计);
 3. **iframe 隔离档**(不可信插件场景,机制占位 `render: "iframe"`,实现延后);
@@ -382,7 +384,7 @@ export function activate(ctx: PluginContext) {
    `absolute_redirect off`);
 4. entrypoint envsubst 缺 `WARGAME_HOST/PORT` 替换。
 
-### 10.3 路由表(§7)与实现的差异注记
+### 10.4 路由表(§7)与实现的差异注记
 
 §7 表格为设计稿,实际以 `bff/src/routes/plugins.ts` 为准:
 
@@ -394,7 +396,7 @@ export function activate(ctx: PluginContext) {
 | proxy "token 注入" | **透传**非注入:Authorization/查询串由调用方携带,BFF 只复制安全头 |
 | DELETE "onDeactivate → 移 CSS/运行时状态" | 服务端删目录 ✓;前端运行时失效(免刷新)留任务清单 |
 
-### 10.4 分期落地对照
+### 10.5 分期落地对照
 
 P0(内核)✅ / P1(插件工程)✅ / P2(联调,含 wargamesrv 真实数据 86 想定 + SSE)✅ /
 P3(删除编译期 wargame)✅ / P4 部分:词条+卡片本地化 ✅、SSE 代理收编 ✅、

@@ -5,6 +5,15 @@
 > `web/qwenpaw`(QwenPaw 宿主,同一源码基线的另一档)。
 > 机制设计:见 [cognitive-wargame-plugin-migration-design.md](./cognitive-wargame-plugin-migration-design.md)(含实现纪要)。
 
+## 0. 工程结构速览
+
+| 位置 | 内容 |
+|---|---|
+| 插件仓库 `cognitive-wargame/web/agentui/` | app.json、src/(入口+页面+词条)、scripts/(构建/边界/CI)、ui/dist(产物) |
+| 宿主内核 `agentui/src/plugins/` | host-global(window.AgentUI)、loader(装载)、runtime(bootstrap) |
+| BFF `agentui/bff/src/routes/plugins.ts` | 列表/文件/安装/代理/卸载 |
+| 部署 `agentui/deploy/` | 发版 runbook、compose/k8s、插件 bundle |
+
 ## 1. 形态与信任模型
 
 插件是**自包含单文件 ESM 产物**(自带 React/UI 依赖/Tailwind CSS/词条),
@@ -40,8 +49,9 @@ localStorage(含宿主登录 token)。本机制只面向**内部可信仓库**�
   },                                 //   宿主 i18n 注入(单语言 200KB 上限)
   "backend": {                       // 可选:后端代理声明
     "type": "proxy",
-    "target": "http://127.0.0.1:9385"  // 仅允许回环/RFC1918(严格白名单);
-  }                                    // 容器/k8s 网络经宿主 env override 指向服务名
+    "target": "http://127.0.0.1:9385"  // 严格回环/RFC1918 白名单(不受控输入);
+  }                                    // 容器/k8s 网络经宿主 env
+                                       // BFF_PLUGIN_BACKEND_OVERRIDES 覆盖(宽松级,允许服务名)
 }
 ```
 
@@ -122,6 +132,11 @@ curl -X POST http://localhost:9390/plugins/install \
 **生产**(方案 B,镜像烤入):`scripts/package-plugin-bundle.sh` 打包 →
 随 agentui 镜像分发,容器启动自动安装;`BFF_PLUGIN_BACKEND_OVERRIDES`
 按插件 id 覆盖 backend.target(存在即生效,改 env 重启容器即生效)。
+
+**卸载**:`DELETE /api/bff/plugins/<id>`(需 admin token)删除安装目录;
+已装载插件的前端实例**需刷新页面才失效**(已知限制,不做运行时卸载)。
+
+**enable/disable 启停路由未实现**(当前启停=删除/重装)。
 
 宿主侧安全约束(安装面):token fail-closed、entry/mount path 白名单、
 backend.target 严格 IP 白名单(override 走部署者宽松级)——
