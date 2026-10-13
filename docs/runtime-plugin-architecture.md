@@ -78,6 +78,10 @@
 - E2E:卡片装载、24 条深链、插件内导航 + pushState/popstate 双向桥、真实登录态下 gateway 会话数据 + wargame 86 想定 + SSE 事件流;
 - 容器冒烟:entrypoint 自动安装、nginx 全链路(列表/JS/REST/SSE/深链)、垃圾 cookie 回归矩阵全 401。
 
+**后续修复归档**(总纲正文之外,经评审发现并修复):
+- wizard 双逻辑 bug(`dae20e4`):setup 未授权 500(中间件缺 return)、RAG 探测前缀与 adapter 矛盾(子路径部署无解,已对齐 + 401 不回退语义);
+- 认证审计四项(`f515dde`):详见 §2.2——除验证型中间件外,含 proxy flag 语义统一(缺陷 B)、teams/projects 改 store 解析消除双事实源(缺陷 C)、上游 401 透传与网关错误区分(缺陷 D)。
+
 ## 五、未完成任务清单
 
 ### 近期(待决策/环境)

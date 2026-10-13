@@ -1,6 +1,6 @@
 # Cognitive Wargame 插件化迁移 — 技术方案(评审后)
 
-> **Status**: 评审通过(附 3 项 P0 前置验证),待实施
+> **Status**: 已实施(2026-10-13)——本文为方案原文与评审记录,现状以 [§十 实现纪要](#十实现纪要2026-10-13实施完成后补记) 为准;架构总纲见 [runtime-plugin-architecture.md](./runtime-plugin-architecture.md)
 > **Date**: 2026-10-13
 > **Prerequisites**: 无(不依赖 spec/008、009;与 canvas 插件化并行不冲突)
 > **Related**: [vite-architecture.md](./vite-architecture.md) ch.16(方案 A→D 演进)、[canvas-plugin-extraction-design.md](./canvas-plugin-extraction-design.md)(方案 B 先例)
@@ -381,6 +381,18 @@ export function activate(ctx: PluginContext) {
 3. 无尾斜杠 `/api/bff/plugins` 触发目录 301 且丢端口(精确 location +
    `absolute_redirect off`);
 4. entrypoint envsubst 缺 `WARGAME_HOST/PORT` 替换。
+
+### 10.3 路由表(§7)与实现的差异注记
+
+§7 表格为设计稿,实际以 `bff/src/routes/plugins.ts` 为准:
+
+| §7 设计 | 实际 |
+|---|---|
+| `POST /plugins/:id/{enable,disable}` 启停 | **未实现**(留任务清单;当前启停=删除/重装) |
+| files 路由 "immutable 缓存" | ETag/304 协商 + `no-cache`(hash 文件名随 C 方案落地后切 immutable) |
+| install "Zip-Slip 防护" | 当前仅本地路径来源(无 zip);防护在 C 方案实现时落地 |
+| proxy "token 注入" | **透传**非注入:Authorization/查询串由调用方携带,BFF 只复制安全头 |
+| DELETE "onDeactivate → 移 CSS/运行时状态" | 服务端删目录 ✓;前端运行时失效(免刷新)留任务清单 |
 
 ### 10.4 分期落地对照
 

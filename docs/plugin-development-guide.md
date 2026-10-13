@@ -101,7 +101,13 @@ window.AgentUI!.registerApp({
   `/api/bff/plugins/<id>/proxy/...`(app.json 声明 backend 后自动可用,
   流式透传保留 `text/event-stream`);
 - EventSource 不支持自定义 header:token 沿用 `?token=`(BFF 代理透传查询串);
-- REST 的 token 与宿主同源共享(localStorage `Authorization`)。
+- **凭证形态(2026-10-13 认证审计后)**:
+  - 优先依赖**同源 cookie 会话**(企业模式 `imt_token` HttpOnly,fetch 同源
+    默认携带)——BFF 网关已升级为验证型会话校验,垃圾/过期凭证一律 401;
+  - localStorage token(键 `Authorization`)**仅社区模式有效**;企业模式下
+    `host.getApiToken()` 可能返回空或过期值,**勿作为唯一凭证来源**;
+  - 插件后端自有的 API key(如 wargamesrv 的 `?token=`)由 BFF 代理原样
+    透传,不参与宿主会话体系。
 
 ## 6. 安装与分发
 
@@ -121,8 +127,25 @@ curl -X POST http://localhost:9390/plugins/install \
 backend.target 严格 IP 白名单(override 走部署者宽松级)——
 详见 `bff/src/routes/plugins.ts` 头部注释与测试。
 
-## 7. 调试
+## 7. 开发热更、测试与调试
 
+**本地热更(推荐,免 build+reinstall)**——三步(详见 web/agentui README):
+
+```bash
+# 1) 插件仓库起 dev server(9395)
+npm run dev
+# 2) agentui .env:VITE_PLUGIN_DEV_ENTRIES=<插件id>(dev only,生产忽略)
+# 3) 重启 agentui vite(npm run dev)
+```
+
+之后改插件源码**刷新浏览器即生效**。注意 dev 直连绕过 BFF 文件路由的
+校验面(仅限本机 dev server,生产构建编译期排除)。
+
+**测试**:插件仓库 `npm test`(vitest+jsdom)覆盖入口契约——
+registerApp 侧效果、语言归一化、mount/dispose 生命周期、宿主事件订阅;
+`npm run lint:imports` 守住自包含边界。CI 集成见 `web/agentui/scripts/ci.sh`。
+
+**调试**:
 - 装载失败会在挂载页显示错误占位与**重试**按钮(宿主侧);
 - 插件内建议自带 ErrorBoundary(渲染异常显性化,参考 web/agentui
   的 PluginErrorBoundary);
