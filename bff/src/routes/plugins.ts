@@ -19,9 +19,10 @@
  *   (见 validateEntry/validateMountPath)。
  */
 import { Hono } from 'hono';
-import { existsSync } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
 import { cp, mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
+import { Readable } from 'node:stream';
 
 import { fileURLToPath } from 'node:url';
 
@@ -55,11 +56,20 @@ interface PluginAppJson {
   version?: string;
   path: string;
   label: string;
+  labelKey?: string;
   description?: string;
+  descriptionKey?: string;
   icon?: string;
   order?: number;
   entry: string;
   peer?: { react?: string };
+  /** 词条产物声明(#7):列表接口读取并内联下发,宿主 i18n init 后注入。 */
+  i18n?: { files: Record<string, string> };
+  /**
+   * 插件后端声明(#5):type=proxy 时 BFF 提供 /plugins/:id/proxy/* 流式透传
+   * (SSE 友好)。target 默认回环,可经 app.json 覆盖。
+   */
+  backend?: { type: 'proxy'; target: string };
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -139,6 +149,51 @@ function allowedInstallSources(): Set<string> {
 
 export const pluginsRoutes = new Hono();
 
+/** 单语言词条内联上限,超限跳过并告警(词条应精简或拆分)。 */
+const I18N_INLINE_LIMIT = 200 * 1024;
+
+/**
+ * 把插件声明的词条产物内联进元数据(#7):
+ * 宿主在 i18n init 后同步注入,插件 JS 未装载时卡片文案即可本地化。
+ * 读取失败/超限时静默跳过(卡片回退 app.json 的 label 字面值)。
+ */
+async function inlineI18nResources(
+  pluginDir: string,
+  meta: PluginAppJson,
+): Promise<void> {
+  if (!meta.i18n?.files) {
+    return;
+  }
+  const resources: Record<string, unknown> = {};
+  for (const [lang, relPath] of Object.entries(meta.i18n.files)) {
+    if (!/^[\w-]+$/.test(lang) || !/^[\w./-]+$/.test(relPath)) {
+      continue;
+    }
+    const file = resolve(pluginDir, relPath);
+    if (!file.startsWith(`${resolve(pluginDir)}${sep}`)) {
+      continue;
+    }
+    try {
+      const info = await stat(file);
+      if (!info.isFile() || info.size > I18N_INLINE_LIMIT) {
+        if (info.isFile()) {
+          console.warn(
+            `[plugins] ${meta.id} 词条 ${lang} 超过 ${I18N_INLINE_LIMIT}B,跳过内联`,
+          );
+        }
+        continue;
+      }
+      resources[lang] = JSON.parse(await readFile(file, 'utf-8'));
+    } catch {
+      // 词条缺失不阻塞插件注册
+    }
+  }
+  if (Object.keys(resources).length > 0) {
+    (meta as PluginAppJson & { i18nResources?: Record<string, unknown> })
+      .i18nResources = resources;
+  }
+}
+
 /** 读取并校验单个插件目录的 app.json;缺失或校验不过均返回 null(列表层跳过)。 */
 async function readPluginMeta(
   pluginDir: string,
@@ -171,7 +226,9 @@ pluginsRoutes.get('/plugins', async (c) => {
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
     const meta = await readPluginMeta(join(PLUGINS_DIR, entry.name));
-    if (meta) metas.push(meta);
+    if (!meta) continue;
+    await inlineI18nResources(join(PLUGINS_DIR, entry.name), meta);
+    metas.push(meta);
   }
   return c.json(metas);
 });
@@ -188,23 +245,32 @@ pluginsRoutes.get('/plugins/:id/files/*', async (c) => {
   if (!target.startsWith(`${pluginRoot}${sep}`)) {
     return c.text('Forbidden', 403);
   }
+  let info;
   try {
-    const info = await stat(target);
+    info = await stat(target);
     if (!info.isFile()) {
       return c.text('Not Found', 404);
     }
   } catch {
     return c.text('Not Found', 404);
   }
+
+  // ETag/304(#8):产物重装后 mtime/size 变化即失效;命中省去 5MB 重传
+  const etag = `"${info.size}-${Math.round(info.mtimeMs)}"`;
+  if (c.req.header('If-None-Match') === etag) {
+    return c.newResponse(null, 304);
+  }
+
   const ext = target.slice(target.lastIndexOf('.'));
-  const body = await readFile(target);
-  c.header(
-    'Content-Type',
-    MIME_TYPES[ext] ?? 'application/octet-stream',
-  );
-  // 产物按内容寻址前不可变缓存;开发环境保守禁缓存
+  c.header('Content-Type', MIME_TYPES[ext] ?? 'application/octet-stream');
+  // hash 文件名方案(#2b 部署形态)落地前保守禁缓存,靠 ETag 协商
   c.header('Cache-Control', 'no-cache');
-  return c.body(new Uint8Array(body));
+  c.header('ETag', etag);
+  // 流式响应(#8):大产物(约 5MB)不再整读进内存
+  const stream = Readable.toWeb(
+    createReadStream(target),
+  ) as ReadableStream<Uint8Array>;
+  return c.body(stream);
 });
 
 pluginsRoutes.post('/plugins/install', async (c) => {
@@ -250,6 +316,86 @@ pluginsRoutes.post('/plugins/install', async (c) => {
   }
 
   return c.json({ installed: meta.id, version: meta.version ?? null });
+});
+
+/** 插件后端代理(#5):流式透传,SSE 友好;查询串(含 ?token=)原样透传。 */
+pluginsRoutes.all('/plugins/:id/proxy/*', async (c) => {
+  const id = c.req.param('id');
+  if (/[^\w.-]/.test(id)) {
+    return c.text('Forbidden', 403);
+  }
+  const pluginDir = resolve(PLUGINS_DIR, id);
+  if (!pluginDir.startsWith(`${PLUGINS_DIR}${sep}`) || !existsSync(pluginDir)) {
+    return c.text('Not Found', 404);
+  }
+  const meta = await readPluginMeta(pluginDir);
+  const backend = meta?.backend;
+  if (!backend || backend.type !== 'proxy' || !backend.target) {
+    return c.text(`插件 ${id} 未声明 proxy 后端`, 503);
+  }
+  // target 仅允许 http(s) 回环或显式内网地址,防 SSRF(插件 app.json 受安装面控制,
+  // 这里再做一层结构校验)
+  let target: URL;
+  try {
+    target = new URL(backend.target);
+  } catch {
+    return c.text('backend.target 非法', 503);
+  }
+  if (!/^https?:$/.test(target.protocol)) {
+    return c.text('backend.target 仅支持 http(s)', 503);
+  }
+
+  const rest = c.req.path.replace(/^\/plugins\/[^/]+\/proxy/, '');
+  const incoming = new URL(c.req.url);
+  const upstream = new URL(
+    `${target.pathname.replace(/\/$/, '')}${rest}`,
+    target,
+  );
+  upstream.search = incoming.search;
+
+  // 复制安全相关的请求头;Host 由 undici 按 target 自动设置
+  const headers = new Headers();
+  for (const name of ['authorization', 'content-type', 'accept', 'cookie', 'last-event-id']) {
+    const value = c.req.header(name);
+    if (value) {
+      headers.set(name, value);
+    }
+  }
+
+  const upstreamResp = await fetch(upstream, {
+    method: c.req.method,
+    headers,
+    body: ['GET', 'HEAD'].includes(c.req.method) ? undefined : c.req.raw.body,
+    redirect: 'manual',
+    // @ts-expect-error Node fetch 需要 duplex 才能转发请求流
+    duplex: 'half',
+  }).catch(() => null);
+  if (!upstreamResp) {
+    return c.text(`插件后端不可达: ${backend.target}`, 502);
+  }
+
+  // fetch 已自动解压,不能复制压缩与长度相关头
+  const skipHeaders = [
+    'content-encoding',
+    'content-length',
+    'transfer-encoding',
+    'connection',
+  ];
+
+  // 返回原生 Response:Hono 的 c.body/newResponse Data 类型对 undici 的
+  // ReadableStream 泛型不兼容,而流式透传 + 任意 status 正是原生构造器的形态
+  const respHeaders = new Headers();
+  upstreamResp.headers.forEach((value, name) => {
+    if (!skipHeaders.includes(name)) {
+      respHeaders.set(name, value);
+    }
+  });
+  respHeaders.set('X-Accel-Buffering', 'no');
+  respHeaders.set('Cache-Control', 'no-store');
+  return new Response(upstreamResp.body, {
+    status: upstreamResp.status,
+    headers: respHeaders,
+  });
 });
 
 pluginsRoutes.delete('/plugins/:id', async (c) => {
