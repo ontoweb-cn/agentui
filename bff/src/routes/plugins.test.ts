@@ -212,7 +212,7 @@ describe('BFF_PLUGIN_BACKEND_OVERRIDES(#2b 部署形态)', () => {
     expect(api.parseBackendOverrides().size).toBe(0);
   });
 
-  it('install 时替换落盘 app.json 的 backend.target(重过 SSRF 校验)', async () => {
+  it('install 落盘保留原始 target,override 为代理时运行时叠加', async () => {
     const source = await mkdtemp(join(tmpdir(), 'agentui-plugin-src-'));
     await mkdir(join(source, 'ui/dist'), { recursive: true });
     await writeFile(
@@ -227,7 +227,7 @@ describe('BFF_PLUGIN_BACKEND_OVERRIDES(#2b 部署形态)', () => {
     );
     await writeFile(join(source, 'ui/dist/index.js'), 'export {}');
     process.env.BFF_PLUGIN_BACKEND_OVERRIDES =
-      'override-plugin=http://10.1.2.3:9000';
+      'override-plugin=http://wargamesrv:9000';
 
     const res = await api.pluginsRoutes.request('/plugins/install', {
       method: 'POST',
@@ -240,12 +240,13 @@ describe('BFF_PLUGIN_BACKEND_OVERRIDES(#2b 部署形态)', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
       installed: 'override-plugin',
-      backendTarget: 'http://10.1.2.3:9000',
+      backendTargetOverride: 'http://wargamesrv:9000',
     });
+    // 落盘保留插件原始声明(严格校验对象);override 由代理每请求叠加
     const installed = JSON.parse(
       await readFile(join(fixtureDir, 'override-plugin/app.json'), 'utf-8'),
     );
-    expect(installed.backend.target).toBe('http://10.1.2.3:9000');
+    expect(installed.backend.target).toBe('http://127.0.0.1:9385');
 
     await rm(join(fixtureDir, 'override-plugin'), { recursive: true, force: true });
     await rm(source, { recursive: true, force: true });

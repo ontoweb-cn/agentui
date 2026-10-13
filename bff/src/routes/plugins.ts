@@ -20,7 +20,7 @@
  */
 import { Hono } from 'hono';
 import { createReadStream, existsSync } from 'node:fs';
-import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 
@@ -377,10 +377,12 @@ pluginsRoutes.post('/plugins/install', async (c) => {
     return c.text(`entry 产物不存在: ${meta.entry}(先构建插件)`, 400);
   }
 
-  // 部署形态 #2b:按插件 id 覆盖 backend.target(app.json 里通常写死
-  // 127.0.0.1:9385,容器/k8s 网络中需指向服务名或跨机地址)。
-  // override 来自部署者 env(受控输入),走宽松级校验(允许主机名);
-  // 插件 app.json 自身声明的 target(readPluginMeta 内)仍走严格 IP 白名单。
+  // 部署形态 #2b:backend.target 覆盖采用「运行时叠加」语义:
+  // - 落盘 app.json 始终保留插件原始声明(readPluginMeta 对其走严格
+  //   IP 白名单,不受控文件不可被注入主机名);
+  // - override 来自部署者 env(受控输入,宽松级校验,允许服务名/
+  //   host.docker.internal),由代理路由每请求叠加(effectiveTarget),
+  //   改 env 重启即生效,无需重装插件。
   const override = parseBackendOverrides().get(meta.id);
   if (override) {
     const overrideError = validateBackendTarget(override, {
@@ -392,7 +394,6 @@ pluginsRoutes.post('/plugins/install', async (c) => {
         400,
       );
     }
-    meta.backend = { type: 'proxy', target: override };
   }
 
   const dest = join(PLUGINS_DIR, meta.id);
@@ -402,12 +403,7 @@ pluginsRoutes.post('/plugins/install', async (c) => {
   await rm(dest, { recursive: true, force: true });
   await mkdir(staging, { recursive: true });
   try {
-    // 覆盖后的 meta 序列化落盘(而非 cp 原文件),list/proxy 读到的是最终 target
-    await writeFile(
-      join(staging, 'app.json'),
-      JSON.stringify(meta, null, 2),
-      'utf-8',
-    );
+    await cp(join(source, 'app.json'), join(staging, 'app.json'));
     const entryRoot = meta.entry.split('/')[0];
     await cp(join(source, entryRoot), join(staging, entryRoot), {
       recursive: true,
@@ -421,7 +417,7 @@ pluginsRoutes.post('/plugins/install', async (c) => {
   return c.json({
     installed: meta.id,
     version: meta.version ?? null,
-    backendTarget: meta.backend?.target ?? null,
+    backendTargetOverride: override ?? null,
   });
 });
 
