@@ -34,6 +34,21 @@ docker push hub.wust.edu.cn/<项目>/agentui:<tag>
 见 [k8s/README.md](./k8s/README.md):`kubectl apply -f deploy/k8s/`,
 token 走 Secret,镜像来自 hub.wust.edu.cn。
 
+## 冒烟记录与已知事项(2026-10-13 首次发版冒烟)
+
+独立容器实测全链路通过:entrypoint 自动安装(含 override)、
+`/api/bff/plugins` 列表(词条内联)、插件 JS 5.2MB、REST 经代理返回
+真实数据、SSE `text/event-stream`、SPA 深链回退。冒烟同时修复三个
+存量 nginx/BFF bug(见 git log):proxy_buffering 重复声明、catch-all
+regex 抢占前缀 location、目录 301 丢端口。
+
+注意事项:
+- **首次部署需完成安装向导**(配置首个 harness backend)后应用页才可进入,
+  WizardGuard 会将未初始化环境重定向到 /wizard——这是宿主既有行为;
+- 内网构建拉不动 docker.io 时:`docker pull docker.1ms.run/library/node:20-alpine
+  && docker tag ... node:20-alpine`,再 `DOCKER_BUILDKIT=0 docker build`
+  (buildx 独立 builder 不走 daemon mirror)。
+
 ## 链路速查
 
 ```
