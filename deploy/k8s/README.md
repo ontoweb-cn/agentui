@@ -12,8 +12,8 @@
    # 1) 打包插件产物到 deploy/plugin-bundles/cognitive-wargame/
    scripts/package-plugin-bundle.sh --ref <tag|commit>   # 默认相邻 ../cognitive-wargame
    # 2) 构建并推送
-   docker build -t hub.wust.edu.cn/<项目>/agentui:<tag> .
-   docker push hub.wust.edu.cn/<项目>/agentui:<tag>
+   docker build -t hub.wust.edu.cn/intellect/agentui:0.2.0 .
+   docker push hub.wust.edu.cn/intellect/agentui:0.2.0
    ```
 
    不跑第 1 步则构建出「纯宿主」镜像(无插件,应用页为空)。

@@ -11,8 +11,8 @@
 scripts/package-plugin-bundle.sh --ref <wargame-tag>
 
 # 2) 构建镜像并推送内网制品库
-docker build -t hub.wust.edu.cn/<项目>/agentui:<tag> .
-docker push hub.wust.edu.cn/<项目>/agentui:<tag>
+docker build -t hub.wust.edu.cn/intellect/agentui:0.2.0 .
+docker push hub.wust.edu.cn/intellect/agentui:0.2.0
 ```
 
 跳过第 1 步 = 构建纯宿主镜像(无插件,应用页为空,不影响宿主功能)。
