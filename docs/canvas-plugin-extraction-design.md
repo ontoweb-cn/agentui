@@ -430,9 +430,9 @@ spec/008 解决 **BFF 端**画布服务独立化,本方案解决 **前端**画�
 | SC | 状态 |
 |---|---|
 | SC-001 pages/agent 删除 | ✅ |
-| SC-002 components 无 pages/agent import | ✅(widget 经包内路径,T003 豁免已不需要) |
+| SC-002 components 无 pages/agent import | ✅(widget 已改经包内路径)。**边界事实**:①共享 `src/hooks/{use-agent-request,use-send-message}.ts` 与复数页 `src/pages/agents/`(智能体列表,与已删除的单数 `pages/agent` 画布目录是两回事)经**包内路径**(`@agentui/canvas-plugin/editor/...`)引用画布 hook/dsl——方向是"外部消费包导出",不构成 SC-002 要防的"深入包内部"泄漏;②`features/{agents,tasks}/manifest.ts` 的 `pages/agent` 字样是 `pages/agents`(列表页),grep 时注意单复数 |
 | SC-003 冒烟 100% | ⚠️ 无归档记录,功能持续在用 |
-| SC-004 capabilities 门控 | ✅(capabilities.ts canvas 判定,未绑定 503/不可用 false) |
+| SC-004 capabilities 门控 | ✅ **实测**(2026-10-13):真实会话 capabilities 返回 `canvas:true`;消费端 `enabled: ctx.capabilities.size===0 \|\| has('canvas')`(空集宽容回退);真实画布编辑器 `/agent/:id` react-flow 挂载、4 节点渲染。注意 canvas 无独立 `/canvas` 路由,入口是智能体卡片 |
 | SC-005/006 tsc+test | ✅(当前基线:宿主 562 + 包内测试) |
 | SC-007 非画布功能不回归 | ✅(agents 列表路由保留在 `features/agents`,canvas 引用清零) |
 | SC-008 全走 /api/bff/canvas | ⚠️ 残留 2 处 restAPIv1 直连(见 §8.2) |
