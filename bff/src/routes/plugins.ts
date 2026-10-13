@@ -477,16 +477,32 @@ pluginsRoutes.all('/plugins/:id/proxy/*', async (c) => {
     }
   }
 
+  // 上游首字节超时(评审 L7):挂起的上游(connect/TTFB 不返回)会长期占用
+  // 连接;限时到即 504。响应头到达后清除——SSE 长连接与其余慢 body 不受限。
+  const timeoutMs = Number(
+    process.env.BFF_PLUGIN_PROXY_TTFB_TIMEOUT_MS ?? 30_000,
+  );
+  const abort = new AbortController();
+  const ttfbTimer = setTimeout(() => abort.abort(), timeoutMs);
+
   const upstreamResp = await fetch(upstream, {
     method: c.req.method,
     headers,
     body: ['GET', 'HEAD'].includes(c.req.method) ? undefined : c.req.raw.body,
     redirect: 'manual',
+    signal: abort.signal,
     // @ts-expect-error Node fetch 需要 duplex 才能转发请求流
     duplex: 'half',
   }).catch(() => null);
+  clearTimeout(ttfbTimer);
   if (!upstreamResp) {
-    return c.text(`插件后端不可达: ${effectiveTarget}`, 502);
+    const timedOut = abort.signal.aborted;
+    return c.text(
+      timedOut
+        ? `插件后端响应超时(${timeoutMs}ms): ${effectiveTarget}`
+        : `插件后端不可达: ${effectiveTarget}`,
+      timedOut ? 504 : 502,
+    );
   }
 
   // fetch 已自动解压,不能复制压缩与长度相关头
