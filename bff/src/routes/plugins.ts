@@ -479,9 +479,12 @@ pluginsRoutes.all('/plugins/:id/proxy/*', async (c) => {
 
   // 上游首字节超时(评审 L7):挂起的上游(connect/TTFB 不返回)会长期占用
   // 连接;限时到即 504。响应头到达后清除——SSE 长连接与其余慢 body 不受限。
-  const timeoutMs = Number(
+  // env 手误(非正数字)回退默认值——NaN 会使 setTimeout 立即触发,全量 504(评审 M1)
+  const rawTimeoutMs = Number(
     process.env.BFF_PLUGIN_PROXY_TTFB_TIMEOUT_MS ?? 30_000,
   );
+  const timeoutMs =
+    Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 30_000;
   const abort = new AbortController();
   const ttfbTimer = setTimeout(() => abort.abort(), timeoutMs);
 

@@ -199,6 +199,34 @@ describe('代理路由', () => {
     expect(res.status).toBe(503);
   });
 
+  it('TTFB 超时 env 手误(非数字)回退默认值,不会立即 504(评审 M1)', async () => {
+    // NaN 会使 setTimeout(NaN)→0ms 立即 abort → 全量 504;修复后应回退 30s
+    // 默认值——对不可达回环地址表现为 502(连接拒绝),而非 504(超时)
+    process.env.BFF_PLUGIN_PROXY_TTFB_TIMEOUT_MS = '30s';
+    const dir = join(fixtureDir, 'ttfb-env-plugin');
+    await mkdir(join(dir, 'ui/dist'), { recursive: true });
+    await writeFile(
+      join(dir, 'app.json'),
+      JSON.stringify({
+        id: 'ttfb-env-plugin',
+        path: '/ttfb-env-plugin',
+        label: 'x',
+        entry: 'ui/dist/index.js',
+        backend: { type: 'proxy', target: 'http://127.0.0.1:1' },
+      }),
+    );
+    await writeFile(join(dir, 'ui/dist/index.js'), 'export {}');
+
+    const res = await api.pluginsRoutes.request(
+      '/plugins/ttfb-env-plugin/proxy/api/v1/x',
+    );
+    expect(res.status).toBe(502);
+    expect(await res.text()).toContain('不可达');
+
+    await rm(dir, { recursive: true, force: true });
+    delete process.env.BFF_PLUGIN_PROXY_TTFB_TIMEOUT_MS;
+  });
+
   it('override 存在即生效:app.json 未声明 backend 也可启用代理(评审 M2)', async () => {
     // good-plugin 声明了 backend(127.0.0.1:9385);构造未声明 backend 的
     // 插件 + override 指向不可达回环端口——期望 502(已越过 503 声明检查,

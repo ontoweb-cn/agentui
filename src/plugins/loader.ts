@@ -16,25 +16,34 @@ const loadCache = new Map<string, Promise<PluginAppRegistration>>();
 
 /**
  * dev 热更(#6):VITE_PLUGIN_DEV_ENTRIES 列出的插件直接从其 vite dev
- * server 拉取入口(默认 9395,插件 npm run dev)——改源码刷新页面即生效,
- * 免 build+reinstall。不走宿主代理:dev server 产物的内部 import 是指向
- * 自身的绝对路径,经代理会被宿主 9391 错误接管;直连时模块链自洽回 9395,
+ * server 拉取入口——改源码刷新页面即生效,免 build+reinstall。
+ * 条目格式 `id` 或 `id@port`(端口缺省 9395,须为纯数字,评审 L1),
+ * 多插件各自指定:`a,b@9396`。
+ *
+ * 信任边界(评审 L2):dev 直连**不经过 BFF 文件路由**,其校验面
+ * (entry 白名单/MIME/ETag)与缓存全部旁路——仅限本机 dev server,
+ * 且生产构建 import.meta.env.DEV 编译期为 false,此覆盖不存在。
+ * 不走宿主代理的原因:dev server 产物的内部 import 是指向自身的
+ * 绝对路径,经代理会被宿主 9391 错误接管;直连时模块链自洽,
  * vite dev 对 localhost 各端口的 CORS 默认放行。
- * 生产构建 import.meta.env.DEV=false,此覆盖不存在。
  */
-const DEV_PLUGIN_ENTRIES = new Set(
-  import.meta.env.DEV
-    ? String(import.meta.env.VITE_PLUGIN_DEV_ENTRIES ?? '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-    : [],
-);
-const DEV_PLUGIN_PORT = import.meta.env.VITE_PLUGIN_DEV_PORT ?? '9395';
+const DEV_PLUGIN_PORTS = new Map<string, string>();
+if (import.meta.env.DEV) {
+  for (const entry of String(
+    import.meta.env.VITE_PLUGIN_DEV_ENTRIES ?? '',
+  ).split(',')) {
+    const [id, port] = entry.trim().split('@');
+    if (!id) {
+      continue;
+    }
+    DEV_PLUGIN_PORTS.set(id, /^\d+$/.test(port ?? '') ? port : '9395');
+  }
+}
 
 export function pluginEntryUrl(meta: PluginAppMetadata): string {
-  if (DEV_PLUGIN_ENTRIES.has(meta.id)) {
-    return `http://localhost:${DEV_PLUGIN_PORT}/src/index.tsx`;
+  const devPort = DEV_PLUGIN_PORTS.get(meta.id);
+  if (devPort) {
+    return `http://localhost:${devPort}/src/index.tsx`;
   }
   return `/api/bff/plugins/${meta.id}/files/${meta.entry}`;
 }
