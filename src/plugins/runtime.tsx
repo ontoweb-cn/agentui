@@ -224,6 +224,36 @@ const PLUGIN_LANG_TO_HOST: Record<string, string[]> = {
 };
 
 /**
+ * 插件词条顶层 key 冲突防护(评审 L2):
+ * 插件词条理论上可声明与宿主/其他插件相同的顶层 key(如 header.applications)
+ * 静默覆盖宿主文案。注入前剔除已存在的顶层 key 并告警——插件词条应使用
+ * 自身命名空间前缀(如 cognitiveWargame.*)。
+ */
+function pruneConflictingKeys(
+  pluginId: string,
+  hostLang: string,
+  bundle: Record<string, unknown>,
+): Record<string, unknown> {
+  const existing = i18next.getResourceBundle(hostLang, 'translation') as
+    | Record<string, unknown>
+    | undefined;
+  if (!existing) {
+    return bundle;
+  }
+  const pruned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(bundle)) {
+    if (key in existing) {
+      console.warn(
+        `[plugins] ${pluginId} 词条顶层 key "${key}" 与宿主已有词条冲突,已跳过(请使用插件命名空间前缀)`,
+      );
+      continue;
+    }
+    pruned[key] = value;
+  }
+  return pruned;
+}
+
+/**
  * 把 BFF 内联下发的插件词条注入宿主 i18n 实例(#7):
  * 词条结构为 { cognitiveWargame: {...} },deep-merge 进 translation 命名空间,
  * 与编译期 feature 词条同构(t('cognitiveWargame.common.title'))。
@@ -240,7 +270,10 @@ function injectPluginI18n(meta: PluginAppMetadata) {
         continue;
       }
       for (const hostLang of PLUGIN_LANG_TO_HOST[lang] ?? [lang]) {
-        i18next.addResourceBundle(hostLang, 'translation', bundle, true, true);
+        const pruned = pruneConflictingKeys(meta.id, hostLang, bundle);
+        if (Object.keys(pruned).length > 0) {
+          i18next.addResourceBundle(hostLang, 'translation', pruned, true, true);
+        }
       }
     }
   } catch (err) {

@@ -27,7 +27,10 @@ import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PLUGINS_DIR = resolve(__dirname, '../../data/plugins');
+// 测试可经 BFF_PLUGINS_DIR 注入临时目录(见 plugins.test.ts)
+const PLUGINS_DIR = process.env.BFF_PLUGINS_DIR
+  ? resolve(process.env.BFF_PLUGINS_DIR)
+  : resolve(__dirname, '../../data/plugins');
 
 /** entry 顶层子目录白名单:插件产物只允许落在这些子树下。 */
 const ENTRY_ROOT_ALLOWLIST = ['ui', 'assets', 'dist'];
@@ -89,7 +92,7 @@ const MIME_TYPES: Record<string, string> = {
  * - 必须是相对路径,段中不得含 '..',不得含反斜杠(防 Windows 分隔符混淆);
  * - 顶层子目录必须在白名单内,保证 cp 目标始终位于插件目录内。
  */
-function validateEntry(entry: string): string | null {
+export function validateEntry(entry: string): string | null {
   if (
     !entry ||
     entry.startsWith('/') ||
@@ -110,7 +113,7 @@ function validateEntry(entry: string): string | null {
  * - 形态 ^/slug,slug 为字母数字与连字符,避免 '/'、参数段、编码穿越;
  * - 不得命中宿主保留路由。
  */
-function validateMountPath(path: string): string | null {
+export function validateMountPath(path: string): string | null {
   if (!/^\/[a-z0-9][a-z0-9-]*$/i.test(path)) {
     return 'path 必须形如 /<slug>(字母数字与连字符)';
   }
@@ -118,6 +121,41 @@ function validateMountPath(path: string): string | null {
     return `path "${path}" 与宿主保留路由冲突`;
   }
   return null;
+}
+
+/**
+ * 校验插件后端代理目标(评审 M1/SSRF 纵深防御):
+ * - 仅 http(s),且 host 必须是回环(localhost/127.0.0.0/8/::1)或
+ *   RFC1918 私网段——拒绝公网地址与链路本地段(如 169.254.169.254 云元数据);
+ * - install(经 readPluginMeta)与 proxy 双侧校验。
+ */
+export function validateBackendTarget(target: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(target);
+  } catch {
+    return 'backend.target 不是合法 URL';
+  }
+  if (!/^https?:$/.test(url.protocol)) {
+    return 'backend.target 仅支持 http(s)';
+  }
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const a = Number(ipv4[1]);
+    const b = Number(ipv4[2]);
+    const isLoopback = a === 127;
+    const isPrivate =
+      a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
+    if (isLoopback || isPrivate) {
+      return null;
+    }
+    return `backend.target 主机 ${host} 非回环/私网地址`;
+  }
+  if (host === 'localhost' || host === '::1') {
+    return null;
+  }
+  return `backend.target 主机 ${host} 非回环/私网地址(且非 localhost)`;
 }
 
 /** 变更接口鉴权(H1):常量时间比较,未配置 token 时一律拒绝。 */
@@ -208,6 +246,9 @@ async function readPluginMeta(
     if (validateMountPath(meta.path) || validateEntry(meta.entry)) {
       return null;
     }
+    if (meta.backend && validateBackendTarget(meta.backend.target)) {
+      return null;
+    }
     if (/[^\w.-]/.test(meta.id)) {
       return null;
     }
@@ -257,6 +298,8 @@ pluginsRoutes.get('/plugins/:id/files/*', async (c) => {
 
   // ETag/304(#8):产物重装后 mtime/size 变化即失效;命中省去 5MB 重传
   const etag = `"${info.size}-${Math.round(info.mtimeMs)}"`;
+  // ETag 头先于 304 判断设置,确保 304 响应也携带 ETag(评审 L1,RFC 建议)
+  c.header('ETag', etag);
   if (c.req.header('If-None-Match') === etag) {
     return c.newResponse(null, 304);
   }
@@ -265,7 +308,6 @@ pluginsRoutes.get('/plugins/:id/files/*', async (c) => {
   c.header('Content-Type', MIME_TYPES[ext] ?? 'application/octet-stream');
   // hash 文件名方案(#2b 部署形态)落地前保守禁缓存,靠 ETag 协商
   c.header('Cache-Control', 'no-cache');
-  c.header('ETag', etag);
   // 流式响应(#8):大产物(约 5MB)不再整读进内存
   const stream = Readable.toWeb(
     createReadStream(target),
@@ -318,7 +360,14 @@ pluginsRoutes.post('/plugins/install', async (c) => {
   return c.json({ installed: meta.id, version: meta.version ?? null });
 });
 
-/** 插件后端代理(#5):流式透传,SSE 友好;查询串(含 ?token=)原样透传。 */
+/**
+ * 插件后端代理(#5):流式透传,SSE 友好;查询串(含 ?token=)原样透传。
+ *
+ * 鉴权决策(评审 M2,明示):本路由不套 authMiddleware——安全边界为
+ * 「BFF 回环绑定(127.0.0.1)+ 上游 wargamesrv 自身 token 鉴权」,
+ * 与既有 /api/v1/wargame nginx 通道暴露面一致;SSE 走 ?token= 由上游校验。
+ * 若未来放开 BFF_HOST 或上游长期无鉴权,须在此加 authMiddleware。
+ */
 pluginsRoutes.all('/plugins/:id/proxy/*', async (c) => {
   const id = c.req.param('id');
   if (/[^\w.-]/.test(id)) {
@@ -333,17 +382,13 @@ pluginsRoutes.all('/plugins/:id/proxy/*', async (c) => {
   if (!backend || backend.type !== 'proxy' || !backend.target) {
     return c.text(`插件 ${id} 未声明 proxy 后端`, 503);
   }
-  // target 仅允许 http(s) 回环或显式内网地址,防 SSRF(插件 app.json 受安装面控制,
-  // 这里再做一层结构校验)
-  let target: URL;
-  try {
-    target = new URL(backend.target);
-  } catch {
-    return c.text('backend.target 非法', 503);
+  // SSRF 纵深防御(评审 M1):readPluginMeta 已在安装/列表侧校验 target,
+  // 代理前再校验一次,防安装与代理之间 app.json 被篡改
+  const targetError = validateBackendTarget(backend.target);
+  if (targetError) {
+    return c.text(targetError, 503);
   }
-  if (!/^https?:$/.test(target.protocol)) {
-    return c.text('backend.target 仅支持 http(s)', 503);
-  }
+  const target = new URL(backend.target);
 
   const rest = c.req.path.replace(/^\/plugins\/[^/]+\/proxy/, '');
   const incoming = new URL(c.req.url);
