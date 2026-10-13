@@ -25,6 +25,23 @@
      --from-literal=token="$(openssl rand -hex 32)"
    ```
 
+3. 镜像拉取凭证(项目私有时需要):已建最小权限机器人
+   `robot$intellect+agentui-pull`(仅 pull,密钥在发版机
+   `~/.config/agentui/harbor-robots/agentui-pull.env`,600 权限):
+
+   ```bash
+   source ~/.config/agentui/harbor-robots/agentui-pull.env
+   kubectl -n <ns> create secret docker-registry agentui-pull-secret \
+     --docker-server=hub.wust.edu.cn \
+     --docker-username="$HARBOR_USER" --docker-password="$HARBOR_SECRET"
+   # 并在 deployment.yaml 取消 imagePullSecrets 注释
+   ```
+
+   发版/CI 用 `robot$intellect+agentui-release`(push+pull,365 天需轮换),
+   密钥同目录 agentui-release.env;**机器人密钥不入仓库**。
+   发版推送遇本机 Docker daemon EOF 时,用 skopeo 通道:
+   `skopeo copy --dest-creds "$HARBOR_USER:$HARBOR_SECRET" docker-daemon:<img> docker://<img>`。
+
 ## 部署/更新
 
 ```bash
