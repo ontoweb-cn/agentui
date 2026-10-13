@@ -39,6 +39,10 @@
 
    发版/CI 用 `robot$intellect+agentui-release`(push+pull,365 天需轮换),
    密钥同目录 agentui-release.env;**机器人密钥不入仓库**。
+   注意:机器人用户名含 `$`,env 文件里**必须加单引号**
+   (`HARBOR_USER='robot$intellect+agentui-release'`),否则 source 时
+   `$intellect` 被当作 shell 变量展开吞掉 → 认证降级 401
+   (2026-10-13 发版实测踩坑,两个 env 文件已修正)。
    发版推送遇本机 Docker daemon EOF 时,用 skopeo 通道:
    `skopeo copy --dest-creds "$HARBOR_USER:$HARBOR_SECRET" docker-daemon:<img> docker://<img>`。
 
