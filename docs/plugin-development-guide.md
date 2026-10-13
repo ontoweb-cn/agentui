@@ -5,6 +5,15 @@
 > `web/qwenpaw`(QwenPaw 宿主,同一源码基线的另一档)。
 > 机制设计:见 [cognitive-wargame-plugin-migration-design.md](./cognitive-wargame-plugin-migration-design.md)(含实现纪要)。
 
+## 0. 工程结构速览
+
+| 位置 | 内容 |
+|---|---|
+| 插件仓库 `cognitive-wargame/web/agentui/` | app.json、src/(入口+页面+词条)、scripts/(构建/边界/CI)、ui/dist(产物) |
+| 宿主内核 `agentui/src/plugins/` | host-global(window.AgentUI)、loader(装载)、runtime(bootstrap) |
+| BFF `agentui/bff/src/routes/plugins.ts` | 列表/文件/安装/代理/卸载 |
+| 部署 `agentui/deploy/` | 发版 runbook、compose/k8s、插件 bundle |
+
 ## 1. 形态与信任模型
 
 插件是**自包含单文件 ESM 产物**(自带 React/UI 依赖/Tailwind CSS/词条),
@@ -40,8 +49,9 @@ localStorage(含宿主登录 token)。本机制只面向**内部可信仓库**�
   },                                 //   宿主 i18n 注入(单语言 200KB 上限)
   "backend": {                       // 可选:后端代理声明
     "type": "proxy",
-    "target": "http://127.0.0.1:9385"  // 仅允许回环/RFC1918(严格白名单);
-  }                                    // 容器/k8s 网络经宿主 env override 指向服务名
+    "target": "http://127.0.0.1:9385"  // 严格回环/RFC1918 白名单(不受控输入);
+  }                                    // 容器/k8s 网络经宿主 env
+                                       // BFF_PLUGIN_BACKEND_OVERRIDES 覆盖(宽松级,允许服务名)
 }
 ```
 
@@ -101,7 +111,13 @@ window.AgentUI!.registerApp({
   `/api/bff/plugins/<id>/proxy/...`(app.json 声明 backend 后自动可用,
   流式透传保留 `text/event-stream`);
 - EventSource 不支持自定义 header:token 沿用 `?token=`(BFF 代理透传查询串);
-- REST 的 token 与宿主同源共享(localStorage `Authorization`)。
+- **凭证形态(2026-10-13 认证审计后)**:
+  - 优先依赖**同源 cookie 会话**(企业模式 `imt_token` HttpOnly,fetch 同源
+    默认携带)——BFF 网关已升级为验证型会话校验,垃圾/过期凭证一律 401;
+  - localStorage token(键 `Authorization`)**仅社区模式有效**;企业模式下
+    `host.getApiToken()` 可能返回空或过期值,**勿作为唯一凭证来源**;
+  - 插件后端自有的 API key(如 wargamesrv 的 `?token=`)由 BFF 代理原样
+    透传,不参与宿主会话体系。
 
 ## 6. 安装与分发
 
@@ -117,12 +133,34 @@ curl -X POST http://localhost:9390/plugins/install \
 随 agentui 镜像分发,容器启动自动安装;`BFF_PLUGIN_BACKEND_OVERRIDES`
 按插件 id 覆盖 backend.target(存在即生效,改 env 重启容器即生效)。
 
+**卸载**:`DELETE /api/bff/plugins/<id>`(需 admin token)删除安装目录;
+已装载插件的前端实例**需刷新页面才失效**(已知限制,不做运行时卸载)。
+
+**enable/disable 启停路由未实现**(当前启停=删除/重装)。
+
 宿主侧安全约束(安装面):token fail-closed、entry/mount path 白名单、
 backend.target 严格 IP 白名单(override 走部署者宽松级)——
 详见 `bff/src/routes/plugins.ts` 头部注释与测试。
 
-## 7. 调试
+## 7. 开发热更、测试与调试
 
+**本地热更(推荐,免 build+reinstall)**——三步(详见 web/agentui README):
+
+```bash
+# 1) 插件仓库起 dev server(9395)
+npm run dev
+# 2) agentui .env:VITE_PLUGIN_DEV_ENTRIES=<插件id>(dev only,生产忽略)
+# 3) 重启 agentui vite(npm run dev)
+```
+
+之后改插件源码**刷新浏览器即生效**。注意 dev 直连绕过 BFF 文件路由的
+校验面(仅限本机 dev server,生产构建编译期排除)。
+
+**测试**:插件仓库 `npm test`(vitest+jsdom)覆盖入口契约——
+registerApp 侧效果、语言归一化、mount/dispose 生命周期、宿主事件订阅;
+`npm run lint:imports` 守住自包含边界。CI 集成见 `web/agentui/scripts/ci.sh`。
+
+**调试**:
 - 装载失败会在挂载页显示错误占位与**重试**按钮(宿主侧);
 - 插件内建议自带 ErrorBoundary(渲染异常显性化,参考 web/agentui
   的 PluginErrorBoundary);

@@ -33,7 +33,7 @@ spec:
       containers:
         - name: agentui
           # 内网制品库 hub.wust.edu.cn;tag 与插件 bundle 版本一一对应
-          image: hub.wust.edu.cn/intellect/agentui:0.2.0
+          image: hub.wust.edu.cn/intellect/agentui:0.4.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80

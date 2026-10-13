@@ -51,12 +51,14 @@ gateway token 经 `bff/.env` 的 `HARNESS_INTELLECT_ENTERPRISE_DEFAULT_TOKEN`
 scripts/package-plugin-bundle.sh --ref <wargame-tag>
 
 # 2) 构建镜像并推送内网制品库
-docker build -t hub.wust.edu.cn/intellect/agentui:0.2.0 .
-docker push hub.wust.edu.cn/intellect/agentui:0.2.0
+docker build -t hub.wust.edu.cn/intellect/agentui:0.4.0 .
+docker push hub.wust.edu.cn/intellect/agentui:0.4.0
 ```
 
 跳过第 1 步 = 构建纯宿主镜像(无插件,应用页为空,不影响宿主功能)。
 插件版本被镜像 tag 锁定:更新插件 = 重跑 1)2) 换 tag;回滚 = 回滚镜像 tag。
+
+CI 自动发版(华为集群 Jenkins,两仓 Jenkinsfile 已就绪):见 [ci-jenkins.md](./ci-jenkins.md)。
 
 ## docker compose
 
