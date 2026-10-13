@@ -1,6 +1,6 @@
 # Canvas Plugin Extraction — 技术方案(评审后)
 
-> **Status**: 阶段 0 已实施完成(2026-07-13,含评审修复 T007),阶段 1-4 待实施
+> **Status**: **已实施完成(阶段 0-3,2026-10-13 核验)**;阶段 4(独立构建)未实施。现状注记见 [§八 实现现状注记](#八实现现状注记2026-10-13-核验),阅读前文设计时以该节为准。架构总纲(运行时插件体系)见 [runtime-plugin-architecture.md](./runtime-plugin-architecture.md)
 > **Date**: 2026-07-13
 > **Prerequisites**: spec/008-explicit-canvas-service(BFF CanvasService 独立化)
 > **Related**: [multi-harness-design.md](./multi-harness-design.md) §3.4 / §6.4
@@ -401,7 +401,57 @@ spec/008 解决 **BFF 端**画布服务独立化,本方案解决 **前端**画�
 | SC-009 | `features/agents/manifest.ts` 仅保留 agent 列表/模板路由,画布路由迁入插件 | manifest 检查 |
 | SC-010 | `packages/canvas-plugin/` 可独立运行 `npm test` | 测试运行 |
 
-## 八、附录:泄漏文件清单(评审核实)
+## 八、实现现状注记(2026-10-13 核验)
+
+> 本节记录方案与当前代码的逐项对照。前文为 2026-07-13 的设计原稿,保留决策轨迹;**现状以本节为准**。
+
+### 8.1 阶段完成度
+
+| 阶段 | 状态 | 核验证据 |
+|---|---|---|
+| 阶段 0(解耦 T001-T006) | ✅ 完成 | `FormSyncContext`(`components/llm-setting-items/form-sync-context.ts`)、`ChatSheetContext`(`components/next-message-item/chat-sheet-context.ts`)、`components/prompt-editor/` 提升均落地;`knowledge-base-item.tsx` 画布 hook 引用清零 |
+| 阶段 1(包结构) | ✅ 完成 | `packages/canvas-plugin/`(name `@agentui/canvas-plugin`)、根 workspaces `["bff","packages/*"]`、tsconfig paths + vite alias、`features/canvas/manifest.ts` 薄封装(与 §3.3 设计逐字一致) |
+| 阶段 2(迁移) | ✅ 完成 | `src/pages/agent/` 已删除(SC-001 ✓);editor/service(canvas-service+canvas-hooks)/types/i18n/constant 迁入;`components/xyflow` 已迁入;`use-agent-request.ts` 迁至 `src/hooks/`(共享保留) |
+| 阶段 3(验证收尾) | ✅ 基本完成 | `src/components/` 无 `pages/agent` import(SC-002 ✓);docs 已更新(3f ✓)。**注意**:仓库内无归档的冒烟记录,SC-003 完成度按"功能持续在用"间接认定 |
+| 阶段 4(独立构建) | ❌ 未实施 | package.json 无 build/main 产物形态(`main: src/index.ts`),仍随宿主编译——与 §3.2 "延后独立构建"决策一致 |
+
+### 8.2 与设计的偏差(实施中的演进)
+
+| 设计 | 实际 | 说明 |
+|---|---|---|
+| T003 方案 G(widget 仅修 bug,SC-002 豁免保留 `pages/agent` import) | **widget 已通过包内路径引用**:`floating-chat-widget.tsx` L9 `import { useSendNextSharedMessage } from '@agentui/canvas-plugin/editor/hooks/use-send-shared-message'`——SC-002 实际达成(比设计更好);条件 hook 双调用反模式修复保留,彻底解耦(BFF 统一 widget API)仍延后 | 物理迁移后引用路径自然收敛 |
+| SC-008 "所有画布 API 经 `/api/bff/canvas/*`" | **主链路达成,残留 2 处直连**:`api.ts` 的 `getInputElements`(`restAPIv1/canvas/input_elements`)与 `fetchAgentLogs`(`restAPIv1/canvas/:id/sessions`)仍走 RAG 直连前缀 | 迁移遗漏;因经 nginx/vite 既有代理功能可用,列入任务清单 |
+| §3.3 `import type { ModuleDefinition } from '@agentui/features-types'` | 实际从相对路径 `../_types` 导入(features/canvas/manifest.ts 薄封装内),包内类型自持 | 别名包 `@agentui/features-types` 未建,无实质影响 |
+| §2.5/§3.2 测试框架"沿用 jest" | ✓ `packages/canvas-plugin/jest.config.ts` 存在,包内 3 个 test 文件 | 一致 |
+| §3.2 "随主应用一起编译" | ✓ vite alias + tsconfig paths,`main` 指向 `src/index.ts` | 一致(阶段 4 未启动) |
+
+### 8.3 验收标准(SC)逐项核验
+
+| SC | 状态 |
+|---|---|
+| SC-001 pages/agent 删除 | ✅ |
+| SC-002 components 无 pages/agent import | ✅(widget 经包内路径,T003 豁免已不需要) |
+| SC-003 冒烟 100% | ⚠️ 无归档记录,功能持续在用 |
+| SC-004 capabilities 门控 | ✅(capabilities.ts canvas 判定,未绑定 503/不可用 false) |
+| SC-005/006 tsc+test | ✅(当前基线:宿主 562 + 包内测试) |
+| SC-007 非画布功能不回归 | ✅(agents 列表路由保留在 `features/agents`,canvas 引用清零) |
+| SC-008 全走 /api/bff/canvas | ⚠️ 残留 2 处 restAPIv1 直连(见 §8.2) |
+| SC-009 manifest 拆分 | ✅(agents/manifest canvas 引用 0) |
+| SC-010 包内独立 npm test | ✅ |
+
+### 8.4 与运行时插件体系(runtime-plugin-architecture.md)的关系
+
+本方案落地后,canvas 成为 **monorepo 编译期包**(方案 B 形态);运行时插件体系(方案 D 形态,web/agentui 先例)提供的是**独立仓库+运行时装载**档位。两者并存于同一 feature registry:canvas 走 alias 编译期合并,wargame 走 BFF 元数据装载——选择档位的判据见架构总纲 §一。
+
+### 8.5 遗留任务
+
+1. SC-008 收尾:2 处直连端点迁到 `/api/bff/canvas/*`(半小时级);
+2. BFF 统一 widget API(方案 F,原计划留 spec/008 后续)——widget 彻底解耦的最后一步;
+3. 阶段 4 独立构建(触发条件:canvas 需独立发版,可复用 wargame 的体系:tailwind inline/entry 契约/BFF 文件路由)。
+
+---
+
+## 九、附录:泄漏文件清单(评审核实)
 
 | # | 文件 | 泄漏类型 | import 内容 | 解耦方案 |
 |---|---|---|---|---|
