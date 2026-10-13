@@ -14,7 +14,28 @@ import type { PluginAppMetadata, PluginAppRegistration } from './types';
 
 const loadCache = new Map<string, Promise<PluginAppRegistration>>();
 
+/**
+ * dev 热更(#6):VITE_PLUGIN_DEV_ENTRIES 列出的插件直接从其 vite dev
+ * server 拉取入口(默认 9395,插件 npm run dev)——改源码刷新页面即生效,
+ * 免 build+reinstall。不走宿主代理:dev server 产物的内部 import 是指向
+ * 自身的绝对路径,经代理会被宿主 9391 错误接管;直连时模块链自洽回 9395,
+ * vite dev 对 localhost 各端口的 CORS 默认放行。
+ * 生产构建 import.meta.env.DEV=false,此覆盖不存在。
+ */
+const DEV_PLUGIN_ENTRIES = new Set(
+  import.meta.env.DEV
+    ? String(import.meta.env.VITE_PLUGIN_DEV_ENTRIES ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [],
+);
+const DEV_PLUGIN_PORT = import.meta.env.VITE_PLUGIN_DEV_PORT ?? '9395';
+
 export function pluginEntryUrl(meta: PluginAppMetadata): string {
+  if (DEV_PLUGIN_ENTRIES.has(meta.id)) {
+    return `http://localhost:${DEV_PLUGIN_PORT}/src/index.tsx`;
+  }
   return `/api/bff/plugins/${meta.id}/files/${meta.entry}`;
 }
 

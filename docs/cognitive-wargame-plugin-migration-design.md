@@ -347,3 +347,44 @@ export function activate(ctx: PluginContext) {
 4. **进程内 Hono 后端档**(`backend.type: "inline"`,无独立服务的轻插件用);
 5. **@agentui/ui 独立包**(白名单组件从宿主全局迁移为 npm 共享,方案 B 终态);
 6. **宿主 chat/SSE 能力 SDK 化**(QwenPaw `ctx.chat` 对应物,wargame 暂不需要)。
+
+---
+
+## 十、实现纪要(2026-10-13,实施完成后补记)
+
+> 本节记录实际落地与本方案的偏差,阅读前文设计时以本节为准。
+
+### 10.1 与方案的主要偏差(均为实施中验证后的演进)
+
+| 设计(前文) | 实际实现 | 原因 |
+|---|---|---|
+| §3.1 monorepo `packages/wargame-plugin` 先行,物理拆仓按触发条件延后 | **直接物理拆仓**:`cognitive-wargame` 仓库 `web/agentui/`(用户决策) | 用户明确要求"迁回 wargame 仓库 web 目录";仓库天然有 `web/qwenpaw`(QwenPaw 宿主档)可参照 |
+| §3.2 SDK-shim(插件只准 `import '@agentui/plugin-sdk'`,宿主共享 React/react-query 等) | **自包含单文件 + 双 React root**:插件自带全部依赖(React/UI/词条/Tailwind),宿主只渲染挂载 div,插件用独立 `createRoot` | 沿用 `web/qwenpaw` 已验证的 PawAPP 模式,彻底规避 React 单实例/共享面维护问题;代价是 bundle 5.2MB(gzip 1.27MB,首载可接受) |
+| §4.2 Tailwind 共享 preset 包(`@agentui/tailwind-preset`) | 插件自带完整 tailwind 编译,CSS 以 `?inline` 编入 JS,挂载时注入 `<style>` | 自包含形态下无需 preset 共享;主题令牌靠拷贝同步(漂移风险列入触发条件项) |
+| §5.2 ui 白名单 18 组件挂宿主全局 | 不适用(自包含形态);宿主全局仅 `registerApp`/`on`/`getApiToken`/`HOST_API_VERSION` | 同上 |
+| 词条随元数据(§4.1)+ 卡片 labelKey | **双轨落地**:BFF 内联词条(`ui/locales/*.json`,插件简码→宿主 BCP-47 映射)+ 卡片"词条优先、app.json label 字面兜底" | 完整实现词条先行;字面兜底保证极端降级无裸 key |
+| EventSource 认证 cookie 化(§4.3 备选) | 沿袭 `?token=` 查询串(BFF 代理透传) | cookie 方案动 BFF 鉴权面,列为后续项 |
+
+### 10.2 部署形态(§七 之外的增量)
+
+实际采用 **方案 B(镜像烤入)+ 预留 C(hub.wust.edu.cn 制品)**:
+`scripts/package-plugin-bundle.sh` 打包 → Dockerfile COPY → entrypoint 幂等安装;
+`BFF_PLUGIN_BACKEND_OVERRIDES` 运行时叠加 backend.target(部署者 env 走宽松校验
+允许服务名,插件 app.json 声明走严格 IP 白名单——两级信任防 SSRF)。
+详见 `deploy/README.md` 与 `deploy/k8s/`。
+
+### 10.3 实施中发现并修复的存量问题(与本方案无关但同批修复)
+
+1. nginx `proxy_buffering` 与 `proxy.conf` 重复声明——容器内 nginx 从未启动成功;
+2. catch-all regex location 抢占 `/api/bff/`、`/api/v1/wargame/` 前缀——BFF/wargame
+   通道在容器内从未生效(`^~` 修复);
+3. 无尾斜杠 `/api/bff/plugins` 触发目录 301 且丢端口(精确 location +
+   `absolute_redirect off`);
+4. entrypoint envsubst 缺 `WARGAME_HOST/PORT` 替换。
+
+### 10.4 分期落地对照
+
+P0(内核)✅ / P1(插件工程)✅ / P2(联调,含 wargamesrv 真实数据 86 想定 + SSE)✅ /
+P3(删除编译期 wargame)✅ / P4 部分:词条+卡片本地化 ✅、SSE 代理收编 ✅、
+语言/主题跟随 ✅、契约固化(HOST_API_VERSION+快照)✅、发版部署(compose+k8s)✅;
+未做:config_fields 配置页、独立发版(C 方案)、进程内后端档、iframe 档。
