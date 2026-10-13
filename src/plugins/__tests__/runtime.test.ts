@@ -46,6 +46,34 @@ describe('plugins host global', () => {
     localStorage.removeItem('Authorization');
     expect(agentUiGlobal().host.getApiToken()).toBeNull();
   });
+
+  // 契约快照(评审 #9):window.AgentUI 导出面是插件的事实公共 API。
+  // 增删改任何导出都会使快照失败——此时须同步:
+  //   1) bump host-global.ts 的 HOST_API_VERSION;
+  //   2) `npx jest -u` 显式更新快照;
+  //   3) 同步插件仓库(web/agentui)对宿主 API 的消费。
+  it('导出面契约快照(变更须 bump HOST_API_VERSION)', () => {
+    installAgentUIHostGlobal();
+    const agentUI = agentUiGlobal();
+    expect({
+      version: agentUI.HOST_API_VERSION,
+      globalKeys: Object.keys(agentUI).sort(),
+      hostKeys: Object.keys(agentUI.host).sort(),
+    }).toMatchInlineSnapshot(`
+      {
+        "globalKeys": [
+          "HOST_API_VERSION",
+          "host",
+          "on",
+          "registerApp",
+        ],
+        "hostKeys": [
+          "getApiToken",
+        ],
+        "version": "1.1.0",
+      }
+    `);
+  });
 });
 
 describe('rejectReason(注册前校验)', () => {

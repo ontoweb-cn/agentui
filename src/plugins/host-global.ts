@@ -13,7 +13,39 @@
 
 import type { AgentUIHostGlobal, PluginAppRegistration } from './types';
 
+/**
+ * 宿主插件 API 版本(语义化)。
+ * 变更导出面(增删改 registerApp/host/事件 API)必须 bump 此值
+ * 并更新 __tests__/runtime.test.ts 的契约快照;插件侧可读取此值做兼容判断。
+ * 1.1.0:新增 on() 事件订阅(localechange/themechange)。
+ */
+export const HOST_API_VERSION = '1.1.0';
+
+/** 宿主→插件的事件契约(载荷形态)。 */
+export interface HostEventMap {
+  localechange: { lng: string };
+  themechange: { theme: string };
+}
+
+export type HostEventName = keyof HostEventMap;
+
 const registrations = new Map<string, PluginAppRegistration>();
+// 监听器以 unknown 载荷存储,收发两侧各自收窄(事件名↔载荷的关联由 on/emit 泛型保证)
+const listeners = new Map<HostEventName, Set<(payload: unknown) => void>>();
+
+/** 宿主内部发射事件(语言/主题切换点调用);不暴露给插件。 */
+export function emitHostEvent<K extends HostEventName>(
+  event: K,
+  payload: HostEventMap[K],
+) {
+  listeners.get(event)?.forEach((listener) => {
+    try {
+      (listener as (p: HostEventMap[K]) => void)(payload);
+    } catch (err) {
+      console.error(`[plugins] 事件 ${event} 监听器异常:`, err);
+    }
+  });
+}
 
 export function installAgentUIHostGlobal() {
   if (typeof window === 'undefined') {
@@ -23,8 +55,17 @@ export function installAgentUIHostGlobal() {
     return;
   }
   const global: AgentUIHostGlobal = {
+    HOST_API_VERSION,
     registerApp(registration) {
       registrations.set(registration.id, registration);
+    },
+    on(event, listener) {
+      const set = listeners.get(event) ?? new Set<(payload: unknown) => void>();
+      set.add(listener as unknown as (payload: unknown) => void);
+      listeners.set(event, set);
+      return () => {
+        set.delete(listener as unknown as (payload: unknown) => void);
+      };
     },
     host: {
       getApiToken() {

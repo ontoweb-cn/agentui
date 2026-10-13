@@ -19,6 +19,7 @@
 
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { version as reactVersion } from 'react';
+import i18next from 'i18next';
 
 import type {
   AppPluginCard,
@@ -198,7 +199,9 @@ export function toModuleDefinition(meta: PluginAppMetadata): ModuleDefinition {
   const app: AppPluginCard = {
     id: meta.id,
     path: meta.path,
+    labelKey: meta.labelKey,
     label: meta.label,
+    descriptionKey: meta.descriptionKey,
     description: meta.description,
     icon: createPluginIcon(meta.icon),
     order: meta.order ?? 60,
@@ -209,6 +212,40 @@ export function toModuleDefinition(meta: PluginAppMetadata): ModuleDefinition {
     routes,
     app,
   };
+}
+
+/**
+ * 插件词条语言码 → 宿主 i18next 语言码映射。
+ * 插件产物按 ISO 简码组织(zh/en),宿主使用 BCP-47(zh-Hans/zh-Hant/en)。
+ */
+const PLUGIN_LANG_TO_HOST: Record<string, string[]> = {
+  zh: ['zh-Hans', 'zh-Hant'],
+  en: ['en'],
+};
+
+/**
+ * 把 BFF 内联下发的插件词条注入宿主 i18n 实例(#7):
+ * 词条结构为 { cognitiveWargame: {...} },deep-merge 进 translation 命名空间,
+ * 与编译期 feature 词条同构(t('cognitiveWargame.common.title'))。
+ * 在 initLanguage() 完成后调用(main.tsx 时序保证),切换语言时 i18next
+ * 自动使用已注册资源。注入失败只影响卡片本地化(回退 label 字面值)。
+ */
+function injectPluginI18n(meta: PluginAppMetadata) {
+  if (!meta.i18nResources) {
+    return;
+  }
+  try {
+    for (const [lang, bundle] of Object.entries(meta.i18nResources)) {
+      if (!bundle || typeof bundle !== 'object') {
+        continue;
+      }
+      for (const hostLang of PLUGIN_LANG_TO_HOST[lang] ?? [lang]) {
+        i18next.addResourceBundle(hostLang, 'translation', bundle, true, true);
+      }
+    }
+  } catch (err) {
+    console.warn(`[plugins] ${meta.id} 词条注入失败,卡片回退字面文案:`, err);
+  }
 }
 
 async function fetchPluginList(): Promise<PluginAppMetadata[]> {
@@ -270,6 +307,7 @@ export async function initRuntimePlugins(): Promise<void> {
         console.warn(`[plugins] 拒绝注册插件 ${meta?.id}: ${reason}`);
         continue;
       }
+      injectPluginI18n(meta);
       defs.push(toModuleDefinition(meta));
     } catch (err) {
       console.error(`[plugins] 插件 ${meta?.id} 元数据异常,跳过:`, err);

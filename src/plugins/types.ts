@@ -23,6 +23,11 @@ export interface PluginAppMetadata {
   entry: string;
   /** 宿主侧装载前硬校验的版本声明(如 { react: '^18' }),不满足拒绝装载。 */
   peer?: { react?: string };
+  /** 宿主 i18n 词条 key(词条经 i18nResources 注入后优先于 label 字面值)。 */
+  labelKey?: string;
+  descriptionKey?: string;
+  /** BFF 内联下发的词条产物(lang → bundle),i18n init 后同步注入宿主实例。 */
+  i18nResources?: Record<string, Record<string, unknown>>;
 }
 
 /** 插件入口模块经 window.AgentUI.registerApp 注册的挂载函数。 */
@@ -31,8 +36,22 @@ export interface PluginAppRegistration {
   mount(container: HTMLElement): void | (() => void) | { dispose(): void };
 }
 
+/** 宿主→插件事件契约(载荷见 host-global.ts HostEventMap)。 */
+export type PluginHostEventMap = {
+  localechange: { lng: string };
+  /** 主题值同宿主 ThemeEnum('light' | 'dark' | 'system'),插件自行归一化。 */
+  themechange: { theme: string };
+};
+
 export interface AgentUIHostGlobal {
+  /** 宿主插件 API 版本(契约快照测试锁定,变更须显式 bump,见 __tests__)。 */
+  HOST_API_VERSION: string;
   registerApp(registration: PluginAppRegistration): void;
+  /** 订阅宿主事件(语言/主题切换),返回取消函数。 */
+  on<K extends keyof PluginHostEventMap>(
+    event: K,
+    listener: (payload: PluginHostEventMap[K]) => void,
+  ): () => void;
   host: {
     /** 宿主登录 token(localStorage 'Authorization',与宿主请求拦截器同源)。 */
     getApiToken(): string | null;
