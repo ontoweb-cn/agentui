@@ -37,6 +37,11 @@
 | `PLUGIN_REPO` | 默认 gitee cognitive-wargame;留空 PLUGIN_REF 则发纯宿主镜像 |
 | `PLUGIN_REF` | 插件 tag/commit;**正式发版 pin commit**(如 `998c6af`),保证可复现 |
 
+四个参数进入 shell 前由 `参数校验` stage 白名单强制(评审 S1):IMAGE_TAG 限
+`[A-Za-z0-9._-]`,PLUGIN_REF 拒绝前导 `-` 与 `..`,PLUGIN_REPO 仅允许
+`https://gitee.com/**.git`——防 params → sh 的命令替换与 git 参数注入;
+打包脚本自身另有一层 charset 校验(本地直调同样受保护)。
+
 流程等价手动 runbook(deploy/README.md §发版):验证全绿 →
 `package-plugin-bundle.sh --repo --ref` → `docker build` → 机器人凭据
 `docker login/push` → 登出。镜像内含插件 bundle,容器启动 entrypoint 幂等安装。
