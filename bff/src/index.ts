@@ -34,6 +34,7 @@ import { AgentScopeAdapter } from './services/adapters/agent-scope/agent-scope-a
 // spec-012 Phase 1 (C-P4, 2026-07-30): KAG MCP Adapter 工厂注册
 import { KagAdapter } from './services/adapters/kag/kag-adapter';
 import { canvasRoutes } from './routes/canvas';
+import { pluginsRoutes } from './routes/plugins';
 import { wizardRoutes } from './routes/wizard';
 // spec-010 v8 B-1 (B1 修复): BootstrapTokenManager 单例,供 wizard setup 鉴权
 import { BootstrapTokenManager } from './services/bootstrap-token';
@@ -197,6 +198,11 @@ app.use('/capabilities/*', authMiddleware);
 app.use('/capabilities/*', backendContextMiddleware);
 app.route('/', capabilitiesRoutes);
 
+// 运行时插件路由 /plugins/*(PawAPP 式动态装载,docs/cognitive-wargame-plugin-migration-design.md)。
+// 路径:前端 /api/bff/plugins/* → Vite proxy rewrite 去掉 /api/bff → BFF 收到 /plugins/*。
+// 列表/静态产物供启动引导与懒装载;install 限本地路径,定位 dev/内部可信环境。
+app.route('/', pluginsRoutes);
+
 // spec-008: Canvas 路由 — 画布脱离 Proxy 路由
 // Constitution Principle I + III: 前端画布操作经 BFF /canvas/*,硬绑定 IntellectRagAdapter。
 // Constitution Principle V: 按 BffTenant.canvasBackendId 路由,未绑定返回 503。
@@ -309,9 +315,17 @@ harnessStore.load()
   });
 
 serve(
-  { fetch: app.fetch, port },
+  {
+    fetch: app.fetch,
+    port,
+    // 评审 H1 修复:默认只绑定回环地址,BFF 不暴露到 LAN
+    // (CORS 只约束浏览器,挡不住直连 curl;变更类路由如 /plugins/install
+    //  需要网络层隔离)。容器/多机部署经 BFF_HOST=0.0.0.0 显式放开
+    // (nginx 与 BFF 同容器时 127.0.0.1 即可达)。
+    hostname: process.env.BFF_HOST ?? '127.0.0.1',
+  },
   (info) => {
-    console.log(`[BFF] INTELLECT BFF running on http://localhost:${info.port}`);
+    console.log(`[BFF] INTELLECT BFF running on http://${info.address}:${info.port}`);
   },
 );
 

@@ -49,12 +49,13 @@ export default function ApplicationList() {
                       <Icon className="size-5 stroke-[1.5]" aria-hidden />
                     </span>
                     <span className="text-base font-medium">
-                      {t(app.labelKey)}
+                      {app.label ?? (app.labelKey ? t(app.labelKey) : app.id)}
                     </span>
                   </div>
-                  {app.descriptionKey && (
+                  {(app.description ?? app.descriptionKey) && (
                     <p className="text-sm text-text-secondary">
-                      {t(app.descriptionKey)}
+                      {app.description ??
+                        (app.descriptionKey ? t(app.descriptionKey) : '')}
                     </p>
                   )}
                   <span className="mt-auto text-sm text-accent-primary opacity-0 transition-opacity group-hover:opacity-100">

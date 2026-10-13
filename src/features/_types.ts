@@ -19,12 +19,16 @@ export interface NavItem {
 /**
  * APP 插件卡片元数据:声明了 app 字段的模块会出现在"应用"(/applications)列表页。
  * 挂载路径由插件自治(如 /cognitive-wargame),不要求统一前缀。
+ * labelKey 为宿主词条;label/description 为字面文案,运行时插件(词条随插件
+ * bundle,宿主侧不可用)使用,渲染时优先于 labelKey。
  */
 export interface AppPluginCard {
   id: string;
   path: string;
-  labelKey: string;
+  labelKey?: string;
+  label?: string;
   descriptionKey?: string;
+  description?: string;
   icon?: ComponentType<{ className?: string }>;
   order?: number;
 }
