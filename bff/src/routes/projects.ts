@@ -43,9 +43,29 @@ function fail(code: number, message: string) {
   return { code, message, data: null };
 }
 
-function createAdminClient(): IntellectTeamAdminClient {
-  const baseUrl = process.env.INTELLECT_ENTERPRISE_BASE_URL || 'http://localhost:9381';
-  const apiServerKey = process.env.HARNESS_INTELLECT_ENTERPRISE_API_SERVER_KEY || '';
+/**
+ * 审计缺陷 C 修复:baseUrl/key 改从 harnessStore 配置的 enterprise backend
+ * 解析(env 显式设置时仍优先,保持向后兼容)——原先硬编码 env 名绕开
+ * backendStore/vault 体系,后端配置到新地址后这两个管理路由仍指向
+ * localhost:9381,且 token 不随 store 凭证更新(与 token 排查事故同源)。
+ */
+function createAdminClient(
+  c?: { get: (key: string) => unknown },
+): IntellectTeamAdminClient {
+  let baseUrl = process.env.INTELLECT_ENTERPRISE_BASE_URL;
+  let apiServerKey = process.env.HARNESS_INTELLECT_ENTERPRISE_API_SERVER_KEY;
+  if (!baseUrl || !apiServerKey) {
+    const store = c?.get('harnessStore') as
+      | {
+          listConfigs?: () => Array<{ type?: string; endpoint?: string }>;
+          list?: () => Array<{ type?: string; endpoint?: string; adminToken?: string }>;
+        }
+      | undefined;
+    const cfg = store?.listConfigs?.().find((b) => b.type === 'intellect-enterprise');
+    const ready = store?.list?.().find((b) => b.type === 'intellect-enterprise');
+    baseUrl = baseUrl || cfg?.endpoint || 'http://localhost:9381';
+    apiServerKey = apiServerKey || ready?.adminToken || '';
+  }
   return new IntellectTeamAdminClient(baseUrl, apiServerKey);
 }
 
@@ -69,7 +89,7 @@ projectRoutes.post('/admin/projects', async (c) => {
     );
   }
 
-  const client = createAdminClient();
+  const client = createAdminClient(c);
   try {
     const project = await client.createProject({
       slug: req.slug,
@@ -92,7 +112,7 @@ projectRoutes.post('/admin/projects', async (c) => {
 // ---------------------------------------------------------------------------
 
 projectRoutes.get('/admin/projects', async (c) => {
-  const client = createAdminClient();
+  const client = createAdminClient(c);
   try {
     const projects = await client.listProjects();
     return c.json(ok(projects));
@@ -110,7 +130,7 @@ projectRoutes.get('/admin/projects', async (c) => {
 
 projectRoutes.get('/admin/projects/:ref', async (c) => {
   const ref = c.req.param('ref');
-  const client = createAdminClient();
+  const client = createAdminClient(c);
   try {
     const project = await client.getProject(ref);
     return c.json(ok(project));
@@ -128,7 +148,7 @@ projectRoutes.get('/admin/projects/:ref', async (c) => {
 
 projectRoutes.delete('/admin/projects/:ref', async (c) => {
   const ref = c.req.param('ref');
-  const client = createAdminClient();
+  const client = createAdminClient(c);
   try {
     await client.deleteProject(ref);
     return c.json(ok({ archived: true }));

@@ -18,6 +18,7 @@ import { teamRoutes } from './routes/teams';
 import { projectRoutes } from './routes/projects';
 import { tenantBindingRoutes } from './routes/tenant-bindings';
 import { authSessionMiddleware } from './middleware/auth-session';
+import { requireValidImtSession } from './middleware/imt-session-guard';
 import { isImtCanvasAgentsEnabled } from './utils/feature-flags';
 import { JSONFileHarnessStore } from './services/harness-store';
 import { JSONFileBackendStore } from './services/backend-store';
@@ -150,6 +151,8 @@ app.use('/proxy/*', authMiddleware);
 // 传递 sessionToken 给 fetchWithRagToken(优先于 admin JWT,实现真实身份透传)。
 // 不阻塞:无 cookie 时仅不注入 session,不影响公开接口 /proxy/v1/system/config。
 app.use('/proxy/*', authSessionMiddleware);
+// 审计缺陷 A 修复:企业模式验证 imt_token 真实性(垃圾 cookie 不再旁路数据面)
+app.use('/proxy/*', requireValidImtSession);
 // LLM Gateway 代理:模型管理 /providers /models 等 → intellect-team :9091。
 // 智能体编排运行时仍读取 intellect-rag-app 模型配置；默认让模型提供商页面走 RAG。
 // 仅当显式设置 BFF_MODEL_PROVIDER_SOURCE=gateway 时，才把模型管理路由转给 Gateway。
@@ -175,6 +178,7 @@ app.route('/', proxyRoutes);
 const enableImtCanvasAgents = isImtCanvasAgentsEnabled();
 
 app.use('/agents/*', authMiddleware);
+app.use('/agents/*', requireValidImtSession);
 if (enableImtCanvasAgents) app.use('/agents/*', authSessionMiddleware);
 app.use('/agents/*', backendContextMiddleware);
 app.route('/', bffAgentRoutes);
@@ -186,6 +190,7 @@ app.route('/', bffAgentRoutes);
 // 鉴权:authMiddleware(运维操作,非租户隔离,无 backendContextMiddleware)。
 // 挂载点 '/' 与 bffAgentRoutes 并列,路径前缀不冲突(/admin/harness-backends vs /agents)。
 app.use('/admin/harness-backends/*', authMiddleware);
+app.use('/admin/harness-backends/*', requireValidImtSession);
 app.route('/', harnessAdminRoutes);
 
 // Multi-Harness P2 (US2): Capabilities 路由 /capabilities/*
@@ -195,6 +200,7 @@ app.route('/', harnessAdminRoutes);
 // 中间件:authMiddleware + backendContextMiddleware(注入 tenantId/userId)。
 // 挂载点 '/' 与其他路由并列,路径前缀不冲突(/capabilities vs /agents vs /admin)。
 app.use('/capabilities/*', authMiddleware);
+app.use('/capabilities/*', requireValidImtSession);
 app.use('/capabilities/*', backendContextMiddleware);
 app.route('/', capabilitiesRoutes);
 
@@ -210,6 +216,7 @@ app.route('/', pluginsRoutes);
 // 中间件:authMiddleware(鉴权) + backendContextMiddleware(租户上下文注入,缺失回退 default)
 // 挂载点 '/' 与其他路由并列,路径前缀不冲突(/canvas/* vs /agents/* / /admin/* / /capabilities/*)
 app.use('/canvas/*', authMiddleware);
+app.use('/canvas/*', requireValidImtSession);
 if (enableImtCanvasAgents) app.use('/canvas/*', authSessionMiddleware);
 app.use('/canvas/*', backendContextMiddleware);
 app.route('/', canvasRoutes);
@@ -237,8 +244,11 @@ app.route('/', authRoutes);
 // 鉴权:authMiddleware(运维操作,非租户隔离,无 backendContextMiddleware)。
 // 挂载点 '/' 与其他路由并列,路径前缀不冲突。
 app.use('/admin/teams/*', authMiddleware);
+app.use('/admin/teams/*', requireValidImtSession);
 app.use('/admin/projects/*', authMiddleware);
+app.use('/admin/projects/*', requireValidImtSession);
 app.use('/admin/tenants/*', authMiddleware);
+app.use('/admin/tenants/*', requireValidImtSession);
 app.route('/', teamRoutes);
 app.route('/', projectRoutes);
 app.route('/', tenantBindingRoutes);

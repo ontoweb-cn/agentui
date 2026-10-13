@@ -5,6 +5,7 @@ import { resolveMemberInfoFromContext } from '../services/member-id-resolver';
 import { getAuthSession } from '../middleware/auth-session';
 import type { BackendStore, HarnessStore } from '../types';
 import { resolveRagBackendId } from '../services/rag-plugin-backend';
+import { isImtCanvasAgentsEnabled } from '../utils/feature-flags';
 
 interface ProxyVariables {
   backendStore: BackendStore;
@@ -117,10 +118,12 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
 
   // 方案 B: 从 AuthSession 提取会话 token (imt_*),优先于 admin JWT 传递给 intellect-rag。
   const authSession = getAuthSession(c);
-  const sessionToken =
-    process.env.BFF_ENABLE_IMT_CANVAS_AGENTS === 'true'
-      ? authSession?.token
-      : undefined;
+  // 审计缺陷 B 修复:与 feature-flags 的默认语义统一(默认开)。
+  // 原判定 === 'true' 与 isImtCanvasAgentsEnabled() 的 !== 'false' 相反,
+  // member token 透传在实践中永不生效,上游用户级验证缺位。
+  const sessionToken = isImtCanvasAgentsEnabled()
+    ? authSession?.token
+    : undefined;
 
   let ragBaseUrl: string | undefined;
   let ragAdminToken: string | undefined;
