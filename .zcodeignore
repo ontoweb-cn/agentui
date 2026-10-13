@@ -1,0 +1,69 @@
+/node_modules
+/.npm-cache/
+/bff/node_modules/
+/.env.local
+/dist
+.swc
+
+# OpenAPI 生成类型（CI 动态生成）
+/src/interfaces/generated/
+
+# BFF 运行时数据（首次启动自动生成,含本地后端/租户配置,不入库）
+/bff/data/
+
+# 敏感环境变量(Constitution Token 安全约束)
+/.env
+/.env.local
+/.env.*.local
+/bff/.env
+
+*storybook.log
+storybook-static
+
+# IDE / 工具本地配置(不入库)
+.DS_Store
+.trae/
+.specify/
+.agents/
+.zcode/
+
+# 测试覆盖率产物
+coverage/
+
+# 临时文件
+.tmp/
+tmp_*.py
+# KANBAN 进度集成联调测试产物
+.tmp-gateway-home/
+src/features/cognitive-wargame/.test-write
+vite-dev.log
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+node_modules/
+bower_components/
+jspm_packages/
+__pycache__/
+site-packages/
+venv/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）

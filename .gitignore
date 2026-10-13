@@ -10,6 +10,8 @@
 
 # BFF 运行时数据（首次启动自动生成,含本地后端/租户配置,不入库）
 /bff/data/
+# 运行时数据的本地备份快照（含 vault 密钥,不入库）
+/bff/data-backup-*/
 
 # 敏感环境变量(Constitution Token 安全约束)
 /.env
