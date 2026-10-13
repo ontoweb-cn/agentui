@@ -20,7 +20,7 @@
  */
 import { Hono } from 'hono';
 import { createReadStream, existsSync } from 'node:fs';
-import { cp, mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 
@@ -185,6 +185,31 @@ function allowedInstallSources(): Set<string> {
   );
 }
 
+/**
+ * 解析 BFF_PLUGIN_BACKEND_OVERRIDES(#2b 部署形态):
+ * 形如 "cognitive-wargame=http://wargamesrv:9385,other=http://10.0.0.2:9000"。
+ * 仅在 install 时应用并重过 SSRF 校验(见 install handler)。
+ */
+export function parseBackendOverrides(): Map<string, string> {
+  const raw = process.env.BFF_PLUGIN_BACKEND_OVERRIDES;
+  const map = new Map<string, string>();
+  if (!raw) {
+    return map;
+  }
+  for (const pair of raw.split(',')) {
+    const eq = pair.indexOf('=');
+    if (eq <= 0) {
+      continue;
+    }
+    const id = pair.slice(0, eq).trim();
+    const target = pair.slice(eq + 1).trim();
+    if (id && target) {
+      map.set(id, target);
+    }
+  }
+  return map;
+}
+
 export const pluginsRoutes = new Hono();
 
 /** 单语言词条内联上限,超限跳过并告警(词条应精简或拆分)。 */
@@ -339,6 +364,21 @@ pluginsRoutes.post('/plugins/install', async (c) => {
     return c.text(`entry 产物不存在: ${meta.entry}(先构建插件)`, 400);
   }
 
+  // 部署形态 #2b:按插件 id 覆盖 backend.target(app.json 里通常写死
+  // 127.0.0.1:9385,容器/k8s 网络中需指向服务名或跨机地址)。
+  // 覆盖后的 target 必须重新过 SSRF 白名单——env 不能绕过校验。
+  const override = parseBackendOverrides().get(meta.id);
+  if (override) {
+    const overrideError = validateBackendTarget(override);
+    if (overrideError) {
+      return c.text(
+        `BFF_PLUGIN_BACKEND_OVERRIDES 中 ${meta.id} 的 target 非法: ${overrideError}`,
+        400,
+      );
+    }
+    meta.backend = { type: 'proxy', target: override };
+  }
+
   const dest = join(PLUGINS_DIR, meta.id);
   // 原子性:先拷到临时目录,成功后整体换入,失败不残留半成品
   const staging = join(PLUGINS_DIR, `.staging-${meta.id}`);
@@ -346,7 +386,12 @@ pluginsRoutes.post('/plugins/install', async (c) => {
   await rm(dest, { recursive: true, force: true });
   await mkdir(staging, { recursive: true });
   try {
-    await cp(join(source, 'app.json'), join(staging, 'app.json'));
+    // 覆盖后的 meta 序列化落盘(而非 cp 原文件),list/proxy 读到的是最终 target
+    await writeFile(
+      join(staging, 'app.json'),
+      JSON.stringify(meta, null, 2),
+      'utf-8',
+    );
     const entryRoot = meta.entry.split('/')[0];
     await cp(join(source, entryRoot), join(staging, entryRoot), {
       recursive: true,
@@ -357,7 +402,11 @@ pluginsRoutes.post('/plugins/install', async (c) => {
     await rm(staging, { recursive: true, force: true });
   }
 
-  return c.json({ installed: meta.id, version: meta.version ?? null });
+  return c.json({
+    installed: meta.id,
+    version: meta.version ?? null,
+    backendTarget: meta.backend?.target ?? null,
+  });
 });
 
 /**

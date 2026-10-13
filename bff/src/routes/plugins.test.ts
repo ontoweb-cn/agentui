@@ -7,7 +7,7 @@
  * PLUGINS_DIR 经 BFF_PLUGINS_DIR 注入临时目录,必须在动态 import 前设置
  * (模块常量在 import 时求值)。
  */
-import { mkdtemp, mkdir, writeFile, rm, readdir } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -197,6 +197,89 @@ describe('代理路由', () => {
       '/plugins/ssrf-plugin/proxy/api/v1/x',
     );
     expect(res.status).toBe(503);
+  });
+});
+
+describe('BFF_PLUGIN_BACKEND_OVERRIDES(#2b 部署形态)', () => {
+  it('解析 env 为 id→target 映射,容忍空白与坏段', () => {
+    process.env.BFF_PLUGIN_BACKEND_OVERRIDES =
+      'a=http://wargamesrv:9385, b=http://10.0.0.2:9000 ,bad,=x';
+    const map = api.parseBackendOverrides();
+    expect(map.get('a')).toBe('http://wargamesrv:9385');
+    expect(map.get('b')).toBe('http://10.0.0.2:9000');
+    expect(map.size).toBe(2);
+    delete process.env.BFF_PLUGIN_BACKEND_OVERRIDES;
+    expect(api.parseBackendOverrides().size).toBe(0);
+  });
+
+  it('install 时替换落盘 app.json 的 backend.target(重过 SSRF 校验)', async () => {
+    const source = await mkdtemp(join(tmpdir(), 'agentui-plugin-src-'));
+    await mkdir(join(source, 'ui/dist'), { recursive: true });
+    await writeFile(
+      join(source, 'app.json'),
+      JSON.stringify({
+        id: 'override-plugin',
+        path: '/override-plugin',
+        label: 'x',
+        entry: 'ui/dist/index.js',
+        backend: { type: 'proxy', target: 'http://127.0.0.1:9385' },
+      }),
+    );
+    await writeFile(join(source, 'ui/dist/index.js'), 'export {}');
+    process.env.BFF_PLUGIN_BACKEND_OVERRIDES =
+      'override-plugin=http://10.1.2.3:9000';
+
+    const res = await api.pluginsRoutes.request('/plugins/install', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Plugin-Admin-Token': 'test-admin-token',
+      },
+      body: JSON.stringify({ source }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      installed: 'override-plugin',
+      backendTarget: 'http://10.1.2.3:9000',
+    });
+    const installed = JSON.parse(
+      await readFile(join(fixtureDir, 'override-plugin/app.json'), 'utf-8'),
+    );
+    expect(installed.backend.target).toBe('http://10.1.2.3:9000');
+
+    await rm(join(fixtureDir, 'override-plugin'), { recursive: true, force: true });
+    await rm(source, { recursive: true, force: true });
+    delete process.env.BFF_PLUGIN_BACKEND_OVERRIDES;
+  });
+
+  it('override 目标不满足 SSRF 白名单时拒绝安装', async () => {
+    const source = await mkdtemp(join(tmpdir(), 'agentui-plugin-src-'));
+    await mkdir(join(source, 'ui/dist'), { recursive: true });
+    await writeFile(
+      join(source, 'app.json'),
+      JSON.stringify({
+        id: 'bad-override-plugin',
+        path: '/bad-override-plugin',
+        label: 'x',
+        entry: 'ui/dist/index.js',
+      }),
+    );
+    await writeFile(join(source, 'ui/dist/index.js'), 'export {}');
+    process.env.BFF_PLUGIN_BACKEND_OVERRIDES =
+      'bad-override-plugin=http://8.8.8.8:80';
+
+    const res = await api.pluginsRoutes.request('/plugins/install', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Plugin-Admin-Token': 'test-admin-token',
+      },
+      body: JSON.stringify({ source }),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('非回环');
+    await rm(source, { recursive: true, force: true });
+    delete process.env.BFF_PLUGIN_BACKEND_OVERRIDES;
   });
 });
 

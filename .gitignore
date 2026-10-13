@@ -37,3 +37,7 @@ tmp_*.py
 .tmp-gateway-home/
 src/features/cognitive-wargame/.test-write
 vite-dev.log
+
+# 运行时插件 bundle 产物(scripts/package-plugin-bundle.sh 生成,随 docker build 烤入镜像)
+deploy/plugin-bundles/*
+!deploy/plugin-bundles/.gitkeep

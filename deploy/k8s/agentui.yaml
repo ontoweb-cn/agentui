@@ -1,0 +1,89 @@
+# agentui k8s 部署(#2b 部署形态)
+# 用法见同目录 README.md;按环境替换 <项目>/<tag>/<namespace> 与后端地址。
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentui
+  labels:
+    app: agentui
+spec:
+  selector:
+    app: agentui
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentui
+  labels:
+    app: agentui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agentui
+  template:
+    metadata:
+      labels:
+        app: agentui
+    spec:
+      containers:
+        - name: agentui
+          # 内网制品库 hub.wust.edu.cn;tag 与插件 bundle 版本一一对应
+          image: hub.wust.edu.cn/<项目>/agentui:<tag>
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+              name: http
+          env:
+            # intellect-rag 后端(k8s 内 Service 名或跨环境 LB 地址)
+            - name: INTELLECT_RAG_HOST
+              value: intellect-rag
+            - name: INTELLECT_RAG_URL
+              value: http://intellect-rag:9380
+            - name: PYTHON_API_PORT
+              value: '9380'
+            - name: PYTHON_ADMIN_PORT
+              value: '9381'
+            - name: BFF_PORT
+              value: '9390'
+            # cognitive-wargame 管理服务:nginx REST 通道与 BFF 插件代理共用
+            - name: WARGAME_HOST
+              value: wargamesrv
+            - name: WARGAME_PORT
+              value: '9385'
+            # 运行时插件(#2b):install 时覆盖 app.json 里的 backend.target,
+            # 指向集群内 wargamesrv(替换后仍受 SSRF 白名单校验)
+            - name: BFF_PLUGIN_BACKEND_OVERRIDES
+              value: cognitive-wargame=http://wargamesrv:9385
+            # 插件安装 token 从 Secret 注入(见 README 创建命令)
+            - name: BFF_PLUGIN_INSTALL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: agentui-plugin-admin
+                  key: token
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: '2'
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /api/bff/plugins
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      # 镜像来自内网制品库时按需配置拉取凭证:
+      # imagePullSecrets:
+      #   - name: hub-wust-pull-secret
