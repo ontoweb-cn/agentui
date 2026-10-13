@@ -124,12 +124,22 @@ export function validateMountPath(path: string): string | null {
 }
 
 /**
- * 校验插件后端代理目标(评审 M1/SSRF 纵深防御):
- * - 仅 http(s),且 host 必须是回环(localhost/127.0.0.0/8/::1)或
- *   RFC1918 私网段——拒绝公网地址与链路本地段(如 169.254.169.254 云元数据);
- * - install(经 readPluginMeta)与 proxy 双侧校验。
+ * 校验插件后端代理目标(评审 M1/SSRF 纵深防御),两个信任级别:
+ *
+ * 严格级(插件 app.json 声明的 target,不受控输入):仅允许
+ * 回环(localhost/127.0.0.0/8/::1)与 RFC1918 私网段——拒绝公网地址、
+ * 链路本地段(如 169.254.169.254 云元数据)以及一切 DNS 主机名
+ * (无法静态判断解析结果)。
+ *
+ * 宽松级(部署者经 BFF_PLUGIN_BACKEND_OVERRIDES 显式声明的 target,
+ * 受控输入):容器/k8s 网络中后端是服务名或 host.docker.internal,
+ * 只做结构与协议校验——部署者为自己的 env 负责,且 BFF 仅绑定容器内
+ * 回环,代理入口不对外。
  */
-export function validateBackendTarget(target: string): string | null {
+export function validateBackendTarget(
+  target: string,
+  opts: { fromOverride?: boolean } = {},
+): string | null {
   let url: URL;
   try {
     url = new URL(target);
@@ -138,6 +148,9 @@ export function validateBackendTarget(target: string): string | null {
   }
   if (!/^https?:$/.test(url.protocol)) {
     return 'backend.target 仅支持 http(s)';
+  }
+  if (opts.fromOverride) {
+    return null;
   }
   const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
@@ -366,10 +379,13 @@ pluginsRoutes.post('/plugins/install', async (c) => {
 
   // 部署形态 #2b:按插件 id 覆盖 backend.target(app.json 里通常写死
   // 127.0.0.1:9385,容器/k8s 网络中需指向服务名或跨机地址)。
-  // 覆盖后的 target 必须重新过 SSRF 白名单——env 不能绕过校验。
+  // override 来自部署者 env(受控输入),走宽松级校验(允许主机名);
+  // 插件 app.json 自身声明的 target(readPluginMeta 内)仍走严格 IP 白名单。
   const override = parseBackendOverrides().get(meta.id);
   if (override) {
-    const overrideError = validateBackendTarget(override);
+    const overrideError = validateBackendTarget(override, {
+      fromOverride: true,
+    });
     if (overrideError) {
       return c.text(
         `BFF_PLUGIN_BACKEND_OVERRIDES 中 ${meta.id} 的 target 非法: ${overrideError}`,
@@ -431,13 +447,21 @@ pluginsRoutes.all('/plugins/:id/proxy/*', async (c) => {
   if (!backend || backend.type !== 'proxy' || !backend.target) {
     return c.text(`插件 ${id} 未声明 proxy 后端`, 503);
   }
-  // SSRF 纵深防御(评审 M1):readPluginMeta 已在安装/列表侧校验 target,
-  // 代理前再校验一次,防安装与代理之间 app.json 被篡改
-  const targetError = validateBackendTarget(backend.target);
+  // SSRF 纵深防御(评审 M1):
+  // - effective target 优先取部署者 override(env 受控输入,宽松级校验,允许
+  //   服务名/host.docker.internal——安装时已覆盖落盘,此处再取一次保证
+  //   「改 env 重启即生效」无需重装);
+  // - 落盘值(插件 app.json 声明,不受控)走严格 IP 白名单,
+  //   防安装与代理之间 app.json 被篡改成任意外部地址。
+  const override = parseBackendOverrides().get(id);
+  const effectiveTarget = override ?? backend.target;
+  const targetError = validateBackendTarget(effectiveTarget, {
+    fromOverride: Boolean(override),
+  });
   if (targetError) {
     return c.text(targetError, 503);
   }
-  const target = new URL(backend.target);
+  const target = new URL(effectiveTarget);
 
   const rest = c.req.path.replace(/^\/plugins\/[^/]+\/proxy/, '');
   const incoming = new URL(c.req.url);

@@ -252,7 +252,28 @@ describe('BFF_PLUGIN_BACKEND_OVERRIDES(#2b 部署形态)', () => {
     delete process.env.BFF_PLUGIN_BACKEND_OVERRIDES;
   });
 
-  it('override 目标不满足 SSRF 白名单时拒绝安装', async () => {
+  it('override 允许主机名(容器服务名/host.docker.internal)——部署者受控输入', async () => {
+    // 宽松级:部署者 env 显式声明的 target 只做结构校验
+    expect(
+      api.validateBackendTarget('http://wargamesrv:9385', { fromOverride: true }),
+    ).toBeNull();
+    expect(
+      api.validateBackendTarget('http://host.docker.internal:9385', {
+        fromOverride: true,
+      }),
+    ).toBeNull();
+    // 结构非法仍拒
+    expect(
+      api.validateBackendTarget('file:///etc/passwd', { fromOverride: true }),
+    ).toBeTruthy();
+    // 严格级(默认)拒绝一切非白名单主机名——防插件 app.json 声明外部地址
+    expect(api.validateBackendTarget('http://wargamesrv:9385')).toBeTruthy();
+    expect(
+      api.validateBackendTarget('http://host.docker.internal:9385'),
+    ).toBeTruthy();
+  });
+
+  it('override 目标结构非法(非 http 协议)时拒绝安装', async () => {
     const source = await mkdtemp(join(tmpdir(), 'agentui-plugin-src-'));
     await mkdir(join(source, 'ui/dist'), { recursive: true });
     await writeFile(
@@ -266,7 +287,7 @@ describe('BFF_PLUGIN_BACKEND_OVERRIDES(#2b 部署形态)', () => {
     );
     await writeFile(join(source, 'ui/dist/index.js'), 'export {}');
     process.env.BFF_PLUGIN_BACKEND_OVERRIDES =
-      'bad-override-plugin=http://8.8.8.8:80';
+      'bad-override-plugin=file:///etc/passwd';
 
     const res = await api.pluginsRoutes.request('/plugins/install', {
       method: 'POST',
@@ -277,7 +298,6 @@ describe('BFF_PLUGIN_BACKEND_OVERRIDES(#2b 部署形态)', () => {
       body: JSON.stringify({ source }),
     });
     expect(res.status).toBe(400);
-    expect(await res.text()).toContain('非回环');
     await rm(source, { recursive: true, force: true });
     delete process.env.BFF_PLUGIN_BACKEND_OVERRIDES;
   });
