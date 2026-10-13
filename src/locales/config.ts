@@ -1,5 +1,6 @@
 import { LanguageAbbreviation } from '@/constants/common';
 import { collectI18nLazy } from '@/features/_registry';
+import { emitHostEvent } from '@/plugins/host-global';
 import storage from '@/utils/authorization-util';
 import dayjs from 'dayjs';
 import i18n from 'i18next';
@@ -212,6 +213,9 @@ export const changeLanguageAsync = async (lng: string): Promise<void> => {
   updateDocumentLocale(lng);
 
   await i18n.changeLanguage(lng);
+
+  // 通知运行时插件跟随语言切换(src/plugins 契约,HostEventMap.localechange)
+  emitHostEvent('localechange', { lng });
 };
 
 export const initLanguage = async (): Promise<void> => {

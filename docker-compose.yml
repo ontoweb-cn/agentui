@@ -10,8 +10,21 @@ services:
       - PYTHON_ADMIN_PORT=9381
       - INTELLECT_RAG_URL=http://intellect-rag:9380
       - BFF_PORT=9390
+      # cognitive-wargame 管理服务地址(nginx REST 通道 + BFF 插件代理 override)。
+      # wargamesrv 与本 compose 同网络时用服务名(如 wargamesrv);
+      # 独立部署时用宿主地址(host.docker.internal / 172.17.0.1 / 实际 IP)。
+      - WARGAME_HOST=${WARGAME_HOST:-host.docker.internal}
+      - WARGAME_PORT=9385
+      # 运行时插件(#2b):镜像内置 bundle 的安装 token(entrypoint 用),
+      # 生产必须换成强随机值;override 使插件代理指向实际 wargamesrv。
+      - BFF_PLUGIN_INSTALL_TOKEN=${BFF_PLUGIN_INSTALL_TOKEN:?须设置插件安装 token(强随机值)}
+      - BFF_PLUGIN_BACKEND_OVERRIDES=cognitive-wargame=http://${WARGAME_HOST:-host.docker.internal}:${WARGAME_PORT:-9385}
     depends_on:
       - intellect-rag
+    # Linux 宿主默认不解析 host.docker.internal(Docker Desktop 专属),
+    # host-gateway 映射使默认 WARGAME_HOST 在三平台一致可用(评审 M3)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   intellect-rag:

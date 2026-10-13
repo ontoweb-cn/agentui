@@ -1,4 +1,5 @@
 import { ThemeEnum } from '@/constants/common';
+import { emitHostEvent } from '@/plugins/host-global';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
 type ThemeProviderProps = {
@@ -34,6 +35,9 @@ export function ThemeProvider({
     root.classList.remove(ThemeEnum.Light, ThemeEnum.Dark);
     localStorage.setItem(storageKey, theme);
     root.classList.add(theme);
+    // 通知运行时插件跟随主题切换(src/plugins 契约,HostEventMap.themechange)。
+    // 注意:插件仓库(web/agentui)的 theme-provider 副本不含此行,同步源码时保留差异。
+    emitHostEvent('themechange', { theme });
   }, [storageKey, theme]);
 
   return (

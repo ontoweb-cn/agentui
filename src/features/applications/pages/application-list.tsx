@@ -34,6 +34,16 @@ export default function ApplicationList() {
           {apps.map((app) => {
             const Icon: ComponentType<{ className?: string }> =
               app.icon ?? LayoutGrid;
+            // 词条优先(运行时插件词条已随元数据注入,编译期模块词条随 i18n lazy),
+            // key 未命中(t 返回原 key)或缺失时回退运行时插件的 label 字面值
+            const labelText =
+              app.labelKey && t(app.labelKey) !== app.labelKey
+                ? t(app.labelKey)
+                : (app.label ?? app.id);
+            const descriptionText =
+              app.descriptionKey && t(app.descriptionKey) !== app.descriptionKey
+                ? t(app.descriptionKey)
+                : app.description;
             return (
               <li key={app.id}>
                 <Link
@@ -48,13 +58,11 @@ export default function ApplicationList() {
                     <span className="flex size-10 items-center justify-center rounded-md bg-text-primary/10">
                       <Icon className="size-5 stroke-[1.5]" aria-hidden />
                     </span>
-                    <span className="text-base font-medium">
-                      {t(app.labelKey)}
-                    </span>
+                    <span className="text-base font-medium">{labelText}</span>
                   </div>
-                  {app.descriptionKey && (
+                  {descriptionText && (
                     <p className="text-sm text-text-secondary">
-                      {t(app.descriptionKey)}
+                      {descriptionText}
                     </p>
                   )}
                   <span className="mt-auto text-sm text-accent-primary opacity-0 transition-opacity group-hover:opacity-100">

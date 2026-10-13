@@ -18,6 +18,7 @@ import { teamRoutes } from './routes/teams';
 import { projectRoutes } from './routes/projects';
 import { tenantBindingRoutes } from './routes/tenant-bindings';
 import { authSessionMiddleware } from './middleware/auth-session';
+import { requireValidImtSession } from './middleware/imt-session-guard';
 import { isImtCanvasAgentsEnabled } from './utils/feature-flags';
 import { JSONFileHarnessStore } from './services/harness-store';
 import { JSONFileBackendStore } from './services/backend-store';
@@ -34,6 +35,7 @@ import { AgentScopeAdapter } from './services/adapters/agent-scope/agent-scope-a
 // spec-012 Phase 1 (C-P4, 2026-07-30): KAG MCP Adapter 工厂注册
 import { KagAdapter } from './services/adapters/kag/kag-adapter';
 import { canvasRoutes } from './routes/canvas';
+import { pluginsRoutes } from './routes/plugins';
 import { wizardRoutes } from './routes/wizard';
 // spec-010 v8 B-1 (B1 修复): BootstrapTokenManager 单例,供 wizard setup 鉴权
 import { BootstrapTokenManager } from './services/bootstrap-token';
@@ -149,6 +151,8 @@ app.use('/proxy/*', authMiddleware);
 // 传递 sessionToken 给 fetchWithRagToken(优先于 admin JWT,实现真实身份透传)。
 // 不阻塞:无 cookie 时仅不注入 session,不影响公开接口 /proxy/v1/system/config。
 app.use('/proxy/*', authSessionMiddleware);
+// 审计缺陷 A 修复:企业模式验证 imt_token 真实性(垃圾 cookie 不再旁路数据面)
+app.use('/proxy/*', requireValidImtSession);
 // LLM Gateway 代理:模型管理 /providers /models 等 → intellect-team :9091。
 // 智能体编排运行时仍读取 intellect-rag-app 模型配置；默认让模型提供商页面走 RAG。
 // 仅当显式设置 BFF_MODEL_PROVIDER_SOURCE=gateway 时，才把模型管理路由转给 Gateway。
@@ -174,6 +178,7 @@ app.route('/', proxyRoutes);
 const enableImtCanvasAgents = isImtCanvasAgentsEnabled();
 
 app.use('/agents/*', authMiddleware);
+app.use('/agents/*', requireValidImtSession);
 if (enableImtCanvasAgents) app.use('/agents/*', authSessionMiddleware);
 app.use('/agents/*', backendContextMiddleware);
 app.route('/', bffAgentRoutes);
@@ -185,6 +190,7 @@ app.route('/', bffAgentRoutes);
 // 鉴权:authMiddleware(运维操作,非租户隔离,无 backendContextMiddleware)。
 // 挂载点 '/' 与 bffAgentRoutes 并列,路径前缀不冲突(/admin/harness-backends vs /agents)。
 app.use('/admin/harness-backends/*', authMiddleware);
+app.use('/admin/harness-backends/*', requireValidImtSession);
 app.route('/', harnessAdminRoutes);
 
 // Multi-Harness P2 (US2): Capabilities 路由 /capabilities/*
@@ -194,8 +200,14 @@ app.route('/', harnessAdminRoutes);
 // 中间件:authMiddleware + backendContextMiddleware(注入 tenantId/userId)。
 // 挂载点 '/' 与其他路由并列,路径前缀不冲突(/capabilities vs /agents vs /admin)。
 app.use('/capabilities/*', authMiddleware);
+app.use('/capabilities/*', requireValidImtSession);
 app.use('/capabilities/*', backendContextMiddleware);
 app.route('/', capabilitiesRoutes);
+
+// 运行时插件路由 /plugins/*(PawAPP 式动态装载,docs/cognitive-wargame-plugin-migration-design.md)。
+// 路径:前端 /api/bff/plugins/* → Vite proxy rewrite 去掉 /api/bff → BFF 收到 /plugins/*。
+// 列表/静态产物供启动引导与懒装载;install 限本地路径,定位 dev/内部可信环境。
+app.route('/', pluginsRoutes);
 
 // spec-008: Canvas 路由 — 画布脱离 Proxy 路由
 // Constitution Principle I + III: 前端画布操作经 BFF /canvas/*,硬绑定 IntellectRagAdapter。
@@ -204,6 +216,7 @@ app.route('/', capabilitiesRoutes);
 // 中间件:authMiddleware(鉴权) + backendContextMiddleware(租户上下文注入,缺失回退 default)
 // 挂载点 '/' 与其他路由并列,路径前缀不冲突(/canvas/* vs /agents/* / /admin/* / /capabilities/*)
 app.use('/canvas/*', authMiddleware);
+app.use('/canvas/*', requireValidImtSession);
 if (enableImtCanvasAgents) app.use('/canvas/*', authSessionMiddleware);
 app.use('/canvas/*', backendContextMiddleware);
 app.route('/', canvasRoutes);
@@ -231,8 +244,11 @@ app.route('/', authRoutes);
 // 鉴权:authMiddleware(运维操作,非租户隔离,无 backendContextMiddleware)。
 // 挂载点 '/' 与其他路由并列,路径前缀不冲突。
 app.use('/admin/teams/*', authMiddleware);
+app.use('/admin/teams/*', requireValidImtSession);
 app.use('/admin/projects/*', authMiddleware);
+app.use('/admin/projects/*', requireValidImtSession);
 app.use('/admin/tenants/*', authMiddleware);
+app.use('/admin/tenants/*', requireValidImtSession);
 app.route('/', teamRoutes);
 app.route('/', projectRoutes);
 app.route('/', tenantBindingRoutes);
@@ -309,9 +325,17 @@ harnessStore.load()
   });
 
 serve(
-  { fetch: app.fetch, port },
+  {
+    fetch: app.fetch,
+    port,
+    // 评审 H1 修复:默认只绑定回环地址,BFF 不暴露到 LAN
+    // (CORS 只约束浏览器,挡不住直连 curl;变更类路由如 /plugins/install
+    //  需要网络层隔离)。容器/多机部署经 BFF_HOST=0.0.0.0 显式放开
+    // (nginx 与 BFF 同容器时 127.0.0.1 即可达)。
+    hostname: process.env.BFF_HOST ?? '127.0.0.1',
+  },
   (info) => {
-    console.log(`[BFF] INTELLECT BFF running on http://localhost:${info.port}`);
+    console.log(`[BFF] INTELLECT BFF running on http://${info.address}:${info.port}`);
   },
 );
 

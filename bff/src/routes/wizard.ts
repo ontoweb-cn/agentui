@@ -126,6 +126,18 @@ function getOptionForType(type: BackendType): WizardBackendTypeOption | undefine
   return BACKEND_TYPE_OPTIONS.find((o) => o.type === type);
 }
 
+/**
+ * RAG 探测候选路径(Bug2 修复):与 IntellectRagAdapter 的调用约定对齐。
+ * adapter 实际请求 `endpoint + /api/v1/*`——探测必须用同一前缀,
+ * 否则子路径部署(如 …/intellect-kb)不存在能同时通过探测且被 adapter
+ * 正确调用的 endpoint 值;`/v1/models` 作为旧根挂载形态的兼容回退。
+ * 导出供单测。
+ */
+export function ragProbePaths(ragEndpoint: string): string[] {
+  const base = ragEndpoint.replace(/\/$/, '');
+  return [`${base}/api/v1/models`, `${base}/v1/models`];
+}
+
 async function probeRagPlugin(
   ragEndpoint: string,
   ragApiKey?: string,
@@ -135,22 +147,37 @@ async function probeRagPlugin(
   if (!safe) {
     return { ragHealthy: false, ragError: `RAG URL 不安全(可能指向私有 IP)。${SSRF_PRIVATE_IP_HINT}` };
   }
-  try {
-    const headers: Record<string, string> = {};
-    if (ragApiKey) {
-      headers['Authorization'] = `Bearer ${ragApiKey}`;
-    }
-    const resp = await safeFetch(`${endpoint}/v1/models`, {
-      headers,
-      timeoutMs: 5000,
-    });
-    if (resp.ok) {
-      return { ragHealthy: true };
-    }
-    return { ragHealthy: false, ragError: `RAG 上游返回 ${resp.status}` };
-  } catch (err) {
-    return { ragHealthy: false, ragError: (err as Error).message };
+  const headers: Record<string, string> = {};
+  if (ragApiKey) {
+    headers['Authorization'] = `Bearer ${ragApiKey}`;
   }
+  const candidates = ragProbePaths(endpoint);
+  for (let i = 0; i < candidates.length; i++) {
+    try {
+      const resp = await safeFetch(candidates[i], {
+        headers,
+        timeoutMs: 5000,
+      });
+      if (resp.ok) {
+        return { ragHealthy: true };
+      }
+      // 401/403:已命中服务(路径正确),是凭证问题——不回退,
+      // 避免回退路径的 404 掩盖"key 错误"这一真实原因
+      if (resp.status === 401 || resp.status === 403) {
+        return {
+          ragHealthy: false,
+          ragError: `RAG 可达但鉴权失败(${resp.status}):检查 ragApiKey`,
+        };
+      }
+      // 404 等:该前缀不存在,尝试下一候选;最后一个候选的错误作为结果
+      if (i === candidates.length - 1) {
+        return { ragHealthy: false, ragError: `RAG 上游返回 ${resp.status}` };
+      }
+    } catch (err) {
+      return { ragHealthy: false, ragError: (err as Error).message };
+    }
+  }
+  return { ragHealthy: false, ragError: 'RAG 探测无候选路径' };
 }
 
 // ---------------------------------------------------------------------------
@@ -338,7 +365,10 @@ function isAdminAuthorized(c: Context): boolean {
  * spec-010 v8 §9.4 (B1 修复):Wizard setup 端点鉴权中间件。
  * 接受 admin token(JWT/cookie)或 bootstrap token(首次安装专用)。
  */
-async function wizardSetupAuth(c: Context, next: () => Promise<void>): Promise<void> {
+async function wizardSetupAuth(
+  c: Context,
+  next: () => Promise<void>,
+): Promise<void | Response> {
   // 1. admin 鉴权通过则放行
   if (isAdminAuthorized(c)) {
     await next();
@@ -368,7 +398,9 @@ async function wizardSetupAuth(c: Context, next: () => Promise<void>): Promise<v
     }
   }
 
-  c.json(
+  // 修复(Bug1):必须 return——中间件 void 返回值下裸调 c.json() 会使
+  // Hono 报 "Context is not finalized",未授权请求得到 500 而非 401
+  return c.json(
     { code: 401, message: 'Unauthorized: admin token or bootstrap token required' },
     401,
   );

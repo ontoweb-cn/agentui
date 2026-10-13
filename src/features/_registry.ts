@@ -37,6 +37,21 @@ export function collectRoutes(): LazyRouteConfig[] {
   return enabledModules.flatMap((m) => m.routes ?? []);
 }
 
+/**
+ * 注册运行时插件模块(src/plugins/runtime.tsx 在 bootstrap 阶段调用)。
+ *
+ * 必须在 collectRoutes/collectApps/collectNav 首次求值前完成:
+ * main.tsx 会先 await initRuntimePlugins() 再动态 import App(路由树随之构建)。
+ * 就地变更 enabledModules(const 数组),保持既有导出引用不变。
+ */
+export function registerRuntimeModules(defs: ModuleDefinition[]) {
+  for (const def of defs) {
+    enabledModules.push(def);
+    def.init?.(moduleContext);
+  }
+  enabledModules.sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+}
+
 export function collectNav(): NavItem[] {
   return enabledModules
     .flatMap((m) => m.nav ?? [])

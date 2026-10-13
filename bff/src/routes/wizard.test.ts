@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import { Hono } from 'hono';
-import { wizardRoutes } from './wizard';
+import { wizardRoutes, ragProbePaths } from './wizard';
 import type { HarnessStore } from '../types/stores';
 import type { BackendStore } from '../types/stores';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
@@ -243,6 +243,61 @@ describe('wizard 路由 (B-3)', () => {
   // POST /admin/wizard/probe
   // -------------------------------------------------------------------------
 
+  describe('ragProbePaths(Bug2:探测前缀与 adapter 对齐)', () => {
+    it('候选顺序为 adapter 约定(/api/v1)优先,/v1 兼容回退;剥离尾斜杠', () => {
+      expect(ragProbePaths('https://x.example/kb')).toEqual([
+        'https://x.example/kb/api/v1/models',
+        'https://x.example/kb/v1/models',
+      ]);
+      expect(ragProbePaths('http://localhost:9380/')).toEqual([
+        'http://localhost:9380/api/v1/models',
+        'http://localhost:9380/v1/models',
+      ]);
+    });
+
+    it('子路径部署:/api/v1 404 时回退 /v1;401(鉴权失败)不回退', async () => {
+      const stores = createMockStores();
+      const app = createApp(stores);
+      (isUrlSafe as Mock).mockResolvedValue(true);
+      (fetchTenantInfo as Mock).mockResolvedValue({ tenant_id: 't1' });
+
+      // 前缀 /api/v1 404 → 回退 /v1 200 → healthy
+      (safeFetch as Mock)
+        .mockResolvedValueOnce({ ok: false, status: 404 })
+        .mockResolvedValueOnce({ ok: true, status: 200 });
+      const res1 = await app.request('/admin/wizard/probe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'intellect-enterprise',
+          endpoint: 'https://x.example/gw',
+          ragEndpoint: 'https://x.example/kb',
+        }),
+      });
+      const b1 = await res1.json();
+      expect(b1.healthy).toBe(true);
+      expect(b1.ragHealthy).toBe(true);
+      expect((safeFetch as Mock).mock.calls[0][0]).toBe('https://x.example/kb/api/v1/models');
+      expect((safeFetch as Mock).mock.calls[1][0]).toBe('https://x.example/kb/v1/models');
+
+      // /api/v1 401 → 服务已命中,直接报鉴权失败,不再请求 /v1
+      (safeFetch as Mock).mockReset().mockResolvedValueOnce({ ok: false, status: 401 });
+      const res2 = await app.request('/admin/wizard/probe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'intellect-enterprise',
+          endpoint: 'https://x.example/gw',
+          ragEndpoint: 'https://x.example/kb',
+        }),
+      });
+      const b2 = await res2.json();
+      expect(b2.ragHealthy).toBe(false);
+      expect(b2.ragError).toContain('鉴权失败');
+      expect((safeFetch as Mock).mock.calls.length).toBe(1);
+    });
+  });
+
   describe('POST /admin/wizard/probe', () => {
     it('无 Authorization header 时 probe 正常返回(公开端点)', async () => {
       vi.mocked(isUrlSafe).mockResolvedValue(true);
@@ -353,6 +408,25 @@ describe('wizard 路由 (B-3)', () => {
   // -------------------------------------------------------------------------
 
   describe('POST /admin/wizard/setup', () => {
+    it('Bug1:已有就绪后端时,无凭证调用返回 401 而非 500(Context not finalized)', async () => {
+      // 回归用例:wizardSetupAuth 尾部裸调 c.json() 缺 return,
+      // 未授权请求曾得到 500 "Internal Server Error"
+      const stores = createMockStores([], [ragBackend]);
+      const app = createApp(stores);
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, // 无 Authorization/cookie
+        body: JSON.stringify({
+          name: 'any',
+          type: 'hermes',
+          endpoint: 'http://localhost:9999',
+          credentialKind: 'bearer-token',
+        }),
+      });
+      expect(res.status).toBe(401);
+      const body = await res.json();
+      expect(body.message).toContain('admin token or bootstrap token');
+    });
     it('type=intellect-rag 返回 400(不作为独立向导类型)', async () => {
       const res = await app.request('/admin/wizard/setup', {
         method: 'POST',

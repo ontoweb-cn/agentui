@@ -55,6 +55,23 @@ export default defineConfig(({ mode }) => {
   console.log(`[vite.config] mode: ${mode}, API_HOST: ${apiHost}, BFF_HOST: ${bffHost}`);
 
   const proxy = {
+    // 插件后端 SSE 事件流(#5 收编):经 BFF 插件代理流式透传。
+    // 必须放在通用 /api/bff 之前(vite 按对象键序做前缀匹配),
+    // 且复用 wargame events 条目的 SSE 友好参数(timeout 0 + keep-alive)。
+    '/api/bff/plugins/cognitive-wargame/proxy/api/v1/events': {
+      target: `http://${bffHost}:${bffPort}`,
+      changeOrigin: true,
+      timeout: 0,
+      proxyTimeout: 0,
+      rewrite: (path: string) => path.replace(/^\/api\/bff/, ''),
+      configure: (proxy) => {
+        proxy.on('proxyReq', (proxyReq) => {
+          proxyReq.setHeader('Connection', 'keep-alive');
+          proxyReq.setHeader('Cache-Control', 'no-cache');
+          proxyReq.setHeader('Accept', 'text/event-stream');
+        });
+      },
+    },
     '/api/bff': {
       target: `http://${bffHost}:${bffPort}`,
       changeOrigin: true,

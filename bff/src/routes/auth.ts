@@ -617,6 +617,13 @@ authRoutes.get('/auth/login/channels', async (c) => {
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
       console.error(`[auth] intellect-team /oauth/providers failed: ${resp.status}`, text);
+      // 审计缺陷 D 修复:上游鉴权失败原样透传(401),与"网关不可达"(502)区分
+      if (resp.status === 401 || resp.status === 403) {
+        return c.json(
+          fail(401, 'intellect-team rejected BFF credentials (check gateway token)'),
+          401,
+        );
+      }
       return c.json(fail(502, 'intellect-team /oauth/providers failed'), 502);
     }
 

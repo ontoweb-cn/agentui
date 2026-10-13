@@ -38,6 +38,11 @@ RUN cd /app/bff && npm install --omit=dev --no-audit --no-fund
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
+# 运行时插件 bundle(可选,#2b 方案 B):scripts/package-plugin-bundle.sh
+# 产出后随镜像分发,entrypoint 启动时自动安装。目录默认只有 .gitkeep,
+# 不打包插件时镜像不含任何插件(纯宿主形态)。
+COPY deploy/plugin-bundles/ /opt/bundled-plugins/
+
 EXPOSE 80
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
