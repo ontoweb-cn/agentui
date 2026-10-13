@@ -12,7 +12,7 @@ AI 集群已部署服务(经 `ai.wust.edu.cn` 路径路由):
 | 服务 | 端点 | 形态(实测) |
 |---|---|---|
 | intellect-team gateway | `https://ai.wust.edu.cn/intellect-gateway` | FastAPI;`/api/tenant/info` 公开,Default Tenant `000…000`(32 位 hex);wizard probe healthy,capabilities 全开(multiTenant/kb/canvas/memory/mcp) |
-| RAG(knowledge base) | `https://ai.wust.edu.cn/intellect-kb/api` | intellect-rag;根拼 `/v1/*`(注意含 `/api` 段);`/v1/models` 需 Bearer API key |
+| RAG(knowledge base) | `https://ai.wust.edu.cn/intellect-kb` | intellect-rag;**ragEndpoint 不带 `/api`**(adapter 自拼 `/api/v1/*`);需 Bearer API key |
 | intellect-team 前端 | `https://ai.wust.edu.cn/intellect` | 302(UI) |
 
 本机 BFF 接入(一条命令,缺两项部署侧凭证:gateway 账号/ token 与 kb API key):
@@ -24,15 +24,25 @@ curl -X POST http://localhost:9390/admin/wizard/setup \
     "type": "intellect-enterprise",
     "endpoint": "https://ai.wust.edu.cn/intellect-gateway",
     "intellectTenantId": "00000000000000000000000000000000",
-    "ragEndpoint": "https://ai.wust.edu.cn/intellect-kb/api",
+    "ragEndpoint": "https://ai.wust.edu.cn/intellect-kb",
     "ragApiKey": "<kb 的 API key>",
     "credentialKind": "email-password",
     "email": "<gateway 账号>", "password": "<gateway 密码>"
   }'
 ```
 
-(或 `credentialKind: bearer-token` + `credential: <token>`;
-setup 成功后 companion RAG 后端自动创建,`/api/bff/capabilities` 应返回能力集。)
+(或 `credentialKind: bearer-token` + `credential: <token>`)
+
+**已按此配置打通(2026-10-13 实测)**:capabilities 返回完整能力面
+(canvas/rag/mcp/memory/modelManagement/multiTenant,tenant 全零匹配)、
+`/auth/login/channels` 返回 OAuth 渠道列表(登录页渠道按钮渲染)、
+`/proxy/v1/system/config` 200(BFF→kb 代理 + API key 注入)。
+gateway token 经 `bff/.env` 的 `HARNESS_INTELLECT_ENTERPRISE_DEFAULT_TOKEN`
+与 `HARNESS_INTELLECT_ENTERPRISE_API_SERVER_KEY` 注入(两处同值);
+**运维踩坑记录**:①向 .env 追加变量时先确认无同名旧行
+(`grep -q || append` 守卫会静默跳过,旧 token 继续生效,症状为 gateway
+401 "token did not match any known format");②tenant-validator 通过
+不代表 token 有效(/api/tenant/info 公开匿名可达)。
 
 ## 发版 runbook(手动)
 
