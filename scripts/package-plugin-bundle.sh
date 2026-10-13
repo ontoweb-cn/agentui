@@ -39,15 +39,24 @@ if [[ -n "$REPO" ]]; then
   fi
   PLUGIN_DIR="$WORK_DIR/web/agentui"
 else
-  # 默认相邻 checkout(本地开发/发版机两仓库并列)
-  DEFAULT_DIR="${AGENTUI_ROOT}/../cognitive-wargame/web/agentui"
+  # 默认相邻 checkout(本地开发/发版机两仓库并列)。
+  # 拷贝到工作目录再构建:npm ci 会先删除 node_modules——直接在源工程执行
+  # 会破坏其符号链接开发布局(../qwenpaw/node_modules)。
+  DEFAULT_DIR="${AGENTUI_ROOT}/../cognitive-wargame"
+  if [[ ! -d "$DEFAULT_DIR/web/agentui" ]]; then
+    echo "✗ 未找到相邻插件仓库: $DEFAULT_DIR(或用 --repo 指定)" >&2
+    exit 1
+  fi
   if [[ -n "$REF" ]]; then
     echo "==> 本地仓库检出 ref: $REF"
-    git -C "${AGENTUI_ROOT}/../cognitive-wargame" fetch --all --quiet || true
-    git -C "${AGENTUI_ROOT}/../cognitive-wargame" worktree add --detach "$WORK_DIR" "$REF"
+    git -C "$DEFAULT_DIR" fetch --all --quiet || true
+    git -C "$DEFAULT_DIR" worktree add --detach "$WORK_DIR" "$REF"
     PLUGIN_DIR="$WORK_DIR/web/agentui"
   else
-    PLUGIN_DIR="$DEFAULT_DIR"
+    echo "==> 拷贝本地插件工程到临时目录(不动源 checkout)"
+    rsync -a --exclude node_modules --exclude ui/dist --exclude .vite-cache \
+      "$DEFAULT_DIR/web/agentui/" "$WORK_DIR/web/agentui/"
+    PLUGIN_DIR="$WORK_DIR/web/agentui"
   fi
 fi
 
