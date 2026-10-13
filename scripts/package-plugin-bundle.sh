@@ -26,6 +26,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# 入参白名单(评审 S1):REPO/REF 会进入 git clone 的参数位置,
+# 引号只防分词,不防前导 - 的参数注入(如 --upload-pack)与 git ref 里的路径花样。
+# 仅放行 https / ssh 两种 URL 形态;REF 限 tag/commit 字符集,拒绝前导 - 与 ".."。
+if [[ -n "$REPO" ]] && ! [[ "$REPO" =~ ^(https://[A-Za-z0-9._/-]+\.git|git@[A-Za-z0-9._-]+:[A-Za-z0-9._/-]+\.git)$ ]]; then
+  echo "✗ 非法 --repo(仅允许 https://….git 或 git@host:path.git): $REPO" >&2
+  exit 1
+fi
+if [[ -n "$REF" ]] && { [[ "$REF" == -* ]] || [[ "$REF" == *..* ]] || ! [[ "$REF" =~ ^[A-Za-z0-9._/-]+$ ]]; }; then
+  echo "✗ 非法 --ref(仅允许字母数字与 . _ /,不得以 - 开头或含 ..): $REF" >&2
+  exit 1
+fi
+
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/plugin-bundle-XXXXXX")"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
