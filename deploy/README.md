@@ -4,6 +4,36 @@
 插件产物在发版时构建进 agentui 镜像,容器启动时由 entrypoint 自动安装;
 后续应用市场成熟后扩展 zip 制品 + 安装 URL(内网制品库 hub.wust.edu.cn)。
 
+## 测试环境拓扑(2026-10-13 确认)
+
+**测试环境 AgentUI 仅本机运行(dev 三件套),k8s 部署搁置**;后端对接
+AI 集群已部署服务(经 `ai.wust.edu.cn` 路径路由):
+
+| 服务 | 端点 | 形态(实测) |
+|---|---|---|
+| intellect-team gateway | `https://ai.wust.edu.cn/intellect-gateway` | FastAPI;`/api/tenant/info` 公开,Default Tenant `000…000`(32 位 hex);wizard probe healthy,capabilities 全开(multiTenant/kb/canvas/memory/mcp) |
+| RAG(knowledge base) | `https://ai.wust.edu.cn/intellect-kb/api` | intellect-rag;根拼 `/v1/*`(注意含 `/api` 段);`/v1/models` 需 Bearer API key |
+| intellect-team 前端 | `https://ai.wust.edu.cn/intellect` | 302(UI) |
+
+本机 BFF 接入(一条命令,缺两项部署侧凭证:gateway 账号/ token 与 kb API key):
+
+```bash
+curl -X POST http://localhost:9390/admin/wizard/setup \
+  -H 'Content-Type: application/json' -d '{
+    "name": "intellect-enterprise-default",
+    "type": "intellect-enterprise",
+    "endpoint": "https://ai.wust.edu.cn/intellect-gateway",
+    "intellectTenantId": "00000000000000000000000000000000",
+    "ragEndpoint": "https://ai.wust.edu.cn/intellect-kb/api",
+    "ragApiKey": "<kb 的 API key>",
+    "credentialKind": "email-password",
+    "email": "<gateway 账号>", "password": "<gateway 密码>"
+  }'
+```
+
+(或 `credentialKind: bearer-token` + `credential: <token>`;
+setup 成功后 companion RAG 后端自动创建,`/api/bff/capabilities` 应返回能力集。)
+
 ## 发版 runbook(手动)
 
 ```bash
