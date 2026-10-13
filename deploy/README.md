@@ -84,6 +84,11 @@ token 走 Secret,镜像来自 hub.wust.edu.cn。
 存量 nginx/BFF bug(见 git log):proxy_buffering 重复声明、catch-all
 regex 抢占前缀 location、目录 301 丢端口。
 
+**v0.4.0(首个正式版,2026-10-13)**:从 main(tag v0.4.0)构建,插件 pin
+cognitive-wargame@998c6af,冒烟全绿(列表/JS 5.2MB/深链/安装面 fail-closed);
+推送走 skopeo 通道(docker daemon EOF 既有预案);独立容器冒烟需
+`--add-host` 补 nginx upstream 主机名(intellect-rag 等,compose 网络外无 DNS)。
+
 注意事项:
 - **首次部署需完成安装向导**(配置首个 harness backend)后应用页才可进入,
   WizardGuard 会将未初始化环境重定向到 /wizard——这是宿主既有行为;

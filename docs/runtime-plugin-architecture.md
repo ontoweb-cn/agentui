@@ -7,7 +7,7 @@
 > - 插件作者指南:[plugin-development-guide.md](./plugin-development-guide.md)
 > - 部署与发版:[../deploy/README.md](../deploy/README.md)
 >
-> Status: 已实现(2026-10-13);首个插件 cognitive-wargame 已在独立仓库运行,镜像已发 hub.wust.edu.cn/intellect/agentui:0.2.0
+> Status: 已实现(2026-10-13);首个插件 cognitive-wargame 已在独立仓库运行;**首个正式版 v0.4.0 已发**(git tag v0.4.0,镜像 hub.wust.edu.cn/intellect/agentui:0.4.0,插件 pin cognitive-wargame@998c6af)
 > 机制参照:QwenPaw PawApp(`~/project/QwenPaw`)
 
 ## 一、从 QwenPaw PawApp 借鉴的机制与本地化改造
@@ -94,31 +94,38 @@
 
 ## 六、未完成任务清单
 
+> **2026-10-13 首轮收口**:版本序列统一 **v0.4.0**(旧 tag v0.26.2 已删除,本地 + gitee 远程);
+> 首个正式镜像 **0.4.0** 从 main(tag v0.4.0)构建发布,冒烟全绿;CI 接入华为集群 Jenkins
+> (两仓 Jenkinsfile + [deploy/ci-jenkins.md](../deploy/ci-jenkins.md),任务创建待管理员);
+> wizard setup 重复调用 500 经核实即 dae20e4(Bug1)已修症状,清单条目过期删除。
+> 发版通道两处坑已修:Harbor 机器人 env 用户名必须带项目前缀**且加引号**
+> (`HARBOR_USER='robot$intellect+agentui-release'`,否则 source 时 `$intellect` 被
+> shell 展开吞掉 → push 401);docker daemon EOF 走 skopeo 通道(runbook 既有预案)。
+
 ### 近期(待决策/环境)
 
 | # | 任务 | 所需 |
 |---|---|---|
-| 1 | 从 main 构建首个正式发版镜像(条件已齐:合并后 main 含全部工作、机器人账号就绪) | 版本号确认(见 #2) |
-| 2 | 版本序列统一(package.json 0.2.0 vs 旧 git tag v0.26.2) | 定 0.27.0(续旧序)或 1.0.0(新架构起点) |
-| 3 | k8s 部署(manifest 就绪,已搁置) | kubeconfig/namespace + 后端地址 + 暴露方式 |
-| 4 | 内部 CI 平台接入(ci.sh 可直调) | Jenkins/Gitee Go 选型 |
-| 5 | Harbor admin 密码修改(对话中曾明文出现) | Harbor 界面操作 |
+| 1 | k8s 部署(manifest 已升 0.4.0,已搁置) | kubeconfig/namespace + 后端地址 + 暴露方式 |
+| 2 | Harbor admin 密码修改(对话中曾明文出现;机器人账号独立,发版不受影响) | 现行 admin 密码(API 或界面操作) |
+| 3 | Jenkins 任务创建(两仓 Jenkinsfile 已就绪) | Jenkins 管理员:录入 harbor-agentui-release 凭据 + 建 SCM 任务(步骤见 deploy/ci-jenkins.md) |
 
 ### 中期(触发条件驱动)
 
 | # | 任务 | 触发条件 |
 |---|---|---|
-| 6 | C 方案:zip 制品 + sha256(机器人已就绪) | 插件独立发版需求 |
-| 7 | hash 文件名 + immutable 缓存 | C 方案落地后 |
-| 8 | vite SSE 代理条目去硬编码(dev-only) | 第二个带后端插件 |
-| 9 | SSE `?token=` → cookie 认证 | BFF 鉴权面改造窗口 |
-| 10 | token localStorage(S1)收编 | GATEWAY-1 启动 |
-| 11 | 安装/卸载审计日志 | 生产 install 常态化 |
-| 12 | 插件列表后台刷新提示 | 热更新需求 |
-| 13 | 卸载运行时失效(免刷新) | 卸载 UI 出现 |
-| 14 | 进程内 Hono 后端档(`backend.type: inline`) | 第二个轻插件 |
-| 15 | iframe 隔离档(不可信插件) | 第三方不可信代码接入 |
-| 16 | `@agentui/ui` / Tailwind preset 共享包 | 插件 ≥2 且副本漂移 |
-| 17 | 插件市场/远程索引 | 应用市场成熟 |
-| 18 | wizard setup 重复调用 500(Context not finalized)修复 | 已定位,半小时级 |
-| 19 | release 机器人密钥轮换 | ~2027-10 到期前 |
+| 4 | C 方案:zip 制品 + sha256(机器人已就绪) | 插件独立发版需求 |
+| 5 | hash 文件名 + immutable 缓存 | C 方案落地后 |
+| 6 | vite SSE 代理条目去硬编码(dev-only) | 第二个带后端插件 |
+| 7 | SSE `?token=` → cookie 认证 | BFF 鉴权面改造窗口 |
+| 8 | token localStorage(S1)收编 | GATEWAY-1 启动 |
+| 9 | 安装/卸载审计日志 | 生产 install 常态化 |
+| 10 | 插件列表后台刷新提示 | 热更新需求 |
+| 11 | 卸载运行时失效(免刷新) | 卸载 UI 出现 |
+| 12 | 进程内 Hono 后端档(`backend.type: inline`) | 第二个轻插件 |
+| 13 | iframe 隔离档(不可信插件) | 第三方不可信代码接入 |
+| 14 | `@agentui/ui` / Tailwind preset 共享包 | 插件 ≥2 且副本漂移 |
+| 15 | 插件市场/远程索引 | 应用市场成熟 |
+| 16 | enable/disable 启停 API(当前启停=删除/重装) | 插件管理 UI 出现 |
+| 17 | config_fields 配置页(settings 宿主声明式渲染) | P4 增强窗口 |
+| 18 | release 机器人密钥轮换 | ~2027-10 到期前 |
