@@ -21,6 +21,10 @@ services:
       - BFF_PLUGIN_BACKEND_OVERRIDES=cognitive-wargame=http://${WARGAME_HOST:-host.docker.internal}:${WARGAME_PORT:-9385}
     depends_on:
       - intellect-rag
+    # Linux 宿主默认不解析 host.docker.internal(Docker Desktop 专属),
+    # host-gateway 映射使默认 WARGAME_HOST 在三平台一致可用(评审 M3)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   intellect-rag:

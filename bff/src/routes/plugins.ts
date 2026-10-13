@@ -439,18 +439,19 @@ pluginsRoutes.all('/plugins/:id/proxy/*', async (c) => {
     return c.text('Not Found', 404);
   }
   const meta = await readPluginMeta(pluginDir);
-  const backend = meta?.backend;
-  if (!backend || backend.type !== 'proxy' || !backend.target) {
-    return c.text(`插件 ${id} 未声明 proxy 后端`, 503);
-  }
-  // SSRF 纵深防御(评审 M1):
-  // - effective target 优先取部署者 override(env 受控输入,宽松级校验,允许
-  //   服务名/host.docker.internal——安装时已覆盖落盘,此处再取一次保证
-  //   「改 env 重启即生效」无需重装);
+  // SSRF 纵深防御 + override 语义(评审 M1/M2):
+  // - effective target 优先取部署者 override(env 受控输入,宽松级校验,
+  //   允许服务名/host.docker.internal),**override 存在即生效**——即使插件
+  //   app.json 未声明 backend 段也可凭 override 启用代理(部署者直觉语义);
   // - 落盘值(插件 app.json 声明,不受控)走严格 IP 白名单,
   //   防安装与代理之间 app.json 被篡改成任意外部地址。
   const override = parseBackendOverrides().get(id);
-  const effectiveTarget = override ?? backend.target;
+  const declaredTarget =
+    meta?.backend?.type === 'proxy' ? meta.backend.target : undefined;
+  const effectiveTarget = override ?? declaredTarget;
+  if (!effectiveTarget) {
+    return c.text(`插件 ${id} 未声明 proxy 后端`, 503);
+  }
   const targetError = validateBackendTarget(effectiveTarget, {
     fromOverride: Boolean(override),
   });
@@ -485,7 +486,7 @@ pluginsRoutes.all('/plugins/:id/proxy/*', async (c) => {
     duplex: 'half',
   }).catch(() => null);
   if (!upstreamResp) {
-    return c.text(`插件后端不可达: ${backend.target}`, 502);
+    return c.text(`插件后端不可达: ${effectiveTarget}`, 502);
   }
 
   // fetch 已自动解压,不能复制压缩与长度相关头

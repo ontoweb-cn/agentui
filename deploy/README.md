@@ -47,7 +47,12 @@ regex 抢占前缀 location、目录 301 丢端口。
   WizardGuard 会将未初始化环境重定向到 /wizard——这是宿主既有行为;
 - 内网构建拉不动 docker.io 时:`docker pull docker.1ms.run/library/node:20-alpine
   && docker tag ... node:20-alpine`,再 `DOCKER_BUILDKIT=0 docker build`
-  (buildx 独立 builder 不走 daemon mirror)。
+  (buildx 独立 builder 不走 daemon mirror);
+- SSE 空闲超过 3600s(proxy.conf 读写超时)会断开,依赖 EventSource
+  自动重连兜底;长空闲场景若观察到频繁重连,可调 proxy.conf 超时或
+  上游加心跳;
+- `BFF_PLUGIN_BACKEND_OVERRIDES` **存在即生效**(插件 app.json 未声明
+  backend 段也可启用代理),改 env 重启容器即生效,无需重装插件。
 
 ## 链路速查
 

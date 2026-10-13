@@ -51,6 +51,8 @@ else
     echo "==> 本地仓库检出 ref: $REF"
     git -C "$DEFAULT_DIR" fetch --all --quiet || true
     git -C "$DEFAULT_DIR" worktree add --detach "$WORK_DIR" "$REF"
+    # rm -rf 工作目录后清理源仓库的 worktree 残留记录(评审 L1)
+    trap 'rm -rf "$WORK_DIR" && git -C "$DEFAULT_DIR" worktree prune >/dev/null 2>&1 || true' EXIT
     PLUGIN_DIR="$WORK_DIR/web/agentui"
   else
     echo "==> 拷贝本地插件工程到临时目录(不动源 checkout)"
@@ -71,6 +73,12 @@ npm ci --no-audit --no-fund
 npm run build   # 含 lint:imports + tsc + build:locales + vite build
 
 PLUGIN_ID="$(node -e "console.log(require('./app.json').id)")"
+# id 参与拼接 rm -rf 目标路径,必须先过白名单(与 BFF 侧规则对齐),
+# 阻断恶意 app.json id(如 ../../)的路径注入(评审 M1)
+if ! [[ "$PLUGIN_ID" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "✗ app.json 的 id 含非法字符(只允许字母数字/._-): $PLUGIN_ID" >&2
+  exit 1
+fi
 OUT_DIR="$BUNDLES_DIR/$PLUGIN_ID"
 echo "==> 产物输出: $OUT_DIR"
 rm -rf "$OUT_DIR"

@@ -198,6 +198,39 @@ describe('代理路由', () => {
     );
     expect(res.status).toBe(503);
   });
+
+  it('override 存在即生效:app.json 未声明 backend 也可启用代理(评审 M2)', async () => {
+    // good-plugin 声明了 backend(127.0.0.1:9385);构造未声明 backend 的
+    // 插件 + override 指向不可达回环端口——期望 502(已越过 503 声明检查,
+    // 进入实际转发),证明 override 凭空启用了代理通道
+    const dir = join(fixtureDir, 'no-backend-plugin');
+    await mkdir(join(dir, 'ui/dist'), { recursive: true });
+    await writeFile(
+      join(dir, 'app.json'),
+      JSON.stringify({
+        id: 'no-backend-plugin',
+        path: '/no-backend-plugin',
+        label: 'x',
+        entry: 'ui/dist/index.js',
+      }),
+    );
+    await writeFile(join(dir, 'ui/dist/index.js'), 'export {}');
+    process.env.BFF_PLUGIN_BACKEND_OVERRIDES =
+      'no-backend-plugin=http://127.0.0.1:1';
+
+    const withOverride = await api.pluginsRoutes.request(
+      '/plugins/no-backend-plugin/proxy/api/v1/x',
+    );
+    expect(withOverride.status).toBe(502); // 越过声明检查,上游不可达
+
+    delete process.env.BFF_PLUGIN_BACKEND_OVERRIDES;
+    const withoutOverride = await api.pluginsRoutes.request(
+      '/plugins/no-backend-plugin/proxy/api/v1/x',
+    );
+    expect(withoutOverride.status).toBe(503); // 无 override 无声明 → 未启用
+
+    await rm(dir, { recursive: true, force: true });
+  });
 });
 
 describe('BFF_PLUGIN_BACKEND_OVERRIDES(#2b 部署形态)', () => {
