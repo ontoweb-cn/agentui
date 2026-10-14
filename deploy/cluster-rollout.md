@@ -264,3 +264,137 @@ Jenkins 侧回滚 = 任务 Disable(不删,保留历史)。
 1. §1.5 三步全绿,`agentui:0.4.1`(含插件)在 Harbor;
 2. §2.7 验收 6 项全过;
 3. 本文件追加「执行记录」节(日期/执行人/暴露地址/镜像 tag/遗留项)。
+
+---
+
+## §5 执行记录(2026-10-14,首次落地)
+
+> 执行机:Simon 的 Mac(arm64,docker+skopeo);集群操作经 Jenkins
+> (http://10.99.24.15:32080/)脚本控制台/FreeStyle job + 其 Pod 内
+> ServiceAccount(jenkins ns,全集群工作负载 CRUD、无 ns/Ingress 权限)。
+> **拓扑变化(相对 §0-§2 的原方案)**:wargamesrv 部署进集群(intellect ns),
+> agentui 双通道改走集群内 Service——公网网关只剩「浏览器直连 /wargame」
+> 一个待办(见 §5.4)。
+
+### 5.1 集群侧落成物
+
+| 对象 | 值 |
+|---|---|
+| namespace | `intellect`(复用现有;SA 无建 ns 权限) |
+| Deployment `wargamesrv` | 镜像 `hub.wust.edu.cn/intellect/wargamesrv:0d8b07d-k8s1`(cognitive-wargame@0d8b07d + intellect-team@ea4b9481 烤入 /intellect-team;本地 docker build,阿里 pypi 源,skopeo 推送) |
+| Service `wargamesrv` | ClusterIP + NodePort **31385**;env 要点:`AGENT_LOOP_BACKEND=intellect`、PG=`postgres:5432/intellect` schema `wargame`(复用 intellect-postgres)、Redis=`rag-redis` db5(密码取 `intellect-rag-secrets`)、`GATEWAY_URL=http://intellect-gateway-py:8642` |
+| Secret `wargame-auth` | `WARGAMESRV_API_TOKEN`(64hex,推演用户在插件 UI 填写的 token) |
+| Deployment `agentui` | 镜像 `intellect/agentui:0.4.0`(**已含** cognitive-wargame bundle,entrypoint 幂安装验证通过) |
+| Service `agentui` | NodePort **31390** |
+| Secret `agentui-plugin-admin` / `agentui-pull-secret` | 插件安装 token / Harbor 拉取凭证(robot$intellect+agentui-pull) |
+
+**踩坑记录**(复现必读):
+
+1. `harbor-regcred`(集群原有)拉不了新建的 `wargamesrv`/`agentui` 仓 → 补
+   `agentui-pull-secret`(发版机 robot)并加进两 Deployment 的 imagePullSecrets;
+2. Service 名 `wargamesrv` 触发 k8s 自动注入 `WARGAMESRV_PORT=tcp://…` 覆盖
+   应用同名 env → Pod env 显式声明 `WARGAMESRV_PORT=9385` 压回;
+3. **0.4.0 镜像内 nginx 模板仍是 host:port 形式**(网关化全 URL 上游是 0.4.0
+   发版后才合入 dev 的,未进该镜像)→ 实际生效 env 是
+   `WARGAME_HOST=wargamesrv`+`WARGAME_PORT=9385`(而非 `WARGAME_UPSTREAM`);
+   RAG 同理走 `INTELLECT_RAG_HOST=intellect-rag` 集群内直连。
+   ≥0.4.1 镜像(由 dev 分支构建)才支持 manifest 里的 `*_UPSTREAM` 全 URL 形式;
+4. Jenkins 容器与宿主 docker 的 /tmp、workspace 路径不互通 → CI 用
+   `tar -C "$WORKSPACE" -cf - . | docker run --rm -i` 流式传入(同 intellect 组
+   现有 job 模式)。
+
+### 5.2 验证结果(2026-10-14)
+
+- wargamesrv:pod Ready;healthz 200(`redis:ok`、auth token 模式);
+  启动日志 `storage=pg agent_loop=intellect`、`wargame schema 初始化完成`;
+- REST 通道:`http://10.99.24.15:31390/api/v1/wargame/system/healthz` → 200
+  (经 agentui nginx → wargamesrv);`/api/v1/wargame/scenarios` 无 token 401 /
+  带 token `{"status":"ok","count":0}`(新库空列表,符合预期);
+- 插件:`/api/bff/plugins` 200 返回 cognitive-wargame 0.1.0,
+  `backendTargetOverride=http://wargamesrv:9385` 生效;
+- 访问入口(内网):agentui **http://10.99.24.15:31390/**,
+  wargamesrv 直连 http://10.99.24.15:31385/;
+- 待人工:浏览器登录向导(`/admin/wizard`,企业 endpoint=
+  `https://ai.wust.edu.cn/intellect-gateway`)、SSE 推演实测、chat 实测。
+
+### 5.3 Jenkins(与 §1 的偏差)
+
+**2026-10-14 晚间更新:插件已装齐,正式 Pipeline(CI)已上线,本节早间的
+FreeStyle 过渡方案已废弃,以下为最终形态。**
+
+- **插件安装**(免费开源,管理员经 update center/scriptText 安装):装
+  workflow-job/timestamper/build-discarder/docker-workflow/pipeline-stage-view
+  + declarative 家族(pipeline-model-{api,definition,extensions}、
+  stage-tags-metadata 统一对齐 2.2293)。**踩坑**:update center 只推最新版,
+  而 workflow-job 最新版要求 core ≥2.556(本控制器 2.541.2)→ 需按插件下载页
+  的 per-version「Requires Jenkins」挑兼容版本(脚本闭包解析写入
+  plugins/,同时要删同名解包目录);`agent { docker }` 形态在 NFS workspace
+  下不可用(宿主 docker 看不到容器内 NFS 路径),故 node 走下面方案;
+- **agent 运行环境**:内置节点无 node 二进制 → 从 node:20 镜像 tar 流提取
+  node v20.20.2/npm 10.8.2 到 `/var/jenkins_home/tools/node20`(NFS 持久),
+  内置节点环境属性注入 `PATH+node20`;`NODE_OPTIONS=--max-old-space-size=2048`
+  (jest+vitest 并行峰值内存,jest worker 实测需 >1G);
+- **控制器容量**:Pod 内存限额 6Gi→**16Gi**(并行双测试栈 + JVM 2G 实测会
+  打爆 10Gi);JAVA_OPTS 追加
+  `-Dorg.jenkinsci.plugins.durabletask.BourneShellScript.HEARTBEAT_CHECK_INTERVAL=86400`
+  (NFS workspace 下 jest 长跑会被心跳检查误杀,JENKINS-48300);
+- **凭据**:`gitee-token`(复用,SCM 拉取)+ `harbor-agentui-release`
+  (robot,发版推送)已录入;
+- **任务**:`intellect/agentui-ci`、`intellect/wargame-ci` 均为
+  **Pipeline script from SCM**(dev/main 分支,各自仓库 Jenkinsfile);
+  2026-10-14 验证:agentui-ci 全绿(jest 600/600 + vitest 46 文件 +
+  tsc×2),wargame-ci 全绿(ci.sh 五步)。参数化构建用
+  `buildWithParameters`(首次构建后出现参数表单,§1.5 三步可正常执行);
+- **仓库侧修复**(已推送 dev):Jenkinsfile 两处正则改单引号字符串形式
+  (CPS Groovy 解析器不接受字符类中未转义 `/`);package-lock.json 重生成
+  (plugin-sdk 包化缺项致 `npm ci` EUSAGE——上游回归,CI 抓到)。
+
+> **§5.5 CI 性能改造(2026-10-14 深夜,1–5 全做)**:流水线 8m45s → **约 3 分钟**。
+>
+> 1. **worker 显式对齐 cgroup**(`6508ed2`):容器内 `os.cpus()` 可见宿主全部
+>    192 核(无 lxcfs),jest/vitest 默认开核数-1 个 worker 在 CPU 限额内严重
+>    超配——此前连环 OOM 与慢跑的主因。Jenkinsfile 固化
+>    `--maxWorkers`(jest 4 / vitest 3);
+> 2. **恢复 jest transform 缓存**:移除 `package.json` test 脚本的 `--no-cache`,
+>    缓存随 workspace 落本地盘,跨构建命中;
+> 3. **独立 agent(本地盘 workspace)**:镜像
+>    `hub.wust.edu.cn/intellect/jenkins-agent-node20:1`(node20+JRE17+git,
+>    烤入 TZ/npm_cache/NODE_OPTIONS)跑长驻 Pod `jenkins/jenkins-agent-ci-local`
+>    (8C/8G,workspace=emptyDir 节点本地盘 ~196G),经 svc jenkins:50000(JNLP,
+>    NodePort 32000)反向连接控制器上的 Node `ci-local`(2 执行器,镜像内含
+>    JENKINS_SECRET 见 k8s Secret 形态部署脚本);**built-in 执行器归零**,
+>    `agent any` 自然全部落到本地盘 agent——仓库 Jenkinsfile 零改动;
+> 4. 控制器 Pod CPU 限额 4→8(16Gi 不变),npm 缓存指向容器本地盘
+>    (built-in 与 agent 镜像均已带 `npm_config_cache`);
+> 5. 实测:agentui-ci 全量(jest 600/600+coverage、vitest 46 文件、tsc×2)
+>    **2m59s**;wargame-ci(ci.sh 五步)**2m40s**。
+>
+> 运维注记:agent Pod 重建则 workspace/缓存清空,首跑冷启动(仍 <5 分钟);
+> Jenkins 控制器升级后 agent.jar 版本不匹配时删 Pod 重建即可重新拉取。
+
+### 5.4 遗留:公网 `/wargame`(需网关 VM 权限方执行)
+
+网关(59.68.176.94 → 内网 10.99.24.12)为集群外独立 nginx,**Jenkins SA 与
+执行机均无其配置权限**。在 ai.wust.edu.cn 的 443 server{} 加:
+
+```nginx
+# cognitive-wargame:纯剥前缀透传(SSE 禁缓冲)。
+# 验证:curl -s -o /dev/null -w '%{http_code}\n' https://ai.wust.edu.cn/wargame/api/v1/scenarios  → 期望 401
+location /wargame/ {
+    proxy_pass http://10.99.24.15:31385/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;          # SSE 事件流禁缓冲(§0.2)
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+}
+location = /wargame { return 301 /wargame/; }
+```
+
+应用后,agentui(≥0.4.1 镜像)若切回公网网关拓扑,`WARGAME_UPSTREAM`
+应取 `https://ai.wust.edu.cn/wargame/api/v1/`(REST 通道补 /api/v1 前缀,
+与 §0.2 的「网关纯剥前缀」前提对齐);当前集群内 Service 形态无此依赖。

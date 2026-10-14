@@ -1,5 +1,9 @@
 # agentui k8s 部署(#2b 部署形态)
 # 用法见同目录 README.md;按环境替换 <项目>/<tag>/<namespace> 与后端地址。
+# 2026-10-14 实际部署记录见 cluster-rollout.md §5:intellect ns、NodePort 31390、
+# 0.4.0 镜像需用 host:port env(WARGAME_HOST/INTELLECT_RAG_HOST,集群内 Service),
+# 本文件的 *_UPSTREAM 全 URL 形式自 ≥0.4.1 镜像(dev 分支模板)起生效;
+# 私有镜像需 imagePullSecrets(见 §5.1 踩坑 1)。
 apiVersion: v1
 kind: Service
 metadata:
