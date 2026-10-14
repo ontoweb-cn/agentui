@@ -4,6 +4,10 @@
 同容器(`docker-entrypoint.sh`),插件 bundle 烤入镜像并在启动时自动安装
 (#2b 方案 B)。
 
+> **网关化拓扑部署**(三后端经 ai.wust.edu.cn,2026-10-14 决策)的执行手册、
+> egress/前缀预检与验收清单:见 [cluster-rollout.md](./cluster-rollout.md) §2;
+> manifest env 已更新为全 URL 上游(`RAG_*_UPSTREAM`/`WARGAME_UPSTREAM`)。
+
 ## 前置
 
 1. 构建含插件的镜像(发版机,手动):

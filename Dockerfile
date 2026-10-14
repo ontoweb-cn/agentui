@@ -24,6 +24,7 @@ WORKDIR /app
 # Nginx config
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
 COPY nginx/proxy.conf /etc/nginx/proxy.conf
+COPY nginx/proxy-gateway.conf /etc/nginx/proxy-gateway.conf
 COPY nginx/default.conf /etc/nginx/http.d/default.conf.template
 
 # Frontend static assets
