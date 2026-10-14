@@ -1,6 +1,6 @@
 /**
- * 运行时插件内核接线测试:宿主全局注册 + 元数据校验 + ModuleDefinition 转换。
- * (initRuntimePlugins 的 fetch/bootstrap 链路由 E2E 覆盖,单测不 mock 网络。)
+ * 运行时插件内核接线测试:宿主全局注册 + 元数据校验 + ModuleDefinition 转换
+ * + 后台刷新监测(#10,mock fetch)。
  *
  * 注意:第二个 describe 会真实调用 registerRuntimeModules 改写全局 registry,
  * 依赖 jest 按声明顺序执行;新增用例请放在其后,避免注册状态互相影响。
@@ -11,11 +11,21 @@ import {
   registerRuntimeModules,
 } from '@/features/_registry';
 
+jest.mock('sonner', () => ({
+  toast: { info: jest.fn() },
+}));
+import { toast } from 'sonner';
+
 import {
   getPluginRegistration,
   installAgentUIHostGlobal,
 } from '../host-global';
-import { rejectReason, toModuleDefinition } from '../runtime';
+import {
+  rejectReason,
+  resetPluginListWatchForTests,
+  startPluginListWatch,
+  toModuleDefinition,
+} from '../runtime';
 import type { AgentUIHostGlobal, PluginAppMetadata } from '../types';
 
 const agentUiGlobal = () =>
@@ -52,6 +62,7 @@ describe('plugins host global', () => {
   //   1) bump host-global.ts 的 HOST_API_VERSION;
   //   2) `npx jest -u` 显式更新快照;
   //   3) 同步插件仓库(web/agentui)对宿主 API 的消费。
+  // 1.2.0:新增 chat 命名空间(docs/chat-sse-sdk-design.md),插件侧 feature-detect。
   it('导出面契约快照(变更须 bump HOST_API_VERSION)', () => {
     installAgentUIHostGlobal();
     const agentUI = agentUiGlobal();
@@ -63,6 +74,7 @@ describe('plugins host global', () => {
       {
         "globalKeys": [
           "HOST_API_VERSION",
+          "chat",
           "host",
           "on",
           "registerApp",
@@ -70,7 +82,7 @@ describe('plugins host global', () => {
         "hostKeys": [
           "getApiToken",
         ],
-        "version": "1.1.0",
+        "version": "1.2.0",
       }
     `);
   });
@@ -128,5 +140,91 @@ describe('toModuleDefinition', () => {
     expect(
       collectRoutes().some((r) => r.path === '/cognitive-wargame/*'),
     ).toBe(true);
+  });
+});
+
+describe('startPluginListWatch(后台刷新提示,#10)', () => {
+  const okResponse = (body: unknown) =>
+    ({ ok: true, status: 200, json: async () => body }) as Response;
+  // jsdom 无全局 fetch(宿主真实用法即裸 fetch),直接赋值 stub
+  const stubFetch = (impl: () => Promise<Response>) => {
+    const fn = jest.fn(impl);
+    (globalThis as { fetch?: unknown }).fetch = fn;
+    return () => {
+      delete (globalThis as { fetch?: unknown }).fetch;
+    };
+  };
+
+  it('首个周期建立基线(静默);列表变化提示一次;翻回注册基线不再提示', async () => {
+    const infoMock = jest.mocked(toast.info);
+    infoMock.mockClear();
+    resetPluginListWatchForTests();
+    jest.useFakeTimers();
+    // 第一次检查:基线为 null 时不提示——首查即基线
+    // 第二次检查:version 变化 → 指纹变化 → 提示
+    // 第三次检查:与上次相同 → 不再提示
+    // 第四次检查:翻回注册基线 → 页面本就一致,不提示(评审 P3 防振荡)
+    const responses = [
+      okResponse([meta]),
+      okResponse([{ ...meta, version: '2.0.0' }]),
+      okResponse([{ ...meta, version: '2.0.0' }]),
+      okResponse([meta]),
+    ];
+    const restoreFetch = stubFetch(async () =>
+      responses.length > 1 ? responses.shift()! : responses[0]!,
+    );
+
+    const stop = startPluginListWatch();
+    try {
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(infoMock).not.toHaveBeenCalled();
+
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(infoMock).toHaveBeenCalledTimes(1);
+      // i18n 未初始化时 t() 返回 key 本身;断言为字符串即可(词条映射无需单测)
+      expect(typeof infoMock.mock.calls[0]?.[0]).toBe('string');
+
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(infoMock).toHaveBeenCalledTimes(1);
+
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(infoMock).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+      restoreFetch();
+      jest.useRealTimers();
+    }
+  });
+
+  it('窗口聚焦触发检查但受节流约束(30s 内不重复)', async () => {
+    const infoMock = jest.mocked(toast.info);
+    infoMock.mockClear();
+    resetPluginListWatchForTests();
+    jest.useFakeTimers();
+    let calls = 0;
+    const restoreFetch = stubFetch(async () => {
+      calls += 1;
+      return okResponse([meta]);
+    });
+
+    const stop = startPluginListWatch();
+    try {
+      window.dispatchEvent(new Event('focus'));
+      await Promise.resolve();
+      expect(calls).toBe(1); // 首次聚焦:距上次检查超过节流窗口,执行
+
+      window.dispatchEvent(new Event('focus'));
+      await Promise.resolve();
+      expect(calls).toBe(1); // 节流:30s 内不重复
+
+      await jest.advanceTimersByTimeAsync(30_001);
+      window.dispatchEvent(new Event('focus'));
+      await Promise.resolve();
+      expect(calls).toBe(2); // 节流窗口过后再次执行
+    } finally {
+      stop();
+      restoreFetch();
+      jest.useRealTimers();
+    }
   });
 });

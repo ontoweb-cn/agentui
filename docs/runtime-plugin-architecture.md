@@ -74,7 +74,8 @@
 
 ## 四、验证基线
 
-- 宿主 jest 562 / BFF vitest 904 / 插件 vitest 5,双侧 tsc 全绿;
+- 宿主 jest 570 / BFF vitest 919 / 插件 vitest 5,双侧 tsc 全绿
+  (2026-10-14 起含后台刷新提示 2 例、启停/审计 8 例、chat SDK 6+7 例);
 - E2E:卡片装载、24 条深链、插件内导航 + pushState/popstate 双向桥、真实登录态下 gateway 会话数据 + wargame 86 想定 + SSE 事件流;
 - 容器冒烟:entrypoint 自动安装、nginx 全链路(列表/JS/REST/SSE/深链)、垃圾 cookie 回归矩阵全 401。
 
@@ -101,31 +102,39 @@
 > 发版通道两处坑已修:Harbor 机器人 env 用户名必须带项目前缀**且加引号**
 > (`HARBOR_USER='robot$intellect+agentui-release'`,否则 source 时 `$intellect` 被
 > shell 展开吞掉 → push 401);docker daemon EOF 走 skopeo 通道(runbook 既有预案)。
+>
+> **2026-10-14 中期评审**:中期 15 项(#4–#18)逐项评审(触发核验 + 设计细化),
+> 详见 [plugin-midterm-review.md](./plugin-midterm-review.md)——#6/#9/#10/#16 触发实质
+> 成立已执行(✅ 标注);#7 经核验范围大幅缩小降格为文档事项;其余维持门控但设计
+> 就绪(触发成立即可开工)。**chat/SSE 能力 SDK 化**(原 wargame 方案 §九遗留第 6 项)
+> 经用户定级为高优先,方案定稿 [chat-sse-sdk-design.md](./chat-sse-sdk-design.md),
+> 纳入近期 #1。
 
 ### 近期(待决策/环境)
 
 | # | 任务 | 所需 |
 |---|---|---|
-| 1 | k8s 部署(manifest 已升 0.4.0,已搁置) | kubeconfig/namespace + 后端地址 + 暴露方式 |
-| 2 | Harbor admin 密码修改(对话中曾明文出现;机器人账号独立,发版不受影响) | 现行 admin 密码(API 或界面操作) |
-| 3 | Jenkins 任务创建(两仓 Jenkinsfile 已就绪) | Jenkins 管理员:录入 harbor-agentui-release 凭据 + 建 SCM 任务(步骤见 deploy/ci-jenkins.md) |
+| 1 | **chat/SSE 能力 SDK 化** | ✅ **P1 已实施(2026-10-14)**:app.json `capabilities` 声明制 + `POST /plugins/:id/chat/{sessions,completions}`(与宿主 chat 同守卫链同帧协议)+ `window.AgentUI.chat`(AsyncGenerator,HOST_API_VERSION 1.2.0)+ 主聊天列表过滤 plugin: 会话;机制参照 QwenPaw pawapp-sdk(源码核验);P2(审批 helper/history)/P3(用量核算)待触发,见 [chat-sse-sdk-design.md](./chat-sse-sdk-design.md) |
+| 2 | k8s 部署(manifest 已升 0.4.0,已搁置) | kubeconfig/namespace + 后端地址 + 暴露方式 |
+| 3 | Harbor admin 密码修改(对话中曾明文出现;机器人账号独立,发版不受影响) | 现行 admin 密码(API 或界面操作) |
+| 4 | Jenkins 任务创建(两仓 Jenkinsfile 已就绪) | Jenkins 管理员:录入 harbor-agentui-release 凭据 + 建 SCM 任务(步骤见 deploy/ci-jenkins.md) |
 
-### 中期(触发条件驱动)
+### 中期(触发条件驱动;✅ = 2026-10-14 评审后已执行)
 
-| # | 任务 | 触发条件 |
+| # | 任务 | 触发条件 / 状态 |
 |---|---|---|
-| 4 | C 方案:zip 制品 + sha256(机器人已就绪) | 插件独立发版需求 |
-| 5 | hash 文件名 + immutable 缓存 | C 方案落地后 |
-| 6 | vite SSE 代理条目去硬编码(dev-only) | 第二个带后端插件 |
-| 7 | SSE `?token=` → cookie 认证 | BFF 鉴权面改造窗口 |
-| 8 | token localStorage(S1)收编 | GATEWAY-1 启动 |
-| 9 | 安装/卸载审计日志 | 生产 install 常态化 |
-| 10 | 插件列表后台刷新提示 | 热更新需求 |
-| 11 | 卸载运行时失效(免刷新) | 卸载 UI 出现 |
-| 12 | 进程内 Hono 后端档(`backend.type: inline`) | 第二个轻插件 |
-| 13 | iframe 隔离档(不可信插件) | 第三方不可信代码接入 |
-| 14 | `@agentui/ui` / Tailwind preset 共享包 | 插件 ≥2 且副本漂移 |
-| 15 | 插件市场/远程索引 | 应用市场成熟 |
-| 16 | enable/disable 启停 API(当前启停=删除/重装) | 插件管理 UI 出现 |
-| 17 | config_fields 配置页(settings 宿主声明式渲染) | P4 增强窗口 |
-| 18 | release 机器人密钥轮换 | ~2027-10 到期前 |
+| 5 | C 方案:zip 制品 + sha256(机器人已就绪;设计就绪见评审文档 §4.1) | 插件独立发版需求 |
+| 6 | hash 文件名 + immutable 缓存 | C 方案落地后 |
+| 7 | vite SSE 代理条目去硬编码 | ✅ 已执行(动态扫描已装插件 + dev entries 生成 per-plugin 条目) |
+| 8 | SSE `?token=` → cookie 认证 | **已改写**:核验后仅剩文档澄清(guide §5 已澄清),原"鉴权面改造"范围不成立 |
+| 9 | token localStorage(S1)收编 | GATEWAY-1 启动 |
+| 10 | 安装/卸载审计日志 | ✅ 已执行(JSONL `data/plugin-audit.jsonl`,install/uninstall/enable/disable 四路) |
+| 11 | 插件列表后台刷新提示 | ✅ 已执行(60s/聚焦 refetch + 指纹比对 + toast) |
+| 12 | 卸载运行时失效(免刷新) | 卸载 UI 出现 |
+| 13 | 进程内 Hono 后端档(`backend.type: inline`;契约就绪见评审文档 §4.12) | 第二个轻插件 |
+| 14 | iframe 隔离档(不可信插件) | 第三方不可信代码接入 |
+| 15 | `@agentui/ui` / Tailwind preset 共享包(实测 2026-10-14 令牌零漂移;建议插件 CI 加 diff 哨兵) | 插件 ≥2 且 CI 哨兵报漂移 |
+| 16 | 插件市场/远程索引 | 应用市场成熟 |
+| 17 | enable/disable 启停 API | ✅ 已执行(API-first:`POST /plugins/:id/{enable,disable}` + `data/plugin-state.json`,停用即断路:files/proxy 数据面同步 404;管理 UI 后置) |
+| 18 | config_fields 配置页(settings 宿主声明式渲染;契约就绪见评审文档 §4.17) | P4 增强窗口 |
+| 19 | release 机器人密钥轮换(建议 2027-06 预研) | ~2027-10 到期前 |

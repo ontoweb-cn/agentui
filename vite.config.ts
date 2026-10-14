@@ -1,7 +1,8 @@
 import { inspectorServer } from '@react-dev-inspector/vite-plugin';
 import react from '@vitejs/plugin-react';
+import fs from 'node:fs';
 import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type ProxyOptions } from 'vite';
 import { createHtmlPlugin } from 'vite-plugin-html';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { appName } from './src/conf.json';
@@ -54,24 +55,77 @@ export default defineConfig(({ mode }) => {
 
   console.log(`[vite.config] mode: ${mode}, API_HOST: ${apiHost}, BFF_HOST: ${bffHost}`);
 
+  // 插件代理条目(中期任务 #6 去硬编码):按「BFF 已装插件 + dev 热更插件
+  // (VITE_PLUGIN_DEV_ENTRIES,格式 id@port,后端仍走 BFF 代理)」的并集,
+  // 为每个插件生成 /api/bff/plugins/<id>/proxy 前缀的 SSE 友好条目。
+  // - 展开必须位于通用 /api/bff 之前(vite 按对象键序做前缀匹配);
+  // - timeout/proxyTimeout 0:http-proxy 对 falsy 值不设超时(已核实 vite
+  //   内置实现 `if (options.proxyTimeout)`),0 ≡ 不设 ≡ 通用条目语义,
+  //   此处为显式 SSE 意图标记;上游挂起由 BFF 插件代理的 TTFB 超时
+  //   (默认 30s)兜底 504;
+  // - SSE 请求头(keep-alive/no-cache)只对 Accept: text/event-stream 的请求
+  //   追加,不污染普通 REST 的内容协商;
+  // - 两者皆空(全新 clone 未装插件)时返回空,请求降级走通用 /api/bff。
+  const buildPluginProxyEntries = (): Record<string, ProxyOptions> => {
+    const ids = new Set<string>();
+    const pluginsDirOverride = env.BFF_PLUGINS_DIR || process.env.BFF_PLUGINS_DIR;
+    const pluginsDir = pluginsDirOverride
+      ? path.resolve(pluginsDirOverride)
+      : path.resolve(process.cwd(), 'bff/data/plugins');
+    try {
+      for (const name of fs.readdirSync(pluginsDir)) {
+        if (
+          !name.startsWith('.') &&
+          fs.existsSync(path.join(pluginsDir, name, 'app.json'))
+        ) {
+          ids.add(name);
+        }
+      }
+    } catch {
+      // 目录不存在:仅有 dev entries 时仍生成
+    }
+    for (const entry of String(
+      env.VITE_PLUGIN_DEV_ENTRIES ?? process.env.VITE_PLUGIN_DEV_ENTRIES ?? '',
+    ).split(',')) {
+      const id = entry.trim().split('@')[0] ?? '';
+      if (id) {
+        ids.add(id);
+      }
+    }
+    if (ids.size === 0) {
+      return {};
+    }
+    const sorted = [...ids].sort();
+    console.log(`[vite.config] plugin proxy entries: ${sorted.join(', ')}`);
+    return Object.fromEntries(
+      sorted.map((id) => [
+        `/api/bff/plugins/${id}/proxy`,
+        {
+          target: `http://${bffHost}:${bffPort}`,
+          changeOrigin: true,
+          timeout: 0,
+          proxyTimeout: 0,
+          rewrite: (reqPath: string) => reqPath.replace(/^\/api\/bff/, ''),
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              if (
+                String(proxyReq.getHeader('accept') ?? '').includes(
+                  'text/event-stream',
+                )
+              ) {
+                proxyReq.setHeader('Connection', 'keep-alive');
+                proxyReq.setHeader('Cache-Control', 'no-cache');
+              }
+            });
+          },
+        } satisfies ProxyOptions,
+      ]),
+    );
+  };
+
   const proxy = {
-    // 插件后端 SSE 事件流(#5 收编):经 BFF 插件代理流式透传。
-    // 必须放在通用 /api/bff 之前(vite 按对象键序做前缀匹配),
-    // 且复用 wargame events 条目的 SSE 友好参数(timeout 0 + keep-alive)。
-    '/api/bff/plugins/cognitive-wargame/proxy/api/v1/events': {
-      target: `http://${bffHost}:${bffPort}`,
-      changeOrigin: true,
-      timeout: 0,
-      proxyTimeout: 0,
-      rewrite: (path: string) => path.replace(/^\/api\/bff/, ''),
-      configure: (proxy) => {
-        proxy.on('proxyReq', (proxyReq) => {
-          proxyReq.setHeader('Connection', 'keep-alive');
-          proxyReq.setHeader('Cache-Control', 'no-cache');
-          proxyReq.setHeader('Accept', 'text/event-stream');
-        });
-      },
-    },
+    // 插件后端代理(含 SSE 事件流,#5 收编 / #6 去硬编码):按已装插件动态生成
+    ...buildPluginProxyEntries(),
     '/api/bff': {
       target: `http://${bffHost}:${bffPort}`,
       changeOrigin: true,

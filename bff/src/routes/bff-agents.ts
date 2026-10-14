@@ -61,7 +61,11 @@ export const bffAgentRoutes = new Hono<{ Variables: BffAgentVariables }>();
  * 注:P1 阶段仅注册 intellect-rag factory,P3 起注册 intellect-enterprise factory,
  * 因此返回类型为 IHarnessAdapter(非具体 IntellectRagAdapter),路由层按接口调用。
  */
-function getAdapter(c: Context): IHarnessAdapter | null {
+/**
+ * 按 BackendContext 解析租户绑定的 Adapter(导出供插件 chat 路由复用,
+ * docs/chat-sse-sdk-design.md:插件 chat 与宿主 chat 同一条租户隔离通道)。
+ */
+export function getAdapter(c: Context): IHarnessAdapter | null {
   const ctx = getBackendContext(c);
   if (!ctx) {
     // BackendContext 缺失:中间件未挂载或前端未传 X-Backend-Id。
@@ -116,7 +120,11 @@ function getAdapter(c: Context): IHarnessAdapter | null {
  * - 其他错误响应使用通用文案 "Adapter error",详细信息记入服务端 console.error。
  * - 503 / 配置错误响应不泄露具体 backendId,避免暴露租户标识。
  */
-function handleAdapterError(
+/**
+ * 统一 adapter 错误响应(导出供插件 chat 路由复用,文案策略与宿主一致:
+ * 不向客户端泄露内部信息)。
+ */
+export function handleAdapterError(
   c: Context,
   err: unknown,
   route: string,

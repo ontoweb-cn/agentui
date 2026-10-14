@@ -1,5 +1,8 @@
 export default {
   translation: {
+    plugins: {
+      updatedToast: '應用列表已更新，刷新頁面後生效',
+    },
     common: {
       delete: '刪除',
       deleteModalTitle: '確定刪除嗎?',

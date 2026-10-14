@@ -13,13 +13,16 @@
 
 import type { AgentUIHostGlobal, PluginAppRegistration } from './types';
 
+import { createChatApi } from './chat-client';
+
 /**
  * 宿主插件 API 版本(语义化)。
- * 变更导出面(增删改 registerApp/host/事件 API)必须 bump 此值
+ * 变更导出面(增删改 registerApp/host/chat/事件 API)必须 bump 此值
  * 并更新 __tests__/runtime.test.ts 的契约快照;插件侧可读取此值做兼容判断。
  * 1.1.0:新增 on() 事件订阅(localechange/themechange)。
+ * 1.2.0:新增 chat 命名空间(宿主 chat 能力,docs/chat-sse-sdk-design.md)。
  */
-export const HOST_API_VERSION = '1.1.0';
+export const HOST_API_VERSION = '1.2.0';
 
 /** 宿主→插件的事件契约(载荷形态)。 */
 export interface HostEventMap {
@@ -76,6 +79,7 @@ export function installAgentUIHostGlobal() {
         }
       },
     },
+    chat: createChatApi(),
   };
   (window as unknown as { AgentUI?: AgentUIHostGlobal }).AgentUI = global;
 }

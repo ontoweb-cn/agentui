@@ -20,6 +20,7 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { version as reactVersion } from 'react';
 import i18next from 'i18next';
+import { toast } from 'sonner';
 
 import type {
   AppPluginCard,
@@ -34,6 +35,11 @@ import type { PluginAppMetadata } from './types';
 
 const PLUGINS_LIST_CACHE_KEY = 'agentui.runtimePlugins';
 const FETCH_TIMEOUT_MS = 1500;
+// 后台刷新监测(#10):API 侧启停/卸载发生后面板无感知,定时 + 聚焦时
+// refetch 列表比对,变化则提示刷新(只提示不热替换路由树,维持"元数据先行")
+const REFRESH_INTERVAL_MS = 60_000;
+const FOCUS_THROTTLE_MS = 30_000;
+const UPDATED_TOAST_DURATION_MS = 8_000;
 
 /** 与 bff/src/routes/plugins.ts 的 RESERVED_MOUNT_PATHS 保持一致。 */
 const RESERVED_MOUNT_PATHS = new Set([
@@ -311,6 +317,102 @@ function readCachedPluginList(): PluginAppMetadata[] {
   }
 }
 
+/**
+ * 列表指纹:只取影响卡片/路由/文案锚点的稳定字段,排序后拼接。
+ * 词条内联产物(i18nResources)不参与——词条内容微调不值得打扰用户。
+ */
+function pluginListFingerprint(metas: PluginAppMetadata[]): string {
+  return metas
+    .map((m) =>
+      [
+        m.id,
+        m.version ?? '',
+        m.entry,
+        m.path,
+        m.labelKey ?? '',
+        m.descriptionKey ?? '',
+      ].join('|'),
+    )
+    .sort()
+    .join('\n');
+}
+
+const watchState: {
+  timer: ReturnType<typeof setInterval> | null;
+  lastCheckAt: number;
+  /** 启动时实际注册的列表指纹:翻回此状态 = 页面已一致,不提示(评审 P3)。 */
+  registeredFingerprint: string | null;
+  notifiedFingerprint: string | null;
+} = {
+  timer: null,
+  lastCheckAt: 0,
+  registeredFingerprint: null,
+  notifiedFingerprint: null,
+};
+
+/**
+ * 后台刷新监测(中期任务 #10,详见 docs/plugin-midterm-review.md):
+ * 每 60s 或窗口聚焦(节流 30s)时 refetch 列表,指纹不同于启动注册基线
+ * 且未提示过 → toast「刷新生效」。翻回注册基线不提示(页面本就一致),
+ * 列表振荡不重复打扰。失败静默;返回清理函数供测试。
+ */
+export function startPluginListWatch(): () => void {
+  if (typeof window === 'undefined' || watchState.timer) {
+    return () => undefined;
+  }
+  const check = async () => {
+    const now = Date.now();
+    if (now - watchState.lastCheckAt < FOCUS_THROTTLE_MS) {
+      return;
+    }
+    watchState.lastCheckAt = now;
+    try {
+      const metas = await fetchPluginList();
+      localStorage.setItem(PLUGINS_LIST_CACHE_KEY, JSON.stringify(metas));
+      const fingerprint = pluginListFingerprint(metas);
+      // 独立启动(未经 initRuntimePlugins)时无注册基线:首个成功检查设基线
+      if (watchState.registeredFingerprint === null) {
+        watchState.registeredFingerprint = fingerprint;
+      } else if (
+        fingerprint !== watchState.registeredFingerprint &&
+        fingerprint !== watchState.notifiedFingerprint
+      ) {
+        watchState.notifiedFingerprint = fingerprint;
+        toast.info(i18next.t('plugins.updatedToast'), {
+          duration: UPDATED_TOAST_DURATION_MS,
+        });
+      }
+    } catch {
+      // 后台刷新失败静默,下次触发再试
+    }
+  };
+  const onWindowFocus = () => {
+    void check();
+  };
+  window.addEventListener('focus', onWindowFocus);
+  watchState.timer = setInterval(() => {
+    void check();
+  }, REFRESH_INTERVAL_MS);
+  return () => {
+    if (watchState.timer) {
+      clearInterval(watchState.timer);
+      watchState.timer = null;
+    }
+    window.removeEventListener('focus', onWindowFocus);
+  };
+}
+
+/** 测试专用:重置监测状态(fake timers 下 Date.now 跨用例会污染节流时间戳)。 */
+export function resetPluginListWatchForTests(): void {
+  if (watchState.timer) {
+    clearInterval(watchState.timer);
+    watchState.timer = null;
+  }
+  watchState.lastCheckAt = 0;
+  watchState.registeredFingerprint = null;
+  watchState.notifiedFingerprint = null;
+}
+
 let initialized = false;
 
 export async function initRuntimePlugins(): Promise<void> {
@@ -352,4 +454,8 @@ export async function initRuntimePlugins(): Promise<void> {
     // registry 变更异常也不允许阻塞宿主启动
     console.error('[plugins] 运行时模块注册失败:', err);
   }
+
+  // 后台刷新监测(#10):基线取本次启动实际注册的列表(可能来自缓存)
+  watchState.registeredFingerprint = pluginListFingerprint(metas);
+  startPluginListWatch();
 }

@@ -2,12 +2,19 @@
  * 运行时插件路由(PawAPP 式动态装载,参考 docs/cognitive-wargame-plugin-migration-design.md)。
  *
  * 路径映射(Vite proxy rewrite 去掉 /api/bff):
- *   前端 GET  /api/bff/plugins                      → BFF /plugins            列出已装插件元数据
+ *   前端 GET  /api/bff/plugins                      → BFF /plugins            列出已装插件元数据(仅 enabled)
  *   前端 GET  /api/bff/plugins/:id/files/*          → BFF /plugins/:id/files/* 静态产物(JS/CSS)
  *   前端 POST /api/bff/plugins/install              → BFF /plugins/install     从本地路径安装
+ *   前端 POST /api/bff/plugins/:id/{enable,disable} → BFF /plugins/:id/{enable,disable} 启停(不动文件)
+ *   前端 POST /api/bff/plugins/:id/chat/sessions    → BFF 插件建 gateway 会话(chat SDK)
+ *   前端 POST /api/bff/plugins/:id/chat/completions → BFF 插件 chat 流式补全(chat SDK)
  *   前端 DELETE /api/bff/plugins/:id                → BFF /plugins/:id         卸载
  *
  * 安装目录:bff/data/plugins/<id>/,内含 app.json 与 ui/ 产物子树。
+ * 启停状态:bff/data/plugin-state.json——**必须在安装目录之外**:entrypoint
+ * 每次容器启动无条件重装(覆盖目录),状态文件才能存活(重启/重装不冲掉)。
+ * 审计日志:bff/data/plugin-audit.jsonl(JSONL 追加,install/uninstall/
+ * enable/disable 四路;写失败只告警不阻塞主操作)。
  *
  * 安全模型(评审 H1/H2 修复):
  * - 列表/文件路由公开(插件产物不涉密,与 SPA 同源消费);
@@ -18,19 +25,124 @@
  * - entry/mount path 走白名单校验,阻断以 '..' 越出插件目录的拷贝与路由劫持
  *   (见 validateEntry/validateMountPath)。
  */
-import { Hono } from 'hono';
+import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { createReadStream, existsSync } from 'node:fs';
-import { cp, mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
+import {
+  appendFile,
+  cp,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 
 import { fileURLToPath } from 'node:url';
+
+import { authMiddleware } from '../middleware/auth';
+import { authSessionMiddleware } from '../middleware/auth-session';
+import {
+  backendContextMiddleware,
+  resolveBackendContext,
+} from '../middleware/backend-context';
+import { requireValidImtSession } from '../middleware/imt-session-guard';
+import { isImtCanvasAgentsEnabled } from '../utils/feature-flags';
+// 复用宿主 chat 通道的 adapter 解析/错误文案/SSE 重序列化(同一租户隔离
+// 语义,插件面不另起一套)——见 docs/chat-sse-sdk-design.md §4.2
+import {
+  getAdapter,
+  handleAdapterError,
+  streamChunksAsSSE,
+} from './bff-agents';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // 测试可经 BFF_PLUGINS_DIR 注入临时目录(见 plugins.test.ts)
 const PLUGINS_DIR = process.env.BFF_PLUGINS_DIR
   ? resolve(process.env.BFF_PLUGINS_DIR)
   : resolve(__dirname, '../../data/plugins');
+// 启停状态文件:与安装目录分离(见文件头注释)
+const STATE_FILE = process.env.BFF_PLUGIN_STATE_FILE
+  ? resolve(process.env.BFF_PLUGIN_STATE_FILE)
+  : resolve(__dirname, '../../data/plugin-state.json');
+// 审计日志(JSONL):测试可经 BFF_PLUGIN_AUDIT_FILE 注入
+const AUDIT_FILE = process.env.BFF_PLUGIN_AUDIT_FILE
+  ? resolve(process.env.BFF_PLUGIN_AUDIT_FILE)
+  : resolve(__dirname, '../../data/plugin-audit.jsonl');
+
+/** 启停状态落盘形态;缺文件 = 全部 enabled(向后兼容既有部署)。 */
+interface PluginStateFile {
+  schema: 1;
+  states: Record<string, { enabled: boolean; updatedAt: string }>;
+}
+
+async function readPluginState(): Promise<PluginStateFile> {
+  let raw: string;
+  try {
+    raw = await readFile(STATE_FILE, 'utf-8');
+  } catch (err) {
+    // 缺失文件是首次运行的正常形态(全 enabled),静默;损坏/不可读必须
+    // 大声告警(评审 P2):kill switch 不得静默失效
+    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+      console.error('[plugins] plugin-state.json 读取失败,按全 enabled 处理:', err);
+    }
+    return { schema: 1, states: {} };
+  }
+  try {
+    const parsed = JSON.parse(raw) as PluginStateFile;
+    if (parsed?.schema === 1 && parsed.states instanceof Object) {
+      return parsed;
+    }
+    console.error('[plugins] plugin-state.json schema 不符,按全 enabled 处理(请修复该文件)');
+  } catch (err) {
+    console.error('[plugins] plugin-state.json 解析失败(文件损坏?),按全 enabled 处理:', err);
+  }
+  return { schema: 1, states: {} };
+}
+
+async function writePluginState(state: PluginStateFile): Promise<void> {
+  await mkdir(dirname(STATE_FILE), { recursive: true });
+  // 原子写(评审 P2):tmp+rename,写入中途崩溃不留截断 JSON——截断文件会在
+  // 下次读取时按全 enabled 处理,kill switch 向打开方向静默失效。
+  // 并发 read-modify-write 丢更新(两个启停操作交错)为已知限制:
+  // 仅 admin 面、操作频率极低,不引入锁。
+  const tmp = `${STATE_FILE}.tmp`;
+  await writeFile(tmp, JSON.stringify(state, null, 2), 'utf-8');
+  await rename(tmp, STATE_FILE);
+}
+
+/** 启停门控(评审 P1):disabled 的插件连数据面一起切断(404,不泄露存在性)。 */
+async function isPluginDisabled(id: string): Promise<boolean> {
+  return (await readPluginState()).states[id]?.enabled === false;
+}
+
+type PluginAuditAction = 'install' | 'uninstall' | 'enable' | 'disable';
+
+/**
+ * 审计追加(中期任务 #9):变更操作成功后落一行 JSONL。写入失败只告警——
+ * 审计是观测面,不阻塞主操作。失败尝试不审计(访问日志已含 4xx)。
+ */
+async function appendPluginAudit(entry: {
+  action: PluginAuditAction;
+  pluginId: string;
+  version?: string | null;
+  source?: string | null;
+}): Promise<void> {
+  try {
+    const line = `${JSON.stringify({
+      ts: new Date().toISOString(),
+      outcome: 'ok',
+      ...entry,
+    })}\n`;
+    await mkdir(dirname(AUDIT_FILE), { recursive: true });
+    await appendFile(AUDIT_FILE, line, 'utf-8');
+  } catch (err) {
+    console.warn('[plugins] 审计写入失败(不影响主操作):', err);
+  }
+}
 
 /** entry 顶层子目录白名单:插件产物只允许落在这些子树下。 */
 const ENTRY_ROOT_ALLOWLIST = ['ui', 'assets', 'dist'];
@@ -73,6 +185,12 @@ interface PluginAppJson {
    * (SSE 友好)。target 默认回环,可经 app.json 覆盖。
    */
   backend?: { type: 'proxy'; target: string };
+  /**
+   * 能力声明(chat SDK,docs/chat-sse-sdk-design.md):插件运行时消费宿主
+   * 能力的显式清单。chat 路由逐请求校验,未声明 403——运维门控(额度消费
+   * 显式清单)而非安全边界(同源信任模型)。未知值容忍(前向兼容)。
+   */
+  capabilities?: string[];
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -300,12 +418,16 @@ pluginsRoutes.get('/plugins', async (c) => {
   if (!existsSync(PLUGINS_DIR)) {
     return c.json([]);
   }
+  // 启停过滤(#16):disabled 的插件不进列表——卡片/路由/词条随宿主下次
+  // 加载整体消失;产物目录保留,enable 即恢复。
+  const { states } = await readPluginState();
   const entries = await readdir(PLUGINS_DIR, { withFileTypes: true });
   const metas: PluginAppJson[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
     const meta = await readPluginMeta(join(PLUGINS_DIR, entry.name));
     if (!meta) continue;
+    if (states[meta.id]?.enabled === false) continue;
     await inlineI18nResources(join(PLUGINS_DIR, entry.name), meta);
     metas.push(meta);
   }
@@ -316,6 +438,10 @@ pluginsRoutes.get('/plugins/:id/files/*', async (c) => {
   const id = c.req.param('id');
   if (/[^\w.-]/.test(id)) {
     return c.text('Forbidden', 403);
+  }
+  // 启停门控(评审 P1):disabled 插件的产物不可下载(kill switch 关数据面)
+  if (await isPluginDisabled(id)) {
+    return c.text('Not Found', 404);
   }
   const rest = c.req.path.replace(/^\/plugins\/[^/]+\/files\//, '');
   // 路径穿越防护:解析后必须仍在该插件目录内
@@ -414,11 +540,190 @@ pluginsRoutes.post('/plugins/install', async (c) => {
     await rm(staging, { recursive: true, force: true });
   }
 
+  // install ≠ enable(#16):重装只刷新产物,不触碰 plugin-state.json——
+  // 对 disabled 插件重装后仍是 disabled(entrypoint 重装同理,状态存活)。
+  await appendPluginAudit({
+    action: 'install',
+    pluginId: meta.id,
+    version: meta.version ?? null,
+    source,
+  });
+
   return c.json({
     installed: meta.id,
     version: meta.version ?? null,
     backendTargetOverride: override ?? null,
   });
+});
+
+/**
+ * 启停路由(#16,API-first,UI 后置):enable/disable 只写 plugin-state.json,
+ * 不动安装目录。幂等;插件须已安装(404);与 install/delete 同一 admin token
+ * 守卫。状态文件每请求读写(无内存缓存),天然进程重启免疫。
+ */
+async function setPluginEnabled(
+  c: Context,
+  id: string,
+  enabled: boolean,
+): Promise<Response> {
+  if (!isAdminRequest(c.req)) {
+    return c.text('Forbidden: 需要有效的 X-Plugin-Admin-Token', 403);
+  }
+  if (/[^\w.-]/.test(id)) {
+    return c.text('Forbidden', 403);
+  }
+  const dest = resolve(PLUGINS_DIR, id);
+  if (!dest.startsWith(`${PLUGINS_DIR}${sep}`) || !existsSync(dest)) {
+    return c.text('Not Found', 404);
+  }
+  if (enabled) {
+    // enable 校验清单(评审 P3):损坏安装本就被列表过滤,启用必然"200 却
+    // 不可见"——显式拒绝;disable 保持宽松(遮蔽损坏安装是合法操作)
+    const meta = await readPluginMeta(dest);
+    if (!meta) {
+      return c.text('app.json 缺失或非法,无法启用', 400);
+    }
+  }
+  const state = await readPluginState();
+  state.states[id] = { enabled, updatedAt: new Date().toISOString() };
+  await writePluginState(state);
+  await appendPluginAudit({ action: enabled ? 'enable' : 'disable', pluginId: id });
+  return c.json({ id, enabled });
+}
+
+pluginsRoutes.post('/plugins/:id/enable', (c) =>
+  setPluginEnabled(c, c.req.param('id'), true),
+);
+
+pluginsRoutes.post('/plugins/:id/disable', (c) =>
+  setPluginEnabled(c, c.req.param('id'), false),
+);
+
+// --- 宿主 chat 能力(docs/chat-sse-sdk-design.md,chat SDK P1) ---
+
+/** 与宿主 chat 相同的占位 agentId(session=chat 一对一,adapter 层仅透传)。 */
+const CHAT_AGENT_ID = 'chat';
+
+/** 会话标题总长上限(含前缀):防无界透传 gateway(评审 P3)。 */
+const SESSION_TITLE_MAX = 200;
+
+/** 会话标题前缀:插件创建的会话在宿主会话列表可辨识(设计 R1 缓解)。 */
+function pluginSessionTitle(pluginId: string, title?: string): string {
+  const full = `plugin:${pluginId}:${title ?? pluginId}`;
+  return full.length > SESSION_TITLE_MAX
+    ? full.slice(0, SESSION_TITLE_MAX)
+    : full;
+}
+
+/**
+ * chat 路由共用校验(逐请求):id 白名单 → 停用断路(404,评审 P1) →
+ * 安装存在 → 清单合法 → capabilities 含 'chat'(403)。顺序经过评审:
+ * 404 先于 403,不向匿名探测者泄露「存在但未声明/已停用」。
+ * 返回 null 表示放行。
+ */
+async function checkChatCapability(
+  id: string,
+): Promise<{ status: 403 | 404; message: string } | null> {
+  if (/[^\w.-]/.test(id)) {
+    return { status: 403, message: 'Forbidden' };
+  }
+  if (await isPluginDisabled(id)) {
+    return { status: 404, message: 'Not Found' };
+  }
+  const pluginDir = resolve(PLUGINS_DIR, id);
+  if (!pluginDir.startsWith(`${PLUGINS_DIR}${sep}`) || !existsSync(pluginDir)) {
+    return { status: 404, message: 'Not Found' };
+  }
+  const meta = await readPluginMeta(pluginDir);
+  if (!meta) {
+    return { status: 404, message: 'Not Found' };
+  }
+  if (!meta.capabilities?.includes('chat')) {
+    return {
+      status: 403,
+      message: `插件 ${id} 未声明 chat 能力(app.json capabilities)`,
+    };
+  }
+  return null;
+}
+
+/**
+ * chat 路由守卫链:与 /agents/* 一致(auth → imt 会话真实验证 →
+ * AuthSession(随企业 flag 条件挂载) → 租户上下文)。本文件其余路由不挂
+ * 会话守卫(评审 M2 决策),chat 是第一批例外——它花的是用户身份下的
+ * gateway 额度,必须绑定真实登录态;凭据(API_SERVER_KEY/X-Intellect-User)
+ * 全程在 BFF 服务端注入,插件不接触。
+ */
+const chatGuards: MiddlewareHandler[] = [
+  authMiddleware,
+  requireValidImtSession,
+  ...(isImtCanvasAgentsEnabled() ? [authSessionMiddleware] : []),
+  backendContextMiddleware,
+];
+
+// 守卫经 .use 挂在 chat 子路径上(与 index.ts 对 /agents/* 的挂载方式一致)
+for (const guard of chatGuards) {
+  pluginsRoutes.use('/plugins/:id/chat/*', guard);
+}
+
+pluginsRoutes.post('/plugins/:id/chat/sessions', async (c) => {
+  const id = c.req.param('id') ?? '';
+  const denied = await checkChatCapability(id);
+  if (denied) {
+    return c.text(denied.message, denied.status);
+  }
+  const adapter = getAdapter(c);
+  if (!adapter) {
+    return c.json({ code: 503, message: 'No backend configured' }, 503);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const title = typeof body?.title === 'string' ? body.title : undefined;
+  try {
+    const session = await adapter.createSession(
+      resolveBackendContext(c),
+      CHAT_AGENT_ID,
+      pluginSessionTitle(id, title),
+    );
+    return c.json(session);
+  } catch (err) {
+    return handleAdapterError(c, err, 'POST /plugins/:id/chat/sessions');
+  }
+});
+
+pluginsRoutes.post('/plugins/:id/chat/completions', async (c) => {
+  const id = c.req.param('id') ?? '';
+  const denied = await checkChatCapability(id);
+  if (denied) {
+    return c.text(denied.message, denied.status);
+  }
+  const adapter = getAdapter(c);
+  if (!adapter) {
+    return c.json({ code: 503, message: 'No backend configured' }, 503);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const sessionId = body?.session_id ?? body?.sessionId;
+  const content = body?.content;
+  if (
+    typeof sessionId !== 'string' ||
+    sessionId === '' ||
+    typeof content !== 'string' ||
+    content === ''
+  ) {
+    return c.text('session_id 与 content 必填', 400);
+  }
+  try {
+    const iterable = await adapter.sendMessage(resolveBackendContext(c), {
+      sessionId,
+      content,
+      agentId: CHAT_AGENT_ID,
+      attachments: body?.attachments,
+      modelId: body?.model_id ?? body?.modelId,
+    });
+    // 与宿主 /agents/chat/completions 完全相同的帧协议({event,data})
+    return streamChunksAsSSE(c, iterable);
+  } catch (err) {
+    return handleAdapterError(c, err, 'POST /plugins/:id/chat/completions');
+  }
 });
 
 /**
@@ -433,6 +738,11 @@ pluginsRoutes.all('/plugins/:id/proxy/*', async (c) => {
   const id = c.req.param('id');
   if (/[^\w.-]/.test(id)) {
     return c.text('Forbidden', 403);
+  }
+  // 启停门控(评审 P1):disabled 插件的后端代理通道切断——停用是断路,
+  // 事故止血时流量必须停;404 不向匿名探测者泄露「存在但已停用」
+  if (await isPluginDisabled(id)) {
+    return c.text('Not Found', 404);
   }
   const pluginDir = resolve(PLUGINS_DIR, id);
   if (!pluginDir.startsWith(`${PLUGINS_DIR}${sep}`) || !existsSync(pluginDir)) {
@@ -548,5 +858,12 @@ pluginsRoutes.delete('/plugins/:id', async (c) => {
     return c.text('Not Found', 404);
   }
   await rm(dest, { recursive: true, force: true });
+  // 卸载同时清除启停状态(#16):重装回默认 enabled,不残留陈旧 disabled
+  const state = await readPluginState();
+  if (state.states[id]) {
+    delete state.states[id];
+    await writePluginState(state);
+  }
+  await appendPluginAudit({ action: 'uninstall', pluginId: id });
   return c.json({ removed: id });
 });

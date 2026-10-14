@@ -1,5 +1,8 @@
 export default {
   translation: {
+    plugins: {
+      updatedToast: '应用列表已更新，刷新页面后生效',
+    },
     common: {
       confirm: '确定',
       back: '返回',

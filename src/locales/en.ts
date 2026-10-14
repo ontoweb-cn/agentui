@@ -1,5 +1,8 @@
 export default {
   translation: {
+    plugins: {
+      updatedToast: 'Application list updated — refresh the page to apply',
+    },
     common: {
       confirm: 'Confirm',
       back: 'Back',

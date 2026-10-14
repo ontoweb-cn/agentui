@@ -133,10 +133,22 @@ curl -X POST http://localhost:9390/plugins/install \
 随 agentui 镜像分发,容器启动自动安装;`BFF_PLUGIN_BACKEND_OVERRIDES`
 按插件 id 覆盖 backend.target(存在即生效,改 env 重启容器即生效)。
 
-**卸载**:`DELETE /api/bff/plugins/<id>`(需 admin token)删除安装目录;
-已装载插件的前端实例**需刷新页面才失效**(已知限制,不做运行时卸载)。
+**启停(不删文件)**:`POST /api/bff/plugins/<id>/enable` 与
+`POST /api/bff/plugins/<id>/disable`(需 admin token,幂等)。状态存
+`bff/data/plugin-state.json`——位于安装目录**之外**,容器重启/重装不冲掉;
+disabled 插件从插件列表消失(卡片/路由/词条随宿主下次加载整体消失),
+产物保留,enable 即恢复。**停用即断路**:该插件的产物下载(files)与
+后端代理(proxy)同步 404——kill switch 关闭数据面,而非仅隐藏 UI 入口。
+**install ≠ enable**:对 disabled 插件重装只刷新产物,不改变启停状态
+(entrypoint 每次容器启动重装同理,状态存活);卸载会清除启停状态,重装
+回默认 enabled;enable 要求 app.json 合法(损坏安装 400,disable 宽松)。
 
-**enable/disable 启停路由未实现**(当前启停=删除/重装)。
+**卸载**:`DELETE /api/bff/plugins/<id>`(需 admin token)删除安装目录;
+已装载插件的前端实例**需刷新页面才失效**(宿主监测列表变化会 toast 提示
+刷新,不做运行时卸载)。
+
+**审计**:install/uninstall/enable/disable 成功操作逐行追加 JSONL
+`bff/data/plugin-audit.jsonl`(env `BFF_PLUGIN_AUDIT_FILE` 覆盖)。
 
 宿主侧安全约束(安装面):token fail-closed、entry/mount path 白名单、
 backend.target 严格 IP 白名单(override 走部署者宽松级)——
@@ -167,3 +179,54 @@ registerApp 侧效果、语言归一化、mount/dispose 生命周期、宿主事
 - 词条/卡片文案:词条随元数据注入(插件 JS 未装载也可本地化);
   顶层 key 与宿主已有词条冲突会被跳过并告警——**插件词条请使用
   自身命名空间前缀**(如 `myApp.*`)。
+
+## 8. 宿主 chat 能力(1.2.0)
+
+插件可经 `window.AgentUI.chat` 流式消费宿主的 gateway chat 通道
+(设计契约与帧协议:**chat-sse-sdk-design.md**;机制参照 QwenPaw
+pawapp-sdk 的 chatStream)。**插件代码零凭证、零 SSE 解析依赖**——
+网关凭据(API_SERVER_KEY/X-Intellect-User)全程在 BFF 服务端注入。
+
+**前置声明(必读)**:app.json 增加 `"capabilities": ["chat"]`。
+BFF 逐请求校验,未声明一律 **403**——这是运维门控(额度消费者显式清单),
+不是安全边界;停用的插件 chat 同样 404(启停断路,§6)。
+
+```tsx
+// feature-detect(1.1.0 宿主无 chat,向后兼容)
+const chat = window.AgentUI.chat;
+if (!chat) return;
+
+// 1) 建 gateway 会话(标题自动加 plugin:<your-app>: 前缀,
+//    宿主主聊天列表默认不展示;经 API/深链仍可访问)
+const { id } = await chat.createSession('my-app', '推演会话');
+
+// 2) 流式补全:for-await 逐帧消费;提前 break 即中断上游
+for await (const frame of chat.completions('my-app', {
+  sessionId: id,
+  content: userInput,          // 必填
+  modelId: undefined,          // 可选,不传用部署默认模型
+})) {
+  switch (frame.event) {
+    case 'message':       /* {content, answer, start_to_think?...} 增量 */ break;
+    case 'message_end':   /* {usage} */ break;
+    case 'workflow_finished': /* 终止帧 */ break;
+    case 'error':         /* {message,...} 协议内错误,流随之结束 */ break;
+    default:              /* 未知帧必须忽略(前向兼容义务) */ break;
+  }
+}
+
+// 3) 中止:传 AbortSignal
+const controller = new AbortController();
+chat.completions('my-app', { sessionId: id, content }, { signal: controller.signal });
+// 组件卸载/路由离开时 controller.abort()
+```
+
+语义要点:
+- `completions` 返回 **AsyncGenerator**;每帧 `{event, data}`,与宿主 chat
+  帧协议**逐帧一致**(同一 BFF 重序列化通道);
+- `error` 帧是协议内数据(yield 后流结束);HTTP/网络失败才 throw
+  (消息含状态码,如 401 未登录 / 403 未声明能力 / 404 插件不存在或停用);
+- 会话必须先经 `createSession` 创建,`sessionId` 必填,不做匿名一次性会话;
+- 审批(approval_request)/澄清(clarify_request)帧 v1 只透传;需要响应时
+  直调既有 `/agents/:agentId/runs/:runId/approval` 路由(同源 cookie 已鉴权);
+- 企业 cookie 会话失效时请求 401——插件应引导用户重新登录,而非缓存凭证。

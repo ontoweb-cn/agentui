@@ -133,7 +133,12 @@ export const useFetchChatList = () => {
       // BFF 返回 Session[] 数组(无 code/data 信封)。
       const { data: sessions } = await gatewayChatService.listGatewayChats();
       const sessionList = Array.isArray(sessions) ? sessions : [];
-      let chats: IDialog[] = sessionList.map((s) => {
+      // 插件会话(chat SDK,BFF 强制 plugin:<id>: 标题前缀)默认不在主聊天
+      // 列表展示——对齐 QwenPaw include_app_owned=false 的主面 opt-out 模式
+      // (docs/chat-sse-sdk-design.md §五);经 API/深链仍可访问。
+      let chats: IDialog[] = sessionList
+        .filter((s) => !s.title?.startsWith('plugin:'))
+        .map((s) => {
         const dialog = mapGatewaySessionToDialog(s);
         // 前端侧临时方案:优先使用 localStorage 中保存的用户自定义 name,
         // 避免列表显示被 Gateway 自动生成的 title 覆盖。
