@@ -10,7 +10,9 @@
  * - 全链路 try/catch,initRuntimePlugins 永不 reject(坏数据不白屏宿主);
  * - 逐插件隔离:单条畸形元数据只跳过自己;
  * - mount path 与宿主保留路由冲突的元数据拒绝注册(纵深防御,BFF 侧同规则);
- * - peer.react 版本硬校验:宿主 React 主版本不满足时拒绝装载并记录;
+ * - 兼容性声明(peer.react/apiVersion)不满足 → 卡片保留 +「不兼容」徽标 +
+ *   挂载页明确原因,不装载插件 JS(第三方生态要求"不兼容永不静默";
+ *   结构错误仍走 rejectReason 拒绝注册,见 compatibilityReason);
  * - 装载失败在挂载页显示错误占位与重试,不再只有 console。
  *
  * 降级:BFF 不可达/超时(1.5s)时读 localStorage 上次成功的列表,
@@ -369,8 +371,9 @@ function readCachedPluginList(): PluginAppMetadata[] {
 }
 
 /**
- * 列表指纹:只取影响卡片/路由/文案锚点的稳定字段,排序后拼接。
- * 词条内联产物(i18nResources)不参与——词条内容微调不值得打扰用户。
+ * 列表指纹:只取影响卡片/路由/文案锚点/兼容判定的稳定字段,排序后拼接。
+ * apiVersion 入指纹:重装仅改兼容声明(版本号不变)也提示刷新,避免过期
+ * 兼容态展示。词条内联产物(i18nResources)不参与——内容微调不值得打扰用户。
  */
 function pluginListFingerprint(metas: PluginAppMetadata[]): string {
   return metas
@@ -382,6 +385,7 @@ function pluginListFingerprint(metas: PluginAppMetadata[]): string {
         m.path,
         m.labelKey ?? '',
         m.descriptionKey ?? '',
+        m.apiVersion ?? '',
       ].join('|'),
     )
     .sort()

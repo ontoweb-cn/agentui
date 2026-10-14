@@ -69,7 +69,7 @@ canvas 现为 monorepo 编译期包(`packages/canvas-plugin`,`main: src/index.ts
 
 | # | 风险 | 对策 |
 |---|---|---|
-| R1 | Tier B 白名单膨胀 → 回到"宿主即 SDK 库"维护地狱 | 白名单快照 + SHARED_API_VERSION 独立版本号 + 只加不改删纪律;新 surface 必须评审 |
+| R1 | Tier B 白名单膨胀 → 回到"宿主即 SDK 库"维护地狱 | 白名单快照 + SHARED_API_VERSION 独立版本号 + 只加不改删纪律;新 surface 必须评审。**工程注记**:根 jest mapper 当前仅精确映射 `@agentui/plugin-sdk` 主入口,S1 落地 `host` 子入口时须同步 mapper/vite alias/tsconfig paths 三处 |
 | R2 | 并存期双入口混淆 | S2 期间运行时注册的路由显式压制编译期(同 wargame P2 先例);回归清单含"不存在双入口"断言 |
 | R3 | 跨版本兼容无验证 | **S1 出口新增兼容性回归**:用 v1.0 SDK 构建的 fixture 插件(仓库内 `packages/plugin-compat-fixture`,冻结依赖)在每次宿主发版 CI 装载断言——老插件×新宿主机制化 |
 | R4 | 无凭证环境无法真机验证 canvas 全功能冒烟 | S2 出口依赖持凭证账号执行 canvas-smoke-checklist(与 SC-003 归档同窗口);无凭证前 S2 不收口 |

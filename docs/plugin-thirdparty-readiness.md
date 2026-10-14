@@ -36,6 +36,7 @@
 - **装载侧验证**(runtime `compatibilityReason`,自 rejectReason 拆出兼容域):peer.react 与 apiVersion 不满足 → **插件仍注册**(卡片可见+「不兼容」徽标,深链可达),挂载页显示具体原因(声明区间 vs 宿主版本)+处理指引,**不装载插件 JS、无重试按钮**(重试无意义)。结构错误(id/path/entry)仍走 rejectReason 不注册。
 - **文案**:plugins.incompatibleBadge/Title/Hint 三语言(zh-Hans/zh-Hant/en)。
 - 与 SDK `satisfiesApiVersion` 同语义:宿主 runtime 与插件自检共用一套判定。
+- **分层注记(评审补充)**:BFF 数据面**不做** apiVersion 断路(与停用断路不同层)——兼容性是前端呈现关切,BFF 只负责格式门禁;老版本插件的数据面路由照常服务,由宿主决定是否装载其 JS。
 
 ### B|@agentui/plugin-sdk 包化(需求①)
 

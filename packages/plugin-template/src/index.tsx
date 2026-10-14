@@ -33,6 +33,23 @@ function t(key: string): string {
   return messages[currentLang]?.[key] ?? messages.zh[key];
 }
 
+/** 初始语言探测:i18next 持久化键 → <html lang> → 中文兜底(宿主三者未必全设)。 */
+function detectInitialLang(): string {
+  try {
+    const stored = localStorage.getItem('i18nextLng');
+    if (stored) {
+      return stored.startsWith('zh') ? 'zh' : 'en';
+    }
+  } catch {
+    // 隐私模式等 localStorage 不可用场景
+  }
+  const html = document.documentElement.lang;
+  if (html) {
+    return html.startsWith('zh') ? 'zh' : 'en';
+  }
+  return 'zh';
+}
+
 function render(el: HTMLElement) {
   root?.render(
     <App
@@ -55,7 +72,7 @@ export default definePlugin({
     styleEl.textContent = STYLE;
     document.head.appendChild(styleEl);
 
-    currentLang = document.documentElement.lang?.startsWith('zh') === false ? 'en' : 'zh';
+    currentLang = detectInitialLang();
     root = createRoot(el);
     render(el);
 

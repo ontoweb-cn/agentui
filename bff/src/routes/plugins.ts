@@ -421,6 +421,25 @@ pluginsRoutes.post('/plugins/install', async (c) => {
   }
   const meta = await readPluginMeta(source);
   if (!meta) {
+    // 针对性诊断(install 是一次性交互,重读 raw 安全):app.json 可解析且
+    // 唯一失效点是 apiVersion 格式时,给出可自助修复的明确指引;其余情形
+    // 保持既有笼统文案(不向调用方枚举校验器内部细节)
+    try {
+      const raw = JSON.parse(
+        await readFile(join(source, 'app.json'), 'utf-8'),
+      ) as { apiVersion?: unknown };
+      if (
+        raw?.apiVersion !== undefined &&
+        !isValidApiVersionRange(raw.apiVersion)
+      ) {
+        return c.text(
+          `app.json apiVersion 格式非法: ${String(raw.apiVersion)}(支持 *、^1.3.0、~1.3、>=1.3、=1.3.0、裸版本)`,
+          400,
+        );
+      }
+    } catch {
+      // app.json 缺失/坏 JSON:走下方既有文案
+    }
     return c.text(
       'source 目录缺少合法 app.json(id/path/label/entry 缺失或校验不过)',
       400,

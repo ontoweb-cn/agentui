@@ -673,6 +673,32 @@ describe('apiVersion 兼容声明(第三方生态版本协商)', () => {
     }
   });
 
+  it('install:apiVersion 格式非法 → 400 消息含可自助修复的指引(针对性诊断)', async () => {
+    const srcDir = join(await mkdtemp(join(tmpdir(), 'api-version-dbg-')), 'bad');
+    await mkdir(srcDir, { recursive: true });
+    await writeFile(
+      join(srcDir, 'app.json'),
+      JSON.stringify({
+        id: 'api-version-dbg',
+        path: '/api-version-dbg',
+        label: 'x',
+        entry: 'ui/dist/index.js',
+        apiVersion: 'latest',
+      }),
+    );
+    try {
+      const res = await api.pluginsRoutes.request('/plugins/install', {
+        method: 'POST',
+        headers: adminHeaders,
+        body: JSON.stringify({ source: srcDir }),
+      });
+      expect(res.status).toBe(400);
+      expect(await res.text()).toContain('apiVersion 格式非法');
+    } finally {
+      await rm(join(srcDir, '..'), { recursive: true, force: true });
+    }
+  });
+
   it('apiVersion 各形态格式校验矩阵(isValidApiVersionRange)', () => {
     for (const valid of ['*', '^1.3.0', '~1.3', '>=2', '>1.2.3', '=1.3.0', '1.3.0', ' 1.3 ']) {
       expect(api.isValidApiVersionRange(valid)).toBe(true);
