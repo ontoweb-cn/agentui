@@ -10,6 +10,7 @@ import {
   LucideMonitor,
   LucideServerCrash,
   LucideSquareUserRound,
+  LucideTicketPlus,
   LucideUserCog,
   LucideUserStar,
   LucideUsers,
@@ -76,6 +77,11 @@ const AdminNavigationLayout = () => {
               path: Routes.AdminWhitelist,
               name: t('admin.registrationWhitelist'),
               icon: <LucideUserStar className="size-[1em]" />,
+            },
+            {
+              path: Routes.AdminInvites,
+              name: t('admin.inviteCodes'),
+              icon: <LucideTicketPlus className="size-[1em]" />,
             },
             {
               path: Routes.AdminRoles,

@@ -10,6 +10,7 @@ import { authRoutes } from './routes/auth';
 import { bffAgentRoutes } from './routes/bff-agents';
 import { capabilitiesRoutes } from './routes/capabilities';
 import { harnessAdminRoutes } from './routes/harness-admin';
+import { inviteRoutes } from './routes/invites';
 import { sessionRoutes } from './routes/session';
 import { healthRoutes } from './routes/health';
 import { proxyRoutes } from './routes/proxy';
@@ -134,6 +135,7 @@ app.route('/api/session', sessionRoutes);
 // Intellect RAG Admin stubs/missing routes). Strongly-coupled admin features
 // (users, services, sandbox, system settings) remain on Intellect RAG Admin :9381.
 app.route('/api/admin', adminRoutes);
+app.route('/api/bff/admin', inviteRoutes);
 
 // Multi-Harness P0-前置:透明反向代理 /api/bff/proxy/v1/* → intellect-rag /api/v1/*
 // Constitution Principle I (BFF-Mediated Frontend):前端所有 /api/v1/* 改经此代理。

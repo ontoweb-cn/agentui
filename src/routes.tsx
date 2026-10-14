@@ -245,6 +245,10 @@ const routeConfigOptions = [
                       Component: () => import('@/pages/admin/whitelist'),
                     },
                     {
+                      path: Routes.AdminInvites,
+                      Component: () => import('@/pages/admin/invites'),
+                    },
+                    {
                       path: Routes.AdminRoles,
                       Component: () => import('@/pages/admin/roles'),
                     },

@@ -79,6 +79,8 @@ export enum Routes {
   AdminUserManagement = `${Routes.Admin}/users`,
   AdminSandboxSettings = `${Routes.Admin}/sandbox-settings`,
   AdminWhitelist = `${Routes.Admin}/whitelist`,
+  // 邀请码管理(企业版注册治理,2026-10-14)。
+  AdminInvites = `${Routes.Admin}/invites`,
   AdminRoles = `${Routes.Admin}/roles`,
   AdminMonitoring = `${Routes.Admin}/monitoring`,
   // Multi-Harness P2 (US3):Harness 后端配置 Admin 页面。

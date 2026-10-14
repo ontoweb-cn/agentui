@@ -426,6 +426,10 @@ export default {
 
   adminListResources: `${bffAdmin}/roles/resource`,
 
+  adminListInvites: `${bffAdmin}/invites`,
+  adminCreateInvite: `${bffAdmin}/invites`,
+  adminRevokeInvite: (code: string) => `${bffAdmin}/invites/${encodeURIComponent(code)}`,
+
   adminListWhitelist: `${bffAdmin}/whitelist`,
   adminCreateWhitelistEntry: `${bffAdmin}/whitelist/add`,
   adminUpdateWhitelistEntry: (id: number) =>
