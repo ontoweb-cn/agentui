@@ -22,6 +22,7 @@ import {
 } from '../host-global';
 import {
   rejectReason,
+  compatibilityReason,
   resetPluginListWatchForTests,
   startPluginListWatch,
   toModuleDefinition,
@@ -114,13 +115,43 @@ describe('rejectReason(注册前校验)', () => {
     expect(rejectReason(bad as PluginAppMetadata)).toBeTruthy();
   });
 
-  it('peer.react 主版本不满足时拒绝(硬失败)', () => {
-    expect(rejectReason({ ...meta, peer: { react: '^19' } })).toBeTruthy();
-    expect(rejectReason({ ...meta, peer: { react: '^17' } })).toBeTruthy();
+  // peer.react / apiVersion 属兼容性声明(2026-10-14 起从 rejectReason 拆出):
+  // 结构错误 = 不注册;兼容失败 = 卡片保留 + 明确原因(不静默消失)
+  it('版本声明不再属于结构校验(合法元数据即使 peer/apiVersion 不满足也通过 rejectReason)', () => {
+    expect(rejectReason({ ...meta, peer: { react: '^19' } })).toBeNull();
+    expect(rejectReason({ ...meta, apiVersion: '^2.0.0' })).toBeNull();
+  });
+});
+
+describe('compatibilityReason(兼容性校验:卡片保留+明确原因)', () => {
+  it('合法元数据兼容', () => {
+    expect(compatibilityReason(meta)).toBeNull();
   });
 
-  it('peer.react 次版本不低于声明时放行', () => {
-    expect(rejectReason({ ...meta, peer: { react: '>=17' } })).toBeNull();
+  it('peer.react 主版本不满足 → 原因含声明与宿主版本', () => {
+    const reason = compatibilityReason({ ...meta, peer: { react: '^19' } });
+    expect(reason).toContain('peer.react');
+    expect(reason).toContain('^19');
+    expect(compatibilityReason({ ...meta, peer: { react: '>=17' } })).toBeNull();
+  });
+
+  it('apiVersion 区间不满足 → 原因含声明与宿主 API 版本;缺省/满足区间放行', () => {
+    const reason = compatibilityReason({ ...meta, apiVersion: '^2.0.0' });
+    expect(reason).toContain('apiVersion');
+    expect(reason).toContain('^2.0.0');
+    expect(compatibilityReason({ ...meta, apiVersion: '^1.0.0' })).toBeNull();
+    expect(compatibilityReason({ ...meta, apiVersion: undefined })).toBeNull();
+  });
+
+  it('不兼容插件仍注册:toModuleDefinition 卡片带 incompatibleReason(深链可见明确提示)', () => {
+    const def = toModuleDefinition(
+      { ...meta, apiVersion: '^2.0.0' },
+      compatibilityReason({ ...meta, apiVersion: '^2.0.0' }) ?? undefined,
+    );
+    expect(def.app?.incompatibleReason).toContain('apiVersion');
+    expect(def.routes.map((r) => r.path)).toEqual(['/cognitive-wargame/*']);
+    // 兼容插件无标注
+    expect(toModuleDefinition(meta).app?.incompatibleReason).toBeUndefined();
   });
 });
 

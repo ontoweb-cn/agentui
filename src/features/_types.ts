@@ -31,6 +31,11 @@ export interface AppPluginCard {
   description?: string;
   icon?: ComponentType<{ className?: string }>;
   order?: number;
+  /**
+   * 非空 = 插件与宿主不兼容(版本声明不满足,第三方生态兼容策略):
+   * 卡片仍展示(标注"不兼容"徽标),装载页显示原因且不加载插件 JS。
+   */
+  incompatibleReason?: string;
 }
 
 export interface FeatureI18n {

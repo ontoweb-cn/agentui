@@ -79,6 +79,13 @@ interface PluginAppJson {
   order?: number;
   entry: string;
   peer?: { react?: string };
+  /**
+   * 插件开发依据的宿主 API 版本区间(如 '^1.3.0';第三方生态兼容策略,
+   * 语义见 @agentui/plugin-sdk satisfiesApiVersion)。缺省视为任意版本;
+   * 格式非法在安装侧拒绝(此处),区间不满足由宿主装载侧标记不兼容
+   * (卡片可见+明确原因)——格式与语义双端分工,避免判定漂移。
+   */
+  apiVersion?: string;
   /** 词条产物声明(#7):列表接口读取并内联下发,宿主 i18n init 后注入。 */
   i18n?: { files: Record<string, string> };
   /**
@@ -289,6 +296,23 @@ async function inlineI18nResources(
   }
 }
 
+/**
+ * apiVersion 区间格式硬校验(安装/列表双侧生效):支持 `*`、`^1.2.3`、
+ * `~1.2.3`、`>=1.2`、`>1`、`=1.2.3`、裸 `1.2.3`(按 >= 语义)。
+ * 正则与 @agentui/plugin-sdk parseApiVersionRange 保持同构(该包负责
+ * 语义判定,本侧只拦格式非法——双端分工见 PluginAppJson.apiVersion 注释)。
+ */
+export function isValidApiVersionRange(range: unknown): range is string {
+  if (typeof range !== 'string') {
+    return false;
+  }
+  const trimmed = range.trim();
+  return (
+    trimmed === '*' ||
+    /^(\^|~|>=|>|=)?\s*\d+(?:\.\d+){0,2}$/.test(trimmed)
+  );
+}
+
 /** 读取并校验单个插件目录的 app.json;缺失或校验不过均返回 null(列表层跳过)。 */
 export async function readPluginMeta(
   pluginDir: string,
@@ -307,6 +331,9 @@ export async function readPluginMeta(
       return null;
     }
     if (/[^\w.-]/.test(meta.id)) {
+      return null;
+    }
+    if (meta.apiVersion !== undefined && !isValidApiVersionRange(meta.apiVersion)) {
       return null;
     }
     return meta;

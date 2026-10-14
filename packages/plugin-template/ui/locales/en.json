@@ -1,0 +1,8 @@
+{
+  "helloWorld": {
+    "common": {
+      "title": "Hello World",
+      "subtitle": "Your first AgentUI runtime plugin"
+    }
+  }
+}

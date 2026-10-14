@@ -2,6 +2,9 @@ export default {
   translation: {
     plugins: {
       updatedToast: '應用列表已更新，刷新頁面後生效',
+      incompatibleBadge: '不相容',
+      incompatibleTitle: '應用「{{name}}」與目前宿主不相容',
+      incompatibleHint: '請聯絡插件提供方獲取適配目前宿主版本的版本，本機無法載入該應用。',
     },
     common: {
       delete: '刪除',

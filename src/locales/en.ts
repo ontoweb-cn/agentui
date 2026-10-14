@@ -2,6 +2,9 @@ export default {
   translation: {
     plugins: {
       updatedToast: 'Application list updated — refresh the page to apply',
+      incompatibleBadge: 'Incompatible',
+      incompatibleTitle: 'App "{{name}}" is incompatible with this host',
+      incompatibleHint: 'Contact the plugin vendor for a build compatible with this host version. The app cannot be loaded here.',
     },
     common: {
       confirm: 'Confirm',

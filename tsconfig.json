@@ -26,7 +26,9 @@
     "paths": {
       "@/*": ["src/*"],
       "@agentui/canvas-plugin": ["./packages/canvas-plugin/src"],
-      "@agentui/canvas-plugin/*": ["./packages/canvas-plugin/src/*"]
+      "@agentui/canvas-plugin/*": ["./packages/canvas-plugin/src/*"],
+      "@agentui/plugin-sdk": ["./packages/plugin-sdk/src"],
+      "@agentui/plugin-sdk/*": ["./packages/plugin-sdk/src/*"]
     },
 
     "types": ["vite/client", "node", "@testing-library/jest-dom"]

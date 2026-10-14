@@ -118,6 +118,7 @@
 | 2 | k8s 部署 | 拓扑已定(2026-10-14:三后端经 ai.wust.edu.cn 网关,wargamesrv 网关化 /wargame);manifest/nginx 模板已支持全 URL 上游;**待执行**——kubeconfig/namespace + egress 核验 + 暴露方式,执行手册 [deploy/cluster-rollout.md](../deploy/cluster-rollout.md) §2 |
 | 3 | ~~Harbor admin 密码修改~~ | ✅ 已完成(2026-10-14;机器人账号独立不受影响) |
 | 4 | Jenkins 任务创建(两仓 Jenkinsfile 已就绪) | **待执行**——管理员凭证已获取,逐步手册 [deploy/cluster-rollout.md](../deploy/cluster-rollout.md) §1(环境核验→凭据→建任务→三步首跑) |
+| 5 | **第三方生态准备**(2026-10-14 立项:canvas 独立构建发版为明确需求) | ✅ **A/B/C/D 本批完成**:apiVersion 协商(安装/装载双侧校验+不兼容卡片显性提示)、`@agentui/plugin-sdk` 包化(类型单源+definePlugin/satisfiesApiVersion)、plugin-template 脚手架+guide 快速开始、canvas 阶段 4 spec(两档 SDK 面决策,见 [plugin-thirdparty-readiness.md](./plugin-thirdparty-readiness.md) 与 [canvas-stage4-independent-build-spec.md](./canvas-stage4-independent-build-spec.md));**未完**:canvas 迁移实施(S1-S4,依赖 spec §八拍板)、C 方案 zip 发版通道、SDK registry 分发 |
 
 ### 中期(触发条件驱动;✅ = 2026-10-14 评审后已执行)
 

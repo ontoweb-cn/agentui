@@ -607,3 +607,78 @@ describe('enable/disable 启停(#16)', () => {
     }
   });
 });
+
+describe('apiVersion 兼容声明(第三方生态版本协商)', () => {
+  const adminHeaders = {
+    'X-Plugin-Admin-Token': 'test-admin-token',
+    'Content-Type': 'application/json',
+  };
+
+  it('合法 apiVersion 随列表透传(宿主装载侧据此判兼容)', async () => {
+    await writePlugin(
+      'api-versioned-plugin',
+      {
+        id: 'api-versioned-plugin',
+        path: '/api-versioned-plugin',
+        label: 'x',
+        entry: 'ui/dist/index.js',
+        apiVersion: '^1.3.0',
+      },
+      { 'ui/dist/index.js': 'export {}' },
+    );
+    const res = await api.pluginsRoutes.request('/plugins');
+    const list = (await res.json()) as Array<Record<string, unknown>>;
+    const mine = list.find((p) => p.id === 'api-versioned-plugin');
+    expect(mine?.apiVersion).toBe('^1.3.0');
+  });
+
+  it('格式非法的 apiVersion → readPluginMeta 拒绝(列表不出现,防已落盘篡改形态)', async () => {
+    await writePlugin('api-bad-plugin', {
+      id: 'api-bad-plugin',
+      path: '/api-bad-plugin',
+      label: 'x',
+      entry: 'ui/dist/index.js',
+      apiVersion: '1.3.x',
+    });
+    expect(
+      await api.readPluginMeta(join(fixtureDir, 'api-bad-plugin')),
+    ).toBeNull();
+    const res = await api.pluginsRoutes.request('/plugins');
+    const list = (await res.json()) as Array<{ id: string }>;
+    expect(list.some((p) => p.id === 'api-bad-plugin')).toBe(false);
+  });
+
+  it('install:apiVersion 格式非法的 source → 400(缺合法 app.json 语义)', async () => {
+    const srcDir = join(await mkdtemp(join(tmpdir(), 'api-version-src-')), 'bad');
+    await mkdir(srcDir, { recursive: true });
+    await writeFile(
+      join(srcDir, 'app.json'),
+      JSON.stringify({
+        id: 'api-version-src-bad',
+        path: '/api-version-src-bad',
+        label: 'x',
+        entry: 'ui/dist/index.js',
+        apiVersion: 'latest',
+      }),
+    );
+    try {
+      const res = await api.pluginsRoutes.request('/plugins/install', {
+        method: 'POST',
+        headers: adminHeaders,
+        body: JSON.stringify({ source: srcDir }),
+      });
+      expect(res.status).toBe(400);
+    } finally {
+      await rm(join(srcDir, '..'), { recursive: true, force: true });
+    }
+  });
+
+  it('apiVersion 各形态格式校验矩阵(isValidApiVersionRange)', () => {
+    for (const valid of ['*', '^1.3.0', '~1.3', '>=2', '>1.2.3', '=1.3.0', '1.3.0', ' 1.3 ']) {
+      expect(api.isValidApiVersionRange(valid)).toBe(true);
+    }
+    for (const invalid of ['1.3.x', '^abc', '>=', '1.2.3.4', 'latest', '', '1 .3']) {
+      expect(api.isValidApiVersionRange(invalid)).toBe(false);
+    }
+  });
+});

@@ -5,11 +5,19 @@
 > `web/qwenpaw`(QwenPaw 宿主,同一源码基线的另一档)。
 > 机制设计:见 [cognitive-wargame-plugin-migration-design.md](./cognitive-wargame-plugin-migration-design.md)(含实现纪要)。
 
-## 0. 工程结构速览
+## 0.0 快速开始(第三方团队,2026-10-14 起推荐路径)
+
+1. **获取模板**:复制宿主仓库 `packages/plugin-template/` 为你的工程(全局替换 `hello-world` → 插件 id、`my-agentui-plugin` → 包名);
+2. **声明依赖**:`@agentui/plugin-sdk` 是唯一的宿主契约依赖——类型(免手抄 `window.AgentUI` 接口)+ `definePlugin`/`satisfiesApiVersion` helper。宿主 workspace 内自动链接;独立仓库经 `npm pack` 产物或 file: 引用获取(registry 接入后直接 install);
+3. **开发-构建-安装**:README 三条命令;或继续阅读本文了解全部约束。
+
+## 0.1 工程结构速览
 
 | 位置 | 内容 |
 |---|---|
-| 插件仓库 `cognitive-wargame/web/agentui/` | app.json、src/(入口+页面+词条)、scripts/(构建/边界/CI)、ui/dist(产物) |
+| 插件模板 `agentui/packages/plugin-template/` | 复制即用的起点(app.json/入口/vite lib 构建/边界守卫) |
+| 插件 SDK `agentui/packages/plugin-sdk/` | `@agentui/plugin-sdk`:契约类型 + helper(第三方唯一声明依赖) |
+| 插件仓库 `cognitive-wargame/web/agentui/` | 参考实现:app.json、src/(入口+页面+词条)、scripts/(构建/边界/CI)、ui/dist(产物) |
 | 宿主内核 `agentui/src/plugins/` | host-global(window.AgentUI)、loader(装载)、runtime(bootstrap) |
 | BFF `agentui/bff/src/routes/plugins.ts` | 列表/文件/安装/代理/卸载 |
 | 部署 `agentui/deploy/` | 发版 runbook、compose/k8s、插件 bundle |
@@ -43,6 +51,8 @@ localStorage(含宿主登录 token)。本机制只面向**内部可信仓库**�
   "order": 60,                       // 应用卡片排序
   "entry": "ui/dist/index.js",       // 顶层目录必须 ∈ {ui, assets, dist},
                                      // 相对路径且不含 ".."
+  "apiVersion": "^1.3.0",            // 开发依据的宿主 API 版本区间(兼容声明,见 §10);
+                                     // 缺省=任意版本;格式非法在安装侧拒绝
   "peer": { "react": "^18" },        // 宿主校验声明(React 主版本硬校验)
   "i18n": {                          // 词条产物 → BFF 列表接口内联 →
     "files": { "zh": "ui/locales/zh.json", "en": "ui/locales/en.json" }
@@ -59,22 +69,13 @@ localStorage(含宿主登录 token)。本机制只面向**内部可信仓库**�
 
 ```tsx
 // src/index.tsx —— 构建产物入口(自包含,零裸模块导入)
+// 契约类型来自 @agentui/plugin-sdk(单源;历史上手抄 interface 的做法已废弃)
 import { createRoot } from 'react-dom/client';
+import { definePlugin } from '@agentui/plugin-sdk';
 
-type Dispose = () => void;
-
-interface AgentUIHostGlobal {
-  HOST_API_VERSION: string;          // '1.1.0':含 on() 事件订阅
-  registerApp(reg: { id: string; mount(el: HTMLElement): Dispose }): void;
-  on?(event: 'localechange' | 'themechange',
-      listener: (p: { lng?: string; theme?: string }) => void): () => void;
-}
-
-declare const window: Window & { AgentUI?: AgentUIHostGlobal };
-
-window.AgentUI!.registerApp({
+export default definePlugin({
   id: 'my-app',
-  mount(el) {
+  mount(el: HTMLElement) {
     // 1) 注入自带 CSS(<style>,卸载时移除)
     // 2) createRoot(el).render(<App/>)
     return () => { /* root.unmount(); style.remove(); 清理 store/连接 */ };
@@ -83,6 +84,7 @@ window.AgentUI!.registerApp({
 ```
 
 要点:
+- `definePlugin` 提供完整类型并在宿主全局缺失时抛可诊断错误;
 - `mount` 返回 dispose 函数,必须对称清理(root、style、EventSource、query 缓存);
 - 宿主事件订阅(`on`)用于同标签页即时跟随语言/主题,storage 事件兜底跨 tab;
 - 宿主 React 不会传给插件——插件 bundle 必须自带全部依赖。
@@ -230,3 +232,33 @@ chat.completions('my-app', { sessionId: id, content }, { signal: controller.sign
 - 审批(approval_request)/澄清(clarify_request)帧 v1 只透传;需要响应时
   直调既有 `/agents/:agentId/runs/:runId/approval` 路由(同源 cookie 已鉴权);
 - 企业 cookie 会话失效时请求 401——插件应引导用户重新登录,而非缓存凭证。
+
+## 10. 版本兼容策略(2026-10-14,第三方生态)
+
+宿主与插件之间以**双端声明 + 装载校验**保证兼容性可验证:
+
+**契约演进纪律**(宿主侧承诺):
+
+- `HOST_API_VERSION` 同 **major 内只做加法**:新增可选方法/字段允许(major+1);
+  改签名/删导出/改语义 = 破坏性,必须 bump major;
+- 契约面以 `@agentui/plugin-sdk` 为单一事实源(宿主 `src/plugins/types.ts`
+  仅 re-export);`SDK_VERSION` 与 `HOST_API_VERSION` 同步演进(单测锁定)。
+
+**插件侧声明**(app.json):
+
+| 声明 | 语义 |
+|---|---|
+| 缺省 / `*` | 任意宿主版本可装载 |
+| `^1.3.0` | 同 major 且宿主 ≥ 1.3.0(**推荐**:老插件在新宿主同 major 内天然兼容) |
+| `~1.3.0` | 同 major.minor 且宿主 ≥ 补丁 |
+| `>=1.3.0`、`1.3`、`1` | 不低于声明 |
+| `=1.3.0` | 精确相等 |
+
+**验证与提示链路**:
+
+1. **安装侧**(BFF):`apiVersion` 格式非法 → 拒绝安装(400);
+2. **装载侧**(宿主 runtime):`apiVersion`/`peer.react` 不满足 → 插件 JS **不装载**,
+   但卡片保留并标注「不兼容」徽标,深链进入挂载页显示具体原因
+   (声明区间 vs 宿主版本)与处理指引——**不兼容永不静默**;
+3. 插件可运行时自检:`satisfiesApiVersion(range)` + feature-detect
+   (`if (window.AgentUI.chat)`)——用于在同 major 内优雅降级使用旧 API 面。

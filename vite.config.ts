@@ -216,6 +216,7 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, './src'),
         '@agentui/canvas-plugin': path.resolve(__dirname, 'packages/canvas-plugin/src'),
+        '@agentui/plugin-sdk': path.resolve(__dirname, 'packages/plugin-sdk/src'),
         '@intellect-docs': path.resolve(__dirname, './docs'),
       },
     },
