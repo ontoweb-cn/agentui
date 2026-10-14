@@ -115,9 +115,9 @@
 | # | 任务 | 所需 |
 |---|---|---|
 | 1 | **chat/SSE 能力 SDK 化** | ✅ **P1 已实施(2026-10-14)**:app.json `capabilities` 声明制 + `POST /plugins/:id/chat/{sessions,completions}`(与宿主 chat 同守卫链同帧协议)+ `window.AgentUI.chat`(AsyncGenerator,HOST_API_VERSION 1.2.0)+ 主聊天列表过滤 plugin: 会话;机制参照 QwenPaw pawapp-sdk(源码核验);P2(审批 helper/history)/P3(用量核算)待触发,见 [chat-sse-sdk-design.md](./chat-sse-sdk-design.md) |
-| 2 | k8s 部署(manifest 已升 0.4.0,已搁置) | kubeconfig/namespace + 后端地址 + 暴露方式 |
-| 3 | Harbor admin 密码修改(对话中曾明文出现;机器人账号独立,发版不受影响) | 现行 admin 密码(API 或界面操作) |
-| 4 | Jenkins 任务创建(两仓 Jenkinsfile 已就绪) | Jenkins 管理员:录入 harbor-agentui-release 凭据 + 建 SCM 任务(步骤见 deploy/ci-jenkins.md) |
+| 2 | k8s 部署 | 拓扑已定(2026-10-14:三后端经 ai.wust.edu.cn 网关,wargamesrv 网关化 /wargame);manifest/nginx 模板已支持全 URL 上游;**待执行**——kubeconfig/namespace + egress 核验 + 暴露方式,执行手册 [deploy/cluster-rollout.md](../deploy/cluster-rollout.md) §2 |
+| 3 | ~~Harbor admin 密码修改~~ | ✅ 已完成(2026-10-14;机器人账号独立不受影响) |
+| 4 | Jenkins 任务创建(两仓 Jenkinsfile 已就绪) | **待执行**——管理员凭证已获取,逐步手册 [deploy/cluster-rollout.md](../deploy/cluster-rollout.md) §1(环境核验→凭据→建任务→三步首跑) |
 
 ### 中期(触发条件驱动;✅ = 2026-10-14 评审后已执行)
 

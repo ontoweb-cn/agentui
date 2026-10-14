@@ -133,6 +133,27 @@ export class CanvasService {
     return this.resolveAdapter(ctx).listSessions(ctx, agentId);
   }
 
+  /**
+   * 画布运行日志会话(SC-008 收尾):忠实透传上游
+   * `GET /api/v1/canvas/:id/sessions`(含 keywords/日期/分页筛选参数,
+   * 响应形状 {total, data}——与迁出前的 RAG 直连语义逐字一致;
+   * 区别于上方 listSessions(无参数,Session[],供会话管理)。
+   */
+  async listAgentLogs(
+    ctx: BackendContext,
+    agentId: string,
+    params: Record<string, string>,
+  ): Promise<unknown> {
+    const adapter = this.resolveAdapter(ctx);
+    const query = new URLSearchParams(params).toString();
+    return adapter.request<unknown>(
+      'GET',
+      `/api/v1/canvas/${encodeURIComponent(agentId)}/sessions${query ? `?${query}` : ''}`,
+      undefined,
+      ctx,
+    );
+  }
+
   async getSession(ctx: BackendContext, agentId: string, sessionId: string): Promise<Session> {
     return this.resolveAdapter(ctx).getSession(ctx, agentId, sessionId);
   }

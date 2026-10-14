@@ -445,9 +445,13 @@ spec/008 解决 **BFF 端**画布服务独立化,本方案解决 **前端**画�
 
 ### 8.5 遗留任务
 
-1. SC-008 收尾:2 处直连端点迁到 `/api/bff/canvas/*`(半小时级);
+1. ~~SC-008 收尾:2 处直连端点迁到 `/api/bff/canvas/*`~~ ✅ **2026-10-14 收尾**:
+   - `getInputElements`(restAPIv1/canvas/input_elements):核实为**零调用死代码**,已从 api.ts/agent-service.ts 删除(而非迁移);
+   - `fetchAgentLogs`:活跃链路(use-agent-request 4 处调用)此前已指向 `bffCanvas/:id/sessions`,但该路由**丢弃筛选/分页参数且返回裸 Session[]**,而调用方期待 `{total,data}`——**运行日志面板自该次误迁移起恒为空**(现存 bug,本次发现)。修复:CanvasService 新增 `listAgentLogs`(忠实透传上游 `GET /api/v1/canvas/:id/sessions` + 查询串),BFF 新路由 `GET /canvas/:id/agent-logs`,agent-service 切换至该路由;service 单测 2 例;
+   - SC-008 现状:**全部画布 API 经 /api/bff/canvas(或 chat)通,restAPIv1 直连清零**;
 2. BFF 统一 widget API(方案 F,原计划留 spec/008 后续)——widget 彻底解耦的最后一步;
-3. 阶段 4 独立构建(触发条件:canvas 需独立发版,可复用 wargame 的体系:tailwind inline/entry 契约/BFF 文件路由)。
+3. 阶段 4 独立构建(触发条件:canvas 需独立发版,可复用 wargame 的体系:tailwind inline/entry 契约/BFF 文件路由);
+4. SC-003 冒烟归档:清单模板已固化 [canvas-smoke-checklist.md](./canvas-smoke-checklist.md),待持登录态账号执行一次并回填即闭环。
 
 ---
 

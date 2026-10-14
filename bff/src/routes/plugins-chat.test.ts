@@ -1,10 +1,10 @@
 /**
- * 插件 chat 路由快乐路径测试(chat SDK P1,docs/chat-sse-sdk-design.md §4.2):
- * 完整守卫链 + 假 adapter(registry 直返),验证——
- * - 会话标题前缀 plugin:<id>:(归因,设计 R1 缓解);
- * - sendMessage 请求透传(sessionId/content/agentId='chat');
- * - SSE 帧协议与宿主 /agents/chat/completions 完全一致(streamChunksAsSSE 复用)。
- * 接线模式仿 bff-agents.test.ts(变量注入中间件 + 子 app 挂载)。
+ * 插件 chat 路由测试(plugins-chat.ts,chat SDK P1+P2):
+ * - 能力门控(鉴权 401 / capabilities 403 / 停用断路 404 / 未安装 404 / 503);
+ * - 快乐路径:会话标题前缀、sendMessage 透传(含 model_id)、帧协议;
+ * - P2:审批(runId 归属校验)/ 澄清 / 历史。
+ * 守卫链与生产挂载一致(测试环境企业 flag 关闭,authMiddleware 走
+ * Authorization 分支);接线模式仿 bff-agents.test.ts。
  */
 import { Hono } from 'hono';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -14,11 +14,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { IHarnessAdapter } from '../types/adapter';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
+import { registerRun } from '../services/run-registry';
 import { authMiddleware } from '../middleware/auth';
 import { backendContextMiddleware } from '../middleware/backend-context';
 import { requireValidImtSession } from '../middleware/imt-session-guard';
 
-let api: typeof import('./plugins');
+let api: typeof import('./plugins-chat');
+let pluginsApi: typeof import('./plugins');
 let fixtureDir: string;
 
 beforeAll(async () => {
@@ -27,7 +29,10 @@ beforeAll(async () => {
   process.env.BFF_PLUGIN_STATE_FILE = join(fixtureDir, 'plugin-state.json');
   process.env.BFF_PLUGIN_AUDIT_FILE = join(fixtureDir, 'plugin-audit.jsonl');
   process.env.BFF_PLUGIN_INSTALL_TOKEN = 'test-admin-token';
-  api = await import('./plugins');
+  // 先加载 plugin-store/plugins(状态目录 env 求值),再加载 chat 路由;
+  // enable/disable 管理操作在 pluginsRoutes 上,chat 在 pluginsChatRoutes 上
+  pluginsApi = await import('./plugins');
+  api = await import('./plugins-chat');
 
   const dir = join(fixtureDir, 'chat-app');
   await mkdir(join(dir, 'ui/dist'), { recursive: true });
@@ -52,7 +57,7 @@ afterAll(async () => {
   await rm(fixtureDir, { recursive: true, force: true });
 });
 
-function createFakeAdapter(): IHarnessAdapter {
+function createFakeAdapter(extra: Record<string, unknown> = {}): IHarnessAdapter {
   return {
     backendId: 'b1',
     adapterKind: 'multi-tenant' as const,
@@ -75,6 +80,7 @@ function createFakeAdapter(): IHarnessAdapter {
       }
       return gen();
     }),
+    ...extra,
   } as unknown as IHarnessAdapter;
 }
 
@@ -99,11 +105,88 @@ function createApp(adapter: IHarnessAdapter) {
   app.use('/plugins/:id/chat/*', authMiddleware);
   app.use('/plugins/:id/chat/*', requireValidImtSession);
   app.use('/plugins/:id/chat/*', backendContextMiddleware);
-  app.route('/', api.pluginsRoutes as never);
+  app.route('/', api.pluginsChatRoutes as never);
   return app;
 }
 
-describe('插件 chat 路由(chat SDK P1 快乐路径)', () => {
+describe('插件 chat 能力门控(P1)', () => {
+  const authHeaders = {
+    Authorization: 'rag-jwt',
+    'Content-Type': 'application/json',
+  };
+  const adminHeaders = { 'X-Plugin-Admin-Token': 'test-admin-token' };
+
+  it('未携带鉴权 → 401(守卫链挂在 chat 子路径)', async () => {
+    const res = await api.pluginsChatRoutes.request(
+      '/plugins/chat-app/chat/sessions',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('未声明 chat 能力 → 403(逐请求校验)', async () => {
+    // 无 capabilities 的插件(直接落盘,绕过 install)
+    const dir = join(fixtureDir, 'plain-plugin');
+    await mkdir(join(dir, 'ui/dist'), { recursive: true });
+    await writeFile(
+      join(dir, 'app.json'),
+      JSON.stringify({
+        id: 'plain-plugin',
+        path: '/plain-plugin',
+        label: 'x',
+        entry: 'ui/dist/index.js',
+      }),
+    );
+    await writeFile(join(dir, 'ui/dist/index.js'), 'export {}');
+
+    const res = await api.pluginsChatRoutes.request('/plugins/plain-plugin/chat/sessions', {
+      method: 'POST',
+      headers: authHeaders,
+      body: '{}',
+    });
+    expect(res.status).toBe(403);
+    expect(await res.text()).toContain('未声明 chat 能力');
+  });
+
+  it('停用插件 chat 通道 404(断路覆盖 chat);未安装插件 404', async () => {
+    await pluginsApi.pluginsRoutes.request('/plugins/chat-app/disable', {
+      method: 'POST',
+      headers: adminHeaders,
+    });
+    const disabled = await api.pluginsChatRoutes.request(
+      '/plugins/chat-app/chat/completions',
+      {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ session_id: 's', content: 'x' }),
+      },
+    );
+    expect(disabled.status).toBe(404);
+    await pluginsApi.pluginsRoutes.request('/plugins/chat-app/enable', {
+      method: 'POST',
+      headers: adminHeaders,
+    });
+
+    const missing = await api.pluginsChatRoutes.request('/plugins/ghost/chat/sessions', {
+      method: 'POST',
+      headers: authHeaders,
+      body: '{}',
+    });
+    expect(missing.status).toBe(404);
+  });
+
+  it('通过全部门控后进入 adapter 解析(测试 harness 无 registry → 503)', async () => {
+    const res = await api.pluginsChatRoutes.request('/plugins/chat-app/chat/sessions', {
+      method: 'POST',
+      headers: authHeaders,
+      body: '{}',
+    });
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { code: number }).code).toBe(503);
+  });
+});
+
+describe('插件 chat 路由(P1 快乐路径)', () => {
   const authHeaders = {
     Authorization: 'rag-jwt',
     'Content-Type': 'application/json',
@@ -128,6 +211,21 @@ describe('插件 chat 路由(chat SDK P1 快乐路径)', () => {
       id: 'gw-session-1',
       title: 'plugin:chat-app:推演会话',
     });
+  });
+
+  it('chat/sessions:超长 title 截断到 200 字符(含 plugin: 前缀,评审 P3)', async () => {
+    const adapter = createFakeAdapter();
+    const app = createApp(adapter);
+
+    await app.request('/plugins/chat-app/chat/sessions', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ title: 'x'.repeat(500) }),
+    });
+    const passedTitle = (adapter.createSession as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[2] as string;
+    expect(passedTitle.startsWith('plugin:chat-app:')).toBe(true);
+    expect(passedTitle.length).toBe(200);
   });
 
   it('chat/completions:请求透传 adapter(含 model_id),帧协议与宿主 chat 一致', async () => {
@@ -171,21 +269,6 @@ describe('插件 chat 路由(chat SDK P1 快乐路径)', () => {
     ]);
   });
 
-  it('chat/sessions:超长 title 截断到 200 字符(含 plugin: 前缀,评审 P3)', async () => {
-    const adapter = createFakeAdapter();
-    const app = createApp(adapter);
-
-    await app.request('/plugins/chat-app/chat/sessions', {
-      method: 'POST',
-      headers: authHeaders,
-      body: JSON.stringify({ title: 'x'.repeat(500) }),
-    });
-    const passedTitle = (adapter.createSession as ReturnType<typeof vi.fn>).mock
-      .calls[0]?.[2] as string;
-    expect(passedTitle.startsWith('plugin:chat-app:')).toBe(true);
-    expect(passedTitle.length).toBe(200);
-  });
-
   it('缺 content/session_id → 400', async () => {
     const app = createApp(createFakeAdapter());
     const res = await app.request('/plugins/chat-app/chat/completions', {
@@ -203,7 +286,7 @@ describe('插件 chat 路由(chat SDK P1 快乐路径)', () => {
     app.use('/plugins/:id/chat/*', authMiddleware);
     app.use('/plugins/:id/chat/*', requireValidImtSession);
     app.use('/plugins/:id/chat/*', backendContextMiddleware);
-    app.route('/', api.pluginsRoutes as never);
+    app.route('/', api.pluginsChatRoutes as never);
     const res = await app.request('/plugins/chat-app/chat/completions', {
       method: 'POST',
       headers: authHeaders,
@@ -211,5 +294,114 @@ describe('插件 chat 路由(chat SDK P1 快乐路径)', () => {
     });
     expect(res.status).toBe(503);
     expect(((await res.json()) as { code: number }).code).toBe(503);
+  });
+});
+
+describe('插件 chat P2(审批/澄清/历史)', () => {
+  const authHeaders = {
+    Authorization: 'rag-jwt',
+    'Content-Type': 'application/json',
+  };
+
+  it('chat/runs/:runId/approval:runId 归属校验通过后提交,返回审批结果', async () => {
+    const adapter = createFakeAdapter({
+      submitApproval: vi.fn(async () => ({ resolved: 1 })),
+    });
+    const app = createApp(adapter);
+    registerRun('run-ok', '0', ''); // completions 流产出 approval_request 时的注册语义
+
+    const res = await app.request('/plugins/chat-app/chat/runs/run-ok/approval', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ choice: 'once' }),
+    });
+    expect(res.status).toBe(200);
+    expect(adapter.submitApproval).toHaveBeenCalledWith(
+      expect.anything(),
+      'run-ok',
+      'once',
+    );
+    expect(await res.json()).toEqual({ resolved: 1 });
+  });
+
+  it('chat/runs/:runId/approval:未注册 runId → 403;非法 choice → 400', async () => {
+    const adapter = createFakeAdapter({
+      submitApproval: vi.fn(async () => ({ resolved: 1 })),
+    });
+    const app = createApp(adapter);
+
+    const forbidden = await app.request(
+      '/plugins/chat-app/chat/runs/run-ghost/approval',
+      {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ choice: 'once' }),
+      },
+    );
+    expect(forbidden.status).toBe(403);
+
+    registerRun('run-choice', '0', '');
+    const badChoice = await app.request(
+      '/plugins/chat-app/chat/runs/run-choice/approval',
+      {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ choice: 'forever' }),
+      },
+    );
+    expect(badChoice.status).toBe(400);
+  });
+
+  it('chat/sessions/:sid/clarify:提交澄清答案', async () => {
+    const adapter = createFakeAdapter({
+      submitClarify: vi.fn(async () => ({ status: 'ok' })),
+    });
+    const app = createApp(adapter);
+
+    const res = await app.request(
+      '/plugins/chat-app/chat/sessions/s1/clarify',
+      {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ clarify_id: 'cl-1', answer: '选 A' }),
+      },
+    );
+    expect(res.status).toBe(200);
+    expect(adapter.submitClarify).toHaveBeenCalledWith(
+      expect.anything(),
+      's1',
+      'cl-1',
+      '选 A',
+    );
+    expect(await res.json()).toEqual({ code: 0, data: { status: 'ok' } });
+
+    const bad = await app.request('/plugins/chat-app/chat/sessions/s1/clarify', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ answer: '缺 clarify_id' }),
+    });
+    expect(bad.status).toBe(400);
+  });
+
+  it('chat/sessions/:sid/history:读取会话消息', async () => {
+    const adapter = createFakeAdapter({
+      getSessionMessages: vi.fn(async () => [
+        { role: 'user', content: '你好' },
+        { role: 'assistant', content: '你好,需要什么帮助?' },
+      ]),
+    });
+    const app = createApp(adapter);
+
+    const res = await app.request('/plugins/chat-app/chat/sessions/s1/history', {
+      headers: authHeaders,
+    });
+    expect(res.status).toBe(200);
+    expect(adapter.getSessionMessages).toHaveBeenCalledWith(
+      expect.anything(),
+      'chat',
+      's1',
+    );
+    const body = (await res.json()) as { messages: unknown[] };
+    expect(body.messages).toHaveLength(2);
   });
 });

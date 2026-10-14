@@ -247,4 +247,48 @@ describe('AgentUI.chat 客户端(chat SDK P1)', () => {
       restoreFetch();
     }
   });
+
+  it('P2 方法:submitApproval/submitClarify/history 的路由与请求体(P1 评审)', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const restoreFetch = stubFetch(async (url, init) => {
+      calls.push({ url, init });
+      if (String(init?.method) === 'POST' && String(url).includes('/approval')) {
+        return { ok: true, status: 200, json: async () => ({ resolved: 1 }) } as unknown as Response;
+      }
+      if (String(url).includes('/clarify')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ code: 0, data: { status: 'ok' } }),
+        } as unknown as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ messages: [{ role: 'user', content: 'hi' }] }),
+      } as unknown as Response;
+    });
+    try {
+      const chat = createChatApi();
+      const approval = await chat.submitApproval('my-app', 'run-1', 'once');
+      expect(approval).toEqual({ resolved: 1 });
+      const clarify = await chat.submitClarify('my-app', 's1', '选 A', 'cl-1');
+      expect(clarify).toEqual({ status: 'ok' });
+      const history = await chat.history('my-app', 's1');
+      expect(history.messages).toHaveLength(1);
+
+      expect(calls[0]?.url).toBe('/api/bff/plugins/my-app/chat/runs/run-1/approval');
+      expect(calls[0]?.init?.method).toBe('POST');
+      expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ choice: 'once' });
+      expect(calls[1]?.url).toBe('/api/bff/plugins/my-app/chat/sessions/s1/clarify');
+      expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({
+        clarify_id: 'cl-1',
+        answer: '选 A',
+      });
+      expect(calls[2]?.url).toBe('/api/bff/plugins/my-app/chat/sessions/s1/history');
+      expect(calls[2]?.init?.method).toBeUndefined();
+    } finally {
+      restoreFetch();
+    }
+  });
 });

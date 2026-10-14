@@ -21,8 +21,9 @@ import { createChatApi } from './chat-client';
  * 并更新 __tests__/runtime.test.ts 的契约快照;插件侧可读取此值做兼容判断。
  * 1.1.0:新增 on() 事件订阅(localechange/themechange)。
  * 1.2.0:新增 chat 命名空间(宿主 chat 能力,docs/chat-sse-sdk-design.md)。
+ * 1.3.0:chat 增 submitApproval/submitClarify/history(P2 交互帧 helper)。
  */
-export const HOST_API_VERSION = '1.2.0';
+export const HOST_API_VERSION = '1.3.0';
 
 /** 宿主→插件的事件契约(载荷形态)。 */
 export interface HostEventMap {

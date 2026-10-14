@@ -293,7 +293,6 @@ export default {
     `${bffAgents}/${agentId}/sessions/${sessionId}/clarify`,
   resetAgent: (agentId: string) => `${bffCanvas}/${agentId}/reset`,
   testDbConnect: `${bffCanvas}/test_db_connection`,
-  getInputElements: `${restAPIv1}/canvas/input_elements`,
   debug: (agentId: string, componentId: string) =>
     `${bffCanvas}/${agentId}/components/${componentId}/debug`,
   trace: (agentId: string, messageId: string) =>
@@ -310,7 +309,8 @@ export default {
   createAgentSession: (agentId: string) => `${bffAgents}/${agentId}/sessions`,
   createCanvasAgentSession: (agentId: string) =>
     `${bffCanvas}/${agentId}/sessions`,
-  fetchAgentLogs: (canvasId: string) => `${restAPIv1}/canvas/${canvasId}/sessions`,
+  // SC-008 收尾:运行日志会话经 BFF 忠实透传(带筛选/分页参数,响应 {total,data})
+  fetchAgentLogs: (canvasId: string) => `${bffCanvas}/${canvasId}/agent-logs`,
   fetchAgentSessions: (agentId: string) => `${bffAgents}/${agentId}/sessions`,
   fetchCanvasAgentSessions: (agentId: string) =>
     `${bffCanvas}/${agentId}/sessions`,

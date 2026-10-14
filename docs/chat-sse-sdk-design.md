@@ -191,8 +191,27 @@ for await (const frame of chat.completions('my-app', { sessionId: id, content })
 | `message_end` | `{usage}` | 计数/收尾 |
 | `workflow_finished` | `true` | 结束流(此后无帧) |
 | `error` | `{message, answer?, errorDetails?, run_id?}` | 错误渲染(流终止) |
-| `approval_request` | `{tool_name, arguments, choices, run_id}` | v1 可忽略;需交互工具流时直调 `/agents/:agentId/runs/:runId/approval`(P2 收编) |
-| `clarify_request` | `{question, choices, clarify_id, session_id}` | 同上(P2) |
+| `approval_request` | `{tool_name, arguments, choices, run_id}` | 展示审批 UI → `chat.submitApproval(pluginId, runId, choice)`(1.3.0) |
+| `clarify_request` | `{question, choices, clarify_id, session_id}` | 展示澄清 UI → `chat.submitClarify(pluginId, sessionId, answer, clarifyId)`(1.3.0) |
+
+### 4.5 P2 交互帧 helper 与历史(1.3.0,已实施)
+
+```
+POST /plugins/:id/chat/runs/:runId/approval      body {choice: 'once'|'session'|'always'|'deny'}
+     → verifyRunOwnership(runId, backendId)(runId 须由本 backend 的
+       completions 流注册,跨流 403)→ adapter.submitApproval
+     → 200 {resolved};409 = 不活跃/已解决;501 = 后端不支持
+POST /plugins/:id/chat/sessions/:sid/clarify     body {clarify_id, answer}
+     → adapter.submitClarify → 200 {code:0,data}
+GET  /plugins/:id/chat/sessions/:sid/history
+     → adapter.getSessionMessages(ctx,'chat',sid) → 200 {messages}
+```
+
+- 三条路由继承 chat 守卫链与 capabilities 门控(401/404/403 同 §4.2);
+- 归属/响应形状与宿主 `/agents/*` 审批/澄清/消息路由**逐字一致**
+  (同一 adapter 与 run-registry),插件面不另立契约;
+- SDK:`chat.submitApproval / chat.submitClarify / chat.history`(1.3.0,
+  普通 POST/GET,15s 超时兜底)。
 
 ---
 
@@ -215,7 +234,7 @@ for await (const frame of chat.completions('my-app', { sessionId: id, content })
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | **P1 SDK v1** | ①BFF:capabilities 字段 + 两条 chat 路由与守卫链 + 停用断路;②宿主:`window.AgentUI.chat`(AsyncGenerator)+ 1.2.0 快照;③主聊天列表过滤 plugin: 前缀;④jest-setup-env 流式原语 polyfill;⑤测试与文档 | ✅ 2026-10-14(§九) |
-| **P2 交互帧 helper + history** | `chat.submitApproval/submitClarify` SDK 化;`chat.history(sessionId)`(QwenPaw get_session_history 对应物,含 reasoning 过滤) | 待首个需求插件 |
+| **P2 交互帧 helper + history** | `chat.submitApproval/submitClarify/history`(1.3.0)+ BFF 三条路由(approval 带 runId 归属校验);chat 路由自 plugins.ts 拆至 plugins-chat.ts | ✅ 2026-10-14(§4.5/§九) |
 | **P3 用量核算** | 审计日志扩 `chat_completion` 事件(pluginId/usage),可选 env 模型白名单 | 待多插件 + 成本治理诉求 |
 
 ## 七、风险登记册
@@ -273,3 +292,12 @@ P3——createSession 加 15s 超时兜底(jsdom 无 AbortSignal.timeout 则跳�
 BFF title 截断 200 字符、补 completions 503 与 model_id 透传用例、
 R1 补记前缀过滤误伤妥协。安全核实:imt_token cookie `sameSite:'Lax'+
 httpOnly`(auth.ts),chat POST 的跨站表单 CSRF 被天然阻断。
+
+**P2 实施(2026-10-14 晚)**:三条路由(plugins-chat.ts,审批含 runId 归属
+校验/澄清/历史)+ SDK 三方法(1.3.0,快照含 chatKeys);chat 路由自
+plugins.ts 拆至 plugins-chat.ts、状态/审计拆至 services/plugin-store.ts
+(审计加 5MB 单代轮换)。活体冒烟(一次性 BFF 实例 :9392):安装→列表→
+文件 200→停用→文件 404→状态持久化→审计 JSONL 全过;chat 无 cookie 401
+(守卫先于断路,404 分支由单测覆盖)。**插件仓库同步(web/agentui 消费
+1.2.0/1.3.0 面)维持门控**:本地 checkout 无 web/agentui 目录且接入前改动
+惰性,待 wargame 接入 chat 时执行(更新其宿主 API 类型声明)。

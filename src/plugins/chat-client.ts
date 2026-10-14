@@ -130,5 +130,46 @@ export function createChatApi(): AgentUIChatApi {
       return { id: session.id, title: session.title };
     },
     completions,
+    async submitApproval(pluginId, runId, choice) {
+      const response = await fetch(
+        chatUrl(pluginId, `runs/${encodeURIComponent(runId)}/approval`),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ choice }),
+          signal: createSessionTimeoutSignal(),
+        },
+      );
+      if (!response.ok) {
+        throw await readError(response);
+      }
+      return (await response.json()) as { resolved: number };
+    },
+    async submitClarify(pluginId, sessionId, answer, clarifyId) {
+      const response = await fetch(
+        chatUrl(pluginId, `sessions/${encodeURIComponent(sessionId)}/clarify`),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clarify_id: clarifyId, answer }),
+          signal: createSessionTimeoutSignal(),
+        },
+      );
+      if (!response.ok) {
+        throw await readError(response);
+      }
+      const body = (await response.json()) as { data?: unknown };
+      return body?.data ?? body;
+    },
+    async history(pluginId, sessionId) {
+      const response = await fetch(
+        chatUrl(pluginId, `sessions/${encodeURIComponent(sessionId)}/history`),
+        { signal: createSessionTimeoutSignal() },
+      );
+      if (!response.ok) {
+        throw await readError(response);
+      }
+      return (await response.json()) as { messages: unknown[] };
+    },
   };
 }

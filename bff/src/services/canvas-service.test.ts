@@ -153,6 +153,40 @@ describe('CanvasService', () => {
     });
   });
 
+  describe('listAgentLogs', () => {
+    it('调用 adapter.request GET /api/v1/canvas/:id/sessions 并透传筛选参数(SC-008)', async () => {
+      const logs = { total: 2, data: [{ session_id: 's1' }] };
+      mockAdapter.request = vi.fn().mockResolvedValue(logs);
+
+      const result = await service.listAgentLogs(ctx, 'a1', {
+        keywords: 'run',
+        page: '2',
+        page_size: '20',
+      });
+
+      expect(mockAdapter.request).toHaveBeenCalledWith(
+        'GET',
+        '/api/v1/canvas/a1/sessions?keywords=run&page=2&page_size=20',
+        undefined,
+        ctx,
+      );
+      expect(result).toEqual(logs);
+    });
+
+    it('无参数时不携带查询串', async () => {
+      mockAdapter.request = vi.fn().mockResolvedValue({ total: 0, data: [] });
+
+      await service.listAgentLogs(ctx, 'a1', {});
+
+      expect(mockAdapter.request).toHaveBeenCalledWith(
+        'GET',
+        '/api/v1/canvas/a1/sessions',
+        undefined,
+        ctx,
+      );
+    });
+  });
+
   describe('listTags', () => {
     it('调用 adapter.request GET /api/v1/agents/tags', async () => {
       const tags = [{ id: 'tag1', name: 'tag1' }];

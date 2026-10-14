@@ -62,7 +62,7 @@ describe('plugins host global', () => {
   //   1) bump host-global.ts 的 HOST_API_VERSION;
   //   2) `npx jest -u` 显式更新快照;
   //   3) 同步插件仓库(web/agentui)对宿主 API 的消费。
-  // 1.2.0:新增 chat 命名空间(docs/chat-sse-sdk-design.md),插件侧 feature-detect。
+  // 1.2.0:chat 命名空间;1.3.0:chat 增 submitApproval/submitClarify/history。
   it('导出面契约快照(变更须 bump HOST_API_VERSION)', () => {
     installAgentUIHostGlobal();
     const agentUI = agentUiGlobal();
@@ -70,8 +70,16 @@ describe('plugins host global', () => {
       version: agentUI.HOST_API_VERSION,
       globalKeys: Object.keys(agentUI).sort(),
       hostKeys: Object.keys(agentUI.host).sort(),
+      chatKeys: Object.keys(agentUI.chat).sort(),
     }).toMatchInlineSnapshot(`
       {
+        "chatKeys": [
+          "completions",
+          "createSession",
+          "history",
+          "submitApproval",
+          "submitClarify",
+        ],
         "globalKeys": [
           "HOST_API_VERSION",
           "chat",
@@ -82,7 +90,7 @@ describe('plugins host global', () => {
         "hostKeys": [
           "getApiToken",
         ],
-        "version": "1.2.0",
+        "version": "1.3.0",
       }
     `);
   });

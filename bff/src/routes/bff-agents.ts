@@ -317,7 +317,8 @@ bffAgentRoutes.post('/agents/chat/completions', async (c) => {
  * 合法审批选项(Constitution Principle VIII v1.3.0)。
  * 与 intellect-team POST /v1/runs/{run_id}/approval 契约对齐。
  */
-const VALID_APPROVAL_CHOICES = ['once', 'session', 'always', 'deny'] as const;
+/** 合法审批选项(导出供插件 chat 路由复用,与宿主审批同契约)。 */
+export const VALID_APPROVAL_CHOICES = ['once', 'session', 'always', 'deny'] as const;
 type ApprovalChoice = (typeof VALID_APPROVAL_CHOICES)[number];
 
 function isApprovalChoice(value: unknown): value is ApprovalChoice {

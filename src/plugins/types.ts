@@ -74,6 +74,9 @@ export interface ChatStreamOptions {
   signal?: AbortSignal;
 }
 
+/** 审批选项(与 BFF VALID_APPROVAL_CHOICES / 宿主审批路由同契约)。 */
+export type ChatApprovalChoice = 'once' | 'session' | 'always' | 'deny';
+
 /**
  * 宿主 chat 能力(1.2.0)。设计参照 QwenPaw 前端 SDK(chatStream 返回已解析
  * 事件的 AsyncGenerator);网关凭据全程在 BFF 服务端,插件不接触。
@@ -102,6 +105,28 @@ export interface AgentUIChatApi {
     request: ChatCompletionsRequest,
     options?: ChatStreamOptions,
   ): AsyncGenerator<ChatFrame, void, undefined>;
+  /**
+   * 工具审批响应(1.3.0,消费 completions 流中的 approval_request 帧;
+   * runId 须经该流产出——BFF 按 runId→backend 归属校验,跨流 403)。
+   * 409 = 审批不活跃或已解决。
+   */
+  submitApproval(
+    pluginId: string,
+    runId: string,
+    choice: ChatApprovalChoice,
+  ): Promise<{ resolved: number }>;
+  /** 澄清答案提交(1.3.0,消费 clarify_request 帧中的 clarifyId)。 */
+  submitClarify(
+    pluginId: string,
+    sessionId: string,
+    answer: string,
+    clarifyId: string,
+  ): Promise<unknown>;
+  /** 会话历史读取(1.3.0;形状与宿主 /agents messages 一致)。 */
+  history(
+    pluginId: string,
+    sessionId: string,
+  ): Promise<{ messages: unknown[] }>;
 }
 
 export interface AgentUIHostGlobal {
