@@ -52,7 +52,7 @@ pipeline {
             }
           }
           if (params.PLUGIN_REPO?.trim() &&
-              !(params.PLUGIN_REPO.trim() =~ /^https:\/\/gitee\.com\/[A-Za-z0-9._/-]+\.git$/)) {
+              !(params.PLUGIN_REPO.trim() =~ '^https://gitee\\.com/[A-Za-z0-9._/-]+\\.git$')) {
             error("PLUGIN_REPO 非法(仅允许 https://gitee.com/<owner>/<repo>.git): '${params.PLUGIN_REPO}'")
           }
         }
