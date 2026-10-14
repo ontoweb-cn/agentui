@@ -111,6 +111,8 @@ export default {
       loginNamePlaceholder: 'Please input username',
       displayNameLabel: 'Display name',
       displayNamePlaceholder: 'Please input display name',
+      inviteCodeLabel: 'Invite code',
+      inviteCodePlaceholder: 'Enter invite code (if required by deployment)',
       register: 'Create an account',
       continue: 'Continue',
       title: 'INTELLECT AGENT HARNESS',

@@ -64,6 +64,8 @@ export default {
       signUpTip: '已經有帳戶？',
       nicknameLabel: '名稱',
       nicknamePlaceholder: '請輸入名稱',
+      inviteCodeLabel: '邀請碼',
+      inviteCodePlaceholder: '請輸入邀請碼(如部署要求)',
       register: '創建賬戶',
       continue: '繼續',
       title: '開始構建您的智能助手',

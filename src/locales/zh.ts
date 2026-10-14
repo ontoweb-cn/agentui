@@ -96,6 +96,8 @@ export default {
       loginNamePlaceholder: '请输入用户名',
       displayNameLabel: '显示名称',
       displayNamePlaceholder: '请输入显示名称',
+      inviteCodeLabel: '邀请码',
+      inviteCodePlaceholder: '请输入邀请码(如部署要求)',
       register: '创建账户',
       continue: '继续',
       title: 'INTELLECT AGENT HARNESS',

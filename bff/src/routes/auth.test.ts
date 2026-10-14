@@ -639,6 +639,47 @@ describe('auth 路由 (P4b US1)', () => {
     expect(body.data.registration_pending).toBe(0);
   });
 
+  it('US2:企业版注册带 invite_code → 原样透传网关;网关 400 提及 invite 时返回可自助修复文案', async () => {
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
+
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: 'Missing invite code' }), { status: 400 }),
+      );
+
+    const resp = await app.request('/auth/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Backend-Id': 'tenant-enterprise',
+      },
+      body: JSON.stringify({
+        login_name: 'invited',
+        password: 'pw123',
+        display_name: 'Invited User',
+        invite_code: ' INVITE-2026 ',
+      }),
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://mock-enterprise:9381/api/members/register',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          login_name: 'invited',
+          password: 'pw123',
+          display_name: 'Invited User',
+          invite_code: 'INVITE-2026',
+        }),
+      }),
+    );
+    expect(resp.status).toBe(400);
+    const body = await resp.json();
+    expect(body.message).toContain('邀请码');
+  });
+
   it('US2:企业版注册支持 nickname→display_name 字段映射', async () => {
     const backendStore = createMockBackendStore([enterpriseTenant]);
     const app = createApp(backendStore);
