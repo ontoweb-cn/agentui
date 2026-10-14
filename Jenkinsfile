@@ -47,7 +47,7 @@ pipeline {
           }
           if (params.PLUGIN_REF?.trim()) {
             def ref = params.PLUGIN_REF.trim()
-            if (ref.startsWith('-') || ref.contains('..') || !(ref =~ /^[A-Za-z0-9._/-]+$/)) {
+            if (ref.startsWith('-') || ref.contains('..') || !(ref =~ '^[A-Za-z0-9._/-]+$')) {
               error("PLUGIN_REF 非法(仅允许字母数字与 . _ /,不得以 - 开头或含 ..): '${ref}'")
             }
           }
