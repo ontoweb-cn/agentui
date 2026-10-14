@@ -72,14 +72,16 @@ pipeline {
         stage('宿主:tsc + jest(含 coverage 阈值)') {
           steps {
             sh 'npm run type-check'
-            sh 'npm test'
+            // maxWorkers 显式对齐 cgroup 限额:容器内 os.cpus() 可见宿主全部核
+            // (无 lxcfs),jest 默认开核数-1 个 worker 会严重超配(华为集群实测)
+            sh 'npm test -- --maxWorkers=4'
           }
         }
         stage('BFF:tsc + vitest') {
           steps {
             dir('bff') {
               sh 'npm run type-check'
-              sh 'npm test'
+              sh 'npm test -- --maxWorkers=3'
             }
           }
         }
