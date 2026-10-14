@@ -449,9 +449,30 @@ spec/008 解决 **BFF 端**画布服务独立化,本方案解决 **前端**画�
    - `getInputElements`(restAPIv1/canvas/input_elements):核实为**零调用死代码**,已从 api.ts/agent-service.ts 删除(而非迁移);
    - `fetchAgentLogs`:活跃链路(use-agent-request 4 处调用)此前已指向 `bffCanvas/:id/sessions`,但该路由**丢弃筛选/分页参数且返回裸 Session[]**,而调用方期待 `{total,data}`——**运行日志面板自该次误迁移起恒为空**(现存 bug,本次发现)。修复:CanvasService 新增 `listAgentLogs`(忠实透传上游 `GET /api/v1/canvas/:id/sessions` + 查询串),BFF 新路由 `GET /canvas/:id/agent-logs`,agent-service 切换至该路由;service 单测 2 例;
    - SC-008 现状:**全部画布 API 经 /api/bff/canvas(或 chat)通,restAPIv1 直连清零**;
-2. BFF 统一 widget API(方案 F,原计划留 spec/008 后续)——widget 彻底解耦的最后一步;
-3. 阶段 4 独立构建(触发条件:canvas 需独立发版,可复用 wargame 的体系:tailwind inline/entry 契约/BFF 文件路由);
+2. BFF 统一 widget API(方案 F,原计划留 spec/008 后续)——widget 彻底解耦的最后一步;**维持门控,细化设计已就绪**(2026-10-14 评审,见下);
+3. 阶段 4 独立构建(触发条件:canvas 需独立发版,可复用 wargame 的体系:tailwind inline/entry 契约/BFF 文件路由);**维持门控**(触发未成立,2026-10-14 评审确认);
 4. SC-003 冒烟归档:清单模板已固化 [canvas-smoke-checklist.md](./canvas-smoke-checklist.md),待持登录态账号执行一次并回填即闭环。
+
+**方案 F 细化设计(2026-10-14 评审,触发成立即可开工)**:
+
+> 触发条件:持登录态账号可对 widget 做真机冒烟时(当前无凭证,E2E 无法验证是硬约束);
+> 或 floating-chat-widget 出现实际维护痛点。在触发前 SC-002 已达成(widget 经
+> 包内路径引用,编译期耦合可接受),不应无验证手段硬启动。
+
+- **F1 BFF 归一端点**(半天):`GET /api/bff/widget/:id/inputs?from=agent|chat`
+  内部按 from 路由到 agent 外部 inputs / chat 外部 info,统一返回
+  `{title, description, ...}` 归一形态;`POST /api/bff/widget/:id/completions?from=`
+  内部分别代理 agent 流式与 chat 流式,**帧协议归一为 chat 帧协议**
+  (复用 streamChunksAsSSE 的 {event,data} 形态,agent 侧在 BFF 内做事件映射)。
+  守卫链与会话校验同既有数据路由;vitest 覆盖 from 路由/归一帧序/上游 401 透传。
+- **F2 前端统一 hook**(1 天):新建 `useWidgetSharedMessage`(归一帧协议消费,
+  参考 chat-client.ts 的 AsyncGenerator + 双层 abort 模式),floating-chat-widget
+  删除双 hook 无条件调用(T-R4 的 as any 与 Q4 空请求副作用一并清偿),删除
+  `@agentui/canvas-plugin/editor/hooks/use-send-shared-message` 导入。jest 覆盖
+  from 分支/流式中断/reference 查找。
+- **F3 清耦合断言**(半小时):`grep -r "canvas-plugin" src/components/` 归零
+  断言入 CI(或导入边界测试),SC-002 从"事实达成"升级为"回归受保护"。
+- 回滚:F2 独立 PR;widget 是嵌入场景,F1 的 from 参数向后兼容(缺省 chat)。
 
 ---
 

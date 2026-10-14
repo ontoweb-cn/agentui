@@ -24,9 +24,10 @@ import {
   resolveBackendContext,
 } from '../middleware/backend-context';
 import { requireValidImtSession } from '../middleware/imt-session-guard';
-import { isPluginDisabled, PLUGINS_DIR } from '../services/plugin-store';
+import { isPluginDisabled, PLUGINS_DIR, appendPluginAudit } from '../services/plugin-store';
 import { verifyRunOwnership } from '../services/run-registry';
 import { isImtCanvasAgentsEnabled } from '../utils/feature-flags';
+import type { StreamIterable, TokenUsage } from '../types/stream';
 // 复用宿主 chat 通道的 adapter 解析/错误文案/SSE 重序列化/审批校验(同一
 // 租户隔离语义,插件面不另起一套)——见 docs/chat-sse-sdk-design.md §4.2
 import {
@@ -49,6 +50,60 @@ function pluginSessionTitle(pluginId: string, title?: string): string {
   return full.length > SESSION_TITLE_MAX
     ? full.slice(0, SESSION_TITLE_MAX)
     : full;
+}
+
+/**
+ * 模型白名单(chat SDK P3,设计 R2 缓解):env `BFF_PLUGIN_CHAT_ALLOWED_MODELS`
+ * 逗号分隔;未设置 = 不管控(透传,部署侧靠 gateway 配额兜底)。未显式传
+ * model_id 的请求走部署默认模型,不受白名单约束。逐请求读 env(测试可动态设置)。
+ */
+function isModelAllowed(modelId: string | undefined): boolean {
+  const raw = process.env.BFF_PLUGIN_CHAT_ALLOWED_MODELS;
+  if (!raw || raw.trim() === '') {
+    return true;
+  }
+  if (!modelId) {
+    return true;
+  }
+  const allowed = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return allowed.includes(modelId);
+}
+
+/**
+ * 用量审计包装(chat SDK P3 数据面):逐 chunk 透传不变,流终止(正常结束/
+ * 出错/客户端断连触发的提前关闭)后在 finally 落一行 chat_completion 审计
+ * 事件。appendPluginAudit 内部自捕获写失败,不影响主流程;usage 仅在流完整
+ * 走到 usage chunk 时有值(客户端断连的半截流记 null usage,同样计入归因)。
+ */
+function withCompletionAudit(
+  pluginId: string,
+  sessionId: string,
+  model: string | undefined,
+  iterable: StreamIterable,
+): StreamIterable {
+  let usage: TokenUsage | undefined;
+  async function* observed() {
+    try {
+      for await (const chunk of iterable) {
+        if (chunk.type === 'usage') {
+          usage = chunk.usage;
+        }
+        yield chunk;
+      }
+    } finally {
+      void appendPluginAudit({
+        action: 'chat_completion',
+        pluginId,
+        sessionId,
+        model: model ?? null,
+        usage: usage ?? null,
+      });
+    }
+  }
+  return observed();
 }
 
 /**
@@ -147,16 +202,32 @@ pluginsChatRoutes.post('/plugins/:id/chat/completions', async (c) => {
   ) {
     return c.text('session_id 与 content 必填', 400);
   }
+  const requestedModel =
+    typeof body?.model_id === 'string' && body.model_id !== ''
+      ? body.model_id
+      : typeof body?.modelId === 'string' && body.modelId !== ''
+        ? body.modelId
+        : undefined;
+  if (!isModelAllowed(requestedModel)) {
+    return c.text(
+      `model_id "${requestedModel}" 不在 BFF_PLUGIN_CHAT_ALLOWED_MODELS 白名单`,
+      403,
+    );
+  }
   try {
     const iterable = await adapter.sendMessage(resolveBackendContext(c), {
       sessionId,
       content,
       agentId: CHAT_AGENT_ID,
       attachments: body?.attachments,
-      modelId: body?.model_id ?? body?.modelId,
+      modelId: requestedModel,
     });
-    // 与宿主 /agents/chat/completions 完全相同的帧协议({event,data})
-    return streamChunksAsSSE(c, iterable);
+    // 与宿主 /agents/chat/completions 完全相同的帧协议({event,data});
+    // 外面套用量审计(P3 数据面),对帧序零影响
+    return streamChunksAsSSE(
+      c,
+      withCompletionAudit(id, sessionId, requestedModel, iterable),
+    );
   } catch (err) {
     return handleAdapterError(c, err, 'POST /plugins/:id/chat/completions');
   }

@@ -235,16 +235,16 @@ GET  /plugins/:id/chat/sessions/:sid/history
 |---|---|---|
 | **P1 SDK v1** | ①BFF:capabilities 字段 + 两条 chat 路由与守卫链 + 停用断路;②宿主:`window.AgentUI.chat`(AsyncGenerator)+ 1.2.0 快照;③主聊天列表过滤 plugin: 前缀;④jest-setup-env 流式原语 polyfill;⑤测试与文档 | ✅ 2026-10-14(§九) |
 | **P2 交互帧 helper + history** | `chat.submitApproval/submitClarify/history`(1.3.0)+ BFF 三条路由(approval 带 runId 归属校验);chat 路由自 plugins.ts 拆至 plugins-chat.ts | ✅ 2026-10-14(§4.5/§九) |
-| **P3 用量核算** | 审计日志扩 `chat_completion` 事件(pluginId/usage),可选 env 模型白名单 | 待多插件 + 成本治理诉求 |
+| **P3 用量核算(数据面)** | 审计日志扩 `chat_completion` 事件(pluginId/sessionId/model/usage,补全流终止即落一行,中断流 usage=null 亦计)+ env 模型白名单 `BFF_PLUGIN_CHAT_ALLOWED_MODELS`(逗号分隔,未设置=不管控) | ✅ 2026-10-14(§九);**配额/限流仍门控**——待归因数据积累 + 多插件 + 成本治理诉求 |
 
 ## 七、风险登记册
 
 | # | 风险 | 等级 | 对策 |
 |---|---|---|---|
 | R1 | 插件会话混入用户会话列表 | 低 | 标题前缀可辨识 + 主列表默认过滤(D6);经 API/深链可管理。**已知妥协**:用户若手输 `plugin:` 开头的会话名也会被主列表隐藏——gateway Session 无元数据字段前,标题前缀是唯一归属载体(QwenPaw 用 `ChatSpec.meta.pawapp` 做归属);gateway 支持会话元数据后应切换 |
-| R2 | modelId 任意传→绕开部署模型管控 | 中 | v1 透传(gateway 配额兜底);P3 env 白名单 |
+| R2 | modelId 任意传→绕开部署模型管控 | 中 | ✅ env 白名单 `BFF_PLUGIN_CHAT_ALLOWED_MODELS` 已落地(2026-10-14,`plugins-chat.ts` isModelAllowed):设置后未命中的 model_id/modelId 403 且不触达 adapter;未设置=透传(gateway 配额兜底);未显式传 model_id 走部署默认模型,不受名单约束 |
 | R3 | 帧协议漂移破坏插件 | 低 | 帧由 `serializeChunk` 单点定义;插件"忽略未知帧"义务写入 guide |
-| R4 | 插件页离开未 abort→长流悬挂 | 低 | BFF 客户端断连自动退出 + break/双层 signal;P2 可考究 visibilitychange 自动 abort |
+| R4 | 插件页离开未 abort→长流悬挂 | 低 | BFF 客户端断连自动退出 + break/双层 signal。**visibilitychange 自动 abort 经评审否决**(2026-10-14):切 tab 即杀流对真实用户是伤害而非保护,现有双层缓解已足够,不再跟踪 |
 | R5 | 消费侧插件 bug | 低 | error 帧协议内传递;生成器 throw 语义与 fetch 一致 |
 | R6 | 契约快照失稳 | 低 | bump 1.2.0 + 快照已更新;插件仓库同步待插件接入时执行 |
 
@@ -301,3 +301,21 @@ plugins.ts 拆至 plugins-chat.ts、状态/审计拆至 services/plugin-store.ts
 (守卫先于断路,404 分支由单测覆盖)。**插件仓库同步(web/agentui 消费
 1.2.0/1.3.0 面)维持门控**:本地 checkout 无 web/agentui 目录且接入前改动
 惰性,待 wargame 接入 chat 时执行(更新其宿主 API 类型声明)。
+
+**P3 数据面实施(2026-10-14 深夜,用户指令"细化评审执行"后)**:
+
+- **用量审计**:`withCompletionAudit`(plugins-chat.ts)以透传生成器包装
+  adapter 流,chunk 零改动;流终止(正常 done/上游抛错/客户端断连)后于
+  finally 落一行 `chat_completion` 审计(pluginId/sessionId/model/usage,
+  usage 仅在完整走到 usage chunk 时有值)。appendPluginAudit 扩展
+  action 联合类型与三个可选归因字段;审计仍 fail-open(写失败只告警)。
+- **模型白名单**:`isModelAllowed` 逐请求读 `BFF_PLUGIN_CHAT_ALLOWED_MODELS`
+  (逗号分隔+空格容错);未设置=不管控(现状透传),未显式传 model_id
+  不受名单约束(部署默认模型由部署侧管控);未命中 403 且不触达 adapter。
+- **测试**(plugins-chat.test.ts「P3 数据面」describe,5 例):白名单命中
+  透传/双写法(model_id 与 modelId)403 不触达 adapter/未传 model_id 放行/
+  完整流审计含 usage/中断流审计 usage=null。**测试踩坑**:审计是
+  fire-and-forget promise,且更早测试未消费的响应流也会延迟落盘同类行——
+  断言必须按唯一 sessionId 轮询等待**目标行**,任何"有行就返回/按行数
+  基线"的判定都会被旧行提前满足;轮询读取需容忍审计文件首个 ENOENT。
+- 回归:BFF vitest 931/931(原 926 + 新 5)、bff tsc 0 错误。

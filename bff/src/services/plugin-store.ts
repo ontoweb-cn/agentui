@@ -78,18 +78,33 @@ export async function isPluginDisabled(id: string): Promise<boolean> {
   return (await readPluginState()).states[id]?.enabled === false;
 }
 
-export type PluginAuditAction = 'install' | 'uninstall' | 'enable' | 'disable';
+export type PluginAuditAction =
+  | 'install'
+  | 'uninstall'
+  | 'enable'
+  | 'disable'
+  | 'chat_completion';
 
 /**
  * 审计追加:变更操作成功后落一行 JSONL。文件超过 AUDIT_MAX_BYTES 轮换为
  * `.1`(单代覆盖,评审 P3:无身份归因——共享 admin token 无身份可记,按人
  * 鉴权体系落地后一并扩展)。写入失败只告警不阻塞主操作。
+ *
+ * chat_completion 为用量归因事件(chat SDK P3 数据面,docs/chat-sse-sdk-design.md):
+ * 每次插件补全流终止(完成/出错/客户端断连)后落一行,携带 sessionId/model/usage;
+ * 供后续按插件用量核算(配额/限流仍门控,待归因数据积累)。
  */
 export async function appendPluginAudit(entry: {
   action: PluginAuditAction;
   pluginId: string;
   version?: string | null;
   source?: string | null;
+  /** chat_completion 专用:会话归因 */
+  sessionId?: string | null;
+  /** chat_completion 专用:请求显式指定的模型(未传则为 null) */
+  model?: string | null;
+  /** chat_completion 专用:流完整走到 usage chunk 时有值 */
+  usage?: { promptTokens: number; completionTokens: number } | null;
 }): Promise<void> {
   try {
     await mkdir(dirname(AUDIT_FILE), { recursive: true });

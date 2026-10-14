@@ -7,10 +7,18 @@
  * Authorization 分支);接线模式仿 bff-agents.test.ts。
  */
 import { Hono } from 'hono';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 import type { IHarnessAdapter } from '../types/adapter';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
@@ -403,5 +411,169 @@ describe('插件 chat P2(审批/澄清/历史)', () => {
     );
     const body = (await res.json()) as { messages: unknown[] };
     expect(body.messages).toHaveLength(2);
+  });
+});
+
+describe('插件 chat P3 数据面(模型白名单 + 用量审计)', () => {
+  const authHeaders = {
+    Authorization: 'rag-jwt',
+    'Content-Type': 'application/json',
+  };
+
+  afterEach(() => {
+    delete process.env.BFF_PLUGIN_CHAT_ALLOWED_MODELS;
+  });
+
+  async function readAuditLines(): Promise<Array<Record<string, unknown>>> {
+    let raw: string;
+    try {
+      raw = await readFile(join(fixtureDir, 'plugin-audit.jsonl'), 'utf-8');
+    } catch {
+      return []; // 首次写入前文件不存在是正常形态
+    }
+    return raw
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+  }
+
+  /** 审计写入是 fire-and-forget promise;且更早测试未消费的响应流也会延迟
+   * 落盘同类行——必须按谓词等待**目标行**出现,任何"有行就返回"的判定都会
+   * 被旧行提前满足(已踩坑:2ms 即返回导致断言读到旧行)。 */
+  async function waitForChatCompletionAudit(
+    match: (line: Record<string, unknown>) => boolean,
+  ): Promise<Record<string, unknown> | undefined> {
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      const mine = (await readAuditLines()).find(match);
+      if (mine) {
+        return mine;
+      }
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    return undefined;
+  }
+
+  it('白名单命中 → 200 且 model_id 透传(逗号分隔 + 空格容错)', async () => {
+    process.env.BFF_PLUGIN_CHAT_ALLOWED_MODELS = 'deepseek-chat, qwen-max';
+    const adapter = createFakeAdapter();
+    const app = createApp(adapter);
+
+    const res = await app.request('/plugins/chat-app/chat/completions', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        session_id: 's1',
+        content: '你好',
+        model_id: 'deepseek-chat',
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(adapter.sendMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ modelId: 'deepseek-chat' }),
+    );
+  });
+
+  it('白名单未命中(model_id 与 modelId 两种写法)→ 403 且不触达 adapter', async () => {
+    process.env.BFF_PLUGIN_CHAT_ALLOWED_MODELS = 'deepseek-chat';
+    const adapter = createFakeAdapter();
+    const app = createApp(adapter);
+
+    const snake = await app.request('/plugins/chat-app/chat/completions', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        session_id: 's1',
+        content: '你好',
+        model_id: 'gpt-x',
+      }),
+    });
+    expect(snake.status).toBe(403);
+    expect(await snake.text()).toContain('BFF_PLUGIN_CHAT_ALLOWED_MODELS');
+
+    const camel = await app.request('/plugins/chat-app/chat/completions', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        session_id: 's1',
+        content: '你好',
+        modelId: 'gpt-x',
+      }),
+    });
+    expect(camel.status).toBe(403);
+    expect(adapter.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('白名单设置但未传 model_id → 放行(走部署默认模型,不受名单约束)', async () => {
+    process.env.BFF_PLUGIN_CHAT_ALLOWED_MODELS = 'deepseek-chat';
+    const adapter = createFakeAdapter();
+    const app = createApp(adapter);
+
+    const res = await app.request('/plugins/chat-app/chat/completions', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ session_id: 's1', content: '你好' }),
+    });
+    expect(res.status).toBe(200);
+    const call = (adapter.sendMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[1] as { modelId?: string };
+    expect(call?.modelId).toBeUndefined();
+  });
+
+  it('完整流结束后落 chat_completion 审计(含 pluginId/session/model/usage)', async () => {
+    const adapter = createFakeAdapter();
+    const app = createApp(adapter);
+
+    const res = await app.request('/plugins/chat-app/chat/completions', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        session_id: 's-audit-full',
+        content: '你好',
+        model_id: 'deepseek-chat',
+      }),
+    });
+    expect(res.status).toBe(200);
+    await res.text(); // 消费完整流,触发生成器 finally 落审计
+
+    // 早期测试未消费的响应流其审计行可能延迟落盘,故按唯一 sessionId 定位本行
+    const mine = await waitForChatCompletionAudit(
+      (l) => l.sessionId === 's-audit-full',
+    );
+    expect(mine).toMatchObject({
+      pluginId: 'chat-app',
+      model: 'deepseek-chat',
+      usage: { promptTokens: 1, completionTokens: 2 },
+    });
+  });
+
+  it('流中断(上游抛错)→ 仍落审计,usage 为 null', async () => {
+    const adapter = createFakeAdapter({
+      sendMessage: vi.fn(async () =>
+        (async function* () {
+          yield { type: 'delta', content: 'x' };
+          throw new Error('upstream boom');
+        })(),
+      ),
+    });
+    const app = createApp(adapter);
+
+    const res = await app.request('/plugins/chat-app/chat/completions', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ session_id: 's-audit-abort', content: '你好' }),
+    });
+    expect(res.status).toBe(200); // SSE 通道本身建立,错误以 error 帧传递
+    expect(await res.text()).toContain('"error"');
+
+    const mine = await waitForChatCompletionAudit(
+      (l) => l.sessionId === 's-audit-abort',
+    );
+    expect(mine).toMatchObject({
+      pluginId: 'chat-app',
+      model: null,
+      usage: null,
+    });
   });
 });
