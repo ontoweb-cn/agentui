@@ -36,17 +36,17 @@
 |---|---|
 | `RELEASE` | 勾选进入发版(不勾=仅验证) |
 | `IMAGE_TAG` | 镜像 tag,与宿主版本一致(如 `0.4.0`) |
-| `PLUGIN_REPO` | 默认 gitee cognitive-wargame;留空 PLUGIN_REF 则发纯宿主镜像 |
-| `PLUGIN_REF` | 插件 tag/commit;**正式发版 pin commit**(如 `998c6af`),保证可复现 |
+| `PLUGIN_BUNDLE_IMAGE` | 插件 bundle 镜像(cognitive-wargame CI 发布,如 `hub.wust.edu.cn/intellect/wargame-plugin-bundle:0d8b07d`);留空则发纯宿主镜像 |
 
 四个参数进入 shell 前由 `参数校验` stage 白名单强制(评审 S1):IMAGE_TAG 限
-`[A-Za-z0-9._-]`,PLUGIN_REF 拒绝前导 `-` 与 `..`,PLUGIN_REPO 仅允许
-`https://gitee.com/**.git`——防 params → sh 的命令替换与 git 参数注入;
-打包脚本自身另有一层 charset 校验(本地直调同样受保护)。
+`[A-Za-z0-9._-]`,PLUGIN_BUNDLE_IMAGE 仅允许
+`hub.wust.edu.cn/<repo>:<tag>` 形态——防 params → sh 的命令替换注入。
 
-流程等价手动 runbook(deploy/README.md §发版):验证全绿 →
-`package-plugin-bundle.sh --repo --ref` → `docker build` → 机器人凭据
-`docker login/push` → 登出。镜像内含插件 bundle,容器启动 entrypoint 幂等安装。
+流程(2026-10-15 职责迁移):wargame 侧先在其仓触发发版(参数
+`BUNDLE_RELEASE`,产出 bundle 镜像;`SERVER_RELEASE` 产出 wargamesrv 镜像),
+本仓验证全绿 → `docker pull` bundle 镜像解包进构建上下文 → `docker build`
+→ 机器人凭据 `docker login/push` → 登出。镜像内含插件 bundle,容器启动
+entrypoint 幂等安装。
 
 ## 与本地发版的分工
 

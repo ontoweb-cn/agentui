@@ -47,8 +47,12 @@ gateway token 经 `bff/.env` 的 `HARNESS_INTELLECT_ENTERPRISE_DEFAULT_TOKEN`
 ## 发版 runbook(手动)
 
 ```bash
-# 1) 打包插件(默认相邻 checkout ../cognitive-wargame,可 --ref 指定 tag/commit)
-scripts/package-plugin-bundle.sh --ref <wargame-tag>
+# 1) 拉取插件 bundle 镜像并解包(2026-10-15 起插件 CI/CD 归 cognitive-wargame 仓:
+#    先在其仓发 bundle 镜像 scripts/build-plugin-bundle-image.sh --tag <ref> --push)
+docker pull hub.wust.edu.cn/intellect/wargame-plugin-bundle:<wargame-ref>
+cid=$(docker create hub.wust.edu.cn/intellect/wargame-plugin-bundle:<wargame-ref>) \
+  && mkdir -p deploy/plugin-bundles \
+  && docker cp "$cid":/opt/bundled-plugins/. deploy/plugin-bundles/ && docker rm "$cid"
 
 # 2) 构建镜像并推送内网制品库
 docker build -t hub.wust.edu.cn/intellect/agentui:0.4.0 .

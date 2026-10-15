@@ -110,7 +110,7 @@ Manage Jenkins → Credentials → System → Global credentials → Add:
 | Branch | `*/dev` | `*/main` |
 | Script Path | `Jenkinsfile` | `Jenkinsfile` |
 
-勾选「参数化构建」无需手工配置——参数(RELEASE/IMAGE_TAG/PLUGIN_REPO/PLUGIN_REF)
+勾选「参数化构建」无需手工配置——参数(RELEASE/IMAGE_TAG/PLUGIN_BUNDLE_IMAGE)
 由 Jenkinsfile 定义,保存后首次 Build 会按定义出现。
 
 ### 1.5 首跑验证(三步递进)
@@ -120,11 +120,12 @@ Manage Jenkins → Credentials → System → Global credentials → Add:
 
 1. **纯验证**:agentui-ci → Build Now(此时无参数表单,默认仅验证)→ 期望:
    tsc×2 + jest + vitest 全绿;
-2. **纯宿主试发**:RELEASE ✓,`IMAGE_TAG=0.4.1`,PLUGIN_REF 留空 → 期望:Harbor
-   出现 `intellect/agentui:0.4.1`(无插件,应用页为空——符合预期);
-3. **完整发版**:RELEASE ✓,`IMAGE_TAG=0.4.1`,PLUGIN_REF=`<wargame 仓 commit>`
-   (正式发版 pin commit,如 `998c6af`)→ 期望:镜像含插件 bundle,
-   `scripts/package-plugin-bundle.sh` 拉取构建成功。
+2. **纯宿主试发**:RELEASE ✓,`IMAGE_TAG=0.4.1`,PLUGIN_BUNDLE_IMAGE 留空 →
+   期望:Harbor 出现 `intellect/agentui:0.4.1`(无插件,应用页为空——符合预期);
+3. **完整发版**:先在 cognitive-wargame 仓触发发版得 bundle 镜像
+   (2026-10-15 起 wargame CI/CD 归其仓),再 RELEASE ✓,`IMAGE_TAG=0.4.1`,
+   `PLUGIN_BUNDLE_IMAGE=hub.wust.edu.cn/intellect/wargame-plugin-bundle:<ref>`
+   → 期望:镜像含插件 bundle(拉取解包成功)。
 
 ### 1.6 触发(可选,可后置)
 

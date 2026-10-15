@@ -13,9 +13,14 @@
 1. 构建含插件的镜像(发版机,手动):
 
    ```bash
-   # 1) 打包插件产物到 deploy/plugin-bundles/cognitive-wargame/
-   scripts/package-plugin-bundle.sh --ref <tag|commit>   # 默认相邻 ../cognitive-wargame
-   # 2) 构建并推送
+   # 1) 在 cognitive-wargame 仓发布插件 bundle 镜像(职责归 wargame 仓,2026-10-15):
+   #    cd ../cognitive-wargame && scripts/build-plugin-bundle-image.sh --tag <ref> --push
+   # 2) 构建并推送 agentui(解包 bundle 进构建上下文,机制不变):
+   #    或直接触发 agentui-ci 参数化发版(PLUGIN_BUNDLE_IMAGE=<上一步镜像>)
+   docker pull hub.wust.edu.cn/intellect/wargame-plugin-bundle:<ref>
+   cid=$(docker create hub.wust.edu.cn/intellect/wargame-plugin-bundle:<ref>) \
+     && mkdir -p deploy/plugin-bundles \
+     && docker cp "$cid":/opt/bundled-plugins/. deploy/plugin-bundles/ && docker rm "$cid"
    docker build -t hub.wust.edu.cn/intellect/agentui:0.4.0 .
    docker push hub.wust.edu.cn/intellect/agentui:0.4.0
    ```
