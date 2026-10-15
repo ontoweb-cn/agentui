@@ -74,8 +74,10 @@ canvas 现为 monorepo 编译期包(`packages/canvas-plugin`,`main: src/index.ts
 | R3 | 跨版本兼容无验证 | **S1 出口新增兼容性回归**:用 v1.0 SDK 构建的 fixture 插件(仓库内 `packages/plugin-compat-fixture`,冻结依赖)在每次宿主发版 CI 装载断言——老插件×新宿主机制化 |
 | R4 | 无凭证环境无法真机验证 canvas 全功能冒烟 | S2 出口依赖持凭证账号执行 canvas-smoke-checklist(与 SC-003 归档同窗口);无凭证前 S2 不收口 |
 
-## 八、未决问题(开工 S1 前拍板)
+## 八、未决问题(2026-10-15 拍板,S1 已开工)
 
-1. ui 白名单清单:以 canvas 实际 import 的组件集合为准(316 处引用去重后约 40+ 组件),是否全量进 Tier B 白名单,还是借机收敛 canvas 的 UI 面倾向——建议**全量进**(S3 后再收敛,一次只动一个轴);
-2. `interfaces/database` 87 处类型引用:类型不进运行时产物,随 SDK `host` 子入口导出类型即可(d.ts 层面),无 SHARED_API_VERSION 语义;
-3. S4 的 C 方案实现批次(zip + sha256 + 制品库 URL)需先行:unzip 依赖选型(adm-zip/yauzl 或容器内置 unzip)与制品库端点确认。
+1. **ui 白名单:全量进 Tier B**——canvas 实际消费的 33 个 ui 模块已全部注入(`src/plugins/host-externals.ts`,模块命名空间形态),契约快照锁定模块清单与导出名;收敛 ui 面延后到 S3 之后(一次只动一个轴);
+2. **`interfaces/database` 87 处类型引用:走 `@agentui/plugin-sdk/host` 类型层**(S2 落地 d.ts 导出)——纯类型、无运行时语义、不占 SHARED_API_VERSION 契约面;
+3. **C 方案不阻塞 S1/S2**——仅 S4 依赖;unzip 依赖选型与制品库端点确认独立立项。
+
+**S1 落地注记(2026-10-15)**:`host-externals.ts`(react/reactDom/reactDomClient/reactQuery/i18n/cn + 33 ui 模块)、SDK `host` 子入口(`SHARED_API_VERSION=1.0.0` + `getSharedHost`)、契约快照(`host-externals.test.ts`:模块清单 + 各模块导出名,删改即红)、**plugin-compat-fixture 兼容基线**(冻结的 v1.0 代产物 + 宿主发版纪律:compat-fixture.test.ts 不绿不发版,R3 落地)。jest mapper/vite alias/tsconfig paths 三处已同步 `host` 子入口(spec R1 工程注记兑现)。

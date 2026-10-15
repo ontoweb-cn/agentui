@@ -53,8 +53,6 @@ export default {
     login: {
       login: '登入',
       signUp: '註冊',
-      loginDescription: '很高興再次見到您！',
-      registerDescription: '很高興您加入！',
       emailLabel: '郵箱',
       emailPlaceholder: '請輸入郵箱地址',
       passwordLabel: '密碼',
@@ -69,9 +67,6 @@ export default {
       register: '創建賬戶',
       continue: '繼續',
       title: '開始構建您的智能助手',
-      description:
-        '免費註冊以探索頂級 RAG 技術。創建知識庫和人工智能來增強您的業務',
-      review: '來自 500 多條評論',
     },
     header: {
       knowledgeBase: '知識庫',

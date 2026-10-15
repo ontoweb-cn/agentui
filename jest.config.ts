@@ -26,6 +26,7 @@ const config: Config = {
     // 静态解析 import.meta.glob 调用，真实模块逻辑被执行。
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@agentui/plugin-sdk$': '<rootDir>/packages/plugin-sdk/src/index.ts',
+    '^@agentui/plugin-sdk/host$': '<rootDir>/packages/plugin-sdk/src/host.ts',
     '^human-id$': '<rootDir>/__mocks__/human-id.js',
     '\\.(css|less|scss|sass)$': '<rootDir>/__mocks__/styleMock.js',
     '\\.(jpg|jpeg|png|gif|svg|webp)$': '<rootDir>/__mocks__/fileMock.js',

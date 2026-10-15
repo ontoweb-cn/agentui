@@ -86,7 +86,6 @@ export default {
         tokenPlaceholder: 'e.g. eyJhbGciOiJIUzI1Ni...',
       },
       selected: 'Selected',
-      seeAll: 'See all',
       bulkOperate: 'Bulk operate',
       owner: 'Owner',
       running: 'Running...',
@@ -96,8 +95,6 @@ export default {
       signUpTitle: 'Create an account',
       login: 'Sign in',
       signUp: 'Sign up',
-      loginDescription: 'We’re so excited to see you again!',
-      registerDescription: 'Glad to have you on board!',
       emailLabel: 'Email',
       emailPlaceholder: 'Please input email',
       passwordLabel: 'Password',
@@ -116,11 +113,6 @@ export default {
       register: 'Create an account',
       continue: 'Continue',
       title: 'INTELLECT AGENT HARNESS',
-      start: "Let's get started",
-      description:
-        'Sign up for free to build and orchestrate intelligent agents. Create knowledge bases and tools to empower your business.',
-      review: 'from 500+ reviews',
-      seeAll: 'See all',
     },
     header: {
       knowledgeBase: 'Dataset',

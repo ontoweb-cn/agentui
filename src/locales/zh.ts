@@ -81,8 +81,6 @@ export default {
       signUpTitle: '创建账户',
       login: '登录',
       signUp: '注册',
-      loginDescription: '很高兴再次见到您！',
-      registerDescription: '很高兴您加入！',
       emailLabel: '邮箱',
       emailPlaceholder: '请输入邮箱地址',
       passwordLabel: '密码',
@@ -101,10 +99,6 @@ export default {
       register: '创建账户',
       continue: '继续',
       title: 'INTELLECT AGENT HARNESS',
-      start: '立即开始',
-      description:
-        '免费注册，构建与编排智能体。创建知识库和工具，赋能您的业务',
-      review: '来自 500 多条评论',
     },
     header: {
       knowledgeBase: '知识库',

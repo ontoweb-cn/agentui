@@ -217,6 +217,7 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, './src'),
         '@agentui/canvas-plugin': path.resolve(__dirname, 'packages/canvas-plugin/src'),
         '@agentui/plugin-sdk': path.resolve(__dirname, 'packages/plugin-sdk/src'),
+        '@agentui/plugin-sdk/host': path.resolve(__dirname, 'packages/plugin-sdk/src/host.ts'),
         '@intellect-docs': path.resolve(__dirname, './docs'),
       },
     },

@@ -1,0 +1,37 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Tier B 共享面(__AGENTUI_SHARED__,canvas 档) 契约快照:各模块导出名(删改导出必须 bump SHARED_API_VERSION) 1`] = `
+"accordion: Accordion, AccordionContent, AccordionItem, AccordionTrigger
+breadcrumb: Breadcrumb, BreadcrumbEllipsis, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator
+button: BlockButton, Button, ButtonLoading, buttonVariants
+card: Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle
+checkbox: Checkbox
+collapsible: Collapsible, CollapsibleContent, CollapsibleTrigger
+command: Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut
+date-picker: DatePicker
+dialog: Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger
+dropdown-menu: DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuPortal, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger
+form: Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage, useFormField
+hover-card: HoverCard, HoverCardContent, HoverCardTrigger
+input: BlurInput, ExpandedInput, InnerBlurInput, Input, NumberInput, SearchInput
+intellect-pagination: IntellectPagination
+label: Label
+message: default
+modal: Modal
+multi-select: MultiSelect
+popover: Popover, PopoverContent, PopoverTrigger
+progress: Progress
+radio: Radio
+radio-group: RadioGroup, RadioGroupItem
+scroll-area: ScrollArea, ScrollBar
+select: IntellectSelect, Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectScrollDownButton, SelectScrollUpButton, SelectSeparator, SelectTrigger, SelectValue
+separator: Separator
+sheet: Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetOverlay, SheetPortal, SheetTitle, SheetTrigger
+skeleton: CardSkeleton, ParagraphSkeleton, Skeleton
+spin: Spin
+switch: Switch
+table: Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow
+tabs: Tabs, TabsContent, TabsList, TabsTrigger
+textarea: BlurTextarea, Textarea
+tooltip: AntToolTip, FormTooltip, IntellectTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger"
+`;
