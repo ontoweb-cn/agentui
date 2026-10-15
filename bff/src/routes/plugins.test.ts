@@ -10,10 +10,12 @@
 import { mkdtemp, mkdir, writeFile, rm, readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 let api: typeof import('./plugins');
 let fixtureDir: string;
+let stateFile: string;
+let auditFile: string;
 
 async function writePlugin(
   id: string,
@@ -32,7 +34,11 @@ async function writePlugin(
 
 beforeAll(async () => {
   fixtureDir = await mkdtemp(join(tmpdir(), 'agentui-plugins-test-'));
+  stateFile = join(fixtureDir, 'plugin-state.json');
+  auditFile = join(fixtureDir, 'plugin-audit.jsonl');
   process.env.BFF_PLUGINS_DIR = fixtureDir;
+  process.env.BFF_PLUGIN_STATE_FILE = stateFile;
+  process.env.BFF_PLUGIN_AUDIT_FILE = auditFile;
   process.env.BFF_PLUGIN_INSTALL_TOKEN = 'test-admin-token';
   api = await import('./plugins');
 
@@ -60,6 +66,18 @@ beforeAll(async () => {
     label: 'x',
     entry: '../../etc/passwd',
   });
+  // chat 能力插件(chat SDK P1 门控用)
+  await writePlugin(
+    'chat-app-plugin',
+    {
+      id: 'chat-app-plugin',
+      path: '/chat-app-plugin',
+      label: 'chat 插件',
+      entry: 'ui/dist/index.js',
+      capabilities: ['chat'],
+    },
+    { 'ui/dist/index.js': 'export {}' },
+  );
   // 绕过安装校验直接落盘的 SSRF 插件(模拟安装后被篡改)→ 代理侧拦截
   await writePlugin(
     'ssrf-plugin',
@@ -76,6 +94,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   delete process.env.BFF_PLUGINS_DIR;
+  delete process.env.BFF_PLUGIN_STATE_FILE;
+  delete process.env.BFF_PLUGIN_AUDIT_FILE;
   delete process.env.BFF_PLUGIN_INSTALL_TOKEN;
   await rm(fixtureDir, { recursive: true, force: true });
 });
@@ -408,5 +428,283 @@ describe('install/delete 鉴权', () => {
     });
     expect(del.status).toBe(200);
     await rm(source, { recursive: true, force: true });
+  });
+});
+
+describe('enable/disable 启停(#16)', () => {
+  const adminHeaders = { 'X-Plugin-Admin-Token': 'test-admin-token' };
+
+  const listIds = async (): Promise<string[]> => {
+    const res = await api.pluginsRoutes.request('/plugins');
+    expect(res.status).toBe(200);
+    const list = (await res.json()) as Array<{ id: string }>;
+    return list.map((m) => m.id);
+  };
+
+  it('disable 后列表隐藏,enable 恢复;均幂等', async () => {
+    expect(await listIds()).toContain('good-plugin');
+
+    const disable = await api.pluginsRoutes.request('/plugins/good-plugin/disable', {
+      method: 'POST',
+      headers: adminHeaders,
+    });
+    expect(disable.status).toBe(200);
+    expect(await disable.json()).toMatchObject({ id: 'good-plugin', enabled: false });
+    // 幂等:重复 disable 仍 200
+    const disableAgain = await api.pluginsRoutes.request('/plugins/good-plugin/disable', {
+      method: 'POST',
+      headers: adminHeaders,
+    });
+    expect(disableAgain.status).toBe(200);
+    expect(await listIds()).not.toContain('good-plugin');
+
+    const enable = await api.pluginsRoutes.request('/plugins/good-plugin/enable', {
+      method: 'POST',
+      headers: adminHeaders,
+    });
+    expect(enable.status).toBe(200);
+    expect(await listIds()).toContain('good-plugin');
+  });
+
+  it('无 token 拒绝(403);未安装的插件 404', async () => {
+    const noToken = await api.pluginsRoutes.request('/plugins/good-plugin/disable', {
+      method: 'POST',
+    });
+    expect(noToken.status).toBe(403);
+
+    const missing = await api.pluginsRoutes.request('/plugins/ghost/disable', {
+      method: 'POST',
+      headers: adminHeaders,
+    });
+    expect(missing.status).toBe(404);
+  });
+
+  it('状态存于安装目录之外:重装(覆盖目录)不冲掉 disabled', async () => {
+    await api.pluginsRoutes.request('/plugins/good-plugin/disable', {
+      method: 'POST',
+      headers: adminHeaders,
+    });
+    // 模拟 entrypoint 重装:目录被覆盖,状态文件不动
+    await writeFile(
+      join(fixtureDir, 'good-plugin/app.json'),
+      JSON.stringify({
+        id: 'good-plugin',
+        path: '/good-plugin',
+        label: '测试插件',
+        entry: 'ui/dist/index.js',
+      }),
+    );
+    expect(await listIds()).not.toContain('good-plugin');
+
+    await api.pluginsRoutes.request('/plugins/good-plugin/enable', {
+      method: 'POST',
+      headers: adminHeaders,
+    });
+  });
+
+  it('卸载清除启停状态(重装回默认 enabled)', async () => {
+    const source = await mkdtemp(join(tmpdir(), 'agentui-plugin-src-'));
+    await mkdir(join(source, 'ui/dist'), { recursive: true });
+    await writeFile(
+      join(source, 'app.json'),
+      JSON.stringify({
+        id: 'stateful-plugin',
+        path: '/stateful-plugin',
+        label: 'x',
+        entry: 'ui/dist/index.js',
+      }),
+    );
+    await writeFile(join(source, 'ui/dist/index.js'), 'export {}');
+    const install = await api.pluginsRoutes.request('/plugins/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...adminHeaders },
+      body: JSON.stringify({ source }),
+    });
+    expect(install.status).toBe(200);
+
+    await api.pluginsRoutes.request('/plugins/stateful-plugin/disable', {
+      method: 'POST',
+      headers: adminHeaders,
+    });
+    expect(await listIds()).not.toContain('stateful-plugin');
+
+    const del = await api.pluginsRoutes.request('/plugins/stateful-plugin', {
+      method: 'DELETE',
+      headers: adminHeaders,
+    });
+    expect(del.status).toBe(200);
+    // 重装同名插件 → 默认 enabled
+    const reinstall = await api.pluginsRoutes.request('/plugins/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...adminHeaders },
+      body: JSON.stringify({ source }),
+    });
+    expect(reinstall.status).toBe(200);
+    expect(await listIds()).toContain('stateful-plugin');
+
+    await api.pluginsRoutes.request('/plugins/stateful-plugin', {
+      method: 'DELETE',
+      headers: adminHeaders,
+    });
+    await rm(source, { recursive: true, force: true });
+  });
+
+  it('停用即断路:disabled 插件的产物下载与后端代理同步 404(评审 P1)', async () => {
+    await api.pluginsRoutes.request('/plugins/good-plugin/disable', {
+      method: 'POST',
+      headers: adminHeaders,
+    });
+    const files = await api.pluginsRoutes.request(
+      '/plugins/good-plugin/files/ui/dist/index.js',
+    );
+    expect(files.status).toBe(404);
+    const proxy = await api.pluginsRoutes.request(
+      '/plugins/good-plugin/proxy/api/v1/x',
+    );
+    expect(proxy.status).toBe(404);
+
+    await api.pluginsRoutes.request('/plugins/good-plugin/enable', {
+      method: 'POST',
+      headers: adminHeaders,
+    });
+    const filesAgain = await api.pluginsRoutes.request(
+      '/plugins/good-plugin/files/ui/dist/index.js',
+    );
+    expect(filesAgain.status).toBe(200);
+  });
+
+  it('enable 校验清单:损坏安装 400 拒绝;disable 保持宽松(评审 P3)', async () => {
+    // 无 id/path/entry → readPluginMeta 返回 null
+    await writePlugin('broken-plugin', {});
+    const enable = await api.pluginsRoutes.request('/plugins/broken-plugin/enable', {
+      method: 'POST',
+      headers: adminHeaders,
+    });
+    expect(enable.status).toBe(400);
+    const disable = await api.pluginsRoutes.request('/plugins/broken-plugin/disable', {
+      method: 'POST',
+      headers: adminHeaders,
+    });
+    expect(disable.status).toBe(200);
+
+    // 清理状态与目录,不影响其他用例
+    const state = JSON.parse(await readFile(stateFile, 'utf-8'));
+    delete state.states['broken-plugin'];
+    await writeFile(stateFile, JSON.stringify(state, null, 2));
+    await rm(join(fixtureDir, 'broken-plugin'), { recursive: true, force: true });
+  });
+
+  it('状态文件损坏:按全 enabled 处理且大声告警,不静默(评审 P2)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await writeFile(stateFile, '{corrupt');
+      expect(await listIds()).toContain('good-plugin');
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+      // 恢复干净状态文件,后续用例不受污染
+      await writeFile(stateFile, JSON.stringify({ schema: 1, states: {} }, null, 2));
+    }
+  });
+});
+
+describe('apiVersion 兼容声明(第三方生态版本协商)', () => {
+  const adminHeaders = {
+    'X-Plugin-Admin-Token': 'test-admin-token',
+    'Content-Type': 'application/json',
+  };
+
+  it('合法 apiVersion 随列表透传(宿主装载侧据此判兼容)', async () => {
+    await writePlugin(
+      'api-versioned-plugin',
+      {
+        id: 'api-versioned-plugin',
+        path: '/api-versioned-plugin',
+        label: 'x',
+        entry: 'ui/dist/index.js',
+        apiVersion: '^1.3.0',
+      },
+      { 'ui/dist/index.js': 'export {}' },
+    );
+    const res = await api.pluginsRoutes.request('/plugins');
+    const list = (await res.json()) as Array<Record<string, unknown>>;
+    const mine = list.find((p) => p.id === 'api-versioned-plugin');
+    expect(mine?.apiVersion).toBe('^1.3.0');
+  });
+
+  it('格式非法的 apiVersion → readPluginMeta 拒绝(列表不出现,防已落盘篡改形态)', async () => {
+    await writePlugin('api-bad-plugin', {
+      id: 'api-bad-plugin',
+      path: '/api-bad-plugin',
+      label: 'x',
+      entry: 'ui/dist/index.js',
+      apiVersion: '1.3.x',
+    });
+    expect(
+      await api.readPluginMeta(join(fixtureDir, 'api-bad-plugin')),
+    ).toBeNull();
+    const res = await api.pluginsRoutes.request('/plugins');
+    const list = (await res.json()) as Array<{ id: string }>;
+    expect(list.some((p) => p.id === 'api-bad-plugin')).toBe(false);
+  });
+
+  it('install:apiVersion 格式非法的 source → 400(缺合法 app.json 语义)', async () => {
+    const srcDir = join(await mkdtemp(join(tmpdir(), 'api-version-src-')), 'bad');
+    await mkdir(srcDir, { recursive: true });
+    await writeFile(
+      join(srcDir, 'app.json'),
+      JSON.stringify({
+        id: 'api-version-src-bad',
+        path: '/api-version-src-bad',
+        label: 'x',
+        entry: 'ui/dist/index.js',
+        apiVersion: 'latest',
+      }),
+    );
+    try {
+      const res = await api.pluginsRoutes.request('/plugins/install', {
+        method: 'POST',
+        headers: adminHeaders,
+        body: JSON.stringify({ source: srcDir }),
+      });
+      expect(res.status).toBe(400);
+    } finally {
+      await rm(join(srcDir, '..'), { recursive: true, force: true });
+    }
+  });
+
+  it('install:apiVersion 格式非法 → 400 消息含可自助修复的指引(针对性诊断)', async () => {
+    const srcDir = join(await mkdtemp(join(tmpdir(), 'api-version-dbg-')), 'bad');
+    await mkdir(srcDir, { recursive: true });
+    await writeFile(
+      join(srcDir, 'app.json'),
+      JSON.stringify({
+        id: 'api-version-dbg',
+        path: '/api-version-dbg',
+        label: 'x',
+        entry: 'ui/dist/index.js',
+        apiVersion: 'latest',
+      }),
+    );
+    try {
+      const res = await api.pluginsRoutes.request('/plugins/install', {
+        method: 'POST',
+        headers: adminHeaders,
+        body: JSON.stringify({ source: srcDir }),
+      });
+      expect(res.status).toBe(400);
+      expect(await res.text()).toContain('apiVersion 格式非法');
+    } finally {
+      await rm(join(srcDir, '..'), { recursive: true, force: true });
+    }
+  });
+
+  it('apiVersion 各形态格式校验矩阵(isValidApiVersionRange)', () => {
+    for (const valid of ['*', '^1.3.0', '~1.3', '>=2', '>1.2.3', '=1.3.0', '1.3.0', ' 1.3 ']) {
+      expect(api.isValidApiVersionRange(valid)).toBe(true);
+    }
+    for (const invalid of ['1.3.x', '^abc', '>=', '1.2.3.4', 'latest', '', '1 .3']) {
+      expect(api.isValidApiVersionRange(invalid)).toBe(false);
+    }
   });
 });

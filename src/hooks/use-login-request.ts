@@ -139,6 +139,8 @@ export const useRegister = () => {
       password: string;
       nickname?: string;
       display_name?: string;
+      /** 企业注册邀请码(可选,网关部署要求时必填,整包透传 BFF) */
+      invite_code?: string;
     }) => {
       const { data = {} } = await userService.register(params);
       if (data?.code === 0) {

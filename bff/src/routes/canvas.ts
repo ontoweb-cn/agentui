@@ -239,6 +239,23 @@ canvasRoutes.get('/canvas/:id/sessions', async (c) => {
   }
 });
 
+// SC-008 收尾:运行日志会话(带筛选/分页参数,响应 {total,data})——
+// 迁出前端 restAPIv1 直连的最后一条活跃链路;区别于上方 listSessions
+canvasRoutes.get('/canvas/:id/agent-logs', async (c) => {
+  const service = getCanvasService(c);
+  try {
+    const id = c.req.param('id');
+    const result = await service.listAgentLogs(
+      resolveBackendContext(c),
+      id,
+      c.req.query(),
+    );
+    return c.json(result);
+  } catch (err) {
+    return handleCanvasError(c, err as Error);
+  }
+});
+
 canvasRoutes.post('/canvas/:id/sessions', async (c) => {
   const service = getCanvasService(c);
   try {

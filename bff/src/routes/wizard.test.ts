@@ -340,6 +340,27 @@ describe('wizard 路由 (B-3)', () => {
       expect(body.capabilities).toBeDefined();
     });
 
+    it('enterprise 探测 /api/tenant/info 不可达 → 失败消息含网关基址防呆提示', async () => {
+      vi.mocked(isUrlSafe).mockResolvedValue(true);
+      // fetchTenantInfo 默认 mock 即 null(不可达形态)
+      vi.mocked(fetchTenantInfo).mockResolvedValue(null);
+
+      const res = await app.request('/admin/wizard/probe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'intellect-enterprise',
+          endpoint: 'https://ai.wust.edu.cn/intellect',
+        }),
+      });
+      const body = await res.json();
+      expect(body.healthy).toBe(false);
+      expect(body.error).toContain('/api/tenant/info');
+      expect(body.error).toContain('网关基址');
+      expect(body.error).toContain('WebUI');
+      vi.mocked(fetchTenantInfo).mockResolvedValue(null);
+    });
+
     it('SSRF 拦截返回 400', async () => {
       vi.mocked(isUrlSafe).mockResolvedValue(false);
 

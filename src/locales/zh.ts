@@ -1,5 +1,11 @@
 export default {
   translation: {
+    plugins: {
+      updatedToast: '应用列表已更新，刷新页面后生效',
+      incompatibleBadge: '不兼容',
+      incompatibleTitle: '应用「{{name}}」与当前宿主不兼容',
+      incompatibleHint: '请联系插件提供方获取适配当前宿主版本的版本，本机无法装载该应用。',
+    },
     common: {
       confirm: '确定',
       back: '返回',
@@ -75,8 +81,6 @@ export default {
       signUpTitle: '创建账户',
       login: '登录',
       signUp: '注册',
-      loginDescription: '很高兴再次见到您！',
-      registerDescription: '很高兴您加入！',
       emailLabel: '邮箱',
       emailPlaceholder: '请输入邮箱地址',
       passwordLabel: '密码',
@@ -90,13 +94,11 @@ export default {
       loginNamePlaceholder: '请输入用户名',
       displayNameLabel: '显示名称',
       displayNamePlaceholder: '请输入显示名称',
+      inviteCodeLabel: '邀请码',
+      inviteCodePlaceholder: '请输入邀请码(如部署要求)',
       register: '创建账户',
       continue: '继续',
       title: 'INTELLECT AGENT HARNESS',
-      start: '立即开始',
-      description:
-        '免费注册，构建与编排智能体。创建知识库和工具，赋能您的业务',
-      review: '来自 500 多条评论',
     },
     header: {
       knowledgeBase: '知识库',

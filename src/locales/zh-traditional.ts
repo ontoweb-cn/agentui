@@ -1,5 +1,11 @@
 export default {
   translation: {
+    plugins: {
+      updatedToast: '應用列表已更新，刷新頁面後生效',
+      incompatibleBadge: '不相容',
+      incompatibleTitle: '應用「{{name}}」與目前宿主不相容',
+      incompatibleHint: '請聯絡插件提供方獲取適配目前宿主版本的版本，本機無法載入該應用。',
+    },
     common: {
       delete: '刪除',
       deleteModalTitle: '確定刪除嗎?',
@@ -47,8 +53,6 @@ export default {
     login: {
       login: '登入',
       signUp: '註冊',
-      loginDescription: '很高興再次見到您！',
-      registerDescription: '很高興您加入！',
       emailLabel: '郵箱',
       emailPlaceholder: '請輸入郵箱地址',
       passwordLabel: '密碼',
@@ -58,12 +62,11 @@ export default {
       signUpTip: '已經有帳戶？',
       nicknameLabel: '名稱',
       nicknamePlaceholder: '請輸入名稱',
+      inviteCodeLabel: '邀請碼',
+      inviteCodePlaceholder: '請輸入邀請碼(如部署要求)',
       register: '創建賬戶',
       continue: '繼續',
       title: '開始構建您的智能助手',
-      description:
-        '免費註冊以探索頂級 RAG 技術。創建知識庫和人工智能來增強您的業務',
-      review: '來自 500 多條評論',
     },
     header: {
       knowledgeBase: '知識庫',

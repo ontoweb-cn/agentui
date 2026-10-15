@@ -1,0 +1,12 @@
+{
+  "id": "compat-fixture",
+  "name": "Compat Fixture",
+  "version": "1.0.0",
+  "type": "app",
+  "path": "/compat-fixture",
+  "label": "兼容基线夹具",
+  "order": 99,
+  "apiVersion": "^1.0.0",
+  "peer": { "react": "^18" },
+  "entry": "ui/dist/index.js"
+}

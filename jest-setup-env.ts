@@ -8,6 +8,11 @@
 // 同时补充 jsdom 环境缺失的全局变量（React Router 7 依赖 TextEncoder）。
 
 import { TextEncoder, TextDecoder } from 'util';
+import {
+  ReadableStream,
+  TransformStream,
+  TextDecoderStream,
+} from 'node:stream/web';
 
 // Vite 环境变量默认值
 process.env.VITE_DEFAULT_LANGUAGE_CODE =
@@ -30,4 +35,17 @@ if (typeof (globalThis as any).TextEncoder === 'undefined') {
 }
 if (typeof (globalThis as any).TextDecoder === 'undefined') {
   (globalThis as any).TextDecoder = TextDecoder;
+}
+
+// jsdom 不暴露 Web 流式原语：eventsource-parser/stream 在模块求值期就要
+// TransformStream（宿主 chat 客户端、hooks 的 SSE 解析链），TextDecoderStream/
+// ReadableStream 供流式代码运行时使用。从 Node.js stream/web 补到全局。
+if (typeof (globalThis as any).TransformStream === 'undefined') {
+  (globalThis as any).TransformStream = TransformStream;
+}
+if (typeof (globalThis as any).TextDecoderStream === 'undefined') {
+  (globalThis as any).TextDecoderStream = TextDecoderStream;
+}
+if (typeof (globalThis as any).ReadableStream === 'undefined') {
+  (globalThis as any).ReadableStream = ReadableStream;
 }

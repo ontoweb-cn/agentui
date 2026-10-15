@@ -326,3 +326,28 @@ export const testSandboxConnection = (params: {
     provider_type: params.providerType,
     config: params.config,
   });
+
+// ── 邀请码管理(企业版注册治理,2026-10-14)────────────────────────────
+
+export interface AdminInviteItem {
+  code: string;
+  email: string | null;
+  reserved_member_id: string | null;
+  created_by: string;
+  expires_at: number | null;
+  accepted_by: string | null;
+  revoked_at: number | null;
+  created_at: number;
+  status: 'pending' | 'accepted' | 'expired' | 'revoked';
+}
+
+export const listAdminInvites = (status?: string) =>
+  request.get<
+    ResponseData<{ invites: AdminInviteItem[]; count: number }>
+  >(api.adminListInvites, status ? { params: { status } } : undefined);
+
+export const createAdminInvite = (payload: { email?: string; ttl_seconds?: number; reserved_member_id?: string }) =>
+  request.post<ResponseData<{ code: string; expires_at: number | null }>>(api.adminCreateInvite, payload);
+
+export const revokeAdminInvite = (code: string) =>
+  request.delete<ResponseData<{ revoked: boolean }>>(api.adminRevokeInvite(code));

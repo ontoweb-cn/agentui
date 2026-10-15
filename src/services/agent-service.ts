@@ -16,12 +16,11 @@ const {
   resetAgent,
   listAgentTemplate,
   testDbConnect,
-  getInputElements,
   trace,
   fetchVersionList,
   fetchVersion,
   getAgent,
-  fetchCanvasAgentSessions,
+  fetchAgentLogs,
   fetchExternalAgentInputs,
   prompt,
   cancelDataflow,
@@ -74,10 +73,6 @@ const methods = {
     url: testDbConnect,
     method: 'post',
   },
-  getInputElements: {
-    url: getInputElements,
-    method: 'get',
-  },
   debugSingle: {
     url: (config: { agentId: string; componentId: string }) =>
       api.debug(config.agentId, config.componentId),
@@ -97,8 +92,10 @@ const methods = {
       api.inputForm(config.agentId, config.componentId),
     method: 'get',
   },
+  // SC-008:运行日志经 BFF 忠实透传路由(带筛选/分页参数,响应 {total,data})——
+  // 此前误指向 listSessions(裸 Session[] 且丢弃参数),日志面板恒为空
   fetchAgentLogs: {
-    url: fetchCanvasAgentSessions,
+    url: fetchAgentLogs,
     method: 'get',
   },
   fetchExternalAgentInputs: {

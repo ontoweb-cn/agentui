@@ -289,8 +289,15 @@ wizardRoutes.post('/admin/wizard/probe', async (c) => {
     if (body.type === 'intellect-enterprise') {
       const tenantInfo = await fetchTenantInfo(endpoint);
       if (!tenantInfo) {
+        // 防呆提示(生产联调实测坑):WebUI 地址(如 …/intellect)与网关基址
+        // (如 …/intellect-gateway)都会通过 URL 安全校验,但前者没有
+        // /api/tenant/info——探测失败时显式引导,避免运维在错误基址上排查凭据
         return c.json(
-          { healthy: false, error: '无法访问 /api/tenant/info 端点' } satisfies WizardProbeResponse,
+          {
+            healthy: false,
+            error:
+              '无法访问 /api/tenant/info 端点(请确认 endpoint 填写的是网关基址,如 https://<host>/intellect-gateway,而非 WebUI 页面地址)',
+          } satisfies WizardProbeResponse,
         );
       }
       if (!tenantInfo.tenant_id) {

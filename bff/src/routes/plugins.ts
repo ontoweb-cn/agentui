@@ -2,12 +2,14 @@
  * 运行时插件路由(PawAPP 式动态装载,参考 docs/cognitive-wargame-plugin-migration-design.md)。
  *
  * 路径映射(Vite proxy rewrite 去掉 /api/bff):
- *   前端 GET  /api/bff/plugins                      → BFF /plugins            列出已装插件元数据
+ *   前端 GET  /api/bff/plugins                      → BFF /plugins            列出已装插件元数据(仅 enabled)
  *   前端 GET  /api/bff/plugins/:id/files/*          → BFF /plugins/:id/files/* 静态产物(JS/CSS)
  *   前端 POST /api/bff/plugins/install              → BFF /plugins/install     从本地路径安装
+ *   前端 POST /api/bff/plugins/:id/{enable,disable} → BFF /plugins/:id/{enable,disable} 启停(不动文件)
  *   前端 DELETE /api/bff/plugins/:id                → BFF /plugins/:id         卸载
  *
- * 安装目录:bff/data/plugins/<id>/,内含 app.json 与 ui/ 产物子树。
+ * chat 能力路由(/plugins/:id/chat/*)在 plugins-chat.ts(含守卫链与
+ * capabilities 门控);启停状态与审计存储在 services/plugin-store.ts。
  *
  * 安全模型(评审 H1/H2 修复):
  * - 列表/文件路由公开(插件产物不涉密,与 SPA 同源消费);
@@ -18,19 +20,30 @@
  * - entry/mount path 走白名单校验,阻断以 '..' 越出插件目录的拷贝与路由劫持
  *   (见 validateEntry/validateMountPath)。
  */
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { createReadStream, existsSync } from 'node:fs';
-import { cp, mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
+import {
+  cp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  stat,
+} from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 
 import { fileURLToPath } from 'node:url';
 
+import {
+  appendPluginAudit,
+  isPluginDisabled,
+  PLUGINS_DIR,
+  readPluginState,
+  writePluginState,
+} from '../services/plugin-store';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// 测试可经 BFF_PLUGINS_DIR 注入临时目录(见 plugins.test.ts)
-const PLUGINS_DIR = process.env.BFF_PLUGINS_DIR
-  ? resolve(process.env.BFF_PLUGINS_DIR)
-  : resolve(__dirname, '../../data/plugins');
 
 /** entry 顶层子目录白名单:插件产物只允许落在这些子树下。 */
 const ENTRY_ROOT_ALLOWLIST = ['ui', 'assets', 'dist'];
@@ -66,6 +79,13 @@ interface PluginAppJson {
   order?: number;
   entry: string;
   peer?: { react?: string };
+  /**
+   * 插件开发依据的宿主 API 版本区间(如 '^1.3.0';第三方生态兼容策略,
+   * 语义见 @agentui/plugin-sdk satisfiesApiVersion)。缺省视为任意版本;
+   * 格式非法在安装侧拒绝(此处),区间不满足由宿主装载侧标记不兼容
+   * (卡片可见+明确原因)——格式与语义双端分工,避免判定漂移。
+   */
+  apiVersion?: string;
   /** 词条产物声明(#7):列表接口读取并内联下发,宿主 i18n init 后注入。 */
   i18n?: { files: Record<string, string> };
   /**
@@ -73,6 +93,12 @@ interface PluginAppJson {
    * (SSE 友好)。target 默认回环,可经 app.json 覆盖。
    */
   backend?: { type: 'proxy'; target: string };
+  /**
+   * 能力声明(chat SDK,docs/chat-sse-sdk-design.md):插件运行时消费宿主
+   * 能力的显式清单。chat 路由逐请求校验,未声明 403——运维门控(额度消费
+   * 显式清单)而非安全边界(同源信任模型)。未知值容忍(前向兼容)。
+   */
+  capabilities?: string[];
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -270,8 +296,25 @@ async function inlineI18nResources(
   }
 }
 
+/**
+ * apiVersion 区间格式硬校验(安装/列表双侧生效):支持 `*`、`^1.2.3`、
+ * `~1.2.3`、`>=1.2`、`>1`、`=1.2.3`、裸 `1.2.3`(按 >= 语义)。
+ * 正则与 @agentui/plugin-sdk parseApiVersionRange 保持同构(该包负责
+ * 语义判定,本侧只拦格式非法——双端分工见 PluginAppJson.apiVersion 注释)。
+ */
+export function isValidApiVersionRange(range: unknown): range is string {
+  if (typeof range !== 'string') {
+    return false;
+  }
+  const trimmed = range.trim();
+  return (
+    trimmed === '*' ||
+    /^(\^|~|>=|>|=)?\s*\d+(?:\.\d+){0,2}$/.test(trimmed)
+  );
+}
+
 /** 读取并校验单个插件目录的 app.json;缺失或校验不过均返回 null(列表层跳过)。 */
-async function readPluginMeta(
+export async function readPluginMeta(
   pluginDir: string,
 ): Promise<PluginAppJson | null> {
   const manifestPath = join(pluginDir, 'app.json');
@@ -290,6 +333,9 @@ async function readPluginMeta(
     if (/[^\w.-]/.test(meta.id)) {
       return null;
     }
+    if (meta.apiVersion !== undefined && !isValidApiVersionRange(meta.apiVersion)) {
+      return null;
+    }
     return meta;
   } catch {
     return null;
@@ -300,12 +346,16 @@ pluginsRoutes.get('/plugins', async (c) => {
   if (!existsSync(PLUGINS_DIR)) {
     return c.json([]);
   }
+  // 启停过滤(#16):disabled 的插件不进列表——卡片/路由/词条随宿主下次
+  // 加载整体消失;产物目录保留,enable 即恢复。
+  const { states } = await readPluginState();
   const entries = await readdir(PLUGINS_DIR, { withFileTypes: true });
   const metas: PluginAppJson[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
     const meta = await readPluginMeta(join(PLUGINS_DIR, entry.name));
     if (!meta) continue;
+    if (states[meta.id]?.enabled === false) continue;
     await inlineI18nResources(join(PLUGINS_DIR, entry.name), meta);
     metas.push(meta);
   }
@@ -316,6 +366,10 @@ pluginsRoutes.get('/plugins/:id/files/*', async (c) => {
   const id = c.req.param('id');
   if (/[^\w.-]/.test(id)) {
     return c.text('Forbidden', 403);
+  }
+  // 启停门控(评审 P1):disabled 插件的产物不可下载(kill switch 关数据面)
+  if (await isPluginDisabled(id)) {
+    return c.text('Not Found', 404);
   }
   const rest = c.req.path.replace(/^\/plugins\/[^/]+\/files\//, '');
   // 路径穿越防护:解析后必须仍在该插件目录内
@@ -367,6 +421,25 @@ pluginsRoutes.post('/plugins/install', async (c) => {
   }
   const meta = await readPluginMeta(source);
   if (!meta) {
+    // 针对性诊断(install 是一次性交互,重读 raw 安全):app.json 可解析且
+    // 唯一失效点是 apiVersion 格式时,给出可自助修复的明确指引;其余情形
+    // 保持既有笼统文案(不向调用方枚举校验器内部细节)
+    try {
+      const raw = JSON.parse(
+        await readFile(join(source, 'app.json'), 'utf-8'),
+      ) as { apiVersion?: unknown };
+      if (
+        raw?.apiVersion !== undefined &&
+        !isValidApiVersionRange(raw.apiVersion)
+      ) {
+        return c.text(
+          `app.json apiVersion 格式非法: ${String(raw.apiVersion)}(支持 *、^1.3.0、~1.3、>=1.3、=1.3.0、裸版本)`,
+          400,
+        );
+      }
+    } catch {
+      // app.json 缺失/坏 JSON:走下方既有文案
+    }
     return c.text(
       'source 目录缺少合法 app.json(id/path/label/entry 缺失或校验不过)',
       400,
@@ -414,12 +487,64 @@ pluginsRoutes.post('/plugins/install', async (c) => {
     await rm(staging, { recursive: true, force: true });
   }
 
+  // install ≠ enable(#16):重装只刷新产物,不触碰 plugin-state.json——
+  // 对 disabled 插件重装后仍是 disabled(entrypoint 重装同理,状态存活)。
+  await appendPluginAudit({
+    action: 'install',
+    pluginId: meta.id,
+    version: meta.version ?? null,
+    source,
+  });
+
   return c.json({
     installed: meta.id,
     version: meta.version ?? null,
     backendTargetOverride: override ?? null,
   });
 });
+
+/**
+ * 启停路由(#16,API-first,UI 后置):enable/disable 只写 plugin-state.json,
+ * 不动安装目录。幂等;插件须已安装(404);与 install/delete 同一 admin token
+ * 守卫。状态文件每请求读写(无内存缓存),天然进程重启免疫。
+ */
+async function setPluginEnabled(
+  c: Context,
+  id: string,
+  enabled: boolean,
+): Promise<Response> {
+  if (!isAdminRequest(c.req)) {
+    return c.text('Forbidden: 需要有效的 X-Plugin-Admin-Token', 403);
+  }
+  if (/[^\w.-]/.test(id)) {
+    return c.text('Forbidden', 403);
+  }
+  const dest = resolve(PLUGINS_DIR, id);
+  if (!dest.startsWith(`${PLUGINS_DIR}${sep}`) || !existsSync(dest)) {
+    return c.text('Not Found', 404);
+  }
+  if (enabled) {
+    // enable 校验清单(评审 P3):损坏安装本就被列表过滤,启用必然"200 却
+    // 不可见"——显式拒绝;disable 保持宽松(遮蔽损坏安装是合法操作)
+    const meta = await readPluginMeta(dest);
+    if (!meta) {
+      return c.text('app.json 缺失或非法,无法启用', 400);
+    }
+  }
+  const state = await readPluginState();
+  state.states[id] = { enabled, updatedAt: new Date().toISOString() };
+  await writePluginState(state);
+  await appendPluginAudit({ action: enabled ? 'enable' : 'disable', pluginId: id });
+  return c.json({ id, enabled });
+}
+
+pluginsRoutes.post('/plugins/:id/enable', (c) =>
+  setPluginEnabled(c, c.req.param('id'), true),
+);
+
+pluginsRoutes.post('/plugins/:id/disable', (c) =>
+  setPluginEnabled(c, c.req.param('id'), false),
+);
 
 /**
  * 插件后端代理(#5):流式透传,SSE 友好;查询串(含 ?token=)原样透传。
@@ -433,6 +558,11 @@ pluginsRoutes.all('/plugins/:id/proxy/*', async (c) => {
   const id = c.req.param('id');
   if (/[^\w.-]/.test(id)) {
     return c.text('Forbidden', 403);
+  }
+  // 启停门控(评审 P1):disabled 插件的后端代理通道切断——停用是断路,
+  // 事故止血时流量必须停;404 不向匿名探测者泄露「存在但已停用」
+  if (await isPluginDisabled(id)) {
+    return c.text('Not Found', 404);
   }
   const pluginDir = resolve(PLUGINS_DIR, id);
   if (!pluginDir.startsWith(`${PLUGINS_DIR}${sep}`) || !existsSync(pluginDir)) {
@@ -548,5 +678,12 @@ pluginsRoutes.delete('/plugins/:id', async (c) => {
     return c.text('Not Found', 404);
   }
   await rm(dest, { recursive: true, force: true });
+  // 卸载同时清除启停状态(#16):重装回默认 enabled,不残留陈旧 disabled
+  const state = await readPluginState();
+  if (state.states[id]) {
+    delete state.states[id];
+    await writePluginState(state);
+  }
+  await appendPluginAudit({ action: 'uninstall', pluginId: id });
   return c.json({ removed: id });
 });

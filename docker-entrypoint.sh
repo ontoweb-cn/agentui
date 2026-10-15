@@ -11,8 +11,15 @@ export INTELLECT_RAG_URL="${INTELLECT_RAG_URL:-http://intellect-rag:9380}"
 # 修复:此前 envsubst 未替换这两个变量,容器内 nginx 拿到字面量 ${WARGAME_HOST}
 export WARGAME_HOST="${WARGAME_HOST:-host.docker.internal}"
 export WARGAME_PORT="${WARGAME_PORT:-9385}"
+# 网关化拓扑:上游支持全 URL(https + 路径,如 https://ai.wust.edu.cn/wargame/)。
+# 未设置时回退原 host:port 组合(默认值严格保持既有行为):
+# - WARGAME_UPSTREAM 带路径 /api/v1/(沿用原 proxy_pass 前缀改写语义);
+# - RAG_API_UPSTREAM / RAG_ADMIN_UPSTREAM 不带路径(原样透传请求路径)。
+export WARGAME_UPSTREAM="${WARGAME_UPSTREAM:-http://${WARGAME_HOST}:${WARGAME_PORT}/api/v1/}"
+export RAG_API_UPSTREAM="${RAG_API_UPSTREAM:-http://${INTELLECT_RAG_HOST}:${PYTHON_API_PORT}}"
+export RAG_ADMIN_UPSTREAM="${RAG_ADMIN_UPSTREAM:-http://${INTELLECT_RAG_HOST}:${PYTHON_ADMIN_PORT}}"
 
-envsubst '${INTELLECT_RAG_HOST} ${PYTHON_API_PORT} ${PYTHON_ADMIN_PORT} ${BFF_PORT} ${WARGAME_HOST} ${WARGAME_PORT}' \
+envsubst '${INTELLECT_RAG_HOST} ${PYTHON_API_PORT} ${PYTHON_ADMIN_PORT} ${BFF_PORT} ${WARGAME_HOST} ${WARGAME_PORT} ${WARGAME_UPSTREAM} ${RAG_API_UPSTREAM} ${RAG_ADMIN_UPSTREAM}' \
   < /etc/nginx/http.d/default.conf.template \
   > /etc/nginx/http.d/default.conf
 

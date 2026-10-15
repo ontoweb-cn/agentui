@@ -10,6 +10,7 @@ import { authRoutes } from './routes/auth';
 import { bffAgentRoutes } from './routes/bff-agents';
 import { capabilitiesRoutes } from './routes/capabilities';
 import { harnessAdminRoutes } from './routes/harness-admin';
+import { inviteRoutes } from './routes/invites';
 import { sessionRoutes } from './routes/session';
 import { healthRoutes } from './routes/health';
 import { proxyRoutes } from './routes/proxy';
@@ -36,6 +37,7 @@ import { AgentScopeAdapter } from './services/adapters/agent-scope/agent-scope-a
 import { KagAdapter } from './services/adapters/kag/kag-adapter';
 import { canvasRoutes } from './routes/canvas';
 import { pluginsRoutes } from './routes/plugins';
+import { pluginsChatRoutes } from './routes/plugins-chat';
 import { wizardRoutes } from './routes/wizard';
 // spec-010 v8 B-1 (B1 修复): BootstrapTokenManager 单例,供 wizard setup 鉴权
 import { BootstrapTokenManager } from './services/bootstrap-token';
@@ -133,6 +135,7 @@ app.route('/api/session', sessionRoutes);
 // Intellect RAG Admin stubs/missing routes). Strongly-coupled admin features
 // (users, services, sandbox, system settings) remain on Intellect RAG Admin :9381.
 app.route('/api/admin', adminRoutes);
+app.route('/api/bff/admin', inviteRoutes);
 
 // Multi-Harness P0-前置:透明反向代理 /api/bff/proxy/v1/* → intellect-rag /api/v1/*
 // Constitution Principle I (BFF-Mediated Frontend):前端所有 /api/v1/* 改经此代理。
@@ -208,6 +211,7 @@ app.route('/', capabilitiesRoutes);
 // 路径:前端 /api/bff/plugins/* → Vite proxy rewrite 去掉 /api/bff → BFF 收到 /plugins/*。
 // 列表/静态产物供启动引导与懒装载;install 限本地路径,定位 dev/内部可信环境。
 app.route('/', pluginsRoutes);
+app.route('/', pluginsChatRoutes);
 
 // spec-008: Canvas 路由 — 画布脱离 Proxy 路由
 // Constitution Principle I + III: 前端画布操作经 BFF /canvas/*,硬绑定 IntellectRagAdapter。

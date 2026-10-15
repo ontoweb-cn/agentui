@@ -10,7 +10,9 @@
  * - 全链路 try/catch,initRuntimePlugins 永不 reject(坏数据不白屏宿主);
  * - 逐插件隔离:单条畸形元数据只跳过自己;
  * - mount path 与宿主保留路由冲突的元数据拒绝注册(纵深防御,BFF 侧同规则);
- * - peer.react 版本硬校验:宿主 React 主版本不满足时拒绝装载并记录;
+ * - 兼容性声明(peer.react/apiVersion)不满足 → 卡片保留 +「不兼容」徽标 +
+ *   挂载页明确原因,不装载插件 JS(第三方生态要求"不兼容永不静默";
+ *   结构错误仍走 rejectReason 拒绝注册,见 compatibilityReason);
  * - 装载失败在挂载页显示错误占位与重试,不再只有 console。
  *
  * 降级:BFF 不可达/超时(1.5s)时读 localStorage 上次成功的列表,
@@ -20,6 +22,8 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { version as reactVersion } from 'react';
 import i18next from 'i18next';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
 import type {
   AppPluginCard,
@@ -28,12 +32,18 @@ import type {
 } from '@/features/_types';
 import { registerRuntimeModules } from '@/features/_registry';
 
-import { installAgentUIHostGlobal } from './host-global';
+import { satisfiesApiVersion } from '@agentui/plugin-sdk';
+import { installAgentUIHostGlobal, HOST_API_VERSION } from './host-global';
 import { loadPluginApp } from './loader';
 import type { PluginAppMetadata } from './types';
 
 const PLUGINS_LIST_CACHE_KEY = 'agentui.runtimePlugins';
 const FETCH_TIMEOUT_MS = 1500;
+// 后台刷新监测(#10):API 侧启停/卸载发生后面板无感知,定时 + 聚焦时
+// refetch 列表比对,变化则提示刷新(只提示不热替换路由树,维持"元数据先行")
+const REFRESH_INTERVAL_MS = 60_000;
+const FOCUS_THROTTLE_MS = 30_000;
+const UPDATED_TOAST_DURATION_MS = 8_000;
 
 /** 与 bff/src/routes/plugins.ts 的 RESERVED_MOUNT_PATHS 保持一致。 */
 const RESERVED_MOUNT_PATHS = new Set([
@@ -84,7 +94,7 @@ function satisfiesPeerReact(range: string | undefined): boolean {
   return hostMajor > major || (hostMajor === major && hostMinor >= minor);
 }
 
-/** 元数据注册前统一校验;返回拒绝原因,null 表示可注册。 */
+/** 元数据结构校验;返回拒绝原因,null 表示结构可注册。 */
 export function rejectReason(meta: PluginAppMetadata): string | null {
   if (!meta?.id || typeof meta.id !== 'string') {
     return '缺少 id';
@@ -98,8 +108,25 @@ export function rejectReason(meta: PluginAppMetadata): string | null {
   if (meta.entry.split('/').includes('..') || meta.entry.startsWith('/')) {
     return `entry 非法: ${meta.entry}`;
   }
+  return null;
+}
+
+/**
+ * 兼容性校验(第三方生态,需求"老 SDK 插件兼容/明确不兼容提示"):
+ * 结构合法但不满足版本声明时,插件**仍注册卡片与路由**(可见、可深链),
+ * 装载页显示具体不兼容原因且不加载插件 JS——不兼容必须显性化,不静默。
+ * 两类声明:
+ * - peer.react:宿主 React 主版本硬要求(评审 M2);
+ * - apiVersion:插件开发依据的宿主 API 版本区间,语义见 @agentui/plugin-sdk
+ *   satisfiesApiVersion(缺省 = 任意版本;格式非法已在 BFF 安装侧拒绝)。
+ * 返回原因文案,null 表示兼容。
+ */
+export function compatibilityReason(meta: PluginAppMetadata): string | null {
   if (!satisfiesPeerReact(meta.peer?.react)) {
     return `peer.react 不满足: 声明 ${meta.peer?.react},宿主 React ${reactVersion}`;
+  }
+  if (typeof meta.apiVersion === 'string' && !satisfiesApiVersion(meta.apiVersion, HOST_API_VERSION)) {
+    return `apiVersion 不满足: 声明 ${meta.apiVersion},宿主 API ${HOST_API_VERSION}`;
   }
   return null;
 }
@@ -125,14 +152,23 @@ function createPluginIcon(
   return PluginIcon;
 }
 
-/** 宿主侧挂载页:渲染挂载 div,首载时装载插件 JS 并挂载独立 React root。 */
-function createPluginMountPage(meta: PluginAppMetadata) {
+/** 宿主侧挂载页:渲染挂载 div,首载时装载插件 JS 并挂载独立 React root。
+ * 不兼容插件(incompatibleReason 非空)不装载 JS,显示明确原因页。 */
+function createPluginMountPage(
+  meta: PluginAppMetadata,
+  incompatibleReason?: string,
+) {
   function PluginMountPage() {
+    const { t } = useTranslation();
     const ref = useRef<HTMLDivElement>(null);
     const [error, setError] = useState<string | null>(null);
     const [retryCount, setRetryCount] = useState(0);
 
     useEffect(() => {
+      if (incompatibleReason) {
+        // 版本不兼容:重试无意义,不发起装载(宿主升级/插件升级前稳定提示)
+        return;
+      }
       let disposed = false;
       let dispose: (() => void) | undefined;
       setError(null);
@@ -162,6 +198,24 @@ function createPluginMountPage(meta: PluginAppMetadata) {
       };
     }, [retryCount]);
 
+    if (incompatibleReason) {
+      return (
+        <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-3 rounded-lg border border-border-button bg-bg-card p-10 text-center">
+          <p className="text-base font-medium">
+            {t('plugins.incompatibleTitle', {
+              name: meta.label ?? meta.id,
+            })}
+          </p>
+          <p className="break-all text-sm text-text-secondary">
+            {incompatibleReason}
+          </p>
+          <p className="text-xs text-text-secondary">
+            {t('plugins.incompatibleHint')}
+          </p>
+        </div>
+      );
+    }
+
     if (error) {
       return (
         <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-3 rounded-lg border border-border-button bg-bg-card p-10 text-center">
@@ -188,9 +242,13 @@ function createPluginMountPage(meta: PluginAppMetadata) {
   return PluginMountPage;
 }
 
-/** 导出供单测构造运行时模块(见 __tests__/runtime.test.ts)。 */
-export function toModuleDefinition(meta: PluginAppMetadata): ModuleDefinition {
-  const MountPage = createPluginMountPage(meta);
+/** 导出供单测构造运行时模块(见 __tests__/runtime.test.ts)。
+ * incompatibleReason 非空时卡片带不兼容标注(应用页可见),装载页显示原因。 */
+export function toModuleDefinition(
+  meta: PluginAppMetadata,
+  incompatibleReason?: string,
+): ModuleDefinition {
+  const MountPage = createPluginMountPage(meta, incompatibleReason);
   const loadPage = async () => ({ default: MountPage as ComponentType });
   const routes: LazyRouteConfig[] = [
     // '/x/*' 同时匹配 '/x'(splat 可为空)与全部子路径,深链直达
@@ -205,6 +263,7 @@ export function toModuleDefinition(meta: PluginAppMetadata): ModuleDefinition {
     description: meta.description,
     icon: createPluginIcon(meta.icon),
     order: meta.order ?? 60,
+    incompatibleReason,
   };
   return {
     name: `plugin:${meta.id}`,
@@ -311,6 +370,104 @@ function readCachedPluginList(): PluginAppMetadata[] {
   }
 }
 
+/**
+ * 列表指纹:只取影响卡片/路由/文案锚点/兼容判定的稳定字段,排序后拼接。
+ * apiVersion 入指纹:重装仅改兼容声明(版本号不变)也提示刷新,避免过期
+ * 兼容态展示。词条内联产物(i18nResources)不参与——内容微调不值得打扰用户。
+ */
+function pluginListFingerprint(metas: PluginAppMetadata[]): string {
+  return metas
+    .map((m) =>
+      [
+        m.id,
+        m.version ?? '',
+        m.entry,
+        m.path,
+        m.labelKey ?? '',
+        m.descriptionKey ?? '',
+        m.apiVersion ?? '',
+      ].join('|'),
+    )
+    .sort()
+    .join('\n');
+}
+
+const watchState: {
+  timer: ReturnType<typeof setInterval> | null;
+  lastCheckAt: number;
+  /** 启动时实际注册的列表指纹:翻回此状态 = 页面已一致,不提示(评审 P3)。 */
+  registeredFingerprint: string | null;
+  notifiedFingerprint: string | null;
+} = {
+  timer: null,
+  lastCheckAt: 0,
+  registeredFingerprint: null,
+  notifiedFingerprint: null,
+};
+
+/**
+ * 后台刷新监测(中期任务 #10,详见 docs/plugin-midterm-review.md):
+ * 每 60s 或窗口聚焦(节流 30s)时 refetch 列表,指纹不同于启动注册基线
+ * 且未提示过 → toast「刷新生效」。翻回注册基线不提示(页面本就一致),
+ * 列表振荡不重复打扰。失败静默;返回清理函数供测试。
+ */
+export function startPluginListWatch(): () => void {
+  if (typeof window === 'undefined' || watchState.timer) {
+    return () => undefined;
+  }
+  const check = async () => {
+    const now = Date.now();
+    if (now - watchState.lastCheckAt < FOCUS_THROTTLE_MS) {
+      return;
+    }
+    watchState.lastCheckAt = now;
+    try {
+      const metas = await fetchPluginList();
+      localStorage.setItem(PLUGINS_LIST_CACHE_KEY, JSON.stringify(metas));
+      const fingerprint = pluginListFingerprint(metas);
+      // 独立启动(未经 initRuntimePlugins)时无注册基线:首个成功检查设基线
+      if (watchState.registeredFingerprint === null) {
+        watchState.registeredFingerprint = fingerprint;
+      } else if (
+        fingerprint !== watchState.registeredFingerprint &&
+        fingerprint !== watchState.notifiedFingerprint
+      ) {
+        watchState.notifiedFingerprint = fingerprint;
+        toast.info(i18next.t('plugins.updatedToast'), {
+          duration: UPDATED_TOAST_DURATION_MS,
+        });
+      }
+    } catch {
+      // 后台刷新失败静默,下次触发再试
+    }
+  };
+  const onWindowFocus = () => {
+    void check();
+  };
+  window.addEventListener('focus', onWindowFocus);
+  watchState.timer = setInterval(() => {
+    void check();
+  }, REFRESH_INTERVAL_MS);
+  return () => {
+    if (watchState.timer) {
+      clearInterval(watchState.timer);
+      watchState.timer = null;
+    }
+    window.removeEventListener('focus', onWindowFocus);
+  };
+}
+
+/** 测试专用:重置监测状态(fake timers 下 Date.now 跨用例会污染节流时间戳)。 */
+export function resetPluginListWatchForTests(): void {
+  if (watchState.timer) {
+    clearInterval(watchState.timer);
+    watchState.timer = null;
+  }
+  watchState.lastCheckAt = 0;
+  watchState.registeredFingerprint = null;
+  watchState.notifiedFingerprint = null;
+}
+
 let initialized = false;
 
 export async function initRuntimePlugins(): Promise<void> {
@@ -331,13 +488,21 @@ export async function initRuntimePlugins(): Promise<void> {
     }
   }
 
-  // 逐插件隔离 + 注册前校验:任何单条坏数据只跳过自己,不影响宿主与其余插件
+  // 逐插件隔离 + 注册前校验:结构错误只跳过自己;兼容性失败保留卡片并
+  // 显性标注(第三方生态要求"不能兼容要有明确提示",不静默消失)
   const defs: ModuleDefinition[] = [];
   for (const meta of metas) {
     try {
       const reason = rejectReason(meta);
       if (reason) {
         console.warn(`[plugins] 拒绝注册插件 ${meta?.id}: ${reason}`);
+        continue;
+      }
+      const compat = compatibilityReason(meta);
+      if (compat) {
+        console.warn(`[plugins] 插件 ${meta?.id} 与宿主不兼容(卡片保留): ${compat}`);
+        injectPluginI18n(meta);
+        defs.push(toModuleDefinition(meta, compat));
         continue;
       }
       injectPluginI18n(meta);
@@ -352,4 +517,8 @@ export async function initRuntimePlugins(): Promise<void> {
     // registry 变更异常也不允许阻塞宿主启动
     console.error('[plugins] 运行时模块注册失败:', err);
   }
+
+  // 后台刷新监测(#10):基线取本次启动实际注册的列表(可能来自缓存)
+  watchState.registeredFingerprint = pluginListFingerprint(metas);
+  startPluginListWatch();
 }

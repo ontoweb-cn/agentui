@@ -59,6 +59,14 @@ export default function ApplicationList() {
                       <Icon className="size-5 stroke-[1.5]" aria-hidden />
                     </span>
                     <span className="text-base font-medium">{labelText}</span>
+                    {app.incompatibleReason && (
+                      <span
+                        data-testid={`app-card-incompatible-${app.id}`}
+                        className="ml-auto rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-600 dark:text-amber-400"
+                      >
+                        {t('plugins.incompatibleBadge')}
+                      </span>
+                    )}
                   </div>
                   {descriptionText && (
                     <p className="text-sm text-text-secondary">

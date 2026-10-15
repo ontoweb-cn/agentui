@@ -18,9 +18,10 @@
     "prepare": "husky install",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
-    "test": "jest --no-cache --coverage",
+    "test": "jest --coverage",
     "type-check": "tsc --noEmit",
-    "gen:api-types": "tsx scripts/gen-api-types.ts"
+    "gen:api-types": "tsx scripts/gen-api-types.ts",
+    "check:plugin-tailwind": "node scripts/check-plugin-tailwind-drift.mjs"
   },
   "lint-staged": {
     "*.{css,less,json}": "prettier --write --ignore-unknown",

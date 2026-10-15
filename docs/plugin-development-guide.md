@@ -5,11 +5,19 @@
 > `web/qwenpaw`(QwenPaw 宿主,同一源码基线的另一档)。
 > 机制设计:见 [cognitive-wargame-plugin-migration-design.md](./cognitive-wargame-plugin-migration-design.md)(含实现纪要)。
 
-## 0. 工程结构速览
+## 0.0 快速开始(第三方团队,2026-10-14 起推荐路径)
+
+1. **获取模板**:复制宿主仓库 `packages/plugin-template/` 为你的工程(全局替换 `hello-world` → 插件 id、`my-agentui-plugin` → 包名);
+2. **声明依赖**:`@agentui/plugin-sdk` 是唯一的宿主契约依赖——类型(免手抄 `window.AgentUI` 接口)+ `definePlugin`/`satisfiesApiVersion` helper。宿主 workspace 内自动链接;独立仓库经 `npm pack` 产物或 file: 引用获取(registry 接入后直接 install);
+3. **开发-构建-安装**:README 三条命令;或继续阅读本文了解全部约束。
+
+## 0.1 工程结构速览
 
 | 位置 | 内容 |
 |---|---|
-| 插件仓库 `cognitive-wargame/web/agentui/` | app.json、src/(入口+页面+词条)、scripts/(构建/边界/CI)、ui/dist(产物) |
+| 插件模板 `agentui/packages/plugin-template/` | 复制即用的起点(app.json/入口/vite lib 构建/边界守卫) |
+| 插件 SDK `agentui/packages/plugin-sdk/` | `@agentui/plugin-sdk`:契约类型 + helper(第三方唯一声明依赖) |
+| 插件仓库 `cognitive-wargame/web/agentui/` | 参考实现:app.json、src/(入口+页面+词条)、scripts/(构建/边界/CI)、ui/dist(产物) |
 | 宿主内核 `agentui/src/plugins/` | host-global(window.AgentUI)、loader(装载)、runtime(bootstrap) |
 | BFF `agentui/bff/src/routes/plugins.ts` | 列表/文件/安装/代理/卸载 |
 | 部署 `agentui/deploy/` | 发版 runbook、compose/k8s、插件 bundle |
@@ -43,6 +51,8 @@ localStorage(含宿主登录 token)。本机制只面向**内部可信仓库**�
   "order": 60,                       // 应用卡片排序
   "entry": "ui/dist/index.js",       // 顶层目录必须 ∈ {ui, assets, dist},
                                      // 相对路径且不含 ".."
+  "apiVersion": "^1.3.0",            // 开发依据的宿主 API 版本区间(兼容声明,见 §10);
+                                     // 缺省=任意版本;格式非法在安装侧拒绝
   "peer": { "react": "^18" },        // 宿主校验声明(React 主版本硬校验)
   "i18n": {                          // 词条产物 → BFF 列表接口内联 →
     "files": { "zh": "ui/locales/zh.json", "en": "ui/locales/en.json" }
@@ -59,22 +69,13 @@ localStorage(含宿主登录 token)。本机制只面向**内部可信仓库**�
 
 ```tsx
 // src/index.tsx —— 构建产物入口(自包含,零裸模块导入)
+// 契约类型来自 @agentui/plugin-sdk(单源;历史上手抄 interface 的做法已废弃)
 import { createRoot } from 'react-dom/client';
+import { definePlugin } from '@agentui/plugin-sdk';
 
-type Dispose = () => void;
-
-interface AgentUIHostGlobal {
-  HOST_API_VERSION: string;          // '1.1.0':含 on() 事件订阅
-  registerApp(reg: { id: string; mount(el: HTMLElement): Dispose }): void;
-  on?(event: 'localechange' | 'themechange',
-      listener: (p: { lng?: string; theme?: string }) => void): () => void;
-}
-
-declare const window: Window & { AgentUI?: AgentUIHostGlobal };
-
-window.AgentUI!.registerApp({
+export default definePlugin({
   id: 'my-app',
-  mount(el) {
+  mount(el: HTMLElement) {
     // 1) 注入自带 CSS(<style>,卸载时移除)
     // 2) createRoot(el).render(<App/>)
     return () => { /* root.unmount(); style.remove(); 清理 store/连接 */ };
@@ -83,6 +84,7 @@ window.AgentUI!.registerApp({
 ```
 
 要点:
+- `definePlugin` 提供完整类型并在宿主全局缺失时抛可诊断错误;
 - `mount` 返回 dispose 函数,必须对称清理(root、style、EventSource、query 缓存);
 - 宿主事件订阅(`on`)用于同标签页即时跟随语言/主题,storage 事件兜底跨 tab;
 - 宿主 React 不会传给插件——插件 bundle 必须自带全部依赖。
@@ -133,10 +135,22 @@ curl -X POST http://localhost:9390/plugins/install \
 随 agentui 镜像分发,容器启动自动安装;`BFF_PLUGIN_BACKEND_OVERRIDES`
 按插件 id 覆盖 backend.target(存在即生效,改 env 重启容器即生效)。
 
-**卸载**:`DELETE /api/bff/plugins/<id>`(需 admin token)删除安装目录;
-已装载插件的前端实例**需刷新页面才失效**(已知限制,不做运行时卸载)。
+**启停(不删文件)**:`POST /api/bff/plugins/<id>/enable` 与
+`POST /api/bff/plugins/<id>/disable`(需 admin token,幂等)。状态存
+`bff/data/plugin-state.json`——位于安装目录**之外**,容器重启/重装不冲掉;
+disabled 插件从插件列表消失(卡片/路由/词条随宿主下次加载整体消失),
+产物保留,enable 即恢复。**停用即断路**:该插件的产物下载(files)与
+后端代理(proxy)同步 404——kill switch 关闭数据面,而非仅隐藏 UI 入口。
+**install ≠ enable**:对 disabled 插件重装只刷新产物,不改变启停状态
+(entrypoint 每次容器启动重装同理,状态存活);卸载会清除启停状态,重装
+回默认 enabled;enable 要求 app.json 合法(损坏安装 400,disable 宽松)。
 
-**enable/disable 启停路由未实现**(当前启停=删除/重装)。
+**卸载**:`DELETE /api/bff/plugins/<id>`(需 admin token)删除安装目录;
+已装载插件的前端实例**需刷新页面才失效**(宿主监测列表变化会 toast 提示
+刷新,不做运行时卸载)。
+
+**审计**:install/uninstall/enable/disable 成功操作逐行追加 JSONL
+`bff/data/plugin-audit.jsonl`(env `BFF_PLUGIN_AUDIT_FILE` 覆盖)。
 
 宿主侧安全约束(安装面):token fail-closed、entry/mount path 白名单、
 backend.target 严格 IP 白名单(override 走部署者宽松级)——
@@ -167,3 +181,84 @@ registerApp 侧效果、语言归一化、mount/dispose 生命周期、宿主事
 - 词条/卡片文案:词条随元数据注入(插件 JS 未装载也可本地化);
   顶层 key 与宿主已有词条冲突会被跳过并告警——**插件词条请使用
   自身命名空间前缀**(如 `myApp.*`)。
+
+## 8. 宿主 chat 能力(1.2.0)
+
+插件可经 `window.AgentUI.chat` 流式消费宿主的 gateway chat 通道
+(设计契约与帧协议:**chat-sse-sdk-design.md**;机制参照 QwenPaw
+pawapp-sdk 的 chatStream)。**插件代码零凭证、零 SSE 解析依赖**——
+网关凭据(API_SERVER_KEY/X-Intellect-User)全程在 BFF 服务端注入。
+
+**前置声明(必读)**:app.json 增加 `"capabilities": ["chat"]`。
+BFF 逐请求校验,未声明一律 **403**——这是运维门控(额度消费者显式清单),
+不是安全边界;停用的插件 chat 同样 404(启停断路,§6)。
+
+```tsx
+// feature-detect(1.1.0 宿主无 chat,向后兼容)
+const chat = window.AgentUI.chat;
+if (!chat) return;
+
+// 1) 建 gateway 会话(标题自动加 plugin:<your-app>: 前缀,
+//    宿主主聊天列表默认不展示;经 API/深链仍可访问)
+const { id } = await chat.createSession('my-app', '推演会话');
+
+// 2) 流式补全:for-await 逐帧消费;提前 break 即中断上游
+for await (const frame of chat.completions('my-app', {
+  sessionId: id,
+  content: userInput,          // 必填
+  modelId: undefined,          // 可选,不传用部署默认模型
+})) {
+  switch (frame.event) {
+    case 'message':       /* {content, answer, start_to_think?...} 增量 */ break;
+    case 'message_end':   /* {usage} */ break;
+    case 'workflow_finished': /* 终止帧 */ break;
+    case 'error':         /* {message,...} 协议内错误,流随之结束 */ break;
+    default:              /* 未知帧必须忽略(前向兼容义务) */ break;
+  }
+}
+
+// 3) 中止:传 AbortSignal
+const controller = new AbortController();
+chat.completions('my-app', { sessionId: id, content }, { signal: controller.signal });
+// 组件卸载/路由离开时 controller.abort()
+```
+
+语义要点:
+- `completions` 返回 **AsyncGenerator**;每帧 `{event, data}`,与宿主 chat
+  帧协议**逐帧一致**(同一 BFF 重序列化通道);
+- `error` 帧是协议内数据(yield 后流结束);HTTP/网络失败才 throw
+  (消息含状态码,如 401 未登录 / 403 未声明能力 / 404 插件不存在或停用);
+- 会话必须先经 `createSession` 创建,`sessionId` 必填,不做匿名一次性会话;
+- 审批(approval_request)/澄清(clarify_request)帧 v1 只透传;需要响应时
+  直调既有 `/agents/:agentId/runs/:runId/approval` 路由(同源 cookie 已鉴权);
+- 企业 cookie 会话失效时请求 401——插件应引导用户重新登录,而非缓存凭证。
+
+## 10. 版本兼容策略(2026-10-14,第三方生态)
+
+宿主与插件之间以**双端声明 + 装载校验**保证兼容性可验证:
+
+**契约演进纪律**(宿主侧承诺):
+
+- `HOST_API_VERSION` 同 **major 内只做加法**:新增可选方法/字段允许(major+1);
+  改签名/删导出/改语义 = 破坏性,必须 bump major;
+- 契约面以 `@agentui/plugin-sdk` 为单一事实源(宿主 `src/plugins/types.ts`
+  仅 re-export);`SDK_VERSION` 与 `HOST_API_VERSION` 同步演进(单测锁定)。
+
+**插件侧声明**(app.json):
+
+| 声明 | 语义 |
+|---|---|
+| 缺省 / `*` | 任意宿主版本可装载 |
+| `^1.3.0` | 同 major 且宿主 ≥ 1.3.0(**推荐**:老插件在新宿主同 major 内天然兼容) |
+| `~1.3.0` | 同 major.minor 且宿主 ≥ 补丁 |
+| `>=1.3.0`、`1.3`、`1` | 不低于声明 |
+| `=1.3.0` | 精确相等 |
+
+**验证与提示链路**:
+
+1. **安装侧**(BFF):`apiVersion` 格式非法 → 拒绝安装(400);
+2. **装载侧**(宿主 runtime):`apiVersion`/`peer.react` 不满足 → 插件 JS **不装载**,
+   但卡片保留并标注「不兼容」徽标,深链进入挂载页显示具体原因
+   (声明区间 vs 宿主版本)与处理指引——**不兼容永不静默**;
+3. 插件可运行时自检:`satisfiesApiVersion(range)` + feature-detect
+   (`if (window.AgentUI.chat)`)——用于在同 major 内优雅降级使用旧 API 面。

@@ -163,6 +163,27 @@ function LoginFormContent({
                 )
               )}
 
+              {title === 'register' && isEnterprise && (
+                <FormField
+                  control={form.control}
+                  name="invite_code"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('inviteCodeLabel')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          data-testid="auth-invite-code"
+                          placeholder={t('inviteCodePlaceholder')}
+                          autoComplete="off"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
               <FormField
                 control={form.control}
                 name="password"
@@ -341,6 +362,8 @@ const Login = () => {
     .object({
       nickname: z.string().optional(),
       display_name: z.string().optional(),
+      /** 企业注册邀请码(可选;是否必填由网关部署裁决,缺失时网关 400 并透出指引) */
+      invite_code: z.string().optional(),
       login_name: z.string().optional(),
       email: z.string().optional(),
       password: z.string().min(1, { message: t('passwordPlaceholder') }),
@@ -404,6 +427,7 @@ const Login = () => {
     defaultValues: {
       nickname: '',
       display_name: '',
+      invite_code: '',
       login_name: '',
       email: '',
       password: '',
@@ -435,6 +459,7 @@ const Login = () => {
             login_name: params.login_name ?? '',
             display_name: params.display_name ?? '',
             password,
+            invite_code: (params.invite_code ?? '').trim() || undefined,
           });
           if (code === 0) {
             setTitle('login');

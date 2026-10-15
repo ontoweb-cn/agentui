@@ -99,7 +99,7 @@ function fail(code: number, message: string) {
 /**
  * 获取 tenant 的 authMode,默认 intellect-community(向后兼容)。
  */
-function getAuthMode(backendStore: BackendStore | undefined, tenantId: string): AuthMode {
+export function getAuthMode(backendStore: BackendStore | undefined, tenantId: string): AuthMode {
   if (!backendStore) return 'intellect-community';
   const tenant = backendStore.getBackend(tenantId);
   return tenant?.authMode ?? 'intellect-community';
@@ -113,7 +113,7 @@ function getAuthMode(backendStore: BackendStore | undefined, tenantId: string): 
  *
  * @returns null 表示 tenant 不存在或 backend 未配置(调用方应返回 502)
  */
-function getEnterpriseBackend(
+export function getEnterpriseBackend(
   backendStore: BackendStore | undefined,
   harnessStore: HarnessStore | undefined,
   tenantId: string,
@@ -133,7 +133,7 @@ function getEnterpriseBackend(
  * 向 intellect-team 后端发起请求,自动注入 Authorization header。
  * 消除各路由中重复的 header 构造和 URL 拼接。
  */
-async function enterpriseFetch(
+export async function enterpriseFetch(
   backend: { baseUrl: string; apiServerKey: string },
   path: string,
   init?: RequestInit,
@@ -399,12 +399,14 @@ authRoutes.post('/auth/register', async (c) => {
 
   if (authMode === 'intellect-enterprise') {
     // 企业版:调 intellect-team POST /api/members/register
-    const { login_name, email, password, display_name, nickname } = body as {
+    const { login_name, email, password, display_name, nickname, invite_code } = body as {
       login_name?: string;
       email?: string;
       password?: string;
       display_name?: string;
       nickname?: string;
+      /** 邀请码(网关侧已实现该契约,生产部署要求时必填;是否必填由网关裁决) */
+      invite_code?: string;
     };
     // 前端字段兼容:login_name 优先,其次 email;display_name 优先,其次 nickname
     const resolvedLoginName = login_name ?? email;
@@ -429,6 +431,11 @@ authRoutes.post('/auth/register', async (c) => {
           password,
           display_name: resolvedDisplayName,
           email,
+          // 邀请码透传:是否必填由网关部署裁决(生产环境要求时前端表单提供),
+          // BFF 不做硬校验,缺省不下发该字段
+          ...(typeof invite_code === 'string' && invite_code.trim() !== ''
+            ? { invite_code: invite_code.trim() }
+            : {}),
         }),
       });
     } catch (err) {
@@ -438,6 +445,39 @@ authRoutes.post('/auth/register', async (c) => {
 
     if (resp.status === 409) {
       return c.json(fail(409, 'Registration conflict: login_name already exists'), 409);
+    }
+    if (resp.status === 400) {
+      // 400 细分:网关(≥2026-10 邀请码版)返回结构化 code(D6 契约),按 code
+      // 转译为可自助修复的文案;/invite/i 正则兜底兼容旧网关文案形态。
+      const text = await resp.text().catch(() => '');
+      console.error(`[auth] intellect-team register failed: 400`, text);
+      let code: string | null = null;
+      try {
+        const parsed = JSON.parse(text) as { error?: { code?: string } };
+        code = parsed?.error?.code ?? null;
+      } catch {
+        /* 非 JSON,走正则兜底 */
+      }
+      const inviteMessages: Record<string, string> = {
+        invite_required: '注册需要邀请码,请向管理员获取后重试',
+        invite_invalid: '邀请码无效(可能已撤销或填写有误)',
+        invite_revoked: '邀请码已被管理员撤销,请向管理员重新获取',
+        invite_used: '邀请码已被使用',
+        invite_expired: '邀请码已过期,请向管理员重新获取',
+        invite_email_mismatch: '注册邮箱与邀请码指定的邮箱不一致',
+        display_name_taken: '显示名已被占用,请更换后重试',
+      };
+      if (code && inviteMessages[code]) {
+        return c.json(fail(400, inviteMessages[code]), 400);
+      }
+      if (!code && /invite/i.test(text)) {
+        // 旧网关兜底:文案提及 invite 时给出笼统邀请码指引。
+        return c.json(
+          fail(400, '邀请码缺失或无效(Registration requires a valid invite code)'),
+          400,
+        );
+      }
+      return c.json(fail(400, 'intellect-team register failed'), 400);
     }
     if (resp.status === 403) {
       return c.json(fail(403, 'Registration disabled'), 403);
@@ -694,9 +734,13 @@ authRoutes.get('/auth/login/:channel', async (c) => {
     }
     let resp: Response;
     try {
+      // D8:invite_code 透传(前端带 ?invite_code= 跳 OAuth 时随流携带,
+      // 网关写入 state,callback 兑换注册;缺省不追加,保持 URL 干净)。
+      const inviteCode = (c.req.query('invite_code') || '').trim();
+      const inviteQuery = inviteCode ? `&invite_code=${encodeURIComponent(inviteCode)}` : '';
       resp = await enterpriseFetch(
         backend,
-        `/api/oauth/login/${encodeURIComponent(channel)}?usage=login`,
+        `/api/oauth/login/${encodeURIComponent(channel)}?usage=login${inviteQuery}`,
         { method: 'GET', redirect: 'manual' },
       );
     } catch (err) {
