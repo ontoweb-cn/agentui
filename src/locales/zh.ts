@@ -878,6 +878,8 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
       replyInstantly: '我们通常会即时回复',
       typeYourMessage: '输入您的消息...',
       messagePlaceholder: '请输入消息...',
+      modelSelectorLabel: '模型',
+      modelSelectorDefault: '网关默认',
       exit: '退出',
       multipleModels: '多模型',
       applyModelConfigs: '应用模型配置',

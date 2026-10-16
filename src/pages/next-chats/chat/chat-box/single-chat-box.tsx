@@ -3,12 +3,16 @@ import MessageItem from '@/components/message-item';
 import PdfSheet from '@/components/pdf-drawer';
 import { useClickDrawer } from '@/components/pdf-drawer/hooks';
 import { SelectedTextReply } from '@/components/selected-text-reply';
+import { Authorization } from '@/constants/authorization';
 import { MessageType } from '@/constants/chat';
 import { useFetchChat, useGetChatSearchParams } from '@/hooks/use-chat-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { IClientConversation } from '@/interfaces/database/chat';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/utils/api';
 import { buildMessageUuidWithRole } from '@/utils/chat';
-import { useEffect, useRef } from 'react';
+import { getAuthorization } from '@/utils/authorization-util';
+import { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useGetSendButtonDisabled,
@@ -62,6 +66,10 @@ export function SingleChatBox({
     submitApproval,
     // clarify: 澄清回答提交方法(仅 gateway 路径有效,RAG 路径为 noop)
     submitClarify,
+    // P0-3: gateway 会话级模型选择
+    selectedModel,
+    onSelectedModelChange,
+    isGatewayChat,
   } = useSendMessage(controller);
   const { data: userInfo } = useFetchUserInfo();
   const { data: currentDialog } = useFetchChat();
@@ -74,6 +82,38 @@ export function SingleChatBox({
     useClickDrawer();
 
   const showInternet = useShowInternet();
+
+  // P0-3: gateway 路径拉取可选模型列表(BFF GET /api/bff/agents → 网关 /v1/models)。
+  // 社区版网关可能仅返回占位名(如 intellect-agent),芯片仍提供"网关默认"兜底,
+  // 精确 provider 模型名可用 /model <name> 自由文本设置。
+  const { data: gatewayModels } = useQuery({
+    queryKey: ['gatewayModels'],
+    queryFn: async () => {
+      const resp = await fetch(api.gatewayModels, {
+        headers: { [Authorization]: getAuthorization() },
+      });
+      if (!resp.ok) return [] as string[];
+      const list = (await resp.json()) as Array<{ id?: string; name?: string }>;
+      return Array.isArray(list)
+        ? list.map((m) => m.name || m.id || '').filter(Boolean)
+        : [];
+    },
+    enabled: isGatewayChat,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  // 停止生成:先请求 BFF 网关侧取消 run(fire-and-forget,失败不影响本地断流),
+  // 再沿用原有 AbortController 断开 SSE。BFF 无活跃 run 记录时幂等返回 204。
+  const handleStopOutput = useCallback(() => {
+    if (conversationId) {
+      void fetch(api.agentSessionStop('chat', conversationId), {
+        method: 'POST',
+        headers: { [Authorization]: getAuthorization() },
+      }).catch(() => {});
+    }
+    stopOutputMessage();
+  }, [conversationId, stopOutputMessage]);
 
   useEffect(() => {
     const messages = conversation?.messages;
@@ -194,7 +234,7 @@ export function SingleChatBox({
           createConversationBeforeUploadDocument={
             createConversationBeforeUploadDocument
           }
-          stopOutputMessage={stopOutputMessage}
+          stopOutputMessage={handleStopOutput}
           onUpload={handleUploadFile}
           isUploading={isUploading}
           removeFile={removeFile}
@@ -207,6 +247,13 @@ export function SingleChatBox({
           slashCommandContext={slashCommandContext}
           onSlashCommandExecuted={onSlashCommandExecuted}
           onSlashCommandClose={onSlashCommandClose}
+          {...(isGatewayChat && onSelectedModelChange
+            ? {
+                modelValue: selectedModel,
+                modelOptions: gatewayModels,
+                onModelChange: onSelectedModelChange,
+              }
+            : {})}
         />
         {visible && (
           <PdfSheet

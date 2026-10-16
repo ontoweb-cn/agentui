@@ -415,6 +415,10 @@ export function dispatchSseFrame(
       handlers.onUsage({
         promptTokens: Number(usage.promptTokens ?? 0),
         completionTokens: Number(usage.completionTokens ?? 0),
+        // P1-4: BFF 防御性透传的 contextLength(网关若提供则 ContextRing 用真实窗口值)
+        ...(usage.contextLength !== undefined
+          ? { contextLength: Number(usage.contextLength) }
+          : {}),
       });
       return false;
     }

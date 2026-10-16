@@ -15,13 +15,21 @@ import {
 import { ContextRing } from '@/components/context-ring';
 import { SlashCommandPalette } from '@/components/message-input/slash-command-palette';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
 import { ICommandContext } from '@/interfaces/command';
 import { cn } from '@/lib/utils';
 import { t } from 'i18next';
 import {
   Atom,
+  ChevronDown,
   CircleStop,
+  Cpu,
   Globe,
   Paperclip,
   Send,
@@ -77,6 +85,12 @@ interface NextMessageInputProps {
   onSlashCommandExecuted?: () => void;
   /** P3：Slash 命令面板关闭回调（按 Esc 或点击外部） */
   onSlashCommandClose?: () => void;
+  /** P0-3：gateway 会话级模型选择——提供 onModelChange 时渲染模型芯片 */
+  modelValue?: string;
+  /** P0-3：可选模型列表(来自 BFF GET /agents → /v1/models);/model 自由文本可绕过 */
+  modelOptions?: string[];
+  /** P0-3：模型变更回调(空串=恢复网关默认) */
+  onModelChange?: (model: string) => void;
 }
 
 export function NextMessageInput({
@@ -101,6 +115,9 @@ export function NextMessageInput({
   slashCommandContext,
   onSlashCommandExecuted,
   onSlashCommandClose,
+  modelValue,
+  modelOptions,
+  onModelChange,
 }: NextMessageInputProps) {
   const [files, setFiles] = React.useState<File[]>([]);
   const [audioInputValue, setAudioInputValue] = React.useState<string | null>(
@@ -319,6 +336,44 @@ export function NextMessageInput({
                 contextLength={contextLength}
                 completionTokens={contextCompletionTokens}
               />
+            )}
+
+            {onModelChange && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="transparent"
+                    className="h-7 border-0 px-2 text-sm text-text-secondary"
+                    data-testid="chat-detail-model-toggle"
+                  >
+                    <Cpu />
+                    <span className="max-w-36 truncate">
+                      {modelValue || t('chat.modelSelectorDefault')}
+                    </span>
+                    <ChevronDown className="size-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem
+                    onClick={() => onModelChange('')}
+                    className={cn(!modelValue && 'bg-bg-card')}
+                  >
+                    {t('chat.modelSelectorDefault')}
+                  </DropdownMenuItem>
+                  {(modelOptions ?? [])
+                    .filter((m) => m && m !== modelValue)
+                    .map((m) => (
+                      <DropdownMenuItem
+                        key={m}
+                        onClick={() => onModelChange(m)}
+                      >
+                        {m}
+                      </DropdownMenuItem>
+                    ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
 

@@ -132,6 +132,13 @@ export function SlashCommandPaletteImpl({
       .map((m) => m.name)
       .filter((name) => name.toLowerCase().includes(parsed.arg.toLowerCase()))
       .slice(0, 20); // 限制 20 条避免渲染性能问题
+    // P0-3: 模型列表为空时(RAG 未配模型/gateway 社区版 /v1/models 无 provider 模型名),
+    // 把已输入参数作为自由文本条目展示——/model 本身支持任意后端可接受的模型名,
+    // 不应因列表为空而不可用(gateway 路径经 switchModel 落 localStorage)。
+    if (models.length === 0 && parsed.arg.trim()) {
+      setModelSubArgs([parsed.arg.trim()]);
+      return;
+    }
     setModelSubArgs(models);
   }, [parsed, allModels]);
 

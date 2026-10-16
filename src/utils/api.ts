@@ -291,6 +291,11 @@ export default {
   // clarify 澄清:POST /api/bff/agents/:agentId/sessions/:sessionId/clarify
   agentSessionClarify: (agentId: string, sessionId: string) =>
     `${bffAgents}/${agentId}/sessions/${sessionId}/clarify`,
+  // 停止生成:POST /api/bff/agents/:agentId/sessions/:sessionId/stop(网关侧取消 run)
+  agentSessionStop: (agentId: string, sessionId: string) =>
+    `${bffAgents}/${agentId}/sessions/${sessionId}/stop`,
+  // P0-3: gateway 可选模型列表(GET /api/bff/agents → adapter /v1/models)
+  gatewayModels: `${bffAgents}`,
   resetAgent: (agentId: string) => `${bffCanvas}/${agentId}/reset`,
   testDbConnect: `${bffCanvas}/test_db_connection`,
   debug: (agentId: string, componentId: string) =>

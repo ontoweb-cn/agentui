@@ -118,6 +118,34 @@ export const useSendMessage = (controller: AbortController) => {
   // 与 chat/index.tsx 的 fetchConversation 中 effectiveConversationId 模式保持一致。
   const isGatewayChat = (conversationId || chatId) === chatId;
 
+  // P0-3: gateway 会话级模型选择。
+  // 网关侧无 user-model 持久化字段(PATCH 仅 title),与 chat_app_name_<id> 同款
+  // localStorage 兜底;空串 = 跟随网关默认模型。发送时经 body.model_id 透传
+  // (BFF completions 路由 → /v1/runs body.model)。
+  const [selectedModel, setSelectedModel] = useState('');
+  useEffect(() => {
+    if (!chatId) {
+      setSelectedModel('');
+      return;
+    }
+    try {
+      setSelectedModel(localStorage.getItem(`chat_model_${chatId}`) ?? '');
+    } catch {
+      setSelectedModel('');
+    }
+  }, [chatId]);
+  const handleSelectedModelChange = useCallback(
+    (model: string) => {
+      setSelectedModel(model);
+      try {
+        if (chatId) localStorage.setItem(`chat_model_${chatId}`, model);
+      } catch {
+        // localStorage 不可用(隐私模式等):仅内存态,本轮会话内仍生效
+      }
+    },
+    [chatId],
+  );
+
   // 根据当前 chat 来源选择对应 hook 的状态（answer/done/send）
   const activeSse = isGatewayChat ? gatewaySse : ragSse;
   const { answer, done } = activeSse;
@@ -145,6 +173,11 @@ export const useSendMessage = (controller: AbortController) => {
               session_id: sessionId,
               content: message.content,
               agent_id: GATEWAY_CHAT_AGENT_ID,
+              // P0-3: 会话级模型选择(localStorage 兜底,空串=跟随网关默认)。
+              // 网关 /v1/runs body.model;社区版网关必须显式 model 否则空模型名 400。
+              ...(isGatewayChat && selectedModel
+                ? { model_id: selectedModel }
+                : {}),
             },
             controller,
           )
@@ -201,6 +234,7 @@ export const useSendMessage = (controller: AbortController) => {
       ragSse.send,
       gatewaySse.send,
       isGatewayChat,
+      selectedModel,
       controller,
     ],
   );
@@ -558,22 +592,34 @@ export const useSendMessage = (controller: AbortController) => {
   }, [contextPromptTokens, contextCompletionTokens]);
 
   // Batch 1-C: /model 实现 - 实际切换模型
-  // 设计决策（PM1 评审）：
-  // - 通过 patchChat 持久化 llm_id 到 server，下次发送时生效
-  // - 从 useFetchAllAddedModels 查找匹配 model name 的完整 llm_id 格式
-  // - llm_id 格式：${modelName}@${instance_name}@${provider_name}
+  // 设计决策（PM1 评审 + 2026-10-16 二轮修订）：
+  // - gateway 路径:网关无 user-model 持久化字段(PATCH 仅 title,原 patchChat({llm_id})
+  //   恒 400 失效)→ 改为 localStorage 会话级模型(handleSelectedModelChange),
+  //   自由文本兼容社区版 provider 模型名(deepseek-flash 等,/v1/models 不暴露);
+  //   空参数 = 恢复网关默认。发送时经 body.model_id 透传。
+  // - RAG 路径:维持 patchChat 持久化 llm_id 到 server(格式 name@instance@provider)。
   const { patchChat } = usePatchChat();
   const { data: allAddedModels } = useFetchAllAddedModels();
   const handleSlashSwitchModel = useCallback(
     async (modelName: string) => {
+      const trimmed = modelName.trim();
+      if (isGatewayChat) {
+        handleSelectedModelChange(trimmed);
+        toast(
+          trimmed
+            ? `Model switched (applies to next message): ${trimmed}`
+            : 'Model reset to gateway default',
+        );
+        return;
+      }
       if (!chatId) {
         toast('Chat ID not available');
         return;
       }
-      // 从 allAddedModels 中查找匹配的模型
-      const target = allAddedModels.find((m) => m.name === modelName);
+      // 从 allAddedModels 中查找匹配的模型(Q3:与 gateway 分支统一 trim)
+      const target = allAddedModels.find((m) => m.name === trimmed);
       if (!target) {
-        toast(`Model not found: ${modelName}`);
+        toast(`Model not found: ${trimmed}`);
         return;
       }
       // 构造完整 llm_id 格式
@@ -588,7 +634,7 @@ export const useSendMessage = (controller: AbortController) => {
         toast(`Failed to switch model: ${modelName}`);
       }
     },
-    [chatId, allAddedModels, patchChat],
+    [isGatewayChat, handleSelectedModelChange, chatId, allAddedModels, patchChat],
   );
 
   // P3: ICommandContext 实例化
@@ -649,6 +695,10 @@ export const useSendMessage = (controller: AbortController) => {
     slashCommandContext,
     onSlashCommandExecuted: handleSlashCommandExecuted,
     onSlashCommandClose: handleSlashCommandClose,
+    // P0-3: gateway 会话级模型选择(芯片 UI 与 /model 共用;空串=网关默认)
+    selectedModel,
+    onSelectedModelChange: handleSelectedModelChange,
+    isGatewayChat,
     // v1.3.0: 工具审批提交方法(仅 gateway 路径有效,RAG 路径为 noop)
     // ApprovalCard 按钮组 onClick 调用此方法,提交后 BFF 转发到 intellect-team
     submitApproval: isGatewayChat

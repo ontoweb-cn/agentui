@@ -974,6 +974,8 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       replyInstantly: 'We typically reply instantly',
       typeYourMessage: 'Type your message...',
       messagePlaceholder: 'Type your message here...',
+      modelSelectorLabel: 'Model',
+      modelSelectorDefault: 'Gateway default',
       exit: 'Exit',
       multipleModels: 'Multiple models',
       applyModelConfigs: 'Apply model configs',

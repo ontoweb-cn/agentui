@@ -190,6 +190,25 @@ describe('SlashCommandPalette', () => {
     expect(onCommandExecuted).toHaveBeenCalled();
   });
 
+  it('P0-3: 模型列表为空时,已输入参数作为自由文本条目展示并可执行', () => {
+    // 'deepseek-flash' 不匹配 MOCK_MODELS(gpt-4 等)→ 命中自由文本兜底
+    const onCommandExecuted = jest.fn();
+    render(
+      <SlashCommandPalette
+        value="/model deepseek-flash"
+        visible={true}
+        context={mockContext}
+        onCommandExecuted={onCommandExecuted}
+        onRequestClose={jest.fn()}
+      />,
+    );
+    // 自由文本条目渲染(而非 "No matching command" 死路)
+    expect(screen.getByText('deepseek-flash')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('deepseek-flash'));
+    expect(mockContext.switchModel).toHaveBeenCalledWith('deepseek-flash');
+    expect(onCommandExecuted).toHaveBeenCalled();
+  });
+
   it('键盘 ArrowDown 切换选中项', () => {
     setupFocusedTextarea();
     render(

@@ -65,6 +65,13 @@ export interface TokenUsage {
   promptTokens: number;
   /** 输出 token 数 */
   completionTokens: number;
+  /**
+   * 模型上下文窗口长度(P1-4 防御性字段)。
+   * /v1/runs 契约 v1.4.0 无此字段(仅 prompt/completion/total tokens);
+   * 网关若将来在 run.completed usage 中提供 context_length 则自动透传,
+   * 缺失时前端维持默认 128000。
+   */
+  contextLength?: number;
 }
 
 // ---------------------------------------------------------------------------
