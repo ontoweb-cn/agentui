@@ -23,9 +23,13 @@ import {
 import {
   rejectReason,
   compatibilityReason,
+  initRuntimePlugins,
   resetPluginListWatchForTests,
+  resetInitForTests,
   startPluginListWatch,
   toModuleDefinition,
+  toHostModuleDefinition,
+  RUNTIME_PLUGIN_IDS_KEY,
 } from '../runtime';
 import type { AgentUIHostGlobal, PluginAppMetadata } from '../types';
 
@@ -179,6 +183,84 @@ describe('toModuleDefinition', () => {
     expect(
       collectRoutes().some((r) => r.path === '/cognitive-wargame/*'),
     ).toBe(true);
+  });
+});
+
+describe('Tier B host 插件(canvas-stage4 spec §9.2)', () => {
+  const hostMeta: PluginAppMetadata = {
+    ...meta,
+    id: 'canvas',
+    path: '/agent',
+    label: 'Canvas',
+    type: 'host',
+    routes: ['/agent/:id', '/agent/:id/explore', '/agent/share'],
+    sharedVersion: '^1.0.0',
+  };
+
+  it('rejectReason:host 插件缺 routes 或路由越出挂载前缀 → 拒绝', () => {
+    expect(rejectReason(hostMeta)).toBeNull();
+    expect(rejectReason({ ...hostMeta, routes: [] })).toContain('routes');
+    expect(
+      rejectReason({ ...hostMeta, routes: ['/other/:id'] }),
+    ).toContain('越出挂载前缀');
+    expect(rejectReason({ ...hostMeta, routes: ['/agent/../etc'] })).toContain(
+      '越出挂载前缀',
+    );
+    // Tier A 无 routes 声明不受影响
+    expect(rejectReason(meta)).toBeNull();
+  });
+
+  it('compatibilityReason:sharedVersion 三层判定(缺省放行/满足放行/不满足给原因)', () => {
+    expect(compatibilityReason(hostMeta)).toBeNull();
+    expect(
+      compatibilityReason({ ...hostMeta, sharedVersion: undefined }),
+    ).toBeNull();
+    const reason = compatibilityReason({
+      ...hostMeta,
+      sharedVersion: '^2.0.0',
+    });
+    expect(reason).toContain('sharedVersion');
+    expect(reason).toContain('^2.0.0');
+  });
+
+  it('toHostModuleDefinition:按声明路由表生成懒包装,零 bundle 拉取、无应用卡片', () => {
+    const def = toHostModuleDefinition(hostMeta);
+    expect(def.name).toBe('plugin:canvas');
+    expect(def.routes.map((r) => r.path)).toEqual(hostMeta.routes);
+    for (const route of def.routes) {
+      expect(typeof route.Component).toBe('function');
+    }
+    expect(def.app).toBeUndefined();
+  });
+
+  it('toHostModuleDefinition 不兼容 → 回退 Tier A 原因页形态(path/* + 卡片标注)', () => {
+    const reason = compatibilityReason({ ...hostMeta, sharedVersion: '^2.0.0' })!;
+    const def = toHostModuleDefinition(hostMeta, reason);
+    expect(def.routes.map((r) => r.path)).toEqual(['/agent/*']);
+    expect(def.app?.incompatibleReason).toContain('sharedVersion');
+  });
+
+  it('initRuntimePlugins 写入 R2 压制标记(结构性合法 id 集合)', async () => {
+    resetInitForTests();
+    resetPluginListWatchForTests();
+    delete (globalThis as Record<string, unknown>)[RUNTIME_PLUGIN_IDS_KEY];
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [hostMeta, { ...meta, id: '' }],
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    try {
+      await initRuntimePlugins();
+      const ids = (globalThis as Record<string, unknown>)[
+        RUNTIME_PLUGIN_IDS_KEY
+      ] as Set<string>;
+      expect(ids).toBeInstanceOf(Set);
+      expect(ids.has('canvas')).toBe(true);
+      // 结构非法元数据不入标记
+      expect(ids.size).toBe(1);
+    } finally {
+      resetPluginListWatchForTests();
+    }
   });
 });
 

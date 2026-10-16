@@ -11,6 +11,7 @@
     "./*": "./src/*"
   },
   "scripts": {
+    "build": "vite build",
     "test": "jest",
     "type-check": "tsc --noEmit"
   },

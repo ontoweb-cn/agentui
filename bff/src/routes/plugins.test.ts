@@ -8,6 +8,7 @@
  * (模块常量在 import 时求值)。
  */
 import { mkdtemp, mkdir, writeFile, rm, readdir, readFile } from 'node:fs/promises';
+import AdmZip from 'adm-zip';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -706,5 +707,210 @@ describe('apiVersion 兼容声明(第三方生态版本协商)', () => {
     for (const invalid of ['1.3.x', '^abc', '>=', '1.2.3.4', 'latest', '', '1 .3']) {
       expect(api.isValidApiVersionRange(invalid)).toBe(false);
     }
+  });
+});
+
+describe('Tier B host 插件元数据校验(canvas-stage4 spec §9.2)', () => {
+  it('type=host + routes + sharedVersion + style 合法 → 列表可见', async () => {
+    await writePlugin(
+      'host-plugin',
+      {
+        id: 'host-plugin',
+        path: '/agent',
+        label: 'Canvas',
+        entry: 'ui/dist/index.js',
+        style: 'ui/dist/index.css',
+        type: 'host',
+        sharedVersion: '^1.1.0',
+        routes: ['/agent/:id', '/agent/share'],
+      },
+      { 'ui/dist/index.js': 'export {}', 'ui/dist/index.css': 'body{}' },
+    );
+    const res = await api.pluginsRoutes.request('/plugins');
+    const metas = (await res.json()) as Array<{ id: string }>;
+    expect(metas.some((m) => m.id === 'host-plugin')).toBe(true);
+  });
+
+  it.each([
+    ['type 未知值', { type: 'sidebar' }],
+    ['sharedVersion 格式非法', { sharedVersion: 'latest' }],
+    ['routes 为空数组', { routes: [] }],
+    ['routes 含越出 path 前缀', { routes: ['/other/:id'] }],
+    ['routes 含穿越段', { routes: ['/agent/../etc'] }],
+    ['style 越出白名单', { style: 'dist/../app.json' }],
+  ])('%s → 列表过滤', async (_name, patch) => {
+    await writePlugin(`bad-host-${Math.random().toString(36).slice(2, 7)}`, {
+      id: `bad-host-${Math.random().toString(36).slice(2, 7)}`,
+      path: '/agent',
+      label: 'x',
+      entry: 'ui/dist/index.js',
+      type: 'host',
+      ...patch,
+    } as Record<string, unknown>);
+    const res = await api.pluginsRoutes.request('/plugins');
+    const metas = (await res.json()) as Array<{ id: string }>;
+    expect(metas.some((m) => m.id.startsWith('bad-host-'))).toBe(false);
+  });
+});
+
+describe('zip 上传安装通道(canvas-stage4 spec §9.5)', () => {
+  const adminToken = 'test-admin-token';
+  const buildZip = (files: Record<string, string | Buffer>): Buffer => {
+    const zip = new AdmZip();
+    for (const [name, content] of Object.entries(files)) {
+      zip.addFile(name, Buffer.isBuffer(content) ? content : Buffer.from(content));
+    }
+    return zip.toBuffer();
+  };
+
+  beforeAll(() => {
+    process.env.BFF_PLUGIN_INSTALL_SOURCES = 'local,zip';
+  });
+  afterAll(() => {
+    delete process.env.BFF_PLUGIN_INSTALL_SOURCES;
+  });
+
+  it('sources 不含 zip → 403(默认姿态不变)', async () => {
+    const previous = process.env.BFF_PLUGIN_INSTALL_SOURCES;
+    process.env.BFF_PLUGIN_INSTALL_SOURCES = 'local';
+    try {
+      const form = new FormData();
+      form.append('file', new File([new Uint8Array(Buffer.from('x'))], 'b.zip'));
+      const res = await api.pluginsRoutes.request('/plugins/install', {
+        method: 'POST',
+        headers: { 'X-Plugin-Admin-Token': adminToken },
+        body: form,
+      });
+      expect(res.status).toBe(403);
+    } finally {
+      process.env.BFF_PLUGIN_INSTALL_SOURCES = previous;
+    }
+  });
+
+  it('根 app.json zip → 安装成功,产物落盘,审计含 sha256', async () => {
+    const zipBytes = buildZip({
+      'app.json': JSON.stringify({
+        id: 'zipped-plugin',
+        path: '/zipped-plugin',
+        label: 'zip 插件',
+        entry: 'ui/dist/index.js',
+      }),
+      'ui/dist/index.js': 'export {}',
+    });
+    const form = new FormData();
+    form.append('file', new File([new Uint8Array(zipBytes)], 'bundle.zip'));
+    const res = await api.pluginsRoutes.request('/plugins/install', {
+      method: 'POST',
+      headers: { 'X-Plugin-Admin-Token': adminToken },
+      body: form,
+    });
+    expect(res.status).toBe(200);
+    const result = (await res.json()) as { installed: string };
+    expect(result.installed).toBe('zipped-plugin');
+    const installed = JSON.parse(
+      await readFile(join(fixtureDir, 'zipped-plugin', 'app.json'), 'utf-8'),
+    ) as { id: string };
+    expect(installed.id).toBe('zipped-plugin');
+    const audit = await readFile(auditFile, 'utf-8');
+    expect(audit).toContain('zip-upload sha256=');
+  });
+
+  it('单根子目录(GitHub 式前缀)自动剥离', async () => {
+    const zipBytes = buildZip({
+      'canvas-0.1.0/app.json': JSON.stringify({
+        id: 'zipped-nested',
+        path: '/zipped-nested',
+        label: 'zip 嵌套',
+        entry: 'ui/dist/index.js',
+      }),
+      'canvas-0.1.0/ui/dist/index.js': 'export {}',
+    });
+    const form = new FormData();
+    form.append('file', new File([new Uint8Array(zipBytes)], 'bundle.zip'));
+    const res = await api.pluginsRoutes.request('/plugins/install', {
+      method: 'POST',
+      headers: { 'X-Plugin-Admin-Token': adminToken },
+      body: form,
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { installed: string }).installed).toBe(
+      'zipped-nested',
+    );
+  });
+
+  it('expectedSha256 端到端校验:不匹配 400,匹配放行', async () => {
+    const { createHash } = await import('node:crypto');
+    const zipBytes = buildZip({
+      'app.json': JSON.stringify({
+        id: 'zipped-sha',
+        path: '/zipped-sha',
+        label: 'sha',
+        entry: 'ui/dist/index.js',
+      }),
+      'ui/dist/index.js': 'export {}',
+    });
+    const sha256 = createHash('sha256').update(zipBytes).digest('hex');
+    const wrong = new FormData();
+    wrong.append('file', new File([new Uint8Array(zipBytes)], 'b.zip'));
+    wrong.append('expectedSha256', 'f'.repeat(64));
+    const bad = await api.pluginsRoutes.request('/plugins/install', {
+      method: 'POST',
+      headers: { 'X-Plugin-Admin-Token': adminToken },
+      body: wrong,
+    });
+    expect(bad.status).toBe(400);
+    expect(await bad.text()).toContain('sha256 不匹配');
+
+    const good = new FormData();
+    good.append('file', new File([new Uint8Array(zipBytes)], 'b.zip'));
+    good.append('expectedSha256', sha256);
+    const ok = await api.pluginsRoutes.request('/plugins/install', {
+      method: 'POST',
+      headers: { 'X-Plugin-Admin-Token': adminToken },
+      body: good,
+    });
+    expect(ok.status).toBe(200);
+  });
+
+  it('zip-slip 条目名校验矩阵(validateZipEntryName;adm-zip addFile 会规范化,防护在解析侧)', () => {
+    expect(api.validateZipEntryName('ui/dist/index.js')).toBeNull();
+    expect(api.validateZipEntryName('app.json')).toBeNull();
+    expect(api.validateZipEntryName('../escaped.txt')).toContain('路径非法');
+    expect(api.validateZipEntryName('/abs/path.txt')).toContain('路径非法');
+    expect(api.validateZipEntryName('sub\\..\\evil.txt')).toContain('路径非法');
+    expect(api.validateZipEntryName('a/../b.txt')).toContain('路径非法');
+  });
+
+  it('缺 app.json(根与单根子目录皆无)→ 400', async () => {
+    const noManifest = buildZip({ 'ui/dist/index.js': 'export {}' });
+    const noForm = new FormData();
+    noForm.append('file', new File([new Uint8Array(noManifest)], 'b.zip'));
+    const missing = await api.pluginsRoutes.request('/plugins/install', {
+      method: 'POST',
+      headers: { 'X-Plugin-Admin-Token': adminToken },
+      body: noForm,
+    });
+    expect(missing.status).toBe(400);
+    expect(await missing.text()).toContain('app.json');
+  });
+
+  it('entry 产物缺失 → 400(entry 产物不存在)', async () => {
+    const zipBytes = buildZip({
+      'app.json': JSON.stringify({
+        id: 'zipped-noentry',
+        path: '/zipped-noentry',
+        label: 'x',
+        entry: 'ui/dist/index.js',
+      }),
+    });
+    const form = new FormData();
+    form.append('file', new File([new Uint8Array(zipBytes)], 'b.zip'));
+    const res = await api.pluginsRoutes.request('/plugins/install', {
+      method: 'POST',
+      headers: { 'X-Plugin-Admin-Token': adminToken },
+      body: form,
+    });
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('entry 产物不存在');
   });
 });

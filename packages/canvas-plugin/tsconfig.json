@@ -2,13 +2,15 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "baseUrl": ".",
-    "types": [],
+    "types": ["vite/client"],
     "paths": {
       "@/*": ["../../src/*"],
       "@agentui/canvas-plugin": ["./src"],
-      "@agentui/canvas-plugin/*": ["./src/*"]
+      "@agentui/canvas-plugin/*": ["./src/*"],
+      "@agentui/plugin-sdk": ["../plugin-sdk/src/index.ts"],
+      "@agentui/plugin-sdk/host": ["../plugin-sdk/src/host.ts"]
     }
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src", "../../src/**/*.d.ts"],
+  "exclude": ["node_modules", "dist", "ui", "src/**/__tests__", "src/**/*.test.ts", "src/**/*.test.tsx"]
 }

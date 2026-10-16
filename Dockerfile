@@ -7,6 +7,9 @@ COPY . .
 RUN NODE_OPTIONS="--max-old-space-size=8192" \
     VITE_BUILD_SOURCEMAP=false VITE_MINIFY=esbuild \
     npm run build
+# canvas Tier B 插件产物(canvas-stage4 spec §9.2):单例外部化独立构建,
+# 装配进 deploy/plugin-bundles/canvas/,production 阶段叠加 COPY 烤入镜像。
+RUN npm run build:canvas-plugin
 
 # ===== Stage 2: BFF build(独立 lock 钉版:bff/package-lock.json,评审 Q1)=====
 FROM node:20-alpine AS bff-builder
@@ -39,10 +42,11 @@ RUN cd /app/bff && npm ci --omit=dev --no-audit --no-fund
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-# 运行时插件 bundle(可选,#2b 方案 B):scripts/package-plugin-bundle.sh
-# 产出后随镜像分发,entrypoint 启动时自动安装。目录默认只有 .gitkeep,
-# 不打包插件时镜像不含任何插件(纯宿主形态)。
+# 运行时插件 bundle(可选,#2b 方案 B):手工 bundle 随上下文分发;
+# canvas Tier B 插件(frontend-builder 阶段产出)在下方叠加 COPY,
+# entrypoint 启动时幂等安装。二者皆空即纯宿主形态。
 COPY deploy/plugin-bundles/ /opt/bundled-plugins/
+COPY --from=frontend-builder /app/deploy/plugin-bundles/ /opt/bundled-plugins/
 
 EXPOSE 80
 

@@ -21,7 +21,10 @@
  *   (见 validateEntry/validateMountPath)。
  */
 import { Hono, type Context } from 'hono';
+import AdmZip from 'adm-zip';
+import { createHash } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import {
   cp,
   mkdir,
@@ -44,6 +47,12 @@ import {
 } from '../services/plugin-store';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// zip 上传通道防护上限(spec §9.5):制品 ≤100MB、条目 ≤4000、
+// 解压总量 ≤512MB(admin token 守卫下的纵深防御,非安全边界)。
+const MAX_ZIP_UPLOAD_BYTES = 100 * 1024 * 1024;
+const MAX_ZIP_ENTRIES = 4000;
+const MAX_ZIP_UNCOMPRESSED_BYTES = 512 * 1024 * 1024;
 
 /** entry 顶层子目录白名单:插件产物只允许落在这些子树下。 */
 const ENTRY_ROOT_ALLOWLIST = ['ui', 'assets', 'dist'];
@@ -99,6 +108,25 @@ interface PluginAppJson {
    * 显式清单)而非安全边界(同源信任模型)。未知值容忍(前向兼容)。
    */
   capabilities?: string[];
+  /**
+   * 插件档位(canvas-stage4 spec §9.2):'host' = Tier B 共享面插件
+   * (路由并入宿主 registry);缺省/'app' = Tier A 窄面自包含。
+   * 未知值在安装侧拒绝(格式硬校验);运行时侧对未知值按 'app' 容忍
+   * (前向兼容,双端分工同 apiVersion)。
+   */
+  type?: 'app' | 'host';
+  /**
+   * Tier B 共享面契约版本区间(如 '^1.1.0'),格式校验同 apiVersion;
+   * 语义判定(区间是否满足宿主 SHARED_API_VERSION)在宿主装载侧。
+   */
+  sharedVersion?: string;
+  /**
+   * Tier B 声明式路由表:注册期免拉 bundle 的路由清单,每条必须落在
+   * path 前缀下(运行时注册侧复核,本侧做格式与前缀硬校验)。
+   */
+  routes?: string[];
+  /** Tier B CSS 产物路径(校验规则同 entry;宿主装载时幂等注入 <link>)。 */
+  style?: string;
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -313,6 +341,22 @@ export function isValidApiVersionRange(range: unknown): range is string {
   );
 }
 
+/**
+ * zip 条目名合法性(zip-slip 防护,spec §9.5):绝对路径、反斜杠
+ * (Windows 分隔符混淆)、'..' 段一律拒收。adm-zip 的 addFile 会规范化
+ * 条目名,但解析外部制品时保留原始名——防护必须在解析侧生效。
+ */
+export function validateZipEntryName(name: string): string | null {
+  if (
+    name.startsWith('/') ||
+    name.includes('\\') ||
+    name.split('/').includes('..')
+  ) {
+    return `zip 条目路径非法: ${name.slice(0, 100)}`;
+  }
+  return null;
+}
+
 /** 读取并校验单个插件目录的 app.json;缺失或校验不过均返回 null(列表层跳过)。 */
 export async function readPluginMeta(
   pluginDir: string,
@@ -335,6 +379,38 @@ export async function readPluginMeta(
     }
     if (meta.apiVersion !== undefined && !isValidApiVersionRange(meta.apiVersion)) {
       return null;
+    }
+    if (
+      meta.type !== undefined &&
+      meta.type !== 'app' &&
+      meta.type !== 'host'
+    ) {
+      return null;
+    }
+    if (
+      meta.sharedVersion !== undefined &&
+      !isValidApiVersionRange(meta.sharedVersion)
+    ) {
+      return null;
+    }
+    if (meta.style !== undefined && validateEntry(meta.style)) {
+      return null;
+    }
+    if (meta.routes !== undefined) {
+      if (
+        !Array.isArray(meta.routes) ||
+        meta.routes.length === 0 ||
+        meta.routes.length > 20 ||
+        meta.routes.some(
+          (route) =>
+            typeof route !== 'string' ||
+            !route.startsWith('/') ||
+            route.split('/').includes('..') ||
+            !(route === meta.path || route.startsWith(`${meta.path}/`)),
+        )
+      ) {
+        return null;
+      }
     }
     return meta;
   } catch {
@@ -407,35 +483,34 @@ pluginsRoutes.get('/plugins/:id/files/*', async (c) => {
   return c.body(stream);
 });
 
-pluginsRoutes.post('/plugins/install', async (c) => {
-  if (!isAdminRequest(c.req)) {
-    return c.text('Forbidden: 需要有效的 X-Plugin-Admin-Token', 403);
-  }
-  if (!allowedInstallSources().has('local')) {
-    return c.text('本地路径安装已被 BFF_PLUGIN_INSTALL_SOURCES 禁用', 403);
-  }
-  const body = await c.req.json<{ source?: string }>().catch(() => null);
-  const source = body?.source;
-  if (!source || !resolve(source).startsWith('/')) {
-    return c.text('source 必须是绝对本地路径', 400);
-  }
+/**
+ * 从本地目录安装插件的共享流程(local 与 zip 两通道复用):
+ * 元数据校验 → entry 存在性 → backend override 叠加 → 原子换入 PLUGINS_DIR。
+ */
+async function installPluginFromDirectory(
+  c: Context,
+  source: string,
+  auditSource: string,
+): Promise<Response> {
   const meta = await readPluginMeta(source);
   if (!meta) {
     // 针对性诊断(install 是一次性交互,重读 raw 安全):app.json 可解析且
-    // 唯一失效点是 apiVersion 格式时,给出可自助修复的明确指引;其余情形
-    // 保持既有笼统文案(不向调用方枚举校验器内部细节)
+    // 唯一失效点是 apiVersion/sharedVersion 格式时,给出可自助修复的明确
+    // 指引;其余情形保持既有笼统文案(不向调用方枚举校验器内部细节)
     try {
       const raw = JSON.parse(
         await readFile(join(source, 'app.json'), 'utf-8'),
-      ) as { apiVersion?: unknown };
-      if (
-        raw?.apiVersion !== undefined &&
-        !isValidApiVersionRange(raw.apiVersion)
-      ) {
-        return c.text(
-          `app.json apiVersion 格式非法: ${String(raw.apiVersion)}(支持 *、^1.3.0、~1.3、>=1.3、=1.3.0、裸版本)`,
-          400,
-        );
+      ) as { apiVersion?: unknown; sharedVersion?: unknown };
+      for (const [field, value] of [
+        ['apiVersion', raw?.apiVersion],
+        ['sharedVersion', raw?.sharedVersion],
+      ] as const) {
+        if (value !== undefined && !isValidApiVersionRange(value)) {
+          return c.text(
+            `app.json ${field} 格式非法: ${String(value)}(支持 *、^1.3.0、~1.3、>=1.3、=1.3.0、裸版本)`,
+            400,
+          );
+        }
       }
     } catch {
       // app.json 缺失/坏 JSON:走下方既有文案
@@ -493,7 +568,7 @@ pluginsRoutes.post('/plugins/install', async (c) => {
     action: 'install',
     pluginId: meta.id,
     version: meta.version ?? null,
-    source,
+    source: auditSource,
   });
 
   return c.json({
@@ -501,6 +576,148 @@ pluginsRoutes.post('/plugins/install', async (c) => {
     version: meta.version ?? null,
     backendTargetOverride: override ?? null,
   });
+}
+
+pluginsRoutes.post('/plugins/install', async (c) => {
+  if (!isAdminRequest(c.req)) {
+    return c.text('Forbidden: 需要有效的 X-Plugin-Admin-Token', 403);
+  }
+  const contentType = c.req.header('content-type') ?? '';
+
+  // ---- zip 上传通道(E 批次,canvas-stage4 spec §9.5):multipart form-data,
+  // 字段 file=制品 zip,可选 expectedSha256=发布方随行哈希做端到端校验。
+  // 默认停用(BFF_PLUGIN_INSTALL_SOURCES 含 'zip' 才开),不改变存量部署姿态。
+  if (contentType.includes('multipart/form-data')) {
+    if (!allowedInstallSources().has('zip')) {
+      return c.text('zip 上传安装已被 BFF_PLUGIN_INSTALL_SOURCES 禁用', 403);
+    }
+    const declaredSize = Number(c.req.header('content-length') ?? '0');
+    if (declaredSize > MAX_ZIP_UPLOAD_BYTES) {
+      return c.text(`zip 制品超过上限 ${MAX_ZIP_UPLOAD_BYTES}B`, 413);
+    }
+    const body = await c.req.parseBody().catch(() => null);
+    const file = body?.file;
+    if (!(file instanceof File)) {
+      return c.text('缺少 multipart 字段 file(zip 制品)', 400);
+    }
+    if (file.size > MAX_ZIP_UPLOAD_BYTES) {
+      return c.text(`zip 制品超过上限 ${MAX_ZIP_UPLOAD_BYTES}B`, 413);
+    }
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const sha256 = createHash('sha256').update(buffer).digest('hex');
+    const expected = (() => {
+      const raw =
+        (typeof body?.expectedSha256 === 'string'
+          ? body.expectedSha256
+          : undefined) ?? c.req.header('X-Plugin-Archive-Sha256');
+      return raw?.trim().toLowerCase() || undefined;
+    })();
+    if (expected && /^[0-9a-f]{64}$/.test(expected) && expected !== sha256) {
+      return c.text(
+        `sha256 不匹配: 期望 ${expected.slice(0, 12)}…,实际 ${sha256.slice(0, 12)}…`,
+        400,
+      );
+    }
+
+    // 解压防护四件套:zip-slip(路径穿越/绝对路径/反斜杠)、炸弹封顶
+    // (条目数+解压总量)、符号链接条目拒收、单根目录自动探测。
+    let zip: AdmZip;
+    try {
+      zip = new AdmZip(buffer);
+    } catch {
+      return c.text('zip 制品无法解析(损坏或非 zip 格式)', 400);
+    }
+    const entries = zip.getEntries();
+    if (entries.length === 0 || entries.length > MAX_ZIP_ENTRIES) {
+      return c.text(
+        `zip 条目数 ${entries.length} 越界(1..${MAX_ZIP_ENTRIES})`,
+        400,
+      );
+    }
+    let totalUncompressed = 0;
+    for (const entry of entries) {
+      const invalidName = validateZipEntryName(entry.entryName);
+      if (invalidName) {
+        return c.text(invalidName, 400);
+      }
+      if (entry.isDirectory) {
+        continue;
+      }
+      const attrs = Number(entry.attr >>> 16);
+      if ((attrs & 0o170000) === 0o120000) {
+        return c.text(
+          `zip 条目为符号链接,已拒收: ${entry.entryName.slice(0, 100)}`,
+          400,
+        );
+      }
+      totalUncompressed += entry.header.size;
+      if (totalUncompressed > MAX_ZIP_UNCOMPRESSED_BYTES) {
+        return c.text(
+          `zip 解压总量超过上限 ${MAX_ZIP_UNCOMPRESSED_BYTES}B(疑似压缩炸弹)`,
+          400,
+        );
+      }
+    }
+    // 单根目录探测:app.json 在根,或所有条目共享唯一顶层目录(GitHub
+    // 式 repo-x.y.z/ 前缀)→ 剥离前缀。
+    const hasRootManifest = entries.some((entry) => entry.entryName === 'app.json');
+    let stripPrefix = '';
+    if (!hasRootManifest) {
+      const roots = new Set(
+        entries.map((entry) => entry.entryName.split('/')[0]),
+      );
+      const rootManifests = [...roots].filter((root) =>
+        entries.some((entry) => entry.entryName === `${root}/app.json`),
+      );
+      if (rootManifests.length !== 1) {
+        return c.text('zip 中未找到 app.json(根目录或唯一单层子目录)', 400);
+      }
+      stripPrefix = `${rootManifests[0]}/`;
+    }
+
+    const staging = join(
+      PLUGINS_DIR,
+      `.staging-zip-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    );
+    try {
+      mkdirSync(staging, { recursive: true });
+      zip.getEntries().forEach((entry) => {
+        if (entry.isDirectory) {
+          return;
+        }
+        const rel = entry.entryName.slice(stripPrefix.length);
+        if (!rel) {
+          return;
+        }
+        const target = join(staging, rel);
+        if (!target.startsWith(`${resolve(staging)}${sep}`)) {
+          throw new Error(`zip 条目越出暂存目录: ${rel}`);
+        }
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, entry.getData());
+      });
+      return await installPluginFromDirectory(c, staging, `zip-upload sha256=${sha256}`);
+    } catch (error) {
+      return c.text(
+        error instanceof Error ? error.message : 'zip 解压失败',
+        400,
+      );
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+    }
+  }
+
+  // ---- local 目录通道(既有形态):绝对本地路径,entrypoint 烤入插件
+  // 与本机开发共用。
+  if (!allowedInstallSources().has('local')) {
+    return c.text('本地路径安装已被 BFF_PLUGIN_INSTALL_SOURCES 禁用', 403);
+  }
+  const body = await c.req.json<{ source?: string }>().catch(() => null);
+  const source = body?.source;
+  if (!source || !resolve(source).startsWith('/')) {
+    return c.text('source 必须是绝对本地路径', 400);
+  }
+  return await installPluginFromDirectory(c, source, source);
 });
 
 /**

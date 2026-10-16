@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "build": "vite build --mode production",
+    "build:canvas-plugin": "node scripts/build-canvas-plugin.mjs",
     "build-storybook": "storybook build",
     "dev": "vite --host",
     "dev:bff": "tsx watch --env-file=bff/.env bff/src/index.ts",

@@ -60,8 +60,8 @@
 
 | 差距 | 状态 | 解除条件 |
 |---|---|---|
-| G3 canvas 迁移 | spec 定稿,代码未动 | S1 开工前拍板 §八三问;S2 收口需持凭证真机冒烟 |
-| G4 独立发版通道 | 设计就绪未实现 | 批次 E 立项(unzip 选型+制品库端点) |
+| G3 canvas 迁移 | **S1+已落地,S2 已实施(2026-10-16)**:Tier B 注入面 1.1.0 + canvas 独立构建(单例外部化)+ R2 压制 + 内置烤入链路;**收口待持凭证真机冒烟**(stage4 spec §9.7) | S3 反向依赖清偿按 §9.3 执行 |
+| G4 独立发版通道 | **zip 安装通道已实施(2026-10-16)**:multipart 上传 + adm-zip + 防护四件套 + sha256 端到端校验,`BFF_PLUGIN_INSTALL_SOURCES` 含 `zip` 启用;**制品库端点(上传/下载/列举)维持门控** | S4 依赖制品库端点决策 |
 | G6 兼容承诺文档化 | 兼容策略已写入 SDK README+guide;语义化 CHANGELOG 未建 | SDK 包首次对外发布时建 Plugin API CHANGELOG 小节 |
 | G7 跨版本验证矩阵 | fixture 方案已入 spec R3 | S1 出口落地 |
 | 制品库/registry | 未接 | C 方案批次 |

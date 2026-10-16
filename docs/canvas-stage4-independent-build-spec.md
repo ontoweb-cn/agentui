@@ -1,6 +1,6 @@
 # Canvas 阶段 4 独立构建与发版 — 技术方案(评审稿)
 
-> **Status**: 设计定稿(2026-10-14,用户确认"canvas 阶段 4 独立构建与发版是明确的需求"后立项);**迁移代码未实施**——按 §六 分期推进。
+> **Status**: 设计定稿(2026-10-14,用户确认"canvas 阶段 4 独立构建与发版是明确的需求"后立项);**S1 已落地(2026-10-15)、S2 已实施(2026-10-16,收口待持凭证冒烟 §9.7)、E zip 通道已实施、S3/S4 细化待触发(§九)**。
 > **Date**: 2026-10-14
 > **Prerequisites**: 第三方生态准备批次已落地(apiVersion 协商 + @agentui/plugin-sdk,见 [plugin-thirdparty-readiness.md](./plugin-thirdparty-readiness.md))
 > **Related**: [canvas-plugin-extraction-design.md](./canvas-plugin-extraction-design.md)(阶段 0-3 已完成)、[runtime-plugin-architecture.md](./runtime-plugin-architecture.md)(运行时插件总纲)
@@ -81,3 +81,122 @@ canvas 现为 monorepo 编译期包(`packages/canvas-plugin`,`main: src/index.ts
 3. **C 方案不阻塞 S1/S2**——仅 S4 依赖;unzip 依赖选型与制品库端点确认独立立项。
 
 **S1 落地注记(2026-10-15)**:`host-externals.ts`(react/reactDom/reactDomClient/reactQuery/i18n/cn + 33 ui 模块)、SDK `host` 子入口(`SHARED_API_VERSION=1.0.0` + `getSharedHost`)、契约快照(`host-externals.test.ts`:模块清单 + 各模块导出名,删改即红)、**plugin-compat-fixture 兼容基线**(冻结的 v1.0 代产物 + 宿主发版纪律:compat-fixture.test.ts 不绿不发版,R3 落地)。jest mapper/vite alias/tsconfig paths 三处已同步 `host` 子入口(spec R1 工程注记兑现)。
+
+## 九、S2/S3/S4 执行细化(2026-10-16,S2 实施)
+
+### 9.1 S2 构建策略:单例外部化 + 非单例打包复制(S2 核心决策)
+
+S1 时"canvas 消费面=316 处 ui + 87 处类型 + 40+ 处 hooks"的实测口径偏窄。全量审计
+(2026-10-16):canvas 对宿主 `@/` 导入共 **893 处 / 260 文件 / ~130 个模块**,分类:
+
+| 类别 | 规模 | 处置 |
+|---|---|---|
+| `components/ui/*`(S1 白名单) | 33 模块 | 外部化 → `shared.ui.*`(已有) |
+| 框架单例 | react/react-dom/client/query/i18next/router/react-i18next | 外部化 → S2 增补面(下表) |
+| 有状态宿主模块 | theme-provider(context)、locales/config(i18n 实例+命名导出) | 外部化 → S2 增补面 |
+| 非 ui 宿主组件 | 58 模块(intellect-form、form-container、llm-select 等) | **打包进产物**(构建期读宿主源码,一方档 monorepo 构建) |
+| 宿主 hooks | 14 模块(use-agent-request 34 处等) | 打包(经外部化 query 共享 QueryClient context,行为等价) |
+| utils/constants | 16 模块(utils/api 为纯 URL 常量) | 打包(自洽副本,见评审 P2-2) |
+| `interfaces/*`、`features/_types` | 纯类型,0 运行时导出 | 编译期擦除,零产物影响 |
+
+**理由**:把 58 组件+hooks 全部进白名单 = R1"宿主即 SDK 库"地狱;整体自包含 = §三已否决
+(context 割裂+双 React)。单例外部化使产物与宿主**同 module 实例**——React context、
+QueryClient、i18next 实例、Router context 全部与编译期行为逐位一致,这是最小的正确面。
+
+**S2 增补共享面(SHARED_API_VERSION 1.0.0 → 1.1.0,纯加法 minor;compat-fixture 未声明
+sharedVersion 不受影响)**:
+
+| 槽位 | 内容 | 外部化映射 |
+|---|---|---|
+| `jsxRuntime` | `react/jsx-runtime` 命名空间 | 插件 JSX 自动编译产物的导入目标 |
+| `router` | `react-router` 命名空间 | useNavigate/useParams/Link 等 context 绑定面 |
+| `reactI18next` | `react-i18next` 命名空间 | useTranslation(91 处);与宿主同 module → 同 context |
+| `i18nModule` | `@/locales/config` 模块 namespace | default=实例(S1 `i18n` 同对象,宿主即 i18next 包默认单例)+ `changeLanguageAsync` 等命名导出 |
+| `themeProvider` | `@/components/theme-provider` namespace | 宿主根 Provider 的 context 对象 |
+
+bare `i18next` → `shared.i18n`(宿主 locales/config 即包默认实例,已核实)。
+ui 白名单键清单单源化:SDK 导出 `SHARED_UI_MODULE_KEYS`,宿主快照测试断言与 host-externals
+一致,canvas 构建配置消费同一清单生成映射。
+
+### 9.2 S2 产物与装载契约
+
+- **产物形态**:`packages/canvas-plugin` 新增独立 vite lib 构建(**多 chunk ESM**,不用
+  inlineDynamicImports——保编辑器/xyflow 的路由级懒加载;Tier A 单文件契约不适用于
+  host 档),入口 `plugin-entry.ts`,输出 `ui/dist/index.js` + `ui/dist/index.css`
+  (cssCodeSplit 关闭,含 8 个 module.less 与被打包宿主组件样式)+ 懒 chunk。
+- **externals 变换插件**:构建期把外部化模块的 import 声明重写为
+  `window.__AGENTUI_SHARED__.<slot>` 解构(含多行 named/namespace/default 形态)——
+  产物零 bare import。
+- **app.json**(新增字段,BFF 校验):`type: "host"`;`routes`(声明式路由表,注册期只读
+  元数据);`sharedVersion`(区间,语义同 apiVersion,对 `SHARED_API_VERSION` 判定);
+  `style`(CSS 产物路径,entry 同规则校验)。
+- **宿主装载(懒两段式)**:启动仅按 `meta.routes` 注册懒包装路由(不拉 bundle,登录页
+  零开销);首访才 `loadHostPluginBundle`(loader.ts):动态 import entry → def 形状校验 →
+  注入 CSS link(幂等)→ 按 path 匹配 def.routes 渲染。i18n 经复合 loader(先 bundle 后
+  def.i18n.lazy)走既有 collectI18nLazy,词条单源 TS。
+- **R2 压制**:`initRuntimePlugins` 把结构性合法 metas 的 id 写入
+  `window.__AGENTUI_RUNTIME_PLUGIN_IDS__`(先于 `import('./app')`,时序由 main.tsx
+  await 保证);`features/canvas/manifest.ts` `enabled()` 检测到 `canvas` 即 false。
+  运行时插件卸载/停用 → 下次启动编译期版本自动回归(共存兜底)。
+- **不兼容 Tier B**:peer.react/apiVersion/sharedVersion 任一不满足 → 单条 `path/*`
+  包装路由 + 不兼容原因页(复用 Tier A 挂载页),不拉 bundle。
+- **烤入**:frontend-builder 阶段产出 `deploy/plugin-bundles/canvas/`(app.json+ui/),
+  production 阶段叠加 COPY 进 `/opt/bundled-plugins/`,entrypoint 既有幂等安装机制照用;
+  产物不入 git(镜像构建时生成;本地 `npm run build:canvas-plugin` + 安装脚本)。
+
+### 9.3 S3 执行细化(门控:S2 冒烟收口后才执行)
+
+| 反向依赖文件 | 消费面 | 提升方案 |
+|---|---|---|
+| `pages/agents/use-import-json.ts` | `dsl-bridge` 全量+`inferIsAgentFromImport` | dsl-bridge(纯函数,无模块态)整体提升宿主 `src/lib/agent-contract/dsl-bridge.ts`,canvas 改为源码级复用同模块 |
+| `pages/agents/hooks/use-create-agent.ts` | `initialEmptyDsl` | 同上(随 dsl-bridge) |
+| `hooks/use-send-message.ts` | `BeginQuery`(类型) | 类型提升宿主 `src/types/canvas-contract.ts`;canvas 侧 `import type`(构建期擦除,零运行时依赖) |
+| `hooks/use-agent-request.ts` | `IInputs`(类型) | 同上 |
+| `pages/agents/agent-log-page.tsx` | `useFetchDataOnMount` | 归属修正:提升宿主 hooks(该 hook 只服务宿主日志页) |
+| `components/floating-chat-widget.tsx` | `useSendNextSharedMessage` 等 | 桥接 hooks 提升宿主桥接层(canvas 经共享面消费同一模块);彻底解耦衔接方案 F(F1-F3 已落档 §8.5) |
+| `features/canvas/manifest.ts` | 包默认导出 | 整文件退役(S2 已做 R2 压制,S3 删除编译期注册) |
+
+出口断言:`grep -r "canvas-plugin" src/ | grep -v packages` 归零入 CI;tailwind
+content 的 `packages/canvas-plugin` glob **必须保留**(产物 className 依赖宿主样式表扫描)。
+
+### 9.4 S4 执行细化(门控:制品库端点决策 + S3)
+
+发版流水线契约(对齐 cognitive-wargame bundle CI 先例):canvas 仓构建 → 产物 zip
+(app.json+ui/,单根目录)→ sha256 随行 → 制品库(Harbor/制品端点**待决策**,E 门控)
+→ 安装侧 zip 通道验收(见 9.5)→ canvas-smoke-checklist 全量回归。
+
+### 9.5 E 批次(zip 安装通道,S2 批次内已实施部分)
+
+- `POST /plugins/install` 新增 multipart 上传形态(file 字段 `file`):
+  **adm-zip**(纯 JS,bff 依赖最小化)+ 防护四件套——zip-slip(条目路径 `..`/绝对/
+  反斜杠拒收)、炸弹封顶(条目 ≤4000、解压总量 ≤512MB)、符号链接条目拒收、
+  单根目录自动探测(GitHub 式 `repo-*/` 前缀剥离)。
+- sha256:响应与审计记录制品哈希;上传方可附期望值(字段 `expectedSha256`)做端到端校验。
+- 来源开关:`BFF_PLUGIN_INSTALL_SOURCES` 增 `zip` 枚举,**默认仍 `local`**(不改变存量
+  部署安全姿态,zip 为 opt-in);admin token 守卫不变。
+- 未实施(维持门控):制品库端点(上传/下载/版本列举)、registry 分发。
+
+### 9.6 S2 评审记录(对抗性自评,2026-10-16)
+
+- **P1-1 react-i18next/Provider 一致性**:外部化策略使插件与宿主引用同一 react-i18next
+  module → I18nextProvider context 与默认实例回退路径同编译期逐位一致(打包副本方案会
+  产生双 context,已否决)。
+- **P1-2 多 chunk 相对引用**:BFF files 路由按目录 serve,chunk 以相对路径互引,装载
+  URL `/api/bff/plugins/canvas/files/ui/dist/index.js` 下自洽;`inlineDynamicImports`
+  会让登录页拉全量编辑器(已否决)。
+- **P2-1 打包宿主组件的模块级副作用副本**(llm-cache、request 拦截器等):自洽副本——
+  读写都发生在产物内,行为正确但与宿主缓存不互通;冒烟清单补"画布内 LLM 下拉有数据"
+  项验证。
+- **P2-2 `utils/request` 的 `RetcodeMessage` 模块级 `i18n.t` 求值**:外部化 i18n 后
+  实例一致,副本求值正确;语言切换晚于模块求值的场景与编译期一致(t 惰性绑定)。
+- **P2-3 sharedVersion 增量兼容**:1.1.0 纯加法,声明 `^1.0.0` 的存量 Tier B 插件
+  (现无)与 compat-fixture 均不受影响。
+- **P3-1 jest 解析**:根 jest moduleNameMapper 补 `@agentui/canvas-plugin/(.*)` 映射
+  (反向依赖文件的测试链可达)。
+- **P3-2 canvas tsc**:canvas 包 tsconfig 保持源码态检查;构建产物不入根 tsc 面。
+
+### 9.7 S2 出口清单(冒烟窗口执行,持凭证)
+
+canvas-smoke-checklist 全量(列表→编辑→保存→执行→上传→trace→版本→重置→删除)+
+深链 `/agent/:id` 与 `/agent/:id/explore`、分享页 `/agent/share`、未装插件时编译期
+回退、双语词条、暗色主题、画布内 LLM 下拉(P2-1)。**无凭证前 S2 不收口**(R4 不变)。

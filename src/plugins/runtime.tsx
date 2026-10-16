@@ -33,11 +33,20 @@ import type {
 import { registerRuntimeModules } from '@/features/_registry';
 
 import { satisfiesApiVersion } from '@agentui/plugin-sdk';
+import { SHARED_API_VERSION } from '@agentui/plugin-sdk/host';
 import { installAgentUIHostGlobal, HOST_API_VERSION } from './host-global';
-import { loadPluginApp } from './loader';
+import { installAgentUISharedHost } from './host-externals';
+import { loadHostPluginBundle, loadPluginApp } from './loader';
 import type { PluginAppMetadata } from './types';
 
 const PLUGINS_LIST_CACHE_KEY = 'agentui.runtimePlugins';
+/**
+ * R2 压制标记(canvas-stage4 spec §9.2):结构性合法的运行时插件 id 集合,
+ * 先于 App 求值写入(main.tsx await 时序保证)。编译期同路径模块
+ * (features/canvas/manifest.ts)检测到自身 id 即放弃注册,消除双入口;
+ * 运行时插件卸载后下次启动自动回归编译期版本(共存兜底)。
+ */
+export const RUNTIME_PLUGIN_IDS_KEY = '__AGENTUI_RUNTIME_PLUGIN_IDS__';
 const FETCH_TIMEOUT_MS = 1500;
 // 后台刷新监测(#10):API 侧启停/卸载发生后面板无感知,定时 + 聚焦时
 // refetch 列表比对,变化则提示刷新(只提示不热替换路由树,维持"元数据先行")
@@ -108,6 +117,20 @@ export function rejectReason(meta: PluginAppMetadata): string | null {
   if (meta.entry.split('/').includes('..') || meta.entry.startsWith('/')) {
     return `entry 非法: ${meta.entry}`;
   }
+  if (meta.type === 'host') {
+    if (!Array.isArray(meta.routes) || meta.routes.length === 0) {
+      return 'host 插件缺少 routes 声明(声明式路由表)';
+    }
+    for (const route of meta.routes) {
+      if (
+        typeof route !== 'string' ||
+        route.includes('..') ||
+        !(route === meta.path || route.startsWith(`${meta.path}/`))
+      ) {
+        return `host 插件 route 非法或越出挂载前缀: ${String(route)}`;
+      }
+    }
+  }
   return null;
 }
 
@@ -127,6 +150,12 @@ export function compatibilityReason(meta: PluginAppMetadata): string | null {
   }
   if (typeof meta.apiVersion === 'string' && !satisfiesApiVersion(meta.apiVersion, HOST_API_VERSION)) {
     return `apiVersion 不满足: 声明 ${meta.apiVersion},宿主 API ${HOST_API_VERSION}`;
+  }
+  if (
+    typeof meta.sharedVersion === 'string' &&
+    !satisfiesApiVersion(meta.sharedVersion, SHARED_API_VERSION)
+  ) {
+    return `sharedVersion 不满足: 声明 ${meta.sharedVersion},宿主共享面 ${SHARED_API_VERSION}`;
   }
   return null;
 }
@@ -274,6 +303,44 @@ export function toModuleDefinition(
 }
 
 /**
+ * Tier B host 插件注册(canvas-stage4 spec §9.2,懒两段式):
+ * 启动期只按 app.json routes 造懒包装路由(元数据即可,零 bundle 拉取);
+ * 首访命中才 loadHostPluginBundle 取定义,按声明 path 精确匹配渲染。
+ * 渲染发生在宿主 Provider 树内(与编译期模块同位),context 全通。
+ * 不兼容 Tier B 走 Tier A 原因页形态(单条 path/* 包装,不拉 bundle)。
+ */
+export function toHostModuleDefinition(
+  meta: PluginAppMetadata,
+  incompatibleReason?: string,
+): ModuleDefinition {
+  if (incompatibleReason) {
+    return toModuleDefinition(meta, incompatibleReason);
+  }
+  const declared = meta.routes ?? [];
+  const loadRoute = (routePath: string) => async () => {
+    const bundle = await loadHostPluginBundle(meta);
+    const inner = bundle.routes.find((route) => route.path === routePath);
+    if (!inner?.Component) {
+      throw new Error(
+        `host 插件 ${meta.id} 未声明路由 ${routePath}(产物与 app.json routes 不一致)`,
+      );
+    }
+    return inner.Component();
+  };
+  const routes: LazyRouteConfig[] = declared.map((path) => ({
+    path,
+    Component: loadRoute(path),
+  }));
+  return {
+    name: `plugin:${meta.id}`,
+    order: meta.order ?? 60,
+    routes,
+    // 词条不走 registry(app.json i18n.files 由 BFF 内联 + injectPluginI18n 注入,
+    // 与 Tier A 同路径;bundle 内 i18n 字段不消费,保持注册期零拉取)
+  };
+}
+
+/**
  * 插件词条语言码 → 宿主 i18next 语言码映射。
  * 插件产物按 ISO 简码组织(zh/en),宿主使用 BCP-47(zh-Hans/zh-Hant/en)。
  */
@@ -386,6 +453,9 @@ function pluginListFingerprint(metas: PluginAppMetadata[]): string {
         m.labelKey ?? '',
         m.descriptionKey ?? '',
         m.apiVersion ?? '',
+        m.type ?? '',
+        m.sharedVersion ?? '',
+        (m.routes ?? []).join(','),
       ].join('|'),
     )
     .sort()
@@ -468,6 +538,11 @@ export function resetPluginListWatchForTests(): void {
   watchState.notifiedFingerprint = null;
 }
 
+/** 测试专用:允许 initRuntimePlugins 在同进程内重跑(初始化幂等闸复位)。 */
+export function resetInitForTests(): void {
+  initialized = false;
+}
+
 let initialized = false;
 
 export async function initRuntimePlugins(): Promise<void> {
@@ -476,6 +551,8 @@ export async function initRuntimePlugins(): Promise<void> {
   }
   initialized = true;
   installAgentUIHostGlobal();
+  // Tier B 共享面(canvas 档):与窄面同点安装,幂等
+  installAgentUISharedHost();
 
   let metas: PluginAppMetadata[] = [];
   try {
@@ -491,6 +568,7 @@ export async function initRuntimePlugins(): Promise<void> {
   // 逐插件隔离 + 注册前校验:结构错误只跳过自己;兼容性失败保留卡片并
   // 显性标注(第三方生态要求"不能兼容要有明确提示",不静默消失)
   const defs: ModuleDefinition[] = [];
+  const registeredIds = new Set<string>();
   for (const meta of metas) {
     try {
       const reason = rejectReason(meta);
@@ -498,19 +576,33 @@ export async function initRuntimePlugins(): Promise<void> {
         console.warn(`[plugins] 拒绝注册插件 ${meta?.id}: ${reason}`);
         continue;
       }
+      registeredIds.add(meta.id);
       const compat = compatibilityReason(meta);
       if (compat) {
         console.warn(`[plugins] 插件 ${meta?.id} 与宿主不兼容(卡片保留): ${compat}`);
         injectPluginI18n(meta);
-        defs.push(toModuleDefinition(meta, compat));
+        defs.push(
+          meta.type === 'host'
+            ? toHostModuleDefinition(meta, compat)
+            : toModuleDefinition(meta, compat),
+        );
         continue;
       }
       injectPluginI18n(meta);
-      defs.push(toModuleDefinition(meta));
+      defs.push(
+        meta.type === 'host'
+          ? toHostModuleDefinition(meta)
+          : toModuleDefinition(meta),
+      );
     } catch (err) {
       console.error(`[plugins] 插件 ${meta?.id} 元数据异常,跳过:`, err);
     }
   }
+  // R2 压制标记:结构性合法插件(含不兼容保留卡片者)由运行时接管路径,
+  // 编译期同路径模块(features/canvas)据此放弃注册。先于 App 求值
+  // (main.tsx await 时序保证),注册流程失败也不影响标记。
+  (globalThis as Record<string, unknown>)[RUNTIME_PLUGIN_IDS_KEY] =
+    registeredIds;
   try {
     registerRuntimeModules(defs);
   } catch (err) {
