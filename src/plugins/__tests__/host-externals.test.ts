@@ -86,6 +86,8 @@ describe('Tier B 共享面(__AGENTUI_SHARED__,canvas 档)', () => {
     expect(keysOf(shared.router)).toContain('useNavigate');
     // react-i18next 同 module → 同 I18n context
     expect(keysOf(shared.reactI18next)).toContain('useTranslation');
+    // radix 原语单例(直接 import 的宿主组件共享根级 Provider context)
+    expect(keysOf(shared.radixTooltip)).toContain('TooltipProvider');
     // i18nModule:i18n 槽位即其 default(S2 宿主 i18n = i18next 包默认实例)
     expect(
       (shared.i18nModule as Record<string, unknown>).default,

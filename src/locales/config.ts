@@ -1,5 +1,4 @@
 import { LanguageAbbreviation } from '@/constants/common';
-import { collectI18nLazy } from '@/features/_registry';
 import { emitHostEvent } from '@/plugins/host-global';
 import storage from '@/utils/authorization-util';
 import dayjs from 'dayjs';
@@ -175,31 +174,43 @@ export const loadLanguageAsync = async (lng: string): Promise<void> => {
   }
   featureI18nLoadedLanguages.add(lng);
 
-  const featureLazy = collectI18nLazy();
-  // 兼容 feature manifest 中 lazy key 使用 primary code（如 'zh'）而系统语言
-  // 为 BCP-47 完整代码（如 'zh-Hans'/'pt-BR'）的情况：同时匹配完整码与 primary 码。
-  // 否则 'cognitiveWargame:zh' 无法被 'zh-Hans' 匹配，导致 feature 翻译全部丢失。
-  const lngPrimary = lng.split('-')[0];
-  const featureLoadersForLang = Object.entries(featureLazy).filter(
-    ([key]) => key.endsWith(`:${lng}`) || key.endsWith(`:${lngPrimary}`),
-  );
-  await Promise.all(
-    featureLoadersForLang.map(async ([key, loader]) => {
-      try {
-        const featureModule = await loader();
-        const featureData = featureModule.default ?? {};
-        i18n.addResourceBundle(
-          lng,
-          'translation',
-          featureData,
-          true,
-          true,
-        );
-      } catch (error) {
-        console.error(`Failed to load feature i18n ${key}:`, error);
-      }
-    }),
-  );
+  // 动态引入 _registry:该模块会急求职值全部 feature manifest(含运行时插件
+  // 压制判定)。静态引入会让它在 main.tsx 模块求值期(早于 initRuntimePlugins
+  // 写入 __AGENTUI_RUNTIME_PLUGIN_IDS__)执行,R2 压制失效(编译期与运行时
+  // 路由双注册)。语言装载是异步流程,在调用点动态引入保持时序正确。
+  // try 保护:CJS 测试环境(jest 无 --experimental-vm-modules)动态 import 不可用,
+  // feature 词条合并降级跳过,主翻译装载不受影响;R2 正确性由注册侧压制
+  // 兜底,不依赖本合并。
+  try {
+    const { collectI18nLazy } = await import('@/features/_registry');
+    const featureLazy = collectI18nLazy();
+    // 兼容 feature manifest 中 lazy key 使用 primary code（如 'zh'）而系统语言
+    // 为 BCP-47 完整代码（如 'zh-Hans'/'pt-BR'）的情况：同时匹配完整码与 primary 码。
+    // 否则 'cognitiveWargame:zh' 无法被 'zh-Hans' 匹配，导致 feature 翻译全部丢失。
+    const lngPrimary = lng.split('-')[0];
+    const featureLoadersForLang = Object.entries(featureLazy).filter(
+      ([key]) => key.endsWith(`:${lng}`) || key.endsWith(`:${lngPrimary}`),
+    );
+    await Promise.all(
+      featureLoadersForLang.map(async ([key, loader]) => {
+        try {
+          const featureModule = await loader();
+          const featureData = featureModule.default ?? {};
+          i18n.addResourceBundle(
+            lng,
+            'translation',
+            featureData,
+            true,
+            true,
+          );
+        } catch (error) {
+          console.error(`Failed to load feature i18n ${key}:`, error);
+        }
+      }),
+    );
+  } catch (error) {
+    console.warn(`[i18n] feature i18n merge skipped for ${lng}:`, error);
+  }
 };
 
 export const changeLanguageAsync = async (lng: string): Promise<void> => {

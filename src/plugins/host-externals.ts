@@ -20,6 +20,7 @@ import * as reactQuery from '@tanstack/react-query';
 import * as jsxRuntime from 'react/jsx-runtime';
 import * as router from 'react-router';
 import * as reactI18next from 'react-i18next';
+import * as radixTooltip from '@radix-ui/react-tooltip';
 import i18n, * as i18nModule from '@/locales/config';
 import * as themeProvider from '@/components/theme-provider';
 import { cn } from '@/lib/utils';
@@ -73,6 +74,7 @@ export function buildAgentUISharedHost(): AgentUISharedHost {
     jsxRuntime,
     router,
     reactI18next,
+    radixTooltip,
     i18n,
     i18nModule,
     themeProvider,

@@ -85,6 +85,12 @@ export interface AgentUISharedHost {
   router: unknown;
   /** react-i18next 命名空间(1.1.0)。 */
   reactI18next: unknown;
+  /**
+   * @radix-ui/react-tooltip 命名空间(1.1.0,S2 真机冒烟补):宿主组件存在
+   * 直接 import radix 原语的形态,打包副本会产生第二个 Provider context
+   * (Tooltip 在宿主根级 Provider 之外必然抛错),必须共享宿主实例。
+   */
+  radixTooltip: unknown;
   /** 宿主 i18next 实例(非 namespace)。 */
   i18n: unknown;
   /** @/locales/config 模块 namespace(1.1.0,default+i18n 辅助导出)。 */

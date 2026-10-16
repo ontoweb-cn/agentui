@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -32,6 +32,7 @@ const SHARED_SLOTS: Record<string, string> = {
   '@tanstack/react-query': 'reactQuery',
   'react-router': 'router',
   'react-i18next': 'reactI18next',
+  '@radix-ui/react-tooltip': 'radixTooltip',
   i18next: 'i18n',
   '@/locales/config': 'i18nModule',
   '@/components/theme-provider': 'themeProvider',
@@ -46,6 +47,26 @@ function slotAccessor(slotPath: string): string {
   );
   return 'globalThis' + parts.map((p) => `[${p}]`).join('');
 }
+
+// 解析级外部化:宿主源码存在相对路径导入白名单单例的形态(如
+// components/file-uploader 的 '../ui/tooltip'),仅按导入写法映射会漏网,
+// 打包副本的 radix context 与宿主分裂(真机冒烟实锤:TooltipProvider 报错)。
+// 此表按「解析后的宿主文件绝对路径」匹配,与导入写法无关。
+const HOST_SRC = resolve(__dirname, '../../src');
+const resolvedFileSlots = new Map<string, string>();
+function registerResolvedSlot(absNoExt: string, slot: string) {
+  for (const ext of ['.tsx', '.ts', '/index.tsx', '/index.ts']) {
+    const candidate = absNoExt + ext;
+    if (existsSync(candidate)) {
+      resolvedFileSlots.set(candidate, slot);
+    }
+  }
+}
+for (const key of SHARED_UI_MODULE_KEYS) {
+  registerResolvedSlot(join(HOST_SRC, 'components/ui', key), `ui.${key}`);
+}
+registerResolvedSlot(join(HOST_SRC, 'components/theme-provider'), 'themeProvider');
+registerResolvedSlot(join(HOST_SRC, 'locales/config'), 'i18nModule');
 
 let sharedTmpCounter = 0;
 
@@ -67,7 +88,10 @@ function rewriteImportClause(clause: string, slotPath: string): string {
   }
   const defaultImport = rest.match(/([A-Za-z_$][\w$]*)/);
   if (defaultImport) {
-    stmts.push(`const ${defaultImport[1]} = ${tmp};`);
+    // i18nModule 等模块 namespace 的 default 才是宿主默认导出实例
+    // (config.default = i18next 实例);react 等 namespace 无 default,
+    // 回退绑定整个 namespace(与 ESM interop 语义一致)。
+    stmts.push(`const ${defaultImport[1]} = ${tmp}.default !== undefined ? ${tmp}.default : ${tmp};`);
   }
   if (named) {
     const parts = named[1]
@@ -96,7 +120,7 @@ function tierBSharedExternals(): Plugin {
   return {
     name: 'tier-b-shared-externals',
     enforce: 'pre',
-    resolveId(source) {
+    resolveId(source, importer) {
       const slot = SHARED_SLOTS[source];
       if (slot) {
         return { id: SHARED_PREFIX + slot, external: true };
@@ -106,6 +130,27 @@ function tierBSharedExternals(): Plugin {
       // 重写时容忍可选 query。
       if (source.startsWith(SHARED_PREFIX)) {
         return { id: source, external: true };
+      }
+      // 解析路径匹配:vite:alias 先于本插件把 '@/xxx' 解析为无扩展名绝对
+      // 路径,相对导入也会在后续解析——两类形态都按候选扩展名对表。
+      const base = source.split('?')[0];
+      if (base.startsWith('/') || (source.startsWith('.') && importer)) {
+        const abs = base.startsWith('/')
+          ? base
+          : resolve(dirname(importer), base);
+        const candidates = [
+          abs,
+          `${abs}.ts`,
+          `${abs}.tsx`,
+          `${abs}/index.ts`,
+          `${abs}/index.tsx`,
+        ];
+        for (const candidate of candidates) {
+          const resolvedSlot = resolvedFileSlots.get(candidate);
+          if (resolvedSlot) {
+            return { id: SHARED_PREFIX + resolvedSlot, external: true };
+          }
+        }
       }
       return null;
     },
@@ -172,6 +217,11 @@ export default defineConfig({
   plugins: [react(), tierBSharedExternals(), emitI18nJson()],
   resolve: {
     alias: {
+      // 必须先于 '@':宿主 28 处 `import { Routes } from '@/routes'` 是对
+      // routes.tsx 的向后兼容 re-export,会把整棵路由树 + _registry(全量
+      // manifest glob)拖进 artifact;artifact 不渲染宿主路由,重定向到
+      // 无副作用的常量模块(spec §9.2 已知成本收敛)。
+      '@/routes': resolve(__dirname, '../../src/constants/routes'),
       '@': resolve(__dirname, '../../src'),
       '@intellect-docs': resolve(__dirname, '../../docs'),
       '@agentui/canvas-plugin': resolve(__dirname, './src'),

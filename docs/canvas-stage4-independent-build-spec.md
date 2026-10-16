@@ -200,3 +200,39 @@ content 的 `packages/canvas-plugin` glob **必须保留**(产物 className 依�
 canvas-smoke-checklist 全量(列表→编辑→保存→执行→上传→trace→版本→重置→删除)+
 深链 `/agent/:id` 与 `/agent/:id/explore`、分享页 `/agent/share`、未装插件时编译期
 回退、双语词条、暗色主题、画布内 LLM 下拉(P2-1)。**无凭证前 S2 不收口**(R4 不变)。
+
+**2026-10-17 真机冒烟执行记录(intellect-team 生产租户,自建测试画布全流程后删除,
+零存量数据损伤)**:
+
+| 项 | 结果 | 备注 |
+|---|---|---|
+| 运行时装载(bundle 拉取/CSS 注入/深链 /agent/:id) | ✅ | R2 接管生效,登录页零 bundle 拉取 |
+| 列表/编辑(节点渲染+表单面板)/保存(服务端 update_time 前进) | ✅ | |
+| 执行(Run→reset→测试对话面板→消息→completions 200) | ✅ | 仅 Begin 节点无 LLM,空回复符合画布拓扑 |
+| trace(Log 面板,节点 Online)/版本(6 版本列表)/重置(Run 流程内 reset 200) | ✅ | |
+| 删除(自建测试画布 code 0,17 个存量画布零损伤) | ✅ | |
+| explore/share 深链 | ✅ | share 需 `from`+`shared_id` 查询参数(既有契约) |
+| 双语词条(zh-Hans bundle 存活 + flow 键注入)/暗色主题 | ✅ | 见下方修复 ④ |
+| **卸载回退(编译期接管)** | ✅ | 卸载后 runtimeIds 清空、无 CSS 注入、编辑器照常 |
+| 画布内 LLM 下拉 | ⛔ 环境阻塞 | `/proxy/v1/users/me/models` 401:本地 .env 缺 `INTELLECT_RAG_ADMIN_EMAIL/PASSWORD`(rag-token 动态登录失败回退 env 亦空)——环境配置项,非 S2 代码问题 |
+
+**冒烟发现并当场修复的缺陷(全部收敛进本批)**:
+
+1. **R2 双注册(P0)**:`_registry` 被 `locales/config` 等启动链静态引入,急求职值
+   早于压制标记写入,编译期 enabled() 必然读到空标记 → 编译期/运行时同路径双注册,
+   编译期胜出、bundle 永不装载。修复:注册侧 `registerRuntimeModules` 按「路由 path
+   精确重合」移除编译期同路径模块(不依赖求值顺序的确定性压制),manifest 标记检查
+   降为纵深防御;`main.tsx`/`locales/config` 改动态引入打断静态链(顺带收敛启动期
+   急求图)。
+2. **radix 原语打包副本(P0)**:宿主组件存在直接 import `@radix-ui/react-tooltip`
+   的形态,打包副本产生第二个 Provider context → `Tooltip must be used within
+   TooltipProvider` 编辑器白屏。修复:共享面增补 `radixTooltip` 槽位(1.1.0 同批次
+   增量)+ 外部化映射。
+3. **vite:alias 预解析逃逸(P1)**:alias 在本插件 resolveId 之前把 `@/xxx` 解析为
+   无扩展名绝对路径,精确别名匹配全部漏网 → `@/locales/config` 打包副本在 artifact
+   装载时对共享 i18next 实例执行**二次 init**(en-only resources)→ 运行 ~1.4s 后
+   zh-Hans 束整体被清(词条丢失+宿主中文回退英文)。修复:resolveId 增加「解析路径
+   候选扩展名匹配」,覆盖被预解析的绝对路径与相对导入两类形态。
+4. **i18nModule 默认导入绑定(P1)**:模块 namespace 槽位的 default 导入需取
+   `.default`(config.default = i18next 实例),否则 `R.t is not a function`。修复:
+   重写器 default 绑定改为 `tmp.default ?? tmp`(与 ESM interop 语义一致)。
