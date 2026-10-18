@@ -203,6 +203,9 @@ export function SlashCommandPaletteImpl({
         // PS3: 面板可见时消费 Enter，避免 textarea 提交消息
         e.preventDefault();
         e.stopPropagation();
+        // 裸 `/` 仅用于浏览全量命令;必须先输入命令名再 Enter,
+        // 避免用户只想看列表却误执行第一条(/retry 会触发重新生成)。
+        if (!parsed?.commandName) return;
         const cmd = matchedCommands[selectedIndex];
         executeCommand(cmd, parsed?.arg);
       } else if (e.key === 'Escape') {
@@ -240,7 +243,7 @@ export function SlashCommandPaletteImpl({
   return (
     <div
       ref={containerRef}
-      className="absolute bottom-full left-0 mb-2 w-80 max-h-80 overflow-auto rounded-md border bg-popover shadow-md z-50"
+      className="absolute bottom-full start-0 mb-2 w-80 max-h-80 overflow-auto rounded-md border bg-popover shadow-md z-50"
       data-testid="slash-command-palette"
     >
       {isSubArgMode && currentCmd?.arg?.type === 'model' ? (

@@ -71,6 +71,26 @@ describe('ModeSwitcher', () => {
     expect(onChange).toHaveBeenCalledWith('code');
   });
 
+  it('ArrowRight 移到下一个模式并聚焦', () => {
+    const onChange = jest.fn();
+    render(<ModeSwitcher {...makeProps({ value: 'work', onChange })} />);
+    const workBtn = screen.getByRole('radio', { name: 'Work' });
+    fireEvent.keyDown(workBtn, { key: 'ArrowRight' });
+
+    expect(onChange).toHaveBeenCalledWith('code');
+    expect(screen.getByRole('radio', { name: 'Code' })).toHaveFocus();
+  });
+
+  it('ArrowLeft 循环到最后一个模式', () => {
+    const onChange = jest.fn();
+    render(<ModeSwitcher {...makeProps({ value: 'work', onChange })} />);
+    const workBtn = screen.getByRole('radio', { name: 'Work' });
+    fireEvent.keyDown(workBtn, { key: 'ArrowLeft' });
+
+    expect(onChange).toHaveBeenCalledWith('canvas');
+    expect(screen.getByRole('radio', { name: 'Canvas' })).toHaveFocus();
+  });
+
   it('按其他键不触发 onChange', () => {
     const onChange = jest.fn();
     render(<ModeSwitcher {...makeProps({ value: 'work', onChange })} />);
@@ -270,8 +290,8 @@ describe('ModeSwitcher', () => {
       // 激活段应包含一个 aria-hidden 的指示条 span
       const indicator = workBtn.querySelector('span[aria-hidden]');
       expect(indicator).not.toBeNull();
-      // 指示条带 left-0 定位与 bg-trae-green
-      expect(indicator!.className).toContain('left-0');
+      // 指示条带 start-0 定位与 bg-trae-green(RTL 下逻辑起点自适应)
+      expect(indicator!.className).toContain('start-0');
       expect(indicator!.className).toContain('bg-trae-green');
     });
 

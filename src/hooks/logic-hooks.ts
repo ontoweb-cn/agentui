@@ -205,9 +205,16 @@ function useSetDoneRecord() {
   };
 }
 
+const getSseErrorMessage = (payload: any, fallback = 'Request failed') => {
+  const msg = payload?.message ?? payload?.data?.message ?? payload?.error;
+  return typeof msg === 'string' && msg.trim().length > 0 ? msg : fallback;
+};
+
 export const useSendMessageWithSse = () => {
   const [answer, setAnswer] = useState<IAnswer>({} as IAnswer);
   const [done, setDone] = useState(true);
+  // Route B: RAG 路径终态错误,供 StreamStatus 区分 done/failed。
+  const [error, setError] = useState<string | null>(null);
   const { doneRecord, clearDoneRecord, setDoneRecordById, allDone } =
     useSetDoneRecord();
   const timer = useRef<any>();
@@ -247,6 +254,7 @@ export const useSendMessageWithSse = () => {
       initializeSseRef();
       try {
         setDoneValue(body, false);
+        setError(null);
         const response = await fetch(url, {
           method: 'POST',
           headers: {
@@ -256,6 +264,31 @@ export const useSendMessageWithSse = () => {
           body: JSON.stringify(omit(body, 'chatBoxId')),
           signal: controller?.signal || sseRef.current?.signal,
         });
+
+        if (!response.ok) {
+          let errorMessage = response.statusText || 'Request failed';
+          try {
+            const errorBody = (await response.clone().json()) as Partial<ResponseType>;
+            if (typeof errorBody?.message === 'string' && errorBody.message) {
+              errorMessage = errorBody.message;
+            }
+          } catch {
+            // Non-JSON error body; fall back to the HTTP status text.
+          }
+          setError(errorMessage);
+          message.error(errorMessage);
+          setDoneValue(body, true);
+          resetAnswer();
+          return {
+            response,
+            data: {
+              code: response.status,
+              data: null,
+              message: errorMessage,
+              status: response.status,
+            } as ResponseType,
+          };
+        }
 
         const res = response.clone().json();
 
@@ -276,6 +309,11 @@ export const useSendMessageWithSse = () => {
               }
               try {
                 const val = JSON.parse(value?.data || '');
+                if (typeof val?.code === 'number' && val.code !== 0) {
+                  const sseError = getSseErrorMessage(val);
+                  setError(sseError);
+                  message.error(sseError);
+                }
                 const d = val?.data;
                 if (typeof d !== 'boolean') {
                   setAnswer((prev) => {
@@ -319,11 +357,20 @@ export const useSendMessageWithSse = () => {
         setDoneValue(body, true);
         resetAnswer();
         return { data: await res, response };
-      } catch {
+      } catch (error) {
         setDoneValue(body, true);
 
         resetAnswer();
-        // Swallow fetch errors silently
+        // 用户主动停止(abort)不是失败,由调用方用 stopped 终态展示。
+        // 注意:abort 后 response.clone().json() 也可能抛非 DOMException 错误,
+        // 因此同时检查 signal.aborted,避免把停止误判为 failed。
+        const aborted =
+          sseRef.current?.signal.aborted ||
+          controller?.signal.aborted ||
+          (error instanceof DOMException && error.name === 'AbortError');
+        if (!aborted) {
+          setError(error instanceof Error ? error.message : 'Request failed');
+        }
       }
     },
     [initializeSseRef, setDoneValue, resetAnswer],
@@ -337,6 +384,7 @@ export const useSendMessageWithSse = () => {
     send,
     answer,
     done,
+    error,
     doneRecord,
     allDone,
     setDone,
@@ -461,10 +509,12 @@ export const useSelectDerivedMessages = () => {
   const addNewestQuestion = useCallback(
     (message: IMessage, answer: string = '') => {
       setDerivedMessages((pre) => {
+        const createdAt = message.createdAt ?? Date.now();
         return [
           ...pre,
           {
             ...message,
+            createdAt,
             id: buildMessageUuid(message), // The message id is generated on the front end,
             // and the message id returned by the back end is the same as the question id,
             //  so that the pair of messages can be deleted together when deleting the message
@@ -473,6 +523,7 @@ export const useSelectDerivedMessages = () => {
             role: MessageType.Assistant,
             content: answer,
             conversationId: message.conversationId,
+            createdAt,
             id: buildMessageUuid({ ...message, role: MessageType.Assistant }),
           },
         ];
@@ -487,6 +538,7 @@ export const useSelectDerivedMessages = () => {
         ...pre,
         {
           ...message,
+          createdAt: Date.now(),
           id: buildMessageUuid(message), // The message id is generated on the front end,
           // and the message id returned by the back end is the same as the question id,
           //  so that the pair of messages can be deleted together when deleting the message
@@ -498,6 +550,8 @@ export const useSelectDerivedMessages = () => {
   // Add the streaming message to the last item in the message list
   const addNewestAnswer = useCallback((answer: IAnswer) => {
     setDerivedMessages((pre) => {
+      const previous = pre?.[pre.length - 1];
+      const createdAt = previous?.createdAt ?? Date.now();
       return [
         ...(pre?.slice(0, -1) ?? []),
         {
@@ -511,6 +565,7 @@ export const useSelectDerivedMessages = () => {
           prompt: answer.prompt,
           audio_binary: answer.audio_binary,
           ...omit(answer, 'reference'),
+          createdAt,
         },
       ];
     });
@@ -524,7 +579,12 @@ export const useSelectDerivedMessages = () => {
       if (idx !== -1) {
         return pre.map((x) => {
           if (x.id === answer.id) {
-            return { ...x, ...answer, content: answer.answer };
+            return {
+              ...x,
+              ...answer,
+              content: answer.answer,
+              createdAt: x.createdAt ?? Date.now(),
+            };
           }
           return x;
         });
@@ -543,6 +603,7 @@ export const useSelectDerivedMessages = () => {
           prompt: answer.prompt,
           audio_binary: answer.audio_binary,
           ...omit(answer, 'reference'),
+          createdAt: Date.now(),
         },
       ];
     });

@@ -161,7 +161,7 @@ export function GatewayProviderPanel() {
                   <span className="text-xs text-text-secondary ml-2">{p.base_url}</span>
                   <span className="text-xs ml-2">
                     {p.enabled ? (
-                      <span className="text-green-600">enabled</span>
+                      <span className="text-state-success">enabled</span>
                     ) : (
                       <span className="text-text-secondary">disabled</span>
                     )}
@@ -189,7 +189,7 @@ export function GatewayProviderPanel() {
                 <IntellectTooltip tooltip="Verify Connection">
                   <Button size="sm" variant="outline" onClick={() => handleVerify(p.id)}>
                     {verifyStatus[p.id] === 'ok' ? (
-                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <CheckCircle className="h-4 w-4 text-state-success" />
                     ) : verifyStatus[p.id] === 'auth_error' ? (
                       <XCircle className="h-4 w-4 text-state-error" />
                     ) : (

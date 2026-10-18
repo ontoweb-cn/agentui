@@ -49,7 +49,6 @@ const UserSettingTeam = () => {
       <div className="h-full overflow-x-hidden overflow-y-auto">
         <Card className="bg-transparent border-none">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4">
-            {/* <User className="mr-2 h-5 w-5 text-[#1677ff]" /> */}
             <CardTitle className="text-base">
               {t('setting.teamMembers')}
             </CardTitle>
@@ -75,7 +74,6 @@ const UserSettingTeam = () => {
 
         <Card className="bg-transparent border-none mt-8">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4">
-            {/* <Users className="mr-2 h-5 w-5 text-[#1677ff]" /> */}
             <CardTitle className="text-base w-fit">
               {t('setting.joinedTeams')}
             </CardTitle>

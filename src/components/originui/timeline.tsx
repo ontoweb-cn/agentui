@@ -251,7 +251,7 @@ const CustomTimeline = ({
   onStepChange,
   orientation = 'horizontal',
   lineStyle = 'solid',
-  lineColor = 'var(--text-secondary)',
+  lineColor: _lineColor = 'var(--text-secondary)',
   indicatorColor = 'rgb(var(--accent-primary))',
   defaultValue = 1,
   className,
@@ -337,7 +337,7 @@ const CustomTimeline = ({
                 isCompleted
                   ? 'border-border-accent text-text-primary'
                   : 'border-border-default text-text-secondary',
-                isActive && 'text-accent-primary bg-accent-primary/10',
+                isActive && 'text-accent-primary-text bg-accent-primary/10',
               )}
               style={{
                 width: _nodeSize,

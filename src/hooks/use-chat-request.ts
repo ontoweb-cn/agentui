@@ -20,6 +20,7 @@ import gatewayChatService, {
 } from '@/services/gateway-chat-service';
 import api from '@/utils/api';
 import { buildMessageListWithUuid } from '@/utils/chat';
+import { getMessageCreatedAt } from '@/utils/message-time';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
 import { has } from 'lodash';
@@ -561,6 +562,7 @@ export function useFetchSessionManually() {
             id: m.id != null ? String(m.id) : undefined,
             content: String(m.content ?? ''),
             role: m.role === 'user' ? MessageType.User : MessageType.Assistant,
+            createdAt: getMessageCreatedAt(m),
           };
 
           // 映射 assistant 的 tool_calls 为 ToolCallRecord[]

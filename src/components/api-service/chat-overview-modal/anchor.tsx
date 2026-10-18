@@ -56,9 +56,9 @@ const Anchor: React.FC<SimpleAnchorProps> = ({
             <a
               href={item.href}
               onClick={(e) => handleClick(e, item.href)}
-              className={`block px-3 py-1.5 no-underline rounded cursor-pointer transition-all duration-300 hover:text-accent-primary/70 ${
+              className={`block px-3 py-1.5 no-underline rounded cursor-pointer transition-all duration-300 hover:text-accent-primary-text/70 ${
                 hash === item.href
-                  ? 'text-accent-primary bg-accent-primary-5'
+                  ? 'text-accent-primary-text bg-accent-primary-5'
                   : 'text-text-secondary bg-transparent'
               }`}
             >
@@ -71,9 +71,9 @@ const Anchor: React.FC<SimpleAnchorProps> = ({
                     <a
                       href={child.href}
                       onClick={(e) => handleClick(e, child.href)}
-                      className={`block px-3 py-1 text-sm no-underline rounded cursor-pointer transition-all duration-300 hover:text-accent-primary/70 ${
+                      className={`block px-3 py-1 text-sm no-underline rounded cursor-pointer transition-all duration-300 hover:text-accent-primary-text/70 ${
                         hash === child.href
-                          ? 'text-accent-primary bg-accent-primary-5'
+                          ? 'text-accent-primary-text bg-accent-primary-5'
                           : 'text-text-secondary bg-transparent'
                       }`}
                     >

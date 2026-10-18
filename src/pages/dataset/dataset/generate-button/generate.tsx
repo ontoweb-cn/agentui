@@ -118,7 +118,7 @@ const MenuItem: React.FC<{
         <div className="flex justify-start text-text-primary items-center gap-2">
           <IconFontFill
             name={iconKeyMap[type]}
-            className="text-accent-primary"
+            className="text-accent-primary-text"
           />
           {t(`knowledgeDetails.${lowerFirst(type)}`)}
         </div>
@@ -156,7 +156,7 @@ const MenuItem: React.FC<{
                   runGenerate({ type });
                 }}
               >
-                <IconFontFill name="reparse" className="text-accent-primary" />
+                <IconFontFill name="reparse" className="text-accent-primary-text" />
               </span>
             )}
             {status !== generateStatus.failed && (

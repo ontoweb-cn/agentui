@@ -1,22 +1,27 @@
-import { CardContainer } from '@/components/card-container';
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
-import ListFilterBar from '@/components/list-filter-bar';
 import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
+import { SearchInput } from '@/components/ui/input';
 import { IntellectPagination } from '@/components/ui/intellect-pagination';
 import { useFetchChatList } from '@/hooks/use-chat-request';
-import { pick } from 'lodash';
 import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
-import { ChatCard } from './chat-card';
+import { groupChatsByDate } from './chat-list-group';
+import { ChatTaskCard } from './chat-task-card';
 import { useCreateChatDialog } from './hooks/use-create-chat';
 import { useRenameChat } from './hooks/use-rename-chat';
 
+const GROUP_LABEL_KEY = {
+  today: 'chat.groupToday',
+  yesterday: 'chat.groupYesterday',
+  earlier: 'chat.groupEarlier',
+} as const;
+
 export default function ChatList() {
-  const { data, setPagination, pagination, handleInputChange, searchString } =
+  const { data, setPagination, pagination, handleInputChange, searchString, loading } =
     useFetchChatList();
   const { t } = useTranslation();
   const {
@@ -56,6 +61,11 @@ export default function ChatList() {
     }
   }, [isCreate, handleShowCreateModal, searchParams, setSearchParams]);
 
+  const groups = useMemo(
+    () => groupChatsByDate(data.chats ?? []),
+    [data.chats],
+  );
+
   const renameDialogProps = useMemo(() => {
     if (chatRenameVisible) {
       return {
@@ -91,70 +101,80 @@ export default function ChatList() {
 
   return (
     <>
-      {data.chats?.length || searchString ? (
-        <article className="size-full flex flex-col" data-testid="chats-list">
-          <header className="px-5 pt-8 mb-4">
-            <ListFilterBar
-              title={t('chat.chatApps')}
-              icon="chats"
-              onSearchChange={handleInputChange}
-              searchString={searchString}
-            >
-              <Button data-testid="create-chat" onClick={handleShowCreateModal}>
-                <Plus className="size-[1em]" />
-                {t('chat.createChat')}
-              </Button>
-            </ListFilterBar>
-          </header>
+      <section
+        className="flex h-full min-h-0 flex-col"
+        data-testid="chats-list"
+      >
+        <header className="flex items-center justify-between gap-4 pb-4">
+          <h2 className="text-2xl font-semibold">{t('chat.chatApps')}</h2>
+          <div className="flex items-center gap-3">
+            <div className="w-[280px] max-w-full">
+              <SearchInput
+                value={searchString}
+                onChange={handleInputChange}
+                placeholder={t('common.search')}
+              />
+            </div>
+            <Button data-testid="create-chat" onClick={handleShowCreateModal}>
+              <Plus className="size-[1em]" />
+              {t('chat.createChat')}
+            </Button>
+          </div>
+        </header>
 
-          {data.chats?.length ? (
-            <>
-              <CardContainer className="flex-1 overflow-auto px-5">
-                {data.chats.map((x) => (
-                  <ChatCard
-                    key={x.id}
-                    data={x}
-                    showChatRenameModal={showChatRenameModal}
-                  />
-                ))}
-              </CardContainer>
-
-              <footer className="mt-4 px-5 pb-5">
-                <IntellectPagination
-                  {...pick(pagination, 'current', 'pageSize')}
-                  total={pagination.total}
-                  onChange={handlePageChange}
-                />
-              </footer>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center">
+        <div className="min-h-0 flex-1 overflow-auto">
+          {loading ? (
+            <p className="py-16 text-center text-sm text-text-secondary">
+              {t('chat.loading')}
+            </p>
+          ) : groups.length === 0 ? (
+            <div className="flex h-full items-center justify-center">
               <EmptyAppCard
                 showIcon
                 size="large"
                 className="w-[480px] p-14"
-                isSearch
+                isSearch={Boolean(searchString)}
                 type={EmptyCardType.Chat}
+                onClick={!searchString ? handleShowCreateModal : undefined}
                 testId="chats-empty-create"
               />
             </div>
+          ) : (
+            <div className="space-y-6 pb-4">
+              {groups.map((group) => (
+                <section key={group.key}>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                    {t(GROUP_LABEL_KEY[group.key])}
+                    <span className="ms-1.5 text-text-disabled">
+                      {group.chats.length}
+                    </span>
+                  </h3>
+                  <div className="grid gap-3 xl:grid-cols-2">
+                    {group.chats.map((chat) => (
+                      <ChatTaskCard
+                        key={chat.id}
+                        data={chat}
+                        showChatRenameModal={showChatRenameModal}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
           )}
-        </article>
-      ) : (
-        <article
-          className="size-full flex items-center justify-center"
-          data-testid="chats-list"
-        >
-          <EmptyAppCard
-            showIcon
-            size="large"
-            className="w-[480px] p-14"
-            type={EmptyCardType.Chat}
-            onClick={() => handleShowCreateModal()}
-            testId="chats-empty-create"
-          />
-        </article>
-      )}
+        </div>
+
+        {pagination.total > 0 && (
+          <div className="pt-3">
+            <IntellectPagination
+              current={pagination.current}
+              pageSize={pagination.pageSize}
+              total={pagination.total}
+              onChange={handlePageChange}
+            />
+          </div>
+        )}
+      </section>
 
       {renameDialogProps && (
         <RenameDialog {...renameDialogProps}></RenameDialog>

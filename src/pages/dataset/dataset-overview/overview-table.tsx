@@ -114,7 +114,7 @@ export const getFileLogsTableColumns = (
           {row.original.source_from === 'local' ||
           row.original.source_from === '' ? (
             <div className="bg-accent-primary-5 w-6 h-6 rounded-full flex items-center justify-center">
-              <MonitorUp className="text-accent-primary" size={16} />
+              <MonitorUp className="text-accent-primary-text" size={16} />
             </div>
           ) : dataSourceInfo[
               row.original.source_from as keyof typeof dataSourceInfo
@@ -128,7 +128,7 @@ export const getFileLogsTableColumns = (
             </div>
           ) : (
             <div className="w-6 h-6 flex items-center justify-center">
-              <MonitorUp className="text-accent-primary" size={16} />
+              <MonitorUp className="text-accent-primary-text" size={16} />
             </div>
           )}
         </div>

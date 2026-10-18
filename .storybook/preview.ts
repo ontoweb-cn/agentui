@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import '../public/iconfont.js';
 import { TooltipProvider } from '../src/components/ui/tooltip';
 
+import '../src/less/variable.less';
 import '../tailwind.css';
 
 const preview: Preview = {

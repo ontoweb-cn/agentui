@@ -263,6 +263,25 @@ describe('SlashCommandPalette', () => {
     expect(onCommandExecuted).toHaveBeenCalled();
   });
 
+  it('裸 / 时 Enter 不执行命令(仅浏览)', () => {
+    const onCommandExecuted = jest.fn();
+    setupFocusedTextarea();
+    render(
+      <SlashCommandPalette
+        value="/"
+        visible={true}
+        context={mockContext}
+        onCommandExecuted={onCommandExecuted}
+        onRequestClose={jest.fn()}
+      />,
+    );
+
+    fireEvent.keyDown(document, { key: 'Enter' });
+
+    expect(mockContext.retry).not.toHaveBeenCalled();
+    expect(onCommandExecuted).not.toHaveBeenCalled();
+  });
+
   it('键盘 Escape 调用 onRequestClose', () => {
     const onRequestClose = jest.fn();
     setupFocusedTextarea();

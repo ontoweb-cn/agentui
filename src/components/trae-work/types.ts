@@ -46,7 +46,8 @@ export interface TaskCardProps {
 export interface ToolPanelProps {
   id: string;
   title: string;
-  icon: string;
+  /** 图标:字符串走内置 ICON_MAP;也可直接传 ReactNode(推荐新代码) */
+  icon?: React.ReactNode | string;
   children: React.ReactNode;
   defaultExpanded?: boolean;
   expanded?: boolean;

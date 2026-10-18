@@ -40,6 +40,14 @@ const config: StorybookConfig = {
                   },
                 },
               },
+              {
+                loader: 'less-loader',
+                options: {
+                  lessOptions: {
+                    javascriptEnabled: true,
+                  },
+                },
+              },
             ],
           },
         ],
@@ -56,6 +64,10 @@ const config: StorybookConfig = {
         ...config.resolve.alias,
         '@': path.resolve(__dirname, '../src'),
       };
+    }
+    // 视觉回归产物上传 Chromatic;生产构建关闭 sourcemap,避免源码随静态产物外传。
+    if (config.mode === 'production') {
+      config.devtool = false;
     }
     return config;
   },

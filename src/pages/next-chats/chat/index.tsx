@@ -5,8 +5,7 @@ import {
   useFetchSessionManually,
   useGetChatSearchParams,
 } from '@/hooks/use-chat-request';
-import { useSetModalState } from '@/hooks/common-hooks';
-import { IClientConversation } from '@/interfaces/database/chat';
+import { IClientConversation, IMessage } from '@/interfaces/database/chat';
 import { RootLayoutContainer } from '@/layouts/root-layout';
 import { cn } from '@/lib/utils';
 import { useMount } from 'ahooks';
@@ -14,9 +13,10 @@ import { isEmpty } from 'lodash';
 import {
   LucideArrowBigLeft,
   LucideArrowUpRight,
+  LucideFolderOpen,
   LucideSettings,
 } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 import {
@@ -31,6 +31,7 @@ import { SingleChatBox } from './chat-box/single-chat-box';
 import { Sessions } from './sessions';
 import { useAddChatBox } from './use-add-box';
 import { useSwitchDebugMode } from './use-switch-debug-mode';
+import { WorkspacePanel } from './workspace/workspace-panel';
 
 export default function Chat() {
   const { t } = useTranslation();
@@ -45,13 +46,29 @@ export default function Chat() {
   const { isDebugMode, switchDebugMode } = useSwitchDebugMode();
   const { removeChatBox, addChatBox, chatBoxIds, hasSingleChatBox } =
     useAddChatBox(isDebugMode);
-  // ChatSettings 面板开合状态:齿轮常驻 CardHeader(多模型按钮右侧)作 toggle,
-  // 状态提升到页面层以便头部按钮与面板跨子树共享
-  const { visible: settingsOpen, switchVisible: switchSettingsOpen } =
-    useSetModalState(false);
+  // 右侧槽位:设置/工作区共用,同时只能打开一个
+  const [rightPanel, setRightPanel] = useState<'none' | 'settings' | 'workspace'>(
+    'none',
+  );
+  const settingsOpen = rightPanel === 'settings';
+  const workspaceOpen = rightPanel === 'workspace';
+  const toggleRightPanel = useCallback(
+    (panel: 'settings' | 'workspace') => {
+      setRightPanel((previous) => (previous === panel ? 'none' : panel));
+    },
+    [],
+  );
+
+  // 工作区优先使用聊天页实时消息(仅在打开时由 SingleChatBox 回传)
+  const [workspaceMessages, setWorkspaceMessages] = useState<IMessage[]>([]);
 
   const { conversationId, isNew } = useGetChatSearchParams();
   const { id: chatId } = useParams();
+
+  // 切换会话时清空工作区消息,避免展示上一个会话的文件/引用
+  useEffect(() => {
+    setWorkspaceMessages([]);
+  }, [conversationId]);
 
   // 顶部标题直接使用 useFetchChat 的 name（与 sessions.tsx 共享缓存）。
   // 不从 useFetchSessionList 间接读取，因为 useFetchSessionList 的 queryFn
@@ -176,16 +193,36 @@ export default function Chat() {
                         variant="ghost"
                         size="icon-sm"
                         disabled={!hasSingleChatBox}
-                        onClick={switchSettingsOpen}
+                        onClick={() => toggleRightPanel('settings')}
                         aria-pressed={settingsOpen}
                         aria-label={t('chat.chatSetting')}
-                        className={cn(settingsOpen && 'text-accent-primary')}
+                        className={cn(settingsOpen && 'text-accent-primary-text')}
                         data-testid="chat-settings"
                       >
                         <LucideSettings />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>{t('chat.chatSetting')}</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        disabled={!hasSingleChatBox}
+                        onClick={() => toggleRightPanel('workspace')}
+                        aria-pressed={workspaceOpen}
+                        aria-label={t('workspace.title')}
+                        className={cn(
+                          workspaceOpen && 'text-accent-primary-text',
+                        )}
+                        data-testid="chat-workspace-toggle"
+                      >
+                        <LucideFolderOpen />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t('workspace.title')}</TooltipContent>
                   </Tooltip>
                 </div>
               </CardTitle>
@@ -195,14 +232,26 @@ export default function Chat() {
                   controller={controller}
                   stopOutputMessage={stopOutputMessage}
                   conversation={currentConversation}
+                  workspaceOpen={workspaceOpen}
+                  onMessagesChange={setWorkspaceMessages}
                 />
               </CardContent>
             </Card>
 
             <ChatSettings
               visible={settingsOpen}
-              switchVisible={switchSettingsOpen}
+              switchVisible={() => toggleRightPanel('settings')}
             ></ChatSettings>
+
+            <WorkspacePanel
+              visible={workspaceOpen}
+              onClose={() => setRightPanel('none')}
+              messages={
+                workspaceMessages.length > 0
+                  ? workspaceMessages
+                  : currentConversation.messages ?? []
+              }
+            />
           </CardContent>
         </Card>
       </article>

@@ -487,7 +487,7 @@ function AdminSandboxSettings() {
                             />
 
                             <div className="flex items-start gap-2">
-                              <Icon className="size-5 transition-colors text-text-primary group-has-[[aria-checked=true]]:text-accent-primary" />
+                              <Icon className="size-5 transition-colors text-text-primary group-has-[[aria-checked=true]]:text-accent-primary-text" />
 
                               <div className="flex-1 min-w-0">
                                 <h4 className="text-sm font-medium">
@@ -964,8 +964,8 @@ function AdminSandboxSettings() {
               <div
                 className={`p-4 rounded-lg ${
                   testResult.success
-                    ? 'bg-green-50 text-green-900 dark:bg-green-900/20 dark:text-green-100'
-                    : 'bg-red-50 text-red-900 dark:bg-red-900/20 dark:text-red-100'
+                    ? 'bg-state-success-5 text-state-success'
+                    : 'bg-state-error-5 text-state-error'
                 }`}
               >
                 <p className="text-sm whitespace-pre-wrap">

@@ -244,7 +244,7 @@ function LoginFormContent({
                 data-testid="auth-submit"
                 type="submit"
                 loading={loading}
-                className="bg-metallic-gradient border-b-[#00BEB4] border-b-2 hover:bg-metallic-gradient hover:border-b-[#02bcdd] w-full my-8"
+                className="bg-metallic-gradient border-b-[#11C566] border-b-2 hover:bg-metallic-gradient hover:border-b-[#32F08C] w-full my-8"
               >
                 {title === 'login' ? t('login') : t('continue')}
               </ButtonLoading>
@@ -284,7 +284,7 @@ function LoginFormContent({
                 data-testid="auth-toggle-register"
                 variant={'transparent'}
                 onClick={changeTitle}
-                className="text-accent-primary/90 hover:text-accent-primary hover:bg-transparent font-medium border-none transition-colors duration-200"
+                className="text-accent-primary-text/90 hover:text-accent-primary-text hover:bg-transparent font-medium border-none transition-colors duration-200"
               >
                 {t('signUp')}
               </Button>
@@ -299,7 +299,7 @@ function LoginFormContent({
                 data-testid="auth-toggle-login"
                 variant={'transparent'}
                 onClick={changeTitle}
-                className="text-accent-primary/90 hover:text-accent-primary hover:bg-transparent font-medium border-none transition-colors duration-200"
+                className="text-accent-primary-text/90 hover:text-accent-primary-text hover:bg-transparent font-medium border-none transition-colors duration-200"
               >
                 {t('login')}
               </Button>

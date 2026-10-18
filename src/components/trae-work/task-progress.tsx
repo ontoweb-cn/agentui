@@ -208,7 +208,7 @@ function ProgressNodeItem({
                 <CollapsibleTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex size-4 shrink-0 items-center justify-center rounded text-trae-grey transition-colors hover:text-trae-green"
+                    className="inline-flex size-4 shrink-0 items-center justify-center rounded text-trae-grey transition-colors hover:text-accent-primary-text"
                     aria-label={isExpanded ? t('taskProgress.collapse') : t('taskProgress.expand')}
                   >
                     <ChevronRight
@@ -223,7 +223,7 @@ function ProgressNodeItem({
               <span
                 className={cn(
                   'truncate font-semibold text-trae-sm',
-                  isFailed ? 'text-[#ef4444]' : 'text-trae-ink',
+                  isFailed ? 'text-trae-error-text' : 'text-trae-ink',
                 )}
                 title={node.title}
               >

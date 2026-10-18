@@ -4,6 +4,8 @@ import { downloadAgentFile } from '@/services/file-manager-service';
 import { downloadFileFromBlob } from '@/utils/file-util';
 import { Download, FileText } from 'lucide-react';
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
 export type DocumentDownloadInfo = IDocumentDownloadInfo;
 
@@ -16,6 +18,7 @@ export function DocumentDownloadButton({
   downloadInfo,
   className,
 }: DocumentDownloadButtonProps) {
+  const { t } = useTranslation();
   const handleDownload = useCallback(async () => {
     try {
       const ext =
@@ -30,34 +33,13 @@ export function DocumentDownloadButton({
       downloadFileFromBlob(blob, downloadInfo.filename);
     } catch (error) {
       console.error('Error downloading document:', error);
+      toast.error(t('common.downloadFailed'));
     }
-  }, [downloadInfo]);
+  }, [downloadInfo, t]);
 
   const getDocumentType = () => {
-    if (downloadInfo.mime_type === 'application/pdf') return 'PDF Document';
-    if (
-      downloadInfo.mime_type ===
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    )
-      return 'Word Document';
-    if (
-      downloadInfo.mime_type ===
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-      return 'Excel Document';
-    if (downloadInfo.mime_type === 'text/plain') return 'Text Document';
-    if (downloadInfo.mime_type === 'text/markdown') return 'Markdown Document';
-    if (downloadInfo.mime_type === 'text/html') return 'HTML Document';
-
     const ext = downloadInfo.filename.split('.').pop()?.toUpperCase();
-    if (ext === 'PDF') return 'PDF Document';
-    if (ext === 'DOCX') return 'Word Document';
-    if (ext === 'XLSX') return 'Excel Document';
-    if (ext === 'TXT') return 'Text Document';
-    if (ext === 'MD') return 'Markdown Document';
-    if (ext === 'HTML' || ext === 'HTM') return 'HTML Document';
-
-    return 'Document';
+    return ext || 'FILE';
   };
 
   return (
@@ -66,7 +48,7 @@ export function DocumentDownloadButton({
     >
       <div className="flex-shrink-0">
         <div className="p-2 bg-accent-primary/10 rounded-lg">
-          <FileText className="w-6 h-6 text-accent-primary" />
+          <FileText className="w-6 h-6 text-accent-primary-text" />
         </div>
       </div>
       <div className="flex-1 min-w-0">
@@ -81,7 +63,7 @@ export function DocumentDownloadButton({
         className="flex items-center gap-2"
       >
         <Download className="w-4 h-4" />
-        Download
+        {t('common.download')}
       </Button>
     </div>
   );

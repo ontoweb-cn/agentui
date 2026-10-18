@@ -5,6 +5,7 @@ import {
   NextMessageInputOnPressEnterParameter,
 } from '@/components/message-input/next';
 import MessageItem from '@/components/message-item';
+import { StreamStatus } from '@/components/message-item/stream-status';
 import PdfSheet from '@/components/pdf-drawer';
 import { useClickDrawer } from '@/components/pdf-drawer/hooks';
 import { Button } from '@/components/ui/button';
@@ -169,6 +170,12 @@ const ChatCard = forwardRef(function ChatCard(
     setLoading(id, sendLoading);
   }, [id, sendLoading, setLoading]);
 
+  const lastMessage = derivedMessages[derivedMessages.length - 1];
+  const streamToolCount =
+    lastMessage?.role === MessageType.Assistant
+      ? lastMessage.toolCalls?.length ?? 0
+      : 0;
+
   return (
     <Card
       className="bg-transparent border flex-1 flex flex-col"
@@ -263,6 +270,10 @@ const ChatCard = forwardRef(function ChatCard(
                 ></MessageItem>
               );
             })}
+            <StreamStatus
+              isStreaming={sendLoading}
+              toolCount={streamToolCount}
+            />
           </div>
           <div ref={scrollRef} />
         </div>

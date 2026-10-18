@@ -613,7 +613,7 @@ window.addEventListener('message',e=>{
             <CopyToClipboard text={token}></CopyToClipboard>
           </div>
           <a
-            className="cursor-pointer text-accent-primary inline-block"
+            className="cursor-pointer text-accent-primary-text inline-block"
             href={
               isAgent
                 ? 'https://intellect.ontoweb.cn/docs/dev/http_api_reference#create-session-with-agent'

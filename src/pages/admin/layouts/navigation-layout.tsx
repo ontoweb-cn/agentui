@@ -151,7 +151,7 @@ const AdminNavigationLayout = () => {
 
         <div className="mt-auto space-y-4">
           <div className="flex justify-between items-center">
-            <span className="leading-none text-xs text-accent-primary">
+            <span className="leading-none text-xs text-accent-primary-text">
               {version}
             </span>
 

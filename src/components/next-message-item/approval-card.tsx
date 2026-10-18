@@ -140,7 +140,7 @@ function ApprovalCardImpl({ approval, onSubmit }: ApprovalCardProps) {
         isSubmitted
           ? isDenied
             ? 'border-destructive/30 bg-destructive/5'
-            : 'border-emerald-500/30 bg-emerald-500/5'
+            : 'border-accent-primary/30 bg-accent-primary/5'
           : 'border-amber-500/30 bg-amber-500/5',
       )}
     >
@@ -155,7 +155,7 @@ function ApprovalCardImpl({ approval, onSubmit }: ApprovalCardProps) {
           isDenied ? (
             <CheckCircle2 className="h-3 w-3 text-destructive" />
           ) : (
-            <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+            <CheckCircle2 className="h-3 w-3 text-accent-primary-text" />
           )
         ) : (
           <Shield className="h-3 w-3 text-amber-500" />

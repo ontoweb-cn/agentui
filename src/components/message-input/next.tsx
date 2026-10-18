@@ -320,9 +320,13 @@ export function NextMessageInput({
             {showInternet && (
               <Button
                 type="button"
-                variant={enableInternet ? 'accent' : 'transparent'}
+                variant="transparent"
                 size="icon-xs"
-                className="border-0"
+                className={cn(
+                  'border-0',
+                  enableInternet &&
+                    '!bg-accent-primary !text-trae-on-accent hover:!bg-accent-primary',
+                )}
                 onClick={handleInternetToggle}
                 data-testid="chat-detail-internet-toggle"
               >

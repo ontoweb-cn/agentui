@@ -69,11 +69,11 @@ function ToolCallCardImpl({ record, defaultOpen = false }: ToolCallCardProps) {
 
   const statusIcon =
     status === 'running' ? (
-      <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+      <Loader2 className="h-3 w-3 animate-spin text-accent-primary-text" />
     ) : status === 'completed' ? (
-      <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+      <CheckCircle2 className="h-3 w-3 text-accent-primary-text" />
     ) : (
-      <XCircle className="h-3 w-3 text-destructive" />
+      <XCircle className="h-3 w-3 text-trae-error" />
     );
 
   const statusLabel =
@@ -88,19 +88,19 @@ function ToolCallCardImpl({ record, defaultOpen = false }: ToolCallCardProps) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 p-2 text-left hover:bg-muted/50"
+        className="flex w-full items-center gap-2 p-2 text-start hover:bg-muted/50"
         aria-expanded={open}
       >
         {statusIcon}
         <ChevronRight
           className={cn(
-            'h-3 w-3 text-muted-foreground transition-transform',
-            open && 'rotate-90',
+            'h-3 w-3 text-muted-foreground transition-transform rtl:rotate-180',
+            open && 'rotate-90 rtl:rotate-90',
           )}
         />
         <span className="font-mono">{record.toolName}</span>
         {record.preview && (
-          <span className="ml-1 flex-1 truncate text-muted-foreground">
+          <span className="ms-1 flex-1 truncate text-muted-foreground">
             {record.preview}
           </span>
         )}

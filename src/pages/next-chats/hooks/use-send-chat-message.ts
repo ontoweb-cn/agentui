@@ -699,6 +699,8 @@ export const useSendMessage = (controller: AbortController) => {
     selectedModel,
     onSelectedModelChange: handleSelectedModelChange,
     isGatewayChat,
+    // Route B: 双路径终态错误,供 StreamStatus 区分 done/failed。
+    streamError: isGatewayChat ? gatewaySse.error : ragSse.error,
     // v1.3.0: 工具审批提交方法(仅 gateway 路径有效,RAG 路径为 noop)
     // ApprovalCard 按钮组 onClick 调用此方法,提交后 BFF 转发到 intellect-team
     submitApproval: isGatewayChat

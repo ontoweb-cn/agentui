@@ -514,3 +514,18 @@ TRAE Work Token 通过 `.dark` 选择器覆盖,与现有机制兼容:
 - [ ] `Outfit` 和 `JetBrains Mono` 字体可加载
 - [ ] Light/Dark 主题切换正常
 - [ ] 现有页面视觉无破坏(手动验证)
+
+---
+
+## 八、AgentUI 扩展 Token(Route B,2026-10-18)
+
+TRAE 原始 Token 不包含错误语义色与"浅色背景可读的 accent 文本色";Route B 增补以下 Token:
+
+| Token | Light | Dark | 用途 |
+|---|---|---|---|
+| `--trae-error` | `239 68 68` | 同 Light | 错误图标/圆点/边框(图形 3:1) |
+| `--trae-error-text` | `220 38 38`(4.83:1) | `248 113 113`(6.53:1) | 错误文本(AA 4.5:1) |
+| `--accent-primary-text` | `10 122 64`(5.43:1) | `50 240 140`(12:1) | 浅色背景上的 accent 文本/图标/focus ring |
+
+全局 accent 已切换为 `--accent-primary: 17 197 102`(#11C566);`--accent-primary-text` 用于
+小字号文本与图形,避免 #11C566 在白色背景仅 2.28:1 的可读性问题。

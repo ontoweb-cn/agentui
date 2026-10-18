@@ -90,7 +90,7 @@ function ClarifyCardImpl({ clarify, onSubmit }: ClarifyCardProps) {
       className={cn(
         'my-1 rounded-md border text-xs',
         isSubmitted
-          ? 'border-emerald-500/30 bg-emerald-500/5'
+          ? 'border-accent-primary/30 bg-accent-primary/5'
           : 'border-blue-500/30 bg-blue-500/5',
       )}
     >
@@ -102,7 +102,7 @@ function ClarifyCardImpl({ clarify, onSubmit }: ClarifyCardProps) {
         aria-expanded={open}
       >
         {isSubmitted ? (
-          <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+          <CheckCircle2 className="h-3 w-3 text-accent-primary-text" />
         ) : (
           <HelpCircle className="h-3 w-3 text-blue-500" />
         )}

@@ -669,7 +669,7 @@ const SkillsPage: React.FC = () => {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-text-secondary hover:text-accent-primary"
+                              className="h-8 w-8 text-text-secondary hover:text-accent-primary-text"
                               onClick={(e: React.MouseEvent) =>
                                 openRenameSpaceModal(space, e)
                               }
@@ -690,7 +690,7 @@ const SkillsPage: React.FC = () => {
                         </div>
                       </CardContent>
                       <CardFooter className="pt-0 pb-4 px-4">
-                        <span className="text-accent-primary text-sm">
+                        <span className="text-accent-primary-text text-sm">
                           {t('skills.enterSpace') || 'Enter'} →
                         </span>
                       </CardFooter>
@@ -795,7 +795,7 @@ const SkillsPage: React.FC = () => {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-text-secondary hover:text-accent-primary"
+                              className="h-8 w-8 text-text-secondary hover:text-accent-primary-text"
                               onClick={(e: React.MouseEvent) =>
                                 openRenameSpaceModal(space, e)
                               }
@@ -1012,7 +1012,7 @@ const SkillsPage: React.FC = () => {
               <div className="text-center">
                 <p className="mb-2">{t('skills.noSkills')}</p>
                 <button
-                  className="text-accent-primary hover:underline"
+                  className="text-accent-primary-text hover:underline"
                   onClick={() => setUploadModalOpen(true)}
                 >
                   {t('skills.addSkill') || 'Add Skill'}
@@ -1087,7 +1087,7 @@ const SkillsPage: React.FC = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-text-secondary hover:text-accent-primary"
+                        className="h-8 w-8 text-text-secondary hover:text-accent-primary-text"
                         onClick={(e: React.MouseEvent) => {
                           e.stopPropagation();
                           handleViewSkill(skill);

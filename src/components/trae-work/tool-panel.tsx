@@ -5,13 +5,18 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Activity,
+  Bell,
   ChevronDown,
+  Database,
+  FileText,
+  Folder,
+  ListTree,
   Loader2,
   Search,
-  FileText,
-  ListTree,
   Settings,
-  Bell,
+  Terminal,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -19,13 +24,18 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/component
 import type { ToolPanelProps } from './types';
 
 // spec-013 P2-Q9: 显式图标映射(替代 import *,优化 tree-shaking)
-// 仅暴露常用图标,未列出的图标名回退为 null
+// 未列出的图标名回退为 null;新代码也可直接通过 icon={<Icon />} 传 ReactNode。
 const ICON_MAP: Record<string, LucideIcon> = {
   Search,
   FileText,
   ListTree,
   Settings,
   Bell,
+  Wrench,
+  Activity,
+  Folder,
+  Database,
+  Terminal,
 };
 
 /**
@@ -72,8 +82,9 @@ export const ToolPanel = React.forwardRef<HTMLDivElement, ToolPanelProps>(
       [disabled, isControlled, onExpandedChange],
     );
 
-    // 显式图标映射查找(未列出返回 null)
-    const IconComponent = icon ? ICON_MAP[icon] ?? null : null;
+    // 字符串走内置映射;ReactNode 直接渲染
+    const IconComponent =
+      typeof icon === 'string' && icon ? ICON_MAP[icon] ?? null : null;
 
     return (
       <Collapsible open={expanded} onOpenChange={handleOpenChange}>
@@ -91,11 +102,11 @@ export const ToolPanel = React.forwardRef<HTMLDivElement, ToolPanelProps>(
                 type="button"
                 disabled={disabled}
                 className={cn(
-                  'flex min-w-0 flex-1 items-center gap-2 text-left',
+                  'flex min-w-0 flex-1 items-center gap-2 text-start',
                   'transition-colors duration-trae-fast',
                   disabled
                     ? 'cursor-not-allowed opacity-50'
-                    : 'cursor-pointer hover:bg-[image:var(--trae-card-bg-hover)]',
+                    : 'cursor-pointer hover:bg-trae-card-hover',
                 )}
                 aria-expanded={expanded}
                 aria-controls={`tool-panel-content-${id}`}
@@ -103,6 +114,7 @@ export const ToolPanel = React.forwardRef<HTMLDivElement, ToolPanelProps>(
                 {IconComponent && (
                   <IconComponent className="size-4 shrink-0 text-trae-grey" aria-hidden />
                 )}
+                {typeof icon !== 'string' && icon}
                 <span
                   className="truncate font-semibold tracking-trae-wide text-trae-sm-2 text-trae-ink"
                   title={title}
@@ -113,10 +125,10 @@ export const ToolPanel = React.forwardRef<HTMLDivElement, ToolPanelProps>(
                 {/* 徽标数 */}
                 {typeof badge === 'number' && badge > 0 && (
                   <span
-                    className="ml-1 inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 py-0.5 font-mono text-trae-xs font-semibold"
+                    className="ms-1 inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 py-0.5 font-mono text-trae-xs font-semibold"
                     style={{
                       backgroundColor: 'var(--trae-green-bright)',
-                      color: '#000',
+                      color: 'var(--trae-on-accent)',
                     }}
                     aria-label={t('toolPanel.unreadBadge', { count: badge })}
                   >
@@ -141,7 +153,7 @@ export const ToolPanel = React.forwardRef<HTMLDivElement, ToolPanelProps>(
                   'transition-colors duration-trae-fast',
                   disabled
                     ? 'cursor-not-allowed opacity-50'
-                    : 'cursor-pointer hover:text-trae-green',
+                    : 'cursor-pointer hover:text-accent-primary-text',
                 )}
                 tabIndex={-1}
                 aria-hidden

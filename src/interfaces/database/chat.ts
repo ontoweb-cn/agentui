@@ -214,6 +214,8 @@ export interface IExternalChatInfo {
 
 export interface IMessage extends Message {
   id: string;
+  /** 消息创建时间(毫秒时间戳);历史消息从 Gateway timestamp/created_at 归一化 */
+  createdAt?: number;
   reference?: IReference; // the latest news has reference
   conversationId?: string; // To distinguish which conversation the message belongs to
   toolCalls?: ToolCallRecord[]; // tool call 列表（gateway 路径，P1 启用渲染）

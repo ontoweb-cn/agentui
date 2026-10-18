@@ -137,7 +137,7 @@ const Image = ({ id, t, label, className, ...props }: IImage) => {
   return (
     <div className="relative inline-block w-full">
       {imageElement}
-      <div className="absolute bottom-2 right-2 bg-accent-primary text-white px-2 py-0.5 rounded-xl text-xs font-normal backdrop-blur-sm">
+      <div className="absolute bottom-2 end-2 bg-accent-primary text-trae-on-accent px-2 py-0.5 rounded-xl text-xs font-normal backdrop-blur-sm">
         {label}
       </div>
     </div>
