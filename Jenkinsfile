@@ -33,6 +33,10 @@ pipeline {
       description: '镜像 tag(RELEASE=true 时使用)')
     string(name: 'PLUGIN_BUNDLE_IMAGE', defaultValue: '',
       description: '插件 bundle 镜像(cognitive-wargame CI 发布,如 hub.wust.edu.cn/intellect/wargame-plugin-bundle:0d8b07d);留空=纯宿主镜像')
+    string(name: 'PLUGIN_BUNDLE_ARTIFACT_URL', defaultValue: '',
+      description: '插件 bundle tarball URL(hTTPS,如 Harbor OCI artifact 导出地址);与 PLUGIN_BUNDLE_IMAGE 二选一;留空=纯宿主镜像')
+    string(name: 'PLUGIN_BUNDLE_SHA256', defaultValue: '',
+      description: 'PLUGIN_BUNDLE_ARTIFACT_URL 对应的 tarball sha256(64 位 hex,必填)')
   }
 
   environment {
@@ -49,6 +53,18 @@ pipeline {
           if (params.PLUGIN_BUNDLE_IMAGE?.trim() &&
               !(params.PLUGIN_BUNDLE_IMAGE.trim() =~ '^hub\\.wust\\.edu\\.cn/[A-Za-z0-9._/-]+:[A-Za-z0-9._-]+$')) {
             error("PLUGIN_BUNDLE_IMAGE 非法(仅允许 hub.wust.edu.cn/<repo>:<tag> 形态): '${params.PLUGIN_BUNDLE_IMAGE}'")
+          }
+          // D2 载体切换(2026-10-21):tarball artifact 模式
+          if (params.PLUGIN_BUNDLE_ARTIFACT_URL?.trim()) {
+            if (!(params.PLUGIN_BUNDLE_ARTIFACT_URL.trim() ==~ /^https:\/\/[^\s'"]+$/)) {
+              error("PLUGIN_BUNDLE_ARTIFACT_URL 非法(仅允许 https URL): '${params.PLUGIN_BUNDLE_ARTIFACT_URL}'")
+            }
+            if (!(params.PLUGIN_BUNDLE_SHA256?.trim() ==~ /^[a-fA-F0-9]{64}$/)) {
+              error('PLUGIN_BUNDLE_ARTIFACT_URL 模式必须提供 64 位 hex 的 PLUGIN_BUNDLE_SHA256')
+            }
+          }
+          if (params.PLUGIN_BUNDLE_IMAGE?.trim() && params.PLUGIN_BUNDLE_ARTIFACT_URL?.trim()) {
+            error('PLUGIN_BUNDLE_IMAGE 与 PLUGIN_BUNDLE_ARTIFACT_URL 只能二选一')
           }
         }
       }
@@ -84,18 +100,41 @@ pipeline {
     }
 
     stage('拉取插件 bundle') {
-      when { expression { params.RELEASE && params.PLUGIN_BUNDLE_IMAGE?.trim() } }
+      when { expression { params.RELEASE &&
+        (params.PLUGIN_BUNDLE_IMAGE?.trim() || params.PLUGIN_BUNDLE_ARTIFACT_URL?.trim()) } }
       steps {
-        // bundle 镜像由 cognitive-wargame CI 发布(scripts/build-plugin-bundle-image.sh);
-        // 此处仅解包进构建上下文 —— Dockerfile 的
-        // COPY deploy/plugin-bundles/ /opt/bundled-plugins/ 机制不变。
-        sh '''
-          docker pull "$PLUGIN_BUNDLE_IMAGE"
-          cid=$(docker create "$PLUGIN_BUNDLE_IMAGE")
-          mkdir -p deploy/plugin-bundles
-          docker cp "$cid":/opt/bundled-plugins/. deploy/plugin-bundles/
-          docker rm "$cid" >/dev/null
-        '''
+        script {
+          if (params.PLUGIN_BUNDLE_ARTIFACT_URL?.trim()) {
+            // D2 tarball 模式(2026-10-21):curl + sha256 + tar,无需 docker daemon
+            sh """
+              bash scripts/consume-plugin-bundle.sh \\
+                --url '${params.PLUGIN_BUNDLE_ARTIFACT_URL.trim()}' \\
+                --sha256 '${params.PLUGIN_BUNDLE_SHA256.trim()}'
+            """
+          } else {
+            // 旧镜像模式(过渡期保留):bundle 镜像由 cognitive-wargame CI 发布;
+            // 此处解包进构建上下文 —— Dockerfile 的
+            // COPY deploy/plugin-bundles/ /opt/bundled-plugins/ 机制不变。
+            sh '''
+              docker pull "$PLUGIN_BUNDLE_IMAGE"
+              cid=$(docker create "$PLUGIN_BUNDLE_IMAGE")
+              mkdir -p deploy/plugin-bundles
+              docker cp "$cid":/opt/bundled-plugins/. deploy/plugin-bundles/
+              docker rm "$cid" >/dev/null
+            '''
+          }
+        }
+        script {
+          // D6:登记「宿主镜像 ↔ 插件版本 ↔ 产物摘要」三元
+          def src = params.PLUGIN_BUNDLE_ARTIFACT_URL?.trim()
+          def sha = params.PLUGIN_BUNDLE_SHA256?.trim()
+          if (!src) {
+            src = params.PLUGIN_BUNDLE_IMAGE.trim()
+            sha = sh(returnStdout: true,
+              script: 'docker inspect --format "{{index .RepoDigests 0}}" "$PLUGIN_BUNDLE_IMAGE" | cut -d@ -f2').trim()
+          }
+          sh "bash scripts/write-release-metadata.sh --source '${src}' --sha256 '${sha}' --image-tag '${params.IMAGE_TAG}'"
+        }
       }
     }
 
@@ -103,8 +142,8 @@ pipeline {
       when { expression { params.RELEASE } }
       steps {
         script {
-          if (params.PLUGIN_BUNDLE_IMAGE?.trim()) {
-            echo "发版镜像含插件 bundle:${params.PLUGIN_BUNDLE_IMAGE.trim()}"
+          if (params.PLUGIN_BUNDLE_IMAGE?.trim() || params.PLUGIN_BUNDLE_ARTIFACT_URL?.trim()) {
+            echo "发版镜像含插件 bundle:${params.PLUGIN_BUNDLE_ARTIFACT_URL?.trim() ?: params.PLUGIN_BUNDLE_IMAGE.trim()}"
           } else {
             echo '发版纯宿主镜像(无插件,应用页为空)——确认这是预期(评审 Q4)'
           }
