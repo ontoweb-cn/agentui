@@ -46,3 +46,6 @@ deploy/plugin-bundles/*
 
 # 插件模板本地安装产物
 packages/plugin-template/node_modules/
+
+# canvas Tier B 插件构建产物(镜像构建时生成,不入 git)
+packages/canvas-plugin/ui/

@@ -130,7 +130,7 @@ export const useMetadataColumns = ({
         accessorKey: 'field',
         header: () => <span>{t('knowledgeDetails.metadata.field')}</span>,
         cell: ({ row }) => (
-          <div className="text-sm text-accent-primary">
+          <div className="text-sm text-accent-primary-text">
             {row.getValue('field')}
           </div>
         ),

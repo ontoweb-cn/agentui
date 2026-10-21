@@ -171,8 +171,8 @@ export interface ToolPanelProps {
   id: string;
   /** 面板标题(如 "会话", "文档", "画布") */
   title: string;
-  /** 面板图标(Lucide icon name) */
-  icon: string;
+  /** 面板图标(Lucide icon name);Route B 扩展为也可直接传 ReactNode */
+  icon?: React.ReactNode | string;
   /** 面板内容 */
   children: React.ReactNode;
   /** 默认展开(可选,默认 false) */

@@ -73,7 +73,7 @@ export default function ApplicationList() {
                       {descriptionText}
                     </p>
                   )}
-                  <span className="mt-auto text-sm text-accent-primary opacity-0 transition-opacity group-hover:opacity-100">
+                  <span className="mt-auto text-sm text-accent-primary-text opacity-0 transition-opacity group-hover:opacity-100">
                     {t('applications.enter')} →
                   </span>
                 </Link>

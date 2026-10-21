@@ -124,7 +124,7 @@ export const ImageCarousel = ({
                       : () => {}
                   }
                 />
-                <span className="text-accent-primary">{imageId}</span>
+                <span className="text-accent-primary-text">{imageId}</span>
               </section>
             </CarouselItem>
           );

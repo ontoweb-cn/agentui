@@ -272,7 +272,7 @@ const FileLogsPage: FC = () => {
           }
         >
           <div className="text-xs">
-            <span className="text-accent-primary">
+            <span className="text-accent-primary-text">
               {topAllData.totalFiles.precent > 0 ? '+' : ''}
               {topAllData.totalFiles.precent}%{' '}
             </span>

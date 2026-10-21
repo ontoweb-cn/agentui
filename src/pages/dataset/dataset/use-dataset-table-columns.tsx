@@ -147,7 +147,7 @@ export function useDatasetTableColumns({
           {row.original.source_type === 'local' ||
           row.original.source_type === '' ? (
             <div className="bg-accent-primary-5 w-6 h-6 rounded-full flex items-center justify-center">
-              <MonitorUp className="text-accent-primary" size={16} />
+              <MonitorUp className="text-accent-primary-text" size={16} />
             </div>
           ) : (
             <div className="w-6 h-6 flex items-center justify-center">

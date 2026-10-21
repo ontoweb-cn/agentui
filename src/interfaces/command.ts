@@ -75,11 +75,16 @@ export function parseSlashCommand(value: string): {
 
 /**
  * 判断 value 是否触发 Slash 命令面板可见。
- * 基于 parseSlashCommand 结果，仅当解析成功且 commandName 非空或 arg 非空时显示面板。
+ * - 已输入命令名或参数:显示(过滤/子参数模式)
+ * - 仅输入裸 `/`(允许尾随空格):显示全量命令列表
  */
 export function isSlashCommandVisible(value: string): boolean {
   const parsed = parseSlashCommand(value);
   if (!parsed) return false;
-  // 至少有 commandName 或正在输入参数（arg 非空）
-  return parsed.commandName.length > 0 || parsed.arg.length > 0;
+  const firstLine = value.split('\n')[0].trim();
+  return (
+    parsed.commandName.length > 0 ||
+    parsed.arg.length > 0 ||
+    firstLine === '/'
+  );
 }

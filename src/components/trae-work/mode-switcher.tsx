@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { FileText, Code2, LayoutGrid, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ModeSwitcherProps, WorkMode } from './types';
-import { WORK_MODE_LABEL, DEFAULT_AVAILABLE_MODES, MODE_SWITCHER_SIZE_PADDING, MODE_SWITCHER_SIZE_ICON } from './constants';
+import { WORK_MODE_LABEL_KEY, DEFAULT_AVAILABLE_MODES, MODE_SWITCHER_SIZE_PADDING, MODE_SWITCHER_SIZE_ICON } from './constants';
 
 /** WorkMode → 图标组件映射 */
 const MODE_ICON_COMPONENT: Record<WorkMode, LucideIcon> = {
@@ -38,6 +38,9 @@ export const ModeSwitcher = React.forwardRef<HTMLDivElement, ModeSwitcherProps>(
     const sizePadding = MODE_SWITCHER_SIZE_PADDING[size];
     const sizeIcon = MODE_SWITCHER_SIZE_ICON[size];
     const isVertical = orientation === 'vertical';
+    const buttonRefs = React.useRef<
+      Partial<Record<WorkMode, HTMLButtonElement | null>>
+    >({});
 
     const handleSelect = React.useCallback(
       (mode: WorkMode) => {
@@ -54,9 +57,32 @@ export const ModeSwitcher = React.forwardRef<HTMLDivElement, ModeSwitcherProps>(
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           handleSelect(mode);
+          return;
+        }
+
+        // WAI-ARIA radiogroup:方向键在可用模式间移动并聚焦。
+        // 横向用 ←/→,纵向用 ↑/↓;为兼容起见两个轴都接受。
+        if (
+          e.key === 'ArrowRight' ||
+          e.key === 'ArrowDown' ||
+          e.key === 'ArrowLeft' ||
+          e.key === 'ArrowUp'
+        ) {
+          const index = availableModes.indexOf(mode);
+          if (index === -1) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const step =
+            e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
+          const nextMode =
+            availableModes[
+              (index + step + availableModes.length) % availableModes.length
+            ];
+          handleSelect(nextMode);
+          buttonRefs.current[nextMode]?.focus();
         }
       },
-      [disabled, handleSelect],
+      [disabled, handleSelect, availableModes],
     );
 
     return (
@@ -66,7 +92,7 @@ export const ModeSwitcher = React.forwardRef<HTMLDivElement, ModeSwitcherProps>(
           isVertical
             ? 'inline-flex flex-col items-stretch gap-0.5 rounded-trae-md'
             : 'inline-flex items-center gap-0.5 rounded-trae-md',
-          'bg-[image:var(--trae-card-bg-hover)]',
+          'bg-trae-card-hover',
           disabled && 'opacity-50',
         )}
         role="radiogroup"
@@ -80,11 +106,14 @@ export const ModeSwitcher = React.forwardRef<HTMLDivElement, ModeSwitcherProps>(
         {availableModes.map((mode) => {
           const Icon = MODE_ICON_COMPONENT[mode];
           const isActive = mode === value;
-          const label = WORK_MODE_LABEL[mode];
+          const label = t(WORK_MODE_LABEL_KEY[mode]);
 
           return (
             <button
               key={mode}
+              ref={(node) => {
+                buttonRefs.current[mode] = node;
+              }}
               type="button"
               role="radio"
               aria-checked={isActive}
@@ -96,26 +125,21 @@ export const ModeSwitcher = React.forwardRef<HTMLDivElement, ModeSwitcherProps>(
               className={cn(
                 'inline-flex items-center justify-center gap-1.5 rounded-trae-sm relative',
                 'font-semibold tracking-trae-wide transition-all duration-trae-base',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-trae-green',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary-text',
                 sizePadding,
                 isVertical && 'flex-col py-2',
                 isActive
                   ? isVertical
-                    ? 'text-trae-green bg-[var(--trae-green-soft,rgba(16,185,129,0.12))]'
-                    : 'text-black shadow-trae-glow-sm'
-                  : 'text-trae-grey hover:text-trae-green',
+                    ? 'text-accent-primary-text bg-trae-green-soft'
+                    : 'text-trae-on-accent bg-trae-green-bright shadow-trae-glow-sm'
+                  : 'text-trae-grey hover:text-accent-primary-text',
               )}
-              style={
-                isActive && !isVertical
-                  ? { backgroundColor: 'var(--trae-green-bright)' }
-                  : undefined
-              }
               data-mode={mode}
               data-active={isActive}
             >
               {isActive && isVertical && (
                 <span
-                  className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-r-full bg-trae-green"
+                  className="absolute start-0 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-e-full bg-trae-green"
                   aria-hidden
                 />
               )}

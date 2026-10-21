@@ -1,5 +1,4 @@
 import { LucideListTodo } from 'lucide-react';
-import { redirect } from 'react-router';
 
 import { Routes } from '@/constants/routes';
 
@@ -26,7 +25,7 @@ const definition: ModuleDefinition = {
           children: [
             {
               index: true,
-              loader: () => redirect(Routes.TasksChat),
+              Component: () => import('@/pages/tasks/task-list'),
             },
             {
               path: Routes.TasksChat,

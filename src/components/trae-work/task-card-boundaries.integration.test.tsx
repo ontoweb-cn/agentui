@@ -602,7 +602,7 @@ describe('TaskCard 边界 - selected 样式', () => {
     expect(trueStyle).not.toEqual(falseStyle);
   });
 
-  it('selected=false:borderLeft 为透明', () => {
+  it('selected=false:不覆盖 class 的默认左边框', () => {
     const instance = createI18nInstance();
     renderWithI18n(
       <TaskCard {...makeProps({ selected: false, currentStep: undefined, progress: undefined })} />,
@@ -610,10 +610,12 @@ describe('TaskCard 边界 - selected 样式', () => {
     );
     const card = screen.getByTestId('task-card-task-boundary');
     const style = card.getAttribute('style') ?? '';
-    expect(style).toContain('2px solid transparent');
+    // 未选中时不写内联 border-inline-start,保留 border-trae-line 的 1px 边框
+    expect(style).not.toContain('border-inline-start');
+    expect(card.className).toContain('border-trae-line');
   });
 
-  it('selected 默认值 false:borderLeft 为透明', () => {
+  it('selected 默认值 false:不覆盖 class 的默认左边框', () => {
     const instance = createI18nInstance();
     renderWithI18n(
       <TaskCard {...makeProps({ selected: undefined, currentStep: undefined, progress: undefined })} />,
@@ -621,7 +623,8 @@ describe('TaskCard 边界 - selected 样式', () => {
     );
     const card = screen.getByTestId('task-card-task-boundary');
     const style = card.getAttribute('style') ?? '';
-    expect(style).toContain('2px solid transparent');
+    expect(style).not.toContain('border-inline-start');
+    expect(card.className).toContain('border-trae-line');
   });
 });
 

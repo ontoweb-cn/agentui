@@ -488,6 +488,47 @@ bffAgentRoutes.post(
   },
 );
 
+// --- Agent run stop (停止生成:网关侧取消,双网关通用) ---
+
+/**
+ * POST /agents/:agentId/sessions/:sessionId/stop — 停止当前生成。
+ *
+ * 此前前端停止只 abort 客户端 SSE:BFF 断开上游 events 流,但网关侧 run 会继续
+ * 跑完(计费/占用)。社区版与企业版网关均提供 POST /v1/runs/{run_id}/stop
+ * (社区版实证 community adapter.py:4674),由 adapter.cancelMessage 调用;
+ * run_id 映射由 adapter 在 sendMessage 时记录,BFF 重启后丢失映射则退化为仅断流。
+ * 响应:204(无活跃 run 时同样 204,幂等)。
+ */
+bffAgentRoutes.post(
+  '/agents/:agentId/sessions/:sessionId/stop',
+  async (c) => {
+    const adapter = getAdapter(c);
+    if (!adapter) {
+      return c.json({ code: 503, message: 'No backend configured' }, 503);
+    }
+    if (typeof adapter.cancelMessage !== 'function') {
+      return c.json(
+        { code: 501, message: 'Stop not supported by current backend' },
+        501,
+      );
+    }
+    const sessionId = c.req.param('sessionId');
+    if (!sessionId) {
+      return c.json({ code: 400, message: 'Missing sessionId' }, 400);
+    }
+    try {
+      await adapter.cancelMessage(resolveBackendContext(c), sessionId);
+      return c.body(null, 204);
+    } catch (err) {
+      return handleAdapterError(
+        c,
+        err,
+        `POST /agents/:agentId/sessions/${sessionId}/stop`,
+      );
+    }
+  },
+);
+
 /**
  * 将 StreamChunk 迭代器序列化为 SSE 事件流透传给前端。
  *

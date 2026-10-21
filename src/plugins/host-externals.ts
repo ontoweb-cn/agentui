@@ -17,7 +17,12 @@ import * as react from 'react';
 import * as reactDom from 'react-dom';
 import * as reactDomClient from 'react-dom/client';
 import * as reactQuery from '@tanstack/react-query';
-import i18n from '@/locales/config';
+import * as jsxRuntime from 'react/jsx-runtime';
+import * as router from 'react-router';
+import * as reactI18next from 'react-i18next';
+import * as radixTooltip from '@radix-ui/react-tooltip';
+import i18n, * as i18nModule from '@/locales/config';
+import * as themeProvider from '@/components/theme-provider';
 import { cn } from '@/lib/utils';
 
 import * as uiAccordion from '@/components/ui/accordion';
@@ -66,7 +71,13 @@ export function buildAgentUISharedHost(): AgentUISharedHost {
     reactDom,
     reactDomClient,
     reactQuery,
+    jsxRuntime,
+    router,
+    reactI18next,
+    radixTooltip,
     i18n,
+    i18nModule,
+    themeProvider,
     ui: {
       accordion: uiAccordion,
       breadcrumb: uiBreadcrumb,

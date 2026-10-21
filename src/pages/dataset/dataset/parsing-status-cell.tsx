@@ -25,22 +25,22 @@ import { useHandleRunDocumentByIds } from './use-run-document';
 import { isParserRunning } from './utils';
 const IconMap = {
   [RunningStatus.UNSTART]: (
-    <IconFontFill name="play" className="text-accent-primary size-[1em]" />
+    <IconFontFill name="play" className="text-accent-primary-text size-[1em]" />
   ),
   [RunningStatus.RUNNING]: (
     <CircleX color="rgba(var(--state-error))" className="size-[1em]" />
   ),
   [RunningStatus.CANCEL]: (
-    <IconFontFill name="reparse" className="text-accent-primary" />
+    <IconFontFill name="reparse" className="text-accent-primary-text" />
   ),
   [RunningStatus.DONE]: (
-    <IconFontFill name="reparse" className="text-accent-primary" />
+    <IconFontFill name="reparse" className="text-accent-primary-text" />
   ),
   [RunningStatus.FAIL]: (
-    <IconFontFill name="reparse" className="text-accent-primary" />
+    <IconFontFill name="reparse" className="text-accent-primary-text" />
   ),
   [RunningStatus.SCHEDULE]: (
-    <IconFontFill name="reparse" className="text-accent-primary" />
+    <IconFontFill name="reparse" className="text-accent-primary-text" />
   ),
 };
 

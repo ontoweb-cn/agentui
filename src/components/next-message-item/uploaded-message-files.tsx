@@ -2,12 +2,25 @@ import { UploadResponseDataType } from '@/interfaces/database/chat';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import { getExtension } from '@/utils/document-util';
 import { formatBytes } from '@/utils/file-util';
-import { memo } from 'react';
+import { useEffect, useMemo, memo } from 'react';
 import FileIcon from '../file-icon';
 import SvgIcon from '../svg-icon';
 
+type UploadedFile = File | IDocumentInfo | UploadResponseDataType;
+
 interface IProps {
-  files?: File[] | IDocumentInfo[] | UploadResponseDataType[];
+  files?: UploadedFile[];
+}
+
+/** 本地图片预览:创建/释放 blob URL,避免每次 render 泄漏 object URL。 */
+function LocalImagePreview({ file }: { file: File }) {
+  const url = useMemo(() => URL.createObjectURL(file), [file]);
+
+  useEffect(() => {
+    return () => URL.revokeObjectURL(url);
+  }, [url]);
+
+  return <img src={url} alt={file.name} className="size-10 object-cover" />;
 }
 
 type NameWidgetType = {
@@ -41,11 +54,7 @@ export function InnerUploadedMessageFiles({ files = [] }: IProps) {
             {!isFile ? (
               <FileIcon id={file.id} name={name}></FileIcon>
             ) : file.type.startsWith('image/') ? (
-              <img
-                src={URL.createObjectURL(file)}
-                alt={name}
-                className="size-10 object-cover"
-              />
+              <LocalImagePreview file={file} />
             ) : (
               <SvgIcon
                 name={`file-icon/${getExtension(name)}`}

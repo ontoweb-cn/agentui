@@ -345,7 +345,7 @@ const GoogleDriveTokenField = ({
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-dashed border-muted-foreground/40 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
           <div className="flex flex-wrap items-center gap-2">
             {hasVerifiedTokens ? (
-              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+              <span className="rounded-full bg-state-success-5 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-state-success">
                 Verified
               </span>
             ) : null}

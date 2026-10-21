@@ -407,7 +407,7 @@ const SkillDetail: React.FC<SkillDetailProps> = ({
                       disabled={versionLoading}
                       className={`w-full flex items-center justify-between px-2 py-1.5 text-xs rounded-md transition-colors ${
                         selectedVersion === version
-                          ? 'bg-accent-primary/10 text-accent-primary'
+                          ? 'bg-accent-primary/10 text-accent-primary-text'
                           : 'hover:bg-bg-secondary text-text-secondary'
                       } ${versionLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                     >

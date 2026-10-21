@@ -1,0 +1,19 @@
+{
+  "id": "canvas",
+  "name": "Canvas",
+  "version": "0.1.0",
+  "type": "host",
+  "path": "/agent",
+  "label": "Canvas",
+  "description": "Agent 画布编辑器(宿主内置 Tier B host 插件)",
+  "order": 40,
+  "entry": "ui/dist/index.js",
+  "style": "ui/dist/index.css",
+  "apiVersion": "^1.3.0",
+  "sharedVersion": "^1.1.0",
+  "peer": { "react": "^18" },
+  "i18n": {
+    "files": { "zh": "ui/locales/zh.json", "en": "ui/locales/en.json" }
+  },
+  "routes": ["/agent/:id", "/agent/:id/explore", "/agent/share"]
+}

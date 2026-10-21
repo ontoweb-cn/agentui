@@ -112,7 +112,10 @@
     --border-accent: #000000;
     --border-button: rgba(0, 0, 0, 0.1);
     /* Regulators, parsing, switches, variables */
-    --accent-primary: 0 190 180;
+    /* Route B: accent 切换为 TRAE Work green #11C566(与 --trae-green 同源) */
+    --accent-primary: 17 197 102;
+    /* accent 用于浅色背景文字时使用更深的绿,保证 WCAG AA(5.43:1) */
+    --accent-primary-text: 10 122 64;
     /* Output Variables Box */
     --bg-accent: rgba(76, 164, 231, 0.05);
 
@@ -237,6 +240,9 @@
     --bg-input: rgba(255, 255, 255, 0.05);
     --bg-canvas: 0 0 0;
     --bg-list: 56 56 58;
+
+    /* 深色背景使用亮绿以保证对比度(12:1) */
+    --accent-primary-text: 50 240 140;
 
     /* #f6f6f7 */
     --text-primary: 246 246 247;

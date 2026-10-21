@@ -9,6 +9,19 @@ import {
 } from './http-client';
 import type { HarnessBackend } from '../../../types/harness';
 import type { BackendContext } from '../../../types/tenant';
+import {
+  makeStream,
+  runEventsCommunityInteractiveFrames,
+} from './fixtures/sse-streams';
+
+function toReadableStream(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      chunks.forEach((c) => controller.enqueue(c));
+      controller.close();
+    },
+  });
+}
 
 // Mock httpClient 工厂方法
 const httpClientMock = {
@@ -648,5 +661,134 @@ describe('IntellectEnterpriseAdapter', () => {
         adapter.submitClarify(ctx, 'sess-1', 'sess-1:1', 'answer'),
       ).rejects.toThrow(IntellectBackendError);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P1-S1/S2/S5 加固:cancelMessage / submitClarify 租户作用域与路径自适应
+// ---------------------------------------------------------------------------
+
+describe('IntellectEnterpriseAdapter cancelMessage/submitClarify 加固', () => {
+  let adapter: IntellectEnterpriseAdapter;
+  const ctxB: BackendContext = { backendId: 'tenant-001', userId: 'user-001' };
+  const ctxOther: BackendContext = { backendId: 'tenant-002', userId: 'user-002' };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    adapter = new IntellectEnterpriseAdapter(backend);
+  });
+
+  /** 通过 sendMessage 预置 sessionRuns(POST /v1/runs → run-x;events 流为社区交互夹具) */
+  async function sendMessageWithStream(): Promise<AsyncGenerator<unknown>> {
+    httpClientMock.request.mockResolvedValueOnce({
+      run_id: 'run-x',
+      status: 'started',
+    });
+    httpClientMock.requestGetStream.mockResolvedValueOnce(
+      toReadableStream(makeStream(runEventsCommunityInteractiveFrames)),
+    );
+    return adapter.sendMessage(ctxB, {
+      sessionId: 'sess-1',
+      content: 'hi',
+    } as Parameters<typeof adapter.sendMessage>[1]);
+  }
+
+  it('cancelMessage 同租户命中:调用 /v1/runs/{run_id}/stop', async () => {
+    await sendMessageWithStream();
+    httpClientMock.request.mockClear();
+    httpClientMock.request.mockResolvedValueOnce({});
+
+    await adapter.cancelMessage(ctxB, 'sess-1');
+
+    expect(httpClientMock.request).toHaveBeenCalledTimes(1);
+    expect(httpClientMock.request).toHaveBeenCalledWith(
+      'POST',
+      '/v1/runs/run-x/stop',
+      ctxB,
+      {},
+    );
+  });
+
+  it('cancelMessage 跨租户未命中:不发起 stop(S1 租户隔离)', async () => {
+    await sendMessageWithStream();
+    httpClientMock.request.mockClear();
+
+    await adapter.cancelMessage(ctxOther, 'sess-1');
+
+    expect(httpClientMock.request).not.toHaveBeenCalled();
+  });
+
+  it('cancelMessage 无映射(BFF 重启/降级路径):不发起请求且不抛异常', async () => {
+    await expect(
+      adapter.cancelMessage(ctxB, 'unknown-session'),
+    ).resolves.toBeUndefined();
+    expect(httpClientMock.request).not.toHaveBeenCalled();
+  });
+
+  it('cancelMessage 二次调用:映射一次性消费,第二次未命中', async () => {
+    await sendMessageWithStream();
+    httpClientMock.request.mockResolvedValue({});
+    await adapter.cancelMessage(ctxB, 'sess-1');
+    httpClientMock.request.mockClear();
+    await adapter.cancelMessage(ctxB, 'sess-1');
+    expect(httpClientMock.request).not.toHaveBeenCalled();
+  });
+
+  it('submitClarify 同租户且流内已记录:走社区分支 /v1/runs/{run_id}/clarify', async () => {
+    const iter = await sendMessageWithStream();
+    // 消费到 clarify_request(此时包装器已记录 clarifyId → runId + 归属)
+    for await (const chunk of iter as AsyncIterable<{ type: string }>) {
+      if (chunk.type === 'clarify_request') break;
+    }
+    httpClientMock.request.mockClear();
+    httpClientMock.request.mockResolvedValueOnce({ status: 'ok' });
+
+    const res = await adapter.submitClarify(
+      ctxB,
+      'sess-1',
+      'abc123def0',
+      '答案',
+    );
+
+    expect(res).toEqual({ status: 'ok' });
+    expect(httpClientMock.request).toHaveBeenCalledTimes(1);
+    expect(httpClientMock.request).toHaveBeenCalledWith(
+      'POST',
+      '/v1/runs/run-x/clarify',
+      ctxB,
+      { response: '答案', clarify_id: 'abc123def0' },
+    );
+  });
+
+  it('submitClarify 跨租户:不走社区分支,落入企业版路径(S2)', async () => {
+    const iter = await sendMessageWithStream();
+    for await (const chunk of iter as AsyncIterable<{ type: string }>) {
+      if (chunk.type === 'clarify_request') break;
+    }
+    httpClientMock.request.mockClear();
+    httpClientMock.request.mockResolvedValueOnce({ status: 'ok' });
+
+    await adapter.submitClarify(ctxOther, 'sess-1', 'abc123def0', '答案');
+
+    expect(httpClientMock.request).toHaveBeenCalledTimes(1);
+    expect(httpClientMock.request).toHaveBeenCalledWith(
+      'POST',
+      '/v1/chat/completions/sess-1/clarify',
+      ctxOther,
+      { clarify_id: 'abc123def0', answer: '答案' },
+    );
+  });
+
+  it('submitClarify 未记录:走企业版路径', async () => {
+    httpClientMock.request.mockResolvedValueOnce({ status: 'ok' });
+
+    await adapter.submitClarify(ctxB, 'sess-9', 'no-such-id', '答案');
+
+    expect(httpClientMock.request).toHaveBeenCalledWith(
+      'POST',
+      '/v1/chat/completions/sess-9/clarify',
+      ctxB,
+      { clarify_id: 'no-such-id', answer: '答案' },
+    );
   });
 });

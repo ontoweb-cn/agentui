@@ -467,7 +467,7 @@ export const ManageMetadataModal = (props: IManageModalProps) => {
                       {builtInRows.map((row) => (
                         <TableRow key={row.field}>
                           <TableCell>
-                            <div className="text-sm text-accent-primary">
+                            <div className="text-sm text-accent-primary-text">
                               {row.field}
                             </div>
                           </TableCell>

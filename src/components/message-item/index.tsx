@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 
 import { IRegenerateMessage, IRemoveMessageById } from '@/hooks/logic-hooks';
 import { cn } from '@/lib/utils';
+import { formatMessageTime } from '@/utils/message-time';
 import { isEmpty } from 'lodash';
 import { DocumentDownloadButton } from '../document-download-button';
 import MarkdownContent from '../markdown-content';
@@ -19,11 +20,11 @@ import { ClarifyCard } from '../next-message-item/clarify-card';
 import { ReasoningPanel } from '../next-message-item/reasoning-panel';
 import { ReferenceDocumentList } from '../next-message-item/reference-document-list';
 import { ReferenceImageList } from '../next-message-item/reference-image-list';
-import { ToolCallCard } from '../next-message-item/tool-call-card';
 import { UploadedMessageFiles } from '../next-message-item/uploaded-message-files';
 import { IntellectAvatar } from '../intellect-avatar';
 import SvgIcon from '../svg-icon';
 import { useTheme } from '../theme-provider';
+import { ActivityTree } from './activity-tree';
 import { AssistantGroupButton, UserGroupButton } from './group-button';
 import styles from './index.module.less';
 
@@ -99,6 +100,19 @@ const MessageItem = ({
     () => item.downloads ?? [],
     [item.downloads],
   );
+
+  // Route B: 工具调用聚合到活动树。审批待处理时隐藏同名 running 工具,
+  // 避免“工具运行中 + 审批待处理”双卡片语义冲突。
+  const activityRecords = useMemo(() => {
+    const toolCalls = item.toolCalls ?? [];
+    if (!item.pendingApproval) return toolCalls;
+    return toolCalls.filter(
+      (toolCall) =>
+        toolCall.toolName !== item.pendingApproval!.toolName ||
+        toolCall.status !== 'running',
+    );
+  }, [item.toolCalls, item.pendingApproval]);
+
   const messageContent = item.content;
 
   const handleRegenerateMessage = useCallback(() => {
@@ -183,23 +197,13 @@ const MessageItem = ({
                 )}
               </div>
             )}
-            {/* P1：Tool call 卡片列表（备选后置方案：放在 content 之后，保留 content 完整性）
-                P2-Q10 修复:当 pendingApproval 存在时,过滤掉同名 toolName 的 running 状态 ToolCallCard,
-                避免"工具运行中 + 审批待处理"两个卡片同时显示造成语义混乱。
-                approval_request 之前到达的 tool_start(running)被隐藏,审批卡片独占显示。 */}
-            {isAssistant && item.toolCalls && item.toolCalls.length > 0 && (
-              <div className="space-y-1">
-                {item.toolCalls
-                  .filter(
-                    (tc) =>
-                      !item.pendingApproval ||
-                      tc.toolName !== item.pendingApproval!.toolName ||
-                      tc.status !== 'running',
-                  )
-                  .map((tc) => (
-                    <ToolCallCard key={tc.toolCallId} record={tc} />
-                  ))}
-              </div>
+            {/* Route B：工具活动聚合为单行 Activity · N tools,
+                展开后复用 ToolCallCard;流式中默认展开,完成后默认折叠。 */}
+            {isAssistant && activityRecords.length > 0 && (
+              <ActivityTree
+                records={activityRecords}
+                isStreaming={isStreaming}
+              />
             )}
             {/* v1.3.0: 工具审批卡片(仅当 pendingApproval 存在且 onSubmitApproval 提供时渲染)
                 BFF streamChunksAsSSE 已在 approval_request 后过滤 tool_* 事件,
@@ -266,6 +270,16 @@ const MessageItem = ({
                 sendLoading={sendLoading}
               ></UserGroupButton>
             )}
+            {typeof item.createdAt === 'number' &&
+              Number.isFinite(item.createdAt) &&
+              item.createdAt > 0 && (
+                <time
+                  className="mt-1 text-xs text-text-secondary"
+                  dateTime={new Date(item.createdAt).toISOString()}
+                >
+                  {formatMessageTime(item.createdAt)}
+                </time>
+              )}
           </section>
         </div>
       </section>

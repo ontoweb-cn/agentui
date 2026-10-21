@@ -230,8 +230,8 @@ describe('TaskProgress', () => {
   it('failed 状态标题应用红色样式', () => {
     render(<TaskProgress nodes={[makeNode({ status: 'failed', title: '失败任务' })]} />);
     const titleEl = screen.getByText('失败任务');
-    // 失败状态使用 text-[#ef4444] 类
-    expect(titleEl.className).toContain('text-[#ef4444]');
+    // 失败状态使用 text-trae-error-text 语义 Token(浅色背景可读)
+    expect(titleEl.className).toContain('text-trae-error-text');
   });
 
   it('非 failed 状态标题应用 text-trae-ink 类', () => {

@@ -203,6 +203,15 @@ describe('ToolPanel', () => {
     expect(searchIcon).toBeNull();
   });
 
+  it('icon 支持直接传 ReactNode', () => {
+    render(
+      <ToolPanel
+        {...makeProps({ icon: <span data-testid="custom-icon">*</span> })}
+      />,
+    );
+    expect(screen.getByTestId('custom-icon')).toBeInTheDocument();
+  });
+
   it('actions 区域渲染自定义内容', () => {
     render(
       <ToolPanel

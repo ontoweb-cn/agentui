@@ -15,6 +15,8 @@ interface IProps {
   title?: ReactNode;
   searchString?: string;
   onSearchChange?: ChangeEventHandler<HTMLInputElement>;
+  /** 搜索框宽度等自定义 class;默认 w-32 */
+  searchClassName?: string;
   showFilter?: boolean;
   showSearch?: boolean;
   leftPanel?: ReactNode;
@@ -58,6 +60,7 @@ export default function ListFilterBar({
   preChildren,
   searchString,
   onSearchChange,
+  searchClassName,
   showFilter = true,
   showSearch = true,
   leftPanel,
@@ -126,7 +129,7 @@ export default function ListFilterBar({
           <SearchInput
             value={searchString}
             onChange={onSearchChange}
-            className="w-32"
+            className={searchClassName ?? 'w-32'}
             role="searchbox"
           ></SearchInput>
         )}

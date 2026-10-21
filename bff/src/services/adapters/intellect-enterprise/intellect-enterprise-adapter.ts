@@ -78,6 +78,20 @@ function toIsoString(v: unknown): string {
 }
 
 /**
+ * session→run / clarify→run 映射的容量上限(防内存泄漏,超限清理最早条目)。
+ */
+const MAX_TRACKED_RUNS = 512;
+
+/**
+ * sessionRuns 的租户作用域键(S1 加固):`<backendId>:<sessionId>`。
+ * 同一 adapter 实例可能被多个租户共享(Registry 按 harness backendId 缓存),
+ * 不带租户前缀会跨租户命中他人 run。
+ */
+function sessionRunKey(backendId: string, sessionId: string): string {
+  return `${backendId}:${sessionId}`;
+}
+
+/**
  * Intellect 企业版 Adapter 实现。
  * 封装 intellect-team REST API 调用,baseUrl 形如 'http://localhost:9091'。
  */
@@ -86,6 +100,21 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
   readonly adapterKind = 'multi-tenant' as const;
   private readonly httpClient: IntellectEnterpriseHttpClient;
   private readonly capabilities: HarnessCapabilities;
+  /**
+   * sessionId → 最近一次 run_id(cancelMessage → POST /v1/runs/{run_id}/stop 用)。
+   * S1 加固:键含 BackendContext.backendId(租户作用域)。AdapterRegistry 按 harness
+   * backendId 缓存实例,多租户绑定同一后端时共享实例——不带租户前缀会导致
+   * 跨租户可停他人 run(评审 S1)。
+   */
+  private readonly sessionRuns = new Map<string, string>();
+  /**
+   * clarifyId → run 信息(社区版 clarify 提交走 /v1/runs/{run_id}/clarify,需要 run_id)。
+   * S1 加固:值携带 ownerBackendId,submitClarify 时校验租户一致才走社区分支。
+   */
+  private readonly clarifyRuns = new Map<
+    string,
+    { runId: string; ownerBackendId: string }
+  >();
 
   constructor(backend: HarnessBackend) {
     this.backendId = backend.id;
@@ -289,17 +318,66 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
       );
     }
 
+    // 记录 session → 最近 run(cancelMessage 停止生成用),租户作用域 + 容量上限防泄漏
+    if (req.sessionId) {
+      this.sessionRuns.set(sessionRunKey(ctx.backendId, req.sessionId), runId);
+      if (this.sessionRuns.size > MAX_TRACKED_RUNS) {
+        const oldest = this.sessionRuns.keys().next().value;
+        if (oldest !== undefined) this.sessionRuns.delete(oldest);
+      }
+    }
+
     // Step 2: GET /v1/runs/{run_id}/events 订阅 SSE 流
     const eventsPath = `/v1/runs/${encodeURIComponent(runId)}/events`;
     const stream = await this.httpClient.requestGetStream(eventsPath, ctx);
 
-    // Step 3: 用 /v1/runs events 解析器解析
-    return parseIntellectEnterpriseRunEventsSSE(stream);
+    // Step 3: 用 /v1/runs events 解析器解析。
+    // 外层包装拦截 clarify_request:记录 clarifyId → runId(含归属租户),
+    // submitClarify 据此选择社区版(/v1/runs/{run_id}/clarify)或企业版提交路径。
+    const self = this;
+    const ownerBackendId = ctx.backendId;
+    const inner = parseIntellectEnterpriseRunEventsSSE(stream);
+    return (async function* () {
+      for await (const chunk of inner) {
+        if (chunk.type === 'clarify_request' && chunk.clarifyId) {
+          self.clarifyRuns.set(chunk.clarifyId, { runId, ownerBackendId });
+          if (self.clarifyRuns.size > MAX_TRACKED_RUNS) {
+            const oldest = self.clarifyRuns.keys().next().value;
+            if (oldest !== undefined) self.clarifyRuns.delete(oldest);
+          }
+        }
+        yield chunk;
+      }
+    })();
   }
 
-  async cancelMessage(_ctx: BackendContext, _sessionId: string): Promise<void> {
-    // P3 stub: no-op,前端通过 AbortController 取消流
-    // v1.3.0: 可选实现 POST /v1/runs/{run_id}/stop
+  async cancelMessage(ctx: BackendContext, sessionId: string): Promise<void> {
+    // 停止生成:社区版与企业版均提供 POST /v1/runs/{run_id}/stop
+    // (社区版实证:community adapter.py:4674;仅断开客户端 SSE 时网关侧 run 会继续跑完)
+    const key = sessionRunKey(ctx.backendId, sessionId);
+    const runId = this.sessionRuns.get(key);
+    if (!runId) {
+      // 无映射:常见于 BFF 重启丢内存态、registry 未就绪的每请求 adapter 兜底路径,
+      // 或其他租户上下文的会话(租户隔离,评审 S1)。回退为仅断开客户端流。
+      console.warn(
+        `[IntellectEnterpriseAdapter] cancelMessage: no run tracked for ${key} (client abort only)`,
+      );
+      return;
+    }
+    this.sessionRuns.delete(key);
+    try {
+      await this.httpClient.request<unknown>(
+        'POST',
+        `/v1/runs/${encodeURIComponent(runId)}/stop`,
+        ctx,
+        {},
+      );
+    } catch (err) {
+      // stop 失败(404 run 已结束/409 已停止)不影响客户端取消流程,记日志即可
+      console.warn(
+        `[IntellectEnterpriseAdapter] cancelMessage stop run ${runId} failed: ${(err as Error).message}`,
+      );
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -384,6 +462,34 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
     clarifyId: string,
     answer: string,
   ): Promise<{ status: string }> {
+    // 双网关路径自适应:
+    // - 社区版 api_server:POST /v1/runs/{run_id}/clarify,body {response, clarify_id?}
+    //   (community adapter.py:4444,clarifyId→runId 由 sendMessage 流拦截记录)
+    // - 企业版网关:POST /v1/chat/completions/{session_id}/clarify,body {clarify_id, answer}
+    // S1/S2 加固:仅当 clarify 归属当前租户上下文(backendId 一致)才走社区分支;
+    // 不匹配时视为未记录(不删除条目、不泄露存在性),落入企业版路径由网关校验归属。
+    const tracked = this.clarifyRuns.get(clarifyId);
+    if (tracked && tracked.ownerBackendId === ctx.backendId) {
+      this.clarifyRuns.delete(clarifyId);
+      const communityPath = `/v1/runs/${encodeURIComponent(tracked.runId)}/clarify`;
+      const data = await this.httpClient.request<{ status?: string }>(
+        'POST',
+        communityPath,
+        ctx,
+        { response: answer, clarify_id: clarifyId },
+      );
+      if (data.status === undefined) {
+        return { status: 'ok' };
+      }
+      if (typeof data.status !== 'string') {
+        throw new IntellectBackendError(
+          `submitClarify ${communityPath}: upstream returned non-string status: ${JSON.stringify(data.status)}`,
+          502,
+        );
+      }
+      return { status: data.status };
+    }
+
     const path = `/v1/chat/completions/${encodeURIComponent(sessionId)}/clarify`;
     const data = await this.httpClient.request<{ status?: string }>(
       'POST',

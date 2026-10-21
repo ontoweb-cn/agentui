@@ -3,11 +3,20 @@
 
 import type { TaskStatus, ProgressNodeStatus, WorkMode } from './types';
 
-/** TaskStatus → 状态色 token 映射(使用 TRAE Work Token) */
+/** TaskStatus → 状态色 token 映射(圆点/进度等图形用) */
 export const TASK_STATUS_COLOR: Record<TaskStatus, string> = {
   running: 'var(--trae-green)',
   completed: 'var(--trae-green-dim)',
-  failed: '#ef4444',
+  failed: 'rgb(var(--trae-error))',
+  cancelled: 'var(--trae-grey-2)',
+  pending: 'var(--trae-grey-2)',
+};
+
+/** TaskStatus → 文本色映射(浅色背景保证对比度,深色主题用亮绿) */
+export const TASK_STATUS_TEXT_COLOR: Record<TaskStatus, string> = {
+  running: 'rgb(var(--accent-primary-text))',
+  completed: 'rgb(var(--accent-primary-text))',
+  failed: 'rgb(var(--trae-error-text))',
   cancelled: 'var(--trae-grey-2)',
   pending: 'var(--trae-grey-2)',
 };
@@ -23,17 +32,17 @@ export const TASK_STATUS_LABEL_KEY: Record<TaskStatus, string> = {
 
 /** ProgressNodeStatus → 圆点色 token 映射 */
 export const PROGRESS_NODE_COLOR: Record<ProgressNodeStatus, string> = {
-  running: 'var(--trae-green)',
-  completed: 'var(--trae-green)',
-  failed: '#ef4444',
+  running: 'rgb(var(--accent-primary-text))',
+  completed: 'rgb(var(--accent-primary-text))',
+  failed: 'rgb(var(--trae-error))',
   skipped: 'var(--trae-grey-2)',
 };
 
-/** WorkMode → 标签文案 */
-export const WORK_MODE_LABEL: Record<WorkMode, string> = {
-  work: 'Work',
-  code: 'Code',
-  canvas: 'Canvas',
+/** WorkMode → i18n label key 映射(在组件中用 t() 解析) */
+export const WORK_MODE_LABEL_KEY: Record<WorkMode, string> = {
+  work: 'modeSwitcher.work',
+  code: 'modeSwitcher.code',
+  canvas: 'modeSwitcher.canvas',
 };
 
 /** 默认可用模式(全量) */

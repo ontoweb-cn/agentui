@@ -9,6 +9,8 @@
  * 刷新页面即恢复一致;不做运行时卸载(当前无卸载 UI 入口)。
  */
 
+import type { ComponentType } from 'react';
+
 import { getPluginRegistration } from './host-global';
 import type { PluginAppMetadata, PluginAppRegistration } from './types';
 
@@ -70,5 +72,84 @@ export function loadPluginApp(
       throw error;
     });
   loadCache.set(meta.id, pending);
+  return pending;
+}
+
+/**
+ * Tier B host 插件 bundle 装载(canvas-stage4 spec §9.2,懒两段式):
+ * 启动期只注册元数据包装路由,首访命中才拉取 bundle。
+ * 与 Tier A 的差异:产物多 chunk、default 导出为 host 插件定义
+ * (SDK defineHostPlugin 形状),渲染发生在宿主 Provider 树内——
+ * 本装载器只负责取回定义、形状校验与 CSS 注入,不建独立 root。
+ */
+
+/** host 插件定义的运行时形状(与 SDK HostPluginDefinition 结构一致,本地窄化)。 */
+export interface HostPluginBundleDefinition {
+  name: string;
+  routes: Array<{
+    path: string;
+    Component?: () => Promise<{ default: ComponentType<Record<string, unknown>> }>;
+    [key: string]: unknown;
+  }>;
+  i18n?: {
+    namespaces: string[];
+    lazy: Record<string, () => Promise<{ default: unknown }>>;
+  };
+  [key: string]: unknown;
+}
+
+const hostBundleCache = new Map<string, Promise<HostPluginBundleDefinition>>();
+
+/** 幂等注入 Tier B CSS 产物(app.json style 声明;entry 同目录约定)。 */
+function injectPluginStyle(meta: PluginAppMetadata): void {
+  if (!meta.style) {
+    return;
+  }
+  const styleId = `plugin-style-${meta.id}`;
+  if (document.getElementById(styleId)) {
+    return;
+  }
+  const link = document.createElement('link');
+  link.id = styleId;
+  link.rel = 'stylesheet';
+  link.href = `/api/bff/plugins/${meta.id}/files/${meta.style}`;
+  document.head.appendChild(link);
+}
+
+export function loadHostPluginBundle(
+  meta: PluginAppMetadata,
+): Promise<HostPluginBundleDefinition> {
+  const cached = hostBundleCache.get(meta.id);
+  if (cached) {
+    return cached;
+  }
+  const pending = import(/* @vite-ignore */ pluginEntryUrl(meta))
+    .then((mod) => {
+      const def = mod?.default as HostPluginBundleDefinition | undefined;
+      if (
+        !def ||
+        typeof def !== 'object' ||
+        !Array.isArray(def.routes) ||
+        def.routes.length === 0
+      ) {
+        throw new Error(
+          `host 插件 ${meta.id} 入口缺少合法 default 导出(routes 非空数组)`,
+        );
+      }
+      for (const route of def.routes) {
+        if (typeof route?.path !== 'string' || typeof route.Component !== 'function') {
+          throw new Error(
+            `host 插件 ${meta.id} 路由定义非法:path/Component 缺失`,
+          );
+        }
+      }
+      injectPluginStyle(meta);
+      return def;
+    })
+    .catch((error: unknown) => {
+      hostBundleCache.delete(meta.id);
+      throw error;
+    });
+  hostBundleCache.set(meta.id, pending);
   return pending;
 }

@@ -105,7 +105,7 @@ const MarkdownViewer: React.FC<MarkdownViewerProps> = ({ content }) => {
             <li className="text-text-primary">{children}</li>
           ),
           a: ({ children, href }) => (
-            <a href={href} className="text-accent-primary hover:underline">
+            <a href={href} className="text-accent-primary-text hover:underline">
               {children}
             </a>
           ),

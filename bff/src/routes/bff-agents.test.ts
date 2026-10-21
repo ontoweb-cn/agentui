@@ -1127,3 +1127,113 @@ describe('POST /agents/:agentId/sessions/:sessionId/clarify', () => {
     warnSpy.mockRestore();
   });
 });
+
+// ---------------------------------------------------------------------------
+// POST /agents/:agentId/sessions/:sessionId/stop 路由测试(P1 停止生成 + 评审加固)
+// ---------------------------------------------------------------------------
+
+describe('POST /agents/:agentId/sessions/:sessionId/stop', () => {
+  let mocks: MockSetup;
+  let app: Hono<{ Variables: TestVariables }>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks = createMocks();
+    app = createApp(mocks);
+  });
+
+  it('合法请求 → 调用 adapter.cancelMessage 并返回 204', async () => {
+    const cancelMock = mocks.adapter.cancelMessage as ReturnType<typeof vi.fn>;
+    cancelMock.mockResolvedValueOnce(undefined);
+
+    const res = await app.request('/agents/agent-1/sessions/sess-1/stop', {
+      method: 'POST',
+      headers: {
+        'X-Backend-Id': 'tenant-1',
+        'X-User-Id': 'user-1',
+      },
+    });
+
+    expect(res.status).toBe(204);
+    expect(cancelMock).toHaveBeenCalledTimes(1);
+    expect(cancelMock).toHaveBeenCalledWith(
+      expect.objectContaining({ backendId: 'tenant-1' }),
+      'sess-1',
+    );
+  });
+
+  it('无 adapter 配置 → 503', async () => {
+    mocks = createMocks({ ready: false });
+    mocks.registry.isReady = vi.fn(() => false);
+    mocks.harnessStore.get = vi.fn(() => undefined);
+    mocks.backendStore.getBackend = vi.fn(() => undefined);
+    app = createApp(mocks);
+
+    const res = await app.request('/agents/agent-1/sessions/sess-1/stop', {
+      method: 'POST',
+      headers: {
+        'X-Backend-Id': 'tenant-1',
+        'X-User-Id': 'user-1',
+      },
+    });
+
+    expect(res.status).toBe(503);
+  });
+
+  it('adapter 未实现 cancelMessage → 501', async () => {
+    const bare = createFakeAdapter(enterpriseBackend);
+    delete (bare as { cancelMessage?: unknown }).cancelMessage;
+    mocks = createMocks({ adapter: bare });
+    app = createApp(mocks);
+
+    const res = await app.request('/agents/agent-1/sessions/sess-1/stop', {
+      method: 'POST',
+      headers: {
+        'X-Backend-Id': 'tenant-1',
+        'X-User-Id': 'user-1',
+      },
+    });
+
+    expect(res.status).toBe(501);
+    const body = await res.json();
+    expect(body.message).toContain('not supported');
+  });
+
+  it('缺 sessionId(空参数)→ 400', async () => {
+    const res = await app.request('/agents/agent-1/sessions//stop', {
+      method: 'POST',
+      headers: {
+        'X-Backend-Id': 'tenant-1',
+        'X-User-Id': 'user-1',
+      },
+    });
+
+    // Hono 路由 :sessionId 不匹配空段 → 404;显式空串参数场景由 adapter 层兜底,
+    // 此处断言"不会调用 adapter"即可(404 或 400 均视为未命中路由语义)。
+    if (res.status === 400) {
+      const body = await res.json();
+      expect(body.message).toContain('sessionId');
+    } else {
+      expect(res.status).toBe(404);
+      expect(mocks.adapter.cancelMessage).not.toHaveBeenCalled();
+    }
+  });
+
+  it('adapter 抛错 → 502 通用文案(不泄露内部信息)', async () => {
+    const cancelMock = mocks.adapter.cancelMessage as ReturnType<typeof vi.fn>;
+    cancelMock.mockRejectedValueOnce(new Error('internal url http://10.0.0.1 leaked'));
+
+    const res = await app.request('/agents/agent-1/sessions/sess-1/stop', {
+      method: 'POST',
+      headers: {
+        'X-Backend-Id': 'tenant-1',
+        'X-User-Id': 'user-1',
+      },
+    });
+
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.message).toBe('Adapter error');
+    expect(JSON.stringify(body)).not.toContain('10.0.0.1');
+  });
+});

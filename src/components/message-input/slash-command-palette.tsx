@@ -132,6 +132,13 @@ export function SlashCommandPaletteImpl({
       .map((m) => m.name)
       .filter((name) => name.toLowerCase().includes(parsed.arg.toLowerCase()))
       .slice(0, 20); // 限制 20 条避免渲染性能问题
+    // P0-3: 模型列表为空时(RAG 未配模型/gateway 社区版 /v1/models 无 provider 模型名),
+    // 把已输入参数作为自由文本条目展示——/model 本身支持任意后端可接受的模型名,
+    // 不应因列表为空而不可用(gateway 路径经 switchModel 落 localStorage)。
+    if (models.length === 0 && parsed.arg.trim()) {
+      setModelSubArgs([parsed.arg.trim()]);
+      return;
+    }
     setModelSubArgs(models);
   }, [parsed, allModels]);
 
@@ -196,6 +203,9 @@ export function SlashCommandPaletteImpl({
         // PS3: 面板可见时消费 Enter，避免 textarea 提交消息
         e.preventDefault();
         e.stopPropagation();
+        // 裸 `/` 仅用于浏览全量命令;必须先输入命令名再 Enter,
+        // 避免用户只想看列表却误执行第一条(/retry 会触发重新生成)。
+        if (!parsed?.commandName) return;
         const cmd = matchedCommands[selectedIndex];
         executeCommand(cmd, parsed?.arg);
       } else if (e.key === 'Escape') {
@@ -233,7 +243,7 @@ export function SlashCommandPaletteImpl({
   return (
     <div
       ref={containerRef}
-      className="absolute bottom-full left-0 mb-2 w-80 max-h-80 overflow-auto rounded-md border bg-popover shadow-md z-50"
+      className="absolute bottom-full start-0 mb-2 w-80 max-h-80 overflow-auto rounded-md border bg-popover shadow-md z-50"
       data-testid="slash-command-palette"
     >
       {isSubArgMode && currentCmd?.arg?.type === 'model' ? (

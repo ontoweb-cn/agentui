@@ -474,3 +474,104 @@ export const runEventsClarifyMixedChoicesFrames = [
     choices: ['有效选项', 123, null, '另一个有效选项'],
   }),
 ];
+
+// ---------------------------------------------------------------------------
+// 社区版 api_server 词汇(2026-10-16 本机 8642 /v1/runs/{run_id}/events 实测抓包)。
+// 独立事件名、无内层 type;工具事件无 tool_id;run.failed 错误在 error 字段。
+// ---------------------------------------------------------------------------
+
+/** Fixture 21: 社区版完整正常流(delta + tool.started/completed + reasoning.available + run.completed) */
+export const runEventsCommunityFullFrames = [
+  runEventFrame('run.started', { run_id: 'run-comm-1', session_id: 'sess-comm', seq: 1 }),
+  runEventFrame('message.delta', { run_id: 'run-comm-1', timestamp: 1.1, delta: '终端' }),
+  runEventFrame('tool.started', {
+    run_id: 'run-comm-1',
+    timestamp: 1.2,
+    tool: 'terminal',
+    preview: 'ls -la',
+  }),
+  runEventFrame('tool.completed', {
+    run_id: 'run-comm-1',
+    timestamp: 1.4,
+    tool: 'terminal',
+    duration: 1.414,
+    error: false,
+  }),
+  runEventFrame('reasoning.available', {
+    run_id: 'run-comm-1',
+    timestamp: 1.5,
+    text: '主目录共 119 项,可分成四类',
+  }),
+  runEventFrame('message.delta', { run_id: 'run-comm-1', timestamp: 1.6, delta: '完成' }),
+  runEventFrame('run.completed', {
+    run_id: 'run-comm-1',
+    timestamp: 1.7,
+    output: '终端...',
+    usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
+  }),
+];
+
+/** Fixture 22: 社区版单工具失败(tool.failed 不中断流,后续 run.completed 正常收尾) */
+export const runEventsCommunityToolFailedFrames = [
+  runEventFrame('tool.started', { run_id: 'r', timestamp: 1.0, tool: 'terminal', preview: 'exit 1' }),
+  runEventFrame('tool.failed', { run_id: 'r', timestamp: 1.1, tool: 'terminal', preview: 'command not found' }),
+  runEventFrame('message.delta', { run_id: 'r', timestamp: 1.2, delta: '已重试' }),
+  runEventFrame('run.completed', {
+    run_id: 'r',
+    timestamp: 1.3,
+    output: '已重试',
+    usage: { input_tokens: 1, output_tokens: 2 },
+  }),
+];
+
+/** Fixture 23: 社区版 run.failed(错误文本在 error 字段,非 message) */
+export const runEventsCommunityFailedFrames = [
+  runEventFrame('message.delta', { run_id: 'r2', timestamp: 1.0, delta: '部分' }),
+  runEventFrame('run.failed', {
+    run_id: 'r2',
+    timestamp: 1.1,
+    error: "Error code: 400 - invalid model ''",
+  }),
+];
+
+/** Fixture 24: 社区版 clarify.request + approval.request + subagent_progress */
+export const runEventsCommunityInteractiveFrames = [
+  runEventFrame('clarify.request', {
+    run_id: 'r3',
+    timestamp: 1.0,
+    session_id: 'sess-comm-3',
+    clarify_id: 'abc123def0',
+    question: '需要继续展开哪个目录?',
+    choices: ['agentui', 'docs'],
+  }),
+  runEventFrame('approval.request', {
+    run_id: 'r3',
+    timestamp: 1.1,
+    command: 'rm -rf /tmp/x',
+    pattern_key: 'rm',
+    pattern_keys: ['rm'],
+    description: '删除临时目录',
+    choices: ['once', 'session', 'always', 'deny'],
+  }),
+  runEventFrame('subagent_progress', { run_id: 'r3', timestamp: 1.2, text: '子代理:扫描中' }),
+  runEventFrame('run.completed', {
+    run_id: 'r3',
+    timestamp: 1.3,
+    output: '完成',
+    usage: { input_tokens: 3, output_tokens: 4 },
+  }),
+];
+
+/** Fixture 25: P1-4 防御性透传——run.completed usage 携带 context_length(网关将来补发时生效) */
+export const runEventsCommunityContextLengthFrames = [
+  runEventFrame('run.completed', {
+    run_id: 'r4',
+    timestamp: 1.0,
+    output: 'ok',
+    usage: {
+      input_tokens: 10,
+      output_tokens: 5,
+      context_length: 65536,
+    },
+  }),
+];

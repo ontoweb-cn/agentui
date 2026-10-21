@@ -18,6 +18,12 @@ const Tasks = () => {
       icon={<LucideListTodo className="size-5 shrink-0 stroke-[1.5]" />}
       items={[
         {
+          key: Routes.Tasks,
+          label: t('header.tasks'),
+          icon: <LucideListTodo className="size-[1em]" />,
+          testId: 'tasks-submenu-list',
+        },
+        {
           key: Routes.TasksChat,
           label: t('header.chat'),
           icon: <LucideMessageCircle className="size-[1em]" />,

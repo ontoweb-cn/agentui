@@ -22,6 +22,11 @@ import {
   runEventsClarifySplitFrames,
   runEventsClarifyMissingQuestionFrames,
   runEventsClarifyMixedChoicesFrames,
+  runEventsCommunityFullFrames,
+  runEventsCommunityToolFailedFrames,
+  runEventsCommunityFailedFrames,
+  runEventsCommunityInteractiveFrames,
+  runEventsCommunityContextLengthFrames,
   makeStream,
 } from './fixtures/sse-streams';
 
@@ -391,5 +396,123 @@ describe('parseIntellectEnterpriseRunEventsSSE', () => {
     // 123 和 null 应被过滤,仅保留 2 个 string 元素
     const choices = (clarifyChunk as { choices: string[] }).choices;
     expect(choices).toEqual(['有效选项', '另一个有效选项']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 社区版 api_server 词汇归一化(2026-10-16 本机 8642 实测抓包)
+// ---------------------------------------------------------------------------
+
+describe('parseIntellectEnterpriseRunEventsSSE 社区版词汇归一化', () => {
+  it('社区版完整流:delta + tool.started/completed 合成 id 关联 + reasoning.available + run.completed', async () => {
+    const stream = toReadableStream(makeStream(runEventsCommunityFullFrames));
+    const chunks = await collect(parseIntellectEnterpriseRunEventsSSE(stream));
+
+    const deltaChunks = chunks.filter((c) => c.type === 'delta');
+    expect(deltaChunks.map((c) => (c as { content: string }).content)).toEqual(['终端', '完成']);
+
+    const toolStart = chunks.find((c) => c.type === 'tool_start') as {
+      toolName: string;
+      toolCallId: string;
+      args?: unknown;
+    };
+    expect(toolStart).toBeDefined();
+    expect(toolStart.toolName).toBe('terminal');
+    // 社区版无 tool_id,合成 id;preview 作为 args 摘要
+    expect(toolStart.toolCallId).toMatch(/^community-tool-/);
+    expect(toolStart.args).toBe('ls -la');
+
+    const toolComplete = chunks.find((c) => c.type === 'tool_complete') as {
+      toolCallId: string;
+    };
+    // completed 与 started 通过同名 tool 关联到同一合成 id
+    expect(toolComplete.toolCallId).toBe(toolStart.toolCallId);
+
+    const reasoning = chunks.find((c) => c.type === 'reasoning');
+    expect(reasoning).toMatchObject({ type: 'reasoning', content: '主目录共 119 项,可分成四类' });
+
+    // run.completed → usage(input_tokens/output_tokens)+ done
+    const usage = chunks.find((c) => c.type === 'usage');
+    expect(usage).toMatchObject({
+      type: 'usage',
+      usage: { promptTokens: 100, completionTokens: 50 },
+    });
+    expect(chunks[chunks.length - 1]).toEqual({ type: 'done' });
+  });
+
+  it('社区版 tool.failed → 带 error 标记的 tool_complete,流继续到 run.completed', async () => {
+    const stream = toReadableStream(makeStream(runEventsCommunityToolFailedFrames));
+    const chunks = await collect(parseIntellectEnterpriseRunEventsSSE(stream));
+
+    const toolComplete = chunks.find((c) => c.type === 'tool_complete') as {
+      toolCallId: string;
+      result?: unknown;
+    };
+    expect(toolComplete).toBeDefined();
+    expect((toolComplete.result as { error?: boolean }).error).toBe(true);
+    // 流未中断:后续 delta 与 done 正常产出
+    expect(chunks.some((c) => c.type === 'delta')).toBe(true);
+    expect(chunks[chunks.length - 1]).toEqual({ type: 'done' });
+  });
+
+  it('社区版 run.failed:错误消息回退读取 error 字段', async () => {
+    const stream = toReadableStream(makeStream(runEventsCommunityFailedFrames));
+    const chunks = await collect(parseIntellectEnterpriseRunEventsSSE(stream));
+
+    const errorChunk = chunks.find((c) => c.type === 'error') as { message: string };
+    expect(errorChunk).toBeDefined();
+    expect(errorChunk.message).toContain("invalid model ''");
+  });
+
+  it('社区版 clarify.request / approval.request(command 回退)/ subagent_progress', async () => {
+    const stream = toReadableStream(makeStream(runEventsCommunityInteractiveFrames));
+    const chunks = await collect(parseIntellectEnterpriseRunEventsSSE(stream));
+
+    const clarify = chunks.find((c) => c.type === 'clarify_request') as {
+      question: string;
+      clarifyId: string;
+      sessionId: string;
+      choices: string[];
+    };
+    expect(clarify).toBeDefined();
+    expect(clarify.question).toBe('需要继续展开哪个目录?');
+    expect(clarify.clarifyId).toBe('abc123def0');
+    expect(clarify.sessionId).toBe('sess-comm-3');
+
+    const approval = chunks.find((c) => c.type === 'approval_request') as {
+      toolName: string;
+      arguments: string;
+      choices: string[];
+    };
+    // 社区版载荷无 tool_name/arguments:回退 command / description
+    expect(approval.toolName).toBe('rm -rf /tmp/x');
+    expect(approval.arguments).toBe('删除临时目录');
+    expect(approval.choices).toEqual(['once', 'session', 'always', 'deny']);
+
+    const progress = chunks.find((c) => c.type === 'tool_progress') as {
+      toolName: string;
+      toolCallId?: string;
+      content: string;
+    };
+    expect(progress).toMatchObject({
+      toolName: 'subagent',
+      toolCallId: 'subagent',
+      content: '子代理:扫描中',
+    });
+  });
+
+  it('P1-4: run.completed usage 携带 context_length 时防御性透传', async () => {
+    const stream = toReadableStream(makeStream(runEventsCommunityContextLengthFrames));
+    const chunks = await collect(parseIntellectEnterpriseRunEventsSSE(stream));
+
+    const usage = chunks.find((c) => c.type === 'usage') as {
+      usage: { promptTokens: number; completionTokens: number; contextLength?: number };
+    };
+    expect(usage).toBeDefined();
+    expect(usage.usage).toMatchObject({
+      promptTokens: 10,
+      completionTokens: 5,
+      contextLength: 65536,
+    });
   });
 });

@@ -1,4 +1,3 @@
-import { CardContainer } from '@/components/card-container';
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
 import ListFilterBar from '@/components/list-filter-bar';
@@ -14,10 +13,11 @@ import { IntellectPagination } from '@/components/ui/intellect-pagination';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchAgentListByPage } from '@/hooks/use-agent-request';
 import { Routes } from '@/routes';
+import { groupByDate } from '@/utils/date-group';
+import { toEpochMs } from '@/utils/message-time';
 import { t } from 'i18next';
-import { pick } from 'lodash';
 import { Clipboard, ClipboardPlus, FileInput, Plus } from 'lucide-react';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import { AgentCard } from './agent-card';
 import { CreateAgentDialog } from './create-agent-dialog';
@@ -26,6 +26,12 @@ import { useSelectFilters } from './hooks/use-select-filters';
 import { UploadAgentDialog } from './upload-agent-dialog';
 import { useHandleImportJsonFile } from './use-import-json';
 import { useRenameAgent } from './use-rename-agent';
+
+const GROUP_LABEL_KEY = {
+  today: 'flow.groupToday',
+  yesterday: 'flow.groupYesterday',
+  earlier: 'flow.groupEarlier',
+} as const;
 
 export default function Agents() {
   const {
@@ -83,137 +89,162 @@ export default function Agents() {
     }
   }, [isCreate, showCreatingModal, searchUrl, setSearchUrl]);
 
+  const agentList = useMemo(() => data ?? [], [data]);
+  const groups = useMemo(
+    () =>
+      groupByDate(
+        agentList,
+        (agent) =>
+          toEpochMs(agent.update_date) ?? toEpochMs(agent.update_time),
+      ),
+    [agentList],
+  );
+
   return (
     <>
-      {data?.length || searchString ? (
-        <article className="size-full flex flex-col" data-testid="agents-list">
-          <header className="px-5 pt-8 mb-4">
-            <ListFilterBar
-              title={t('flow.agents')}
-              searchString={searchString}
-              onSearchChange={handleInputChange}
-              icon="agents"
-              filters={filters}
-              onChange={handleFilterSubmit}
-              value={filterValue}
-            >
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild data-testid="create-agent">
-                  <Button>
-                    <Plus className="size-[1em]" />
-                    {t('flow.createGraph')}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent data-testid="agent-create-menu">
-                  <DropdownMenuItem
-                    justifyBetween={false}
-                    onClick={showCreatingModal}
-                  >
-                    <Clipboard />
-                    {t('flow.createFromBlank')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    justifyBetween={false}
-                    onClick={() => navigateToAgentTemplates()}
-                  >
-                    <ClipboardPlus />
-                    {t('flow.createFromTemplate')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    data-testid="agent-import-json"
-                    justifyBetween={false}
-                    onClick={handleImportJson}
-                  >
-                    <FileInput />
-                    {t('flow.importJsonFile')}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </ListFilterBar>
-          </header>
-
-          {data.length ? (
-            <>
-              <CardContainer className="flex-1 overflow-auto px-5">
-                {data.map((x) => {
-                  return (
-                    <AgentCard
-                      key={x.id}
-                      data={x}
-                      showAgentRenameModal={showAgentRenameModal}
-                    />
-                  );
-                })}
-              </CardContainer>
-
-              <footer className="mt-4 px-5 pb-5">
-                <IntellectPagination
-                  {...pick(pagination, 'current', 'pageSize')}
-                  total={pagination.total}
-                  onChange={handlePageChange}
-                />
-              </footer>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <EmptyAppCard
-                showIcon
-                size="large"
-                className="w-[480px] p-14"
-                isSearch
-                type={EmptyCardType.Agent}
-                onClick={() => showCreatingModal()}
-              />
-            </div>
-          )}
-        </article>
-      ) : (
-        <article
-          className="size-full flex items-center justify-center"
-          data-testid="agents-list"
-        >
-          <EmptyAppCard
-            showIcon
-            size="large"
-            className="w-[480px] p-14 !cursor-default"
-            type={EmptyCardType.Agent}
-            tabIndex={-1}
-            // onClick={() => showCreatingModal()}
+      <section
+        className="flex h-full min-h-0 flex-col"
+        data-testid="agents-list"
+      >
+        <header className="pb-4">
+          <ListFilterBar
+            title={t('flow.agents')}
+            searchString={searchString}
+            onSearchChange={handleInputChange}
+            searchClassName="w-[280px]"
+            filters={filters}
+            onChange={handleFilterSubmit}
+            value={filterValue}
           >
-            <ul className="flex flex-col gap-y-5 text-text-secondary text-sm pt-5">
-              <li data-testid="agents-empty-create">
-                <Button
-                  variant="static"
-                  size="auto"
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild data-testid="create-agent">
+                <Button>
+                  <Plus className="size-[1em]" />
+                  {t('flow.createGraph')}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent data-testid="agent-create-menu">
+                <DropdownMenuItem
+                  justifyBetween={false}
                   onClick={showCreatingModal}
                 >
-                  <Clipboard className="size-[1em]" />
+                  <Clipboard />
                   {t('flow.createFromBlank')}
-                </Button>
-              </li>
-
-              <li>
-                <Button
-                  asLink
-                  variant="static"
-                  size="auto"
-                  to={Routes.AgentTemplates}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  justifyBetween={false}
+                  onClick={() => navigateToAgentTemplates()}
                 >
-                  <ClipboardPlus className="size-[1em]" />
+                  <ClipboardPlus />
                   {t('flow.createFromTemplate')}
-                </Button>
-              </li>
-
-              <li>
-                <Button variant="static" size="auto" onClick={handleImportJson}>
-                  <FileInput className="size-[1em]" />
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="agent-import-json"
+                  justifyBetween={false}
+                  onClick={handleImportJson}
+                >
+                  <FileInput />
                   {t('flow.importJsonFile')}
-                </Button>
-              </li>
-            </ul>
-          </EmptyAppCard>
-        </article>
-      )}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </ListFilterBar>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-auto">
+          {agentList.length > 0 ? (
+            <div className="space-y-6 pb-4">
+              {groups.map((group) => (
+                <section key={group.key}>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                    {t(GROUP_LABEL_KEY[group.key])}
+                    <span className="ms-1.5 text-text-disabled">
+                      {group.items.length}
+                    </span>
+                  </h3>
+                  <div className="grid gap-3 xl:grid-cols-2">
+                    {group.items.map((agent) => (
+                      <AgentCard
+                        key={agent.id}
+                        data={agent}
+                        showAgentRenameModal={showAgentRenameModal}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              {searchString ? (
+                <EmptyAppCard
+                  showIcon
+                  size="large"
+                  className="w-[480px] p-14"
+                  isSearch
+                  type={EmptyCardType.Agent}
+                  onClick={() => showCreatingModal()}
+                />
+              ) : (
+                <EmptyAppCard
+                  showIcon
+                  size="large"
+                  className="w-[480px] p-14 !cursor-default"
+                  type={EmptyCardType.Agent}
+                  tabIndex={-1}
+                >
+                  <ul className="flex flex-col gap-y-5 pt-5 text-sm text-text-secondary">
+                    <li data-testid="agents-empty-create">
+                      <Button
+                        variant="static"
+                        size="auto"
+                        onClick={showCreatingModal}
+                      >
+                        <Clipboard className="size-[1em]" />
+                        {t('flow.createFromBlank')}
+                      </Button>
+                    </li>
+
+                    <li>
+                      <Button
+                        asLink
+                        variant="static"
+                        size="auto"
+                        to={Routes.AgentTemplates}
+                      >
+                        <ClipboardPlus className="size-[1em]" />
+                        {t('flow.createFromTemplate')}
+                      </Button>
+                    </li>
+
+                    <li>
+                      <Button
+                        variant="static"
+                        size="auto"
+                        onClick={handleImportJson}
+                      >
+                        <FileInput className="size-[1em]" />
+                        {t('flow.importJsonFile')}
+                      </Button>
+                    </li>
+                  </ul>
+                </EmptyAppCard>
+              )}
+            </div>
+          )}
+        </div>
+
+        {(pagination.total ?? 0) > 0 && (
+          <div className="pt-3">
+            <IntellectPagination
+              current={pagination.current}
+              pageSize={pagination.pageSize}
+              total={pagination.total}
+              onChange={handlePageChange}
+            />
+          </div>
+        )}
+      </section>
 
       {agentRenameVisible && (
         <RenameDialog

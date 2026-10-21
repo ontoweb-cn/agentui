@@ -585,7 +585,7 @@ function StepProbeResult({
         {probeResult?.healthy && (
           <>
             <div className="flex items-center gap-2 text-sm">
-              <LucideCheck className="size-4 text-green-500" />
+              <LucideCheck className="size-4 text-accent-primary-text" />
               <span>
                 {t('wizard.probe.healthy', {
                   defaultValue: 'Backend is reachable',
@@ -603,7 +603,7 @@ function StepProbeResult({
             )}
             {probeResult.ragHealthy === true && (
               <div className="flex items-center gap-2 text-sm">
-                <LucideCheck className="size-4 text-green-500" />
+                <LucideCheck className="size-4 text-accent-primary-text" />
                 <span>
                   {t('wizard.probe.ragHealthy', {
                     defaultValue: 'RAG plugin is reachable',

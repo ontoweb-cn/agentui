@@ -73,7 +73,7 @@ export class VariableNode extends DecoratorNode<ReactNode> {
 
   decorate(): ReactNode {
     let content: ReactNode = (
-      <div className="text-accent-primary">{this.__label}</div>
+      <div className="text-accent-primary-text">{this.__label}</div>
     );
     if (this.__parentLabel) {
       content = (

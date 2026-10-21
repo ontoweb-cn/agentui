@@ -86,6 +86,45 @@ describe('TaskCard', () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
+  it('操作按钮上的 Enter 不冒泡触发整卡 onClick', () => {
+    const onClick = jest.fn();
+    const onDelete = jest.fn();
+    render(
+      <TaskCard
+        {...makeProps({
+          status: 'failed',
+          onClick,
+          onDelete,
+          currentStep: undefined,
+          progress: undefined,
+        })}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Delete' }), {
+      key: 'Enter',
+    });
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('操作按钮与 role=button 卡片主体是 sibling(不嵌套交互元素)', () => {
+    render(
+      <TaskCard
+        {...makeProps({
+          status: 'failed',
+          onClick: jest.fn(),
+          onDelete: jest.fn(),
+          currentStep: undefined,
+          progress: undefined,
+        })}
+      />,
+    );
+
+    const card = screen.getByTestId('task-card-task-1');
+    const deleteButton = screen.getByRole('button', { name: 'Delete' });
+    expect(card.contains(deleteButton)).toBe(false);
+  });
+
   it('failed 状态无 onRetry 时不渲染重试按钮', () => {
     render(<TaskCard {...makeProps({ status: 'failed', onRetry: undefined, currentStep: undefined, progress: undefined })} />);
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
@@ -110,10 +149,19 @@ describe('TaskCard', () => {
     expect(screen.getByTestId('task-card-task-1')).toBeInTheDocument();
   });
 
-  it('非 selected 状态:左侧边框透明', () => {
+  it('非 selected 状态:不覆盖左侧边框', () => {
     render(<TaskCard {...makeProps({ selected: false })} />);
     const card = screen.getByTestId('task-card-task-1');
-    expect(card.style.borderLeft).toBe('2px solid transparent');
+    // 未选中时不写内联 borderInlineStart,保留 className 的 1px 边框
+    expect(card.style.borderInlineStart).toBe('');
+  });
+
+  it('selected 状态:左侧边框为 2px 品牌绿', () => {
+    render(<TaskCard {...makeProps({ selected: true })} />);
+    const card = screen.getByTestId('task-card-task-1');
+    expect(card.style.borderInlineStart).toBe(
+      '2px solid var(--trae-green)',
+    );
   });
 
   it('running 状态有 progress 时渲染进度条', () => {

@@ -986,7 +986,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
           {gitImporting && gitProgress && (
             <div className="bg-bg-card border border-border-button rounded-lg p-4">
               <div className="flex items-center gap-3">
-                <Loader2 className="size-5 animate-spin text-accent-primary" />
+                <Loader2 className="size-5 animate-spin text-accent-primary-text" />
                 <span className="text-sm">{gitProgress}</span>
               </div>
             </div>

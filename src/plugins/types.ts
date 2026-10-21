@@ -56,4 +56,23 @@ export interface PluginAppMetadata {
    * 真实裁决在 BFF——403)。
    */
   capabilities?: string[];
+  /**
+   * 插件档位(canvas-stage4 spec §9.2):缺省/'app' = Tier A 窄面自包含
+   * (独立 root 挂载页);'host' = Tier B 共享面(host 插件,路由并入宿主
+   * registry,Provider 树内渲染)。未知值按 Tier A 处理(前向兼容)。
+   */
+  type?: 'app' | 'host';
+  /**
+   * Tier B 声明式路由表(注册期免拉 bundle):path 形态同宿主 LazyRouteConfig
+   * (如 '/agent/:id'),每条都必须落在 meta.path 前缀下(BFF 安装侧校验,
+   * 运行时注册侧复核)。
+   */
+  routes?: string[];
+  /**
+   * Tier B 共享面契约版本区间(如 '^1.1.0'),语义同 apiVersion,判定对象为
+   * @agentui/plugin-sdk/host 的 SHARED_API_VERSION;缺省不校验。
+   */
+  sharedVersion?: string;
+  /** Tier B CSS 产物路径(entry 同规则校验;装载时幂等注入 <link>)。 */
+  style?: string;
 }

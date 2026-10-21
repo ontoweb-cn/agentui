@@ -22,6 +22,19 @@
  *   lagged                                → (internal, not emitted)
  *   : keepalive                           → (internal, SSE 注释心跳)
  *
+ * 社区版 api_server 词汇归一化(2026-10-16 实证:community adapter.py `_callback`/`_text_cb`
+ * + 本机 8642 api_server /v1/runs/{run_id}/events 抓包):
+ * 社区版使用独立事件名且无内层 type 字段,与本文件上述企业版词汇不同。归一化映射:
+ *   message.delta {delta}                 → StreamDelta(delta 字段兜底,与企业版共用 case)
+ *   tool.started {tool, preview}          → StreamToolStart(合成 toolCallId,关联后续 complete)
+ *   tool.completed {tool, duration, error}→ StreamToolComplete(按同名 tool 关联最近 start)
+ *   tool.failed {tool, ...}               → StreamToolComplete(result.error=true,不中断流)
+ *   reasoning.available {text}            → StreamReasoning
+ *   subagent_progress {text}              → StreamToolProgress(toolCallId='subagent')
+ *   clarify.request {question, choices, clarify_id} → StreamClarifyRequest(与企业版 `clarify` 共用 case)
+ *   approval.request {command, description}(无 tool_name/arguments)→ 字段回退
+ *   run.failed {error}(无 message 字段)  → 错误消息回退读取 error 字段
+ *
  * SSE 帧格式(与 legacy chat/stream 不同):
  *   `data: {"event":"<name>","run_id":"...","timestamp":<f64>,...payload}\n\n`
  *   (无独立 `event:` 行,事件名嵌入 JSON `event` 字段)
@@ -53,6 +66,8 @@ export async function* parseIntellectEnterpriseRunEventsSSE(
   let sawTerminal = false;
   let producedAny = false;
   let hasDelta = false;
+  // 社区版工具事件无 tool_id,跨帧状态用于合成/关联 toolCallId
+  const vocab = createVocabState();
 
   try {
     while (!sawTerminal) {
@@ -60,7 +75,7 @@ export async function* parseIntellectEnterpriseRunEventsSSE(
       if (done) {
         // 处理 buffer 中剩余帧
         if (buffer.trim()) {
-          for (const chunk of parseFrame(buffer, { hasDelta })) {
+          for (const chunk of parseFrame(buffer, { hasDelta }, vocab)) {
             yield chunk;
             producedAny = true;
             if (chunk.type === 'delta') hasDelta = true;
@@ -87,7 +102,7 @@ export async function* parseIntellectEnterpriseRunEventsSSE(
         const frame = buffer.slice(0, frameEnd);
         buffer = buffer.slice(frameEnd + 2);
 
-        for (const chunk of parseFrame(frame, { hasDelta })) {
+        for (const chunk of parseFrame(frame, { hasDelta }, vocab)) {
           yield chunk;
           producedAny = true;
           if (chunk.type === 'delta') hasDelta = true;
@@ -113,16 +128,54 @@ function isTerminalChunk(chunk: StreamChunk): boolean {
 }
 
 /**
+ * 社区版词汇归一化的跨帧状态。
+ * 社区版 api_server 工具事件不带 tool_id(tool.started/completed 仅有 tool 名称),
+ * 用合成 id 让前端 ToolCallCard 关联 start/complete:同一工具名取最近一次未完成的 start。
+ */
+interface VocabState {
+  /** 合成 id 计数器 */
+  toolSeq: number;
+  /** 工具名 → 最近一次 tool_start 的合成 id(完成后移除) */
+  lastToolIdByName: Map<string, string>;
+}
+
+function createVocabState(): VocabState {
+  return { toolSeq: 0, lastToolIdByName: new Map<string, string>() };
+}
+
+function synthesizeToolId(vocab: VocabState, toolName: string): string {
+  vocab.toolSeq += 1;
+  const id = `community-tool-${vocab.toolSeq}`;
+  vocab.lastToolIdByName.set(toolName, id);
+  return id;
+}
+
+function correlateToolId(vocab: VocabState, toolName: string): string {
+  const existing = toolName
+    ? vocab.lastToolIdByName.get(toolName)
+    : undefined;
+  if (existing) {
+    vocab.lastToolIdByName.delete(toolName);
+    return existing;
+  }
+  // 无匹配 start(乱序/丢失):补一个合成 id,前端 onToolComplete 对未知 id 会补建 record
+  vocab.toolSeq += 1;
+  return `community-tool-${vocab.toolSeq}`;
+}
+
+/**
  * 解析单个 SSE 帧。
  *
  * /v1/runs events 帧格式:`data: <json>\n\n`(json 含 `event` 字段)
  * 也兼容 SSE 注释帧(`: keepalive`),静默跳过。
  *
  * @param ctx 解析上下文，包含 hasDelta 标志用于 run.completed 的 output 兜底
+ * @param vocab 社区版词汇归一化状态(合成/关联 toolCallId)
  */
 function parseFrame(
   frame: string,
   ctx: { hasDelta: boolean },
+  vocab: VocabState,
 ): StreamChunk[] {
   const lines = frame.split('\n');
   const dataLines: string[] = [];
@@ -168,7 +221,7 @@ function parseFrame(
     return [];
   }
 
-  return mapEventToChunks(eventName, data, ctx);
+  return mapEventToChunks(eventName, data, ctx, vocab);
 }
 
 /**
@@ -176,11 +229,13 @@ function parseFrame(
  *
  * 注:`message.delta` 和 `tool.progress` 事件用内层 `type` 字段区分子类型,
  * 这是 /v1/runs events 与 legacy chat/stream 的关键差异。
+ * 社区版 api_server 的独立事件名(tool.started/reasoning.available 等)在本函数内归一化。
  */
 function mapEventToChunks(
   event: string,
   data: Record<string, unknown>,
   ctx: { hasDelta: boolean },
+  vocab: VocabState,
 ): StreamChunk[] {
   switch (event) {
     case 'run.started':
@@ -237,10 +292,88 @@ function mapEventToChunks(
       return [];
     }
 
+    // ── 社区版 api_server 独立事件名(无内层 type,载荷见文件头归一化表)──
+    case 'tool.started': {
+      const toolName =
+        (typeof data.tool === 'string' && data.tool) ||
+        (typeof data.tool_name === 'string' && data.tool_name) ||
+        '';
+      if (!toolName) {
+        return [];
+      }
+      return [
+        {
+          type: 'tool_start',
+          toolName,
+          toolCallId: synthesizeToolId(vocab, toolName),
+          // 社区版无结构化 args,preview 是最佳可用摘要(如 "ls -la")
+          args: typeof data.preview === 'string' ? data.preview : data.args,
+        },
+      ];
+    }
+
+    case 'tool.completed':
+    case 'tool.failed': {
+      const toolName =
+        (typeof data.tool === 'string' && data.tool) ||
+        (typeof data.tool_name === 'string' && data.tool_name) ||
+        '';
+      const failed = event === 'tool.failed' || data.error === true;
+      // 单个工具失败不等于 run 失败:映射为带错误标记的 complete,让流继续
+      return [
+        {
+          type: 'tool_complete',
+          toolCallId: correlateToolId(vocab, toolName),
+          result: failed
+            ? {
+                error: true,
+                ...(typeof data.preview === 'string'
+                  ? { preview: data.preview }
+                  : {}),
+              }
+            : data.result,
+        },
+      ];
+    }
+
+    case 'reasoning.available': {
+      const text = typeof data.text === 'string' ? data.text : '';
+      if (!text) {
+        return [];
+      }
+      return [{ type: 'reasoning', content: text }];
+    }
+
+    case 'subagent_progress': {
+      const text =
+        (typeof data.text === 'string' && data.text) ||
+        (typeof data.tool === 'string' && data.tool) ||
+        '';
+      if (!text) {
+        return [];
+      }
+      // 固定合成 id:前端 onToolProgress 对未匹配 id 会补建 record,进度文本随之累积
+      return [
+        {
+          type: 'tool_progress',
+          toolName: 'subagent',
+          toolCallId: 'subagent',
+          content: text,
+        },
+      ];
+    }
+
     case 'approval.request': {
-      const toolName = typeof data.tool_name === 'string' ? data.tool_name : '';
+      // 社区版载荷无 tool_name/arguments,回退 command(命令串)/description(人读摘要)
+      const toolName =
+        (typeof data.tool_name === 'string' && data.tool_name) ||
+        (typeof data.command === 'string' && data.command) ||
+        '';
       // intellect-team 透传 arguments 为原始 JSON 字符串
-      const args = typeof data.arguments === 'string' ? data.arguments : '';
+      const args =
+        (typeof data.arguments === 'string' && data.arguments) ||
+        (typeof data.description === 'string' && data.description) ||
+        '';
       const runId = typeof data.run_id === 'string' ? data.run_id : '';
       // choices 默认 4 个选项
       const rawChoices = Array.isArray(data.choices) ? data.choices : [];
@@ -278,7 +411,8 @@ function mapEventToChunks(
       return [{ type: 'approval_responded', choice, resolved, runId }];
     }
 
-    case 'clarify': {
+    case 'clarify':
+    case 'clarify.request': {
       // v1.4.0: clarify 工具事件(Gateway set_clarify_fn 注入)。
       // BFF 通过 /v1/runs/{run_id}/events 通道接收 SSE 流(不走 /v1/chat/completions 通道),
       // 因此 Intellect-Team 必须在 /v1/runs handler 注入 clarify_fn,BFF 才能收到 clarify 事件。
@@ -335,6 +469,10 @@ function mapEventToChunks(
         usage: {
           promptTokens,
           completionTokens,
+          // P1-4 防御性透传:/v1/runs 契约当前无 context_length,网关若补发则自动生效
+          ...(typeof usage.context_length === 'number'
+            ? { contextLength: usage.context_length }
+            : {}),
         },
       };
       // 若 run.completed 带 error 字段,产出 error 而非 done
@@ -360,10 +498,11 @@ function mapEventToChunks(
 
     case 'run.failed':
     case 'run.cancelled': {
+      // 社区版把错误文本放在 error 字段(实测抓包),企业版为 message
       const message =
-        typeof data.message === 'string'
-          ? data.message
-          : `run ${event === 'run.failed' ? 'failed' : 'cancelled'}`;
+        (typeof data.message === 'string' && data.message) ||
+        (typeof data.error === 'string' && data.error) ||
+        `run ${event === 'run.failed' ? 'failed' : 'cancelled'}`;
       return [{ type: 'error', message }];
     }
 

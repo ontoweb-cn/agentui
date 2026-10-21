@@ -101,6 +101,7 @@ module.exports = {
           DEFAULT: 'rgb(var(--accent-primary) / <alpha-value>)',
           5: 'rgba(var(--accent-primary) / 0.05)', // 5%
         },
+        'accent-primary-text': 'rgb(var(--accent-primary-text) / <alpha-value>)',
         'bg-accent': 'var(--bg-accent)',
         'state-success': {
           DEFAULT: 'rgb(var(--state-success) / <alpha-value>)',
@@ -209,6 +210,10 @@ module.exports = {
           card: 'var(--trae-card-bg)',
           nav: 'var(--trae-nav-bg)',
           surface: 'var(--trae-surface)',
+          // Route B 补充:错误态与强调色前景色
+          error: 'rgb(var(--trae-error) / <alpha-value>)',
+          'error-text': 'rgb(var(--trae-error-text) / <alpha-value>)',
+          'on-accent': 'var(--trae-on-accent)',
         },
       },
       backgroundImage: {
