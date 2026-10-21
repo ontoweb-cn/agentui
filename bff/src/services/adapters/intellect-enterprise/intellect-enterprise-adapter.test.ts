@@ -9,6 +9,7 @@ import {
 } from './http-client';
 import type { HarnessBackend } from '../../../types/harness';
 import type { BackendContext } from '../../../types/tenant';
+import type { StreamChunk } from '../../../types/stream';
 import {
   makeStream,
   runEventsCommunityInteractiveFrames,
@@ -679,7 +680,7 @@ describe('IntellectEnterpriseAdapter cancelMessage/submitClarify 加固', () => 
   });
 
   /** 通过 sendMessage 预置 sessionRuns(POST /v1/runs → run-x;events 流为社区交互夹具) */
-  async function sendMessageWithStream(): Promise<AsyncGenerator<unknown>> {
+  async function sendMessageWithStream(): Promise<AsyncIterable<StreamChunk>> {
     httpClientMock.request.mockResolvedValueOnce({
       run_id: 'run-x',
       status: 'started',

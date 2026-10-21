@@ -131,9 +131,28 @@ curl -X POST http://localhost:9390/plugins/install \
   -d '{"source": "/abs/path/to/plugin-repo"}'
 ```
 
-**生产**(方案 B,镜像烤入):`scripts/package-plugin-bundle.sh` 打包 →
-随 agentui 镜像分发,容器启动自动安装;`BFF_PLUGIN_BACKEND_OVERRIDES`
-按插件 id 覆盖 backend.target(存在即生效,改 env 重启容器即生效)。
+**zip 制品上传**(2026-10-21 起默认启用):multipart 上传,适配
+「制品库下载 zip → 推给任意环境安装」的独立分发。zip 根目录或唯一
+单层子目录(GitHub 式 `repo-x.y.z/` 前缀自动剥离)含 app.json 即可;
+`X-Plugin-Archive-Sha256` 随行哈希做端到端校验:
+```bash
+scripts/install-plugin-zip.sh <plugin.zip> [bffBase]
+# 或等价 curl:
+curl -X POST http://localhost:9390/plugins/install \
+  -H 'X-Plugin-Admin-Token: <BFF_PLUGIN_INSTALL_TOKEN>' \
+  -H "X-Plugin-Archive-Sha256: $(sha256sum plugin.zip | cut -d' ' -f1)" \
+  -F 'file=@plugin.zip'
+```
+安装来源由 `BFF_PLUGIN_INSTALL_SOURCES` 控制(默认 `local,zip`,
+设为 `local` 收回 zip 通道)。注意 sha256 随行校验防的是**传输损坏与
+拿错制品,不构成来源签名**——能改制品者可同步重算哈希;来源认证由
+admin token 与传输信道承担。
+
+**生产**(方案 B,镜像烤入):插件 bundle 由各插件仓发布(tarball 制品
+或 bundle 镜像),agentui 发版时经 `scripts/consume-plugin-bundle.sh`
+装配进构建上下文 → 随 agentui 镜像分发,容器启动自动安装;
+`BFF_PLUGIN_BACKEND_OVERRIDES` 按插件 id 覆盖 backend.target
+(存在即生效,改 env 重启容器即生效)。
 
 **启停(不删文件)**:`POST /api/bff/plugins/<id>/enable` 与
 `POST /api/bff/plugins/<id>/disable`(需 admin token,幂等)。状态存

@@ -770,7 +770,7 @@ describe('zip 上传安装通道(canvas-stage4 spec §9.5)', () => {
     delete process.env.BFF_PLUGIN_INSTALL_SOURCES;
   });
 
-  it('sources 不含 zip → 403(默认姿态不变)', async () => {
+  it('sources 显式不含 zip → 403(部署者可收回)', async () => {
     const previous = process.env.BFF_PLUGIN_INSTALL_SOURCES;
     process.env.BFF_PLUGIN_INSTALL_SOURCES = 'local';
     try {
@@ -784,6 +784,38 @@ describe('zip 上传安装通道(canvas-stage4 spec §9.5)', () => {
       expect(res.status).toBe(403);
     } finally {
       process.env.BFF_PLUGIN_INSTALL_SOURCES = previous;
+    }
+  });
+
+  it('env 未设置 → 默认允许 zip(2026-10-21 默认启用)', async () => {
+    const previous = process.env.BFF_PLUGIN_INSTALL_SOURCES;
+    delete process.env.BFF_PLUGIN_INSTALL_SOURCES;
+    try {
+      const zipBytes = buildZip({
+        'app.json': JSON.stringify({
+          id: 'zipped-default',
+          path: '/zipped-default',
+          label: 'zip 默认',
+          entry: 'ui/dist/index.js',
+        }),
+        'ui/dist/index.js': 'export {}',
+      });
+      const form = new FormData();
+      form.append('file', new File([new Uint8Array(zipBytes)], 'bundle.zip'));
+      const res = await api.pluginsRoutes.request('/plugins/install', {
+        method: 'POST',
+        headers: { 'X-Plugin-Admin-Token': adminToken },
+        body: form,
+      });
+      expect(res.status).toBe(200);
+      const result = (await res.json()) as { installed: string };
+      expect(result.installed).toBe('zipped-default');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.BFF_PLUGIN_INSTALL_SOURCES;
+      } else {
+        process.env.BFF_PLUGIN_INSTALL_SOURCES = previous;
+      }
     }
   });
 

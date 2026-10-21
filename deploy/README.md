@@ -71,6 +71,9 @@ CI 自动发版(华为集群 Jenkins,两仓 Jenkinsfile 已就绪):见 [ci-jenki
 - `WARGAME_HOST`:wargamesrv 与本 compose 同网络时用服务名;
   独立部署时用宿主地址(`host.docker.internal` / `172.17.0.1` / 实际 IP);
 - `BFF_PLUGIN_INSTALL_TOKEN`:必填(未设置 compose 直接报错),生产用强随机值;
+- `BFF_PLUGIN_INSTALL_SOURCES`:安装来源开关,默认 `local,zip`
+  (2026-10-21 起 zip 上传通道默认启用);设为 `local` 可收回。zip 上传:
+  `scripts/install-plugin-zip.sh <plugin.zip>`(自动随行 sha256 端到端校验);
 - `BFF_PLUGIN_BACKEND_OVERRIDES`:由 WARGAME_HOST/PORT 拼出,install 时
   覆盖插件 app.json 内写死的 `127.0.0.1:9385`,替换后仍受 SSRF 白名单约束;
 - 插件安装数据在容器内(`bff/data/plugins`),镜像版本即插件版本,无需挂卷。
@@ -104,7 +107,12 @@ cognitive-wargame@998c6af,冒烟全绿(列表/JS 5.2MB/深链/安装面 fail-clo
   重连兜底。长空闲场景若观察到频繁重连,优先给上游加心跳(或显式调整
   undici dispatcher 的 bodyTimeout);
 - `BFF_PLUGIN_BACKEND_OVERRIDES` **存在即生效**(插件 app.json 未声明
-  backend 段也可启用代理),改 env 重启容器即生效,无需重装插件。
+  backend 段也可启用代理),改 env 重启容器即生效,无需重装插件;
+- `/api/bff/plugins/install` **经 nginx 对网络可达,admin token 是唯一
+  闸门**(须强随机)。镜像内 nginx 对该精确路径限流(2026-10-22 起,
+  10r/m + burst=3,超出 429;Hono strict 路由下尾斜杠 404 无绕过),
+  抬高 token 枚举与大体重放成本;直连容器内 9390 不经此限流,
+  但仅回环可达。
 
 ## 链路速查
 

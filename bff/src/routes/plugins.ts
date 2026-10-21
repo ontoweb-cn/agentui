@@ -16,13 +16,13 @@
  * - install/delete 是变更面,必须携带 X-Plugin-Admin-Token 且与
  *   BFF_PLUGIN_INSTALL_TOKEN 环境变量一致;该 env 未设置时 fail-closed(403),
  *   避免「无门槛安装任意本地目录并对外提供下载」;
- * - 安装来源开关 BFF_PLUGIN_INSTALL_SOURCES(默认仅 local),git/zip 来源预留;
+ * - 安装来源开关 BFF_PLUGIN_INSTALL_SOURCES(默认 local,zip;git 来源预留);
  * - entry/mount path 走白名单校验,阻断以 '..' 越出插件目录的拷贝与路由劫持
  *   (见 validateEntry/validateMountPath)。
  */
 import { Hono, type Context } from 'hono';
 import AdmZip from 'adm-zip';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import {
@@ -30,10 +30,11 @@ import {
   mkdir,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
 } from 'node:fs/promises';
-import { dirname, join, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 
 import { fileURLToPath } from 'node:url';
@@ -50,6 +51,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // zip 上传通道防护上限(spec §9.5):制品 ≤100MB、条目 ≤4000、
 // 解压总量 ≤512MB(admin token 守卫下的纵深防御,非安全边界)。
+// 注意 content-length 声明值在 chunked 传输下缺省——declaredSize 预检
+// 会按 0 放行,实际封顶由下方 file.size 复核承担(届时已整包入内存)。
 const MAX_ZIP_UPLOAD_BYTES = 100 * 1024 * 1024;
 const MAX_ZIP_ENTRIES = 4000;
 const MAX_ZIP_UNCOMPRESSED_BYTES = 512 * 1024 * 1024;
@@ -245,7 +248,7 @@ function isAdminRequest(req: { header(name: string): string | undefined }): bool
 
 function allowedInstallSources(): Set<string> {
   return new Set(
-    (process.env.BFF_PLUGIN_INSTALL_SOURCES ?? 'local')
+    (process.env.BFF_PLUGIN_INSTALL_SOURCES ?? 'local,zip')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
@@ -545,10 +548,14 @@ async function installPluginFromDirectory(
   }
 
   const dest = join(PLUGINS_DIR, meta.id);
-  // 原子性:先拷到临时目录,成功后整体换入,失败不残留半成品
+  // 原子换入:staging 内完成全部拷贝,再经 rename 交换——任一时刻 dest
+  // 要么是旧版要么是新版(拷贝失败不动旧装;换入失败回滚旧装),
+  // 不再有「先删后拷」的缺失窗口。staging/retired 以 '.' 开头,
+  // 列表路由本就跳过,瞬态目录永不外显。
   const staging = join(PLUGINS_DIR, `.staging-${meta.id}`);
+  const retired = join(PLUGINS_DIR, `.retired-${meta.id}`);
   await rm(staging, { recursive: true, force: true });
-  await rm(dest, { recursive: true, force: true });
+  await rm(retired, { recursive: true, force: true });
   await mkdir(staging, { recursive: true });
   try {
     await cp(join(source, 'app.json'), join(staging, 'app.json'));
@@ -556,8 +563,26 @@ async function installPluginFromDirectory(
     await cp(join(source, entryRoot), join(staging, entryRoot), {
       recursive: true,
     });
-    await mkdir(dirname(dest), { recursive: true });
-    await cp(staging, dest, { recursive: true });
+    let hadPrevious: boolean;
+    try {
+      await rename(dest, retired);
+      hadPrevious = true;
+    } catch (error) {
+      // 首次安装无旧装(ENOENT)属正常形态;其余错误照常上抛
+      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        throw error;
+      }
+      hadPrevious = false;
+    }
+    try {
+      await rename(staging, dest);
+    } catch (error) {
+      if (hadPrevious) {
+        await rename(retired, dest).catch(() => {});
+      }
+      throw error;
+    }
+    await rm(retired, { recursive: true, force: true });
   } finally {
     await rm(staging, { recursive: true, force: true });
   }
@@ -586,7 +611,8 @@ pluginsRoutes.post('/plugins/install', async (c) => {
 
   // ---- zip 上传通道(E 批次,canvas-stage4 spec §9.5):multipart form-data,
   // 字段 file=制品 zip,可选 expectedSha256=发布方随行哈希做端到端校验。
-  // 默认停用(BFF_PLUGIN_INSTALL_SOURCES 含 'zip' 才开),不改变存量部署姿态。
+  // 2026-10-21 起默认启用(与 local 同为 admin token 守卫的变更面,
+  // 防护四件套不变);存量部署如需收回,设 BFF_PLUGIN_INSTALL_SOURCES=local。
   if (contentType.includes('multipart/form-data')) {
     if (!allowedInstallSources().has('zip')) {
       return c.text('zip 上传安装已被 BFF_PLUGIN_INSTALL_SOURCES 禁用', 403);
@@ -660,6 +686,9 @@ pluginsRoutes.post('/plugins/install', async (c) => {
     }
     // 单根目录探测:app.json 在根,或所有条目共享唯一顶层目录(GitHub
     // 式 repo-x.y.z/ 前缀)→ 剥离前缀。
+    // 已知限制:adm-zip 为同步 API,下方解压写入会阻塞事件循环
+    // (上限内最大 512MB,期间 SSE 停摆)——admin token 守卫下的极低频
+    // 操作,可接受;若未来放开频率,先移 worker 线程再解压。
     const hasRootManifest = entries.some((entry) => entry.entryName === 'app.json');
     let stripPrefix = '';
     if (!hasRootManifest) {
@@ -675,10 +704,7 @@ pluginsRoutes.post('/plugins/install', async (c) => {
       stripPrefix = `${rootManifests[0]}/`;
     }
 
-    const staging = join(
-      PLUGINS_DIR,
-      `.staging-zip-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-    );
+    const staging = join(PLUGINS_DIR, `.staging-zip-${randomUUID()}`);
     try {
       mkdirSync(staging, { recursive: true });
       zip.getEntries().forEach((entry) => {
@@ -714,7 +740,9 @@ pluginsRoutes.post('/plugins/install', async (c) => {
   }
   const body = await c.req.json<{ source?: string }>().catch(() => null);
   const source = body?.source;
-  if (!source || !resolve(source).startsWith('/')) {
+  // isAbsolute 而非 resolve().startsWith('/'):后者在 Windows 上对
+  // C:\ 盘符路径永远不成立,local 通道在本机开发全程 400(真机实测)
+  if (!source || !isAbsolute(source)) {
     return c.text('source 必须是绝对本地路径', 400);
   }
   return await installPluginFromDirectory(c, source, source);

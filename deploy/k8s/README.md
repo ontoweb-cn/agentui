@@ -71,6 +71,7 @@ kubectl apply -f deploy/k8s/
 | `WARGAME_HOST/WARGAME_PORT` | wargamesrv 地址(k8s 内为 Service 名/跨集群为 LB 地址),nginx REST 通道与 BFF 插件代理共用 |
 | `BFF_PLUGIN_BACKEND_OVERRIDES` | 插件代理 target 覆盖,install 时应用并重过 SSRF 白名单 |
 | `BFF_PLUGIN_INSTALL_TOKEN` | 插件安装 token(Secret 注入);BFF 本身绑定容器内回环 |
+| `BFF_PLUGIN_INSTALL_SOURCES` | 安装来源开关(默认 `local,zip`,zip 上传通道 2026-10-21 起默认启用;设 `local` 收回) |
 
 ## 注意
 
