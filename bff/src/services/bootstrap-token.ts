@@ -157,6 +157,21 @@ export class BootstrapTokenManager {
    * 验证成功后立即失效(一次性)。
    */
   verify(token: string): boolean {
+    if (this.matches(token)) {
+      // 一次性:验证成功后立即失效
+      this.invalidate();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 非消耗式校验:token 匹配且未过期时返回 true,不改变 token 状态。
+   * 供 wizard setup 鉴权使用——消费(作废)延迟到 handler 成功创建后
+   * (wizard step 8 invalidate),避免 handler 因 400/409 拒绝时烧掉 token。
+   * 注意:匹配到过期 token 时会顺带清理文件(与 verify 的过期行为一致)。
+   */
+  matches(token: string): boolean {
     const payload = loadPayload();
     if (!payload) return false;
 
@@ -167,13 +182,7 @@ export class BootstrapTokenManager {
       return false;
     }
 
-    if (token === payload.token) {
-      // 一次性:验证成功后立即失效
-      this.invalidate();
-      return true;
-    }
-
-    return false;
+    return token === payload.token;
   }
 
   /**

@@ -43,26 +43,26 @@ export function clearImtSessionCache(): void {
   verdictCache.clear();
 }
 
-function cacheGet(token: string): boolean | undefined {
-  const entry = verdictCache.get(token);
+function cacheGet(key: string): boolean | undefined {
+  const entry = verdictCache.get(key);
   if (!entry) {
     return undefined;
   }
   if (Date.now() > entry.expires) {
-    verdictCache.delete(token);
+    verdictCache.delete(key);
     return undefined;
   }
   return entry.valid;
 }
 
-function cacheSet(token: string, valid: boolean): void {
+function cacheSet(key: string, valid: boolean): void {
   if (verdictCache.size >= CACHE_MAX) {
     const oldest = verdictCache.keys().next().value;
     if (oldest !== undefined) {
       verdictCache.delete(oldest);
     }
   }
-  verdictCache.set(token, {
+  verdictCache.set(key, {
     valid,
     expires: Date.now() + (valid ? VALID_TTL_MS : INVALID_TTL_MS),
   });
@@ -82,7 +82,12 @@ export async function validateImtToken(
   try {
     const resp = await fetchImpl(
       `${baseUrl.replace(/\/$/, '')}/api/members/me`,
-      { headers: { Authorization: `Bearer ${token}` } },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        // 网关静默丢包(主机宕机不拒连)时 fetch 会无限悬挂,fail-closed
+        // 退化为 fail-hang;5s 超时归入 unreachable(与 tenant-validator 对齐)
+        signal: AbortSignal.timeout(5_000),
+      },
     );
     if (resp.ok) {
       return 'valid';
@@ -96,13 +101,63 @@ export async function validateImtToken(
   }
 }
 
-/** 从 harnessStore 解析首个就绪 enterprise backend 的 endpoint。 */
+/**
+ * 解析用于会话校验的 enterprise 实例 endpoint。
+ * 优选"就绪"(token 已加载)实例——listConfigs 含 token 未就绪的残留配置,
+ * 对陈旧实例校验会把合法 admin 误判 401;无就绪实例时回退首个配置
+ * (token 未就绪仍可reachable,只是没人用它的 admin token)。
+ */
 function resolveEnterpriseBaseUrl(c: Context): string | null {
   const store = c.get('harnessStore') as
-    | { listConfigs?: () => Array<{ type?: string; endpoint?: string }> }
+    | {
+        list?: () => Array<{ type?: string; endpoint?: string }>;
+        listConfigs?: () => Array<{ type?: string; endpoint?: string }>;
+      }
     | undefined;
+  const ready = store?.list?.().find((b) => b.type === 'intellect-enterprise');
+  if (ready?.endpoint) {
+    return ready.endpoint;
+  }
   const cfg = store?.listConfigs?.().find((b) => b.type === 'intellect-enterprise');
   return cfg?.endpoint ?? null;
+}
+
+export type ImtSessionCheck = { ok: true } | { ok: false; status: 401 | 502 | 503; message: string };
+
+/**
+ * 校验 imt_token(含 60s/10s 缓存与 fail-closed 语义)。
+ * 供 requireValidImtSession 与 wizard setup 管理分支共用,拒绝时携带
+ * 具体 status(401 无效 / 502 认证源不可达 / 503 无可用的 enterprise backend)。
+ */
+export async function checkImtSession(c: Context, token: string): Promise<ImtSessionCheck> {
+  const baseUrl = resolveEnterpriseBaseUrl(c);
+  if (!baseUrl) {
+    return {
+      ok: false,
+      status: 503,
+      message: 'No intellect-enterprise backend configured for session validation',
+    };
+  }
+
+  // 缓存按 baseUrl|token 键:重登记切换网关后,旧实例的判定不会跨实例命中
+  const cacheKey = `${baseUrl}|${token}`;
+  const cached = cacheGet(cacheKey);
+  if (cached === true) {
+    return { ok: true };
+  }
+  if (cached === false) {
+    return { ok: false, status: 401, message: 'Unauthorized: invalid session token' };
+  }
+
+  const verdict = await validateImtToken(token, baseUrl);
+  cacheSet(cacheKey, verdict === 'valid');
+  if (verdict === 'valid') {
+    return { ok: true };
+  }
+  if (verdict === 'invalid') {
+    return { ok: false, status: 401, message: 'Unauthorized: invalid session token' };
+  }
+  return { ok: false, status: 502, message: 'Session validation backend unreachable (fail-closed)' };
 }
 
 export const requireValidImtSession = async (
@@ -123,32 +178,9 @@ export const requireValidImtSession = async (
     return c.json({ code: 401, message: 'Unauthorized: missing session cookie' }, 401);
   }
 
-  const cached = cacheGet(token);
-  if (cached === true) {
+  const check = await checkImtSession(c, token);
+  if (check.ok) {
     return next();
   }
-  if (cached === false) {
-    return c.json({ code: 401, message: 'Unauthorized: invalid session token' }, 401);
-  }
-
-  const baseUrl = resolveEnterpriseBaseUrl(c);
-  if (!baseUrl) {
-    return c.json(
-      { code: 503, message: 'No intellect-enterprise backend configured for session validation' },
-      503,
-    );
-  }
-
-  const verdict = await validateImtToken(token, baseUrl);
-  cacheSet(token, verdict === 'valid');
-  if (verdict === 'valid') {
-    return next();
-  }
-  if (verdict === 'invalid') {
-    return c.json({ code: 401, message: 'Unauthorized: invalid session token' }, 401);
-  }
-  return c.json(
-    { code: 502, message: 'Session validation backend unreachable (fail-closed)' },
-    502,
-  );
+  return c.json({ code: check.status, message: check.message }, check.status);
 };

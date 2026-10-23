@@ -10,6 +10,9 @@ services:
       - PYTHON_ADMIN_PORT=9381
       - INTELLECT_RAG_URL=http://intellect-rag:9380
       - BFF_PORT=9390
+      # 同容器 nginx 反代 BFF 且已设 X-Forwarded-For(proxy.conf),wizard 限流可用转发头;
+      # 直连形态(无反代)必须保持不设/false,否则客户端可伪造头轮换限流桶
+      - BFF_TRUST_PROXY=true
       # cognitive-wargame 管理服务地址(nginx REST 通道 + BFF 插件代理 override)。
       # wargamesrv 与本 compose 同网络时用服务名(如 wargamesrv);
       # 独立部署时用宿主地址(host.docker.internal / 172.17.0.1 / 实际 IP)。

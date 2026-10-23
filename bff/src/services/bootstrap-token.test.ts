@@ -83,6 +83,38 @@ describe('BootstrapTokenManager (spec-010 v8 B-1)', () => {
     expect(existsSync(TOKEN_FILE)).toBe(true);
   });
 
+  it('matches 正确 token 返回 true 且不消费(可重复匹配,文件保留)', () => {
+    const manager = new BootstrapTokenManager();
+    const token = manager.generate();
+    expect(token).not.toBeNull();
+
+    expect(manager.matches(token!)).toBe(true);
+    // 非消耗式:重复匹配仍成功,文件保留(消费延迟到 handler 成功后的 invalidate)
+    expect(manager.matches(token!)).toBe(true);
+    expect(existsSync(TOKEN_FILE)).toBe(true);
+    expect(manager.isActive()).toBe(true);
+    // verify 保持一次性语义
+    expect(manager.verify(token!)).toBe(true);
+    expect(existsSync(TOKEN_FILE)).toBe(false);
+  });
+
+  it('matches 错误 token 返回 false 且不消费', () => {
+    const manager = new BootstrapTokenManager();
+    manager.generate();
+    expect(manager.matches('wrong-token')).toBe(false);
+    expect(existsSync(TOKEN_FILE)).toBe(true);
+  });
+
+  it('matches 过期 token 返回 false 并清理文件', () => {
+    const manager = new BootstrapTokenManager();
+    const token = manager.generate();
+    expect(token).not.toBeNull();
+
+    vi.advanceTimersByTime(61 * 60 * 1000);
+    expect(manager.matches(token!)).toBe(false);
+    expect(existsSync(TOKEN_FILE)).toBe(false);
+  });
+
   it('BOOTSTRAP_ENABLED=false 时 generate 返回 null (M4 多实例约束)', () => {
     process.env.BOOTSTRAP_ENABLED = 'false';
     const manager = new BootstrapTokenManager();

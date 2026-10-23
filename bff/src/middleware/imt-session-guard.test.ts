@@ -97,6 +97,40 @@ describe('requireValidImtSession(企业模式默认开)', () => {
     expect(down.status).toBe(502);
   });
 
+  it('缓存按 baseUrl 键:切换网关后同 token 重新校验,不跨实例命中', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const appA = buildApp({
+      harnessStore: { listConfigs: () => [{ type: 'intellect-enterprise', endpoint: 'https://gw-a.example' }] },
+    });
+    const appB = buildApp({
+      harnessStore: { listConfigs: () => [{ type: 'intellect-enterprise', endpoint: 'https://gw-b.example' }] },
+    });
+    const headers = { Cookie: 'imt_token=real-token' };
+    expect((await appA.request('/capabilities', { headers })).status).toBe(200);
+    expect((await appB.request('/capabilities', { headers })).status).toBe(200);
+    // 两个实例各校验一次(旧实现按 token 键,第二个实例会错误命中第一个实例的缓存)
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // 回到实例 A:命中缓存,不再请求
+    expect((await appA.request('/capabilities', { headers })).status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('优选就绪(ready)enterprise 实例:valid 集合优先于 configs 残留配置', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const app = buildApp({
+      harnessStore: {
+        list: () => [{ type: 'intellect-enterprise', endpoint: 'https://ready.example' }],
+        listConfigs: () => [{ type: 'intellect-enterprise', endpoint: 'https://stale.example' }],
+      },
+    });
+    const res = await app.request('/capabilities', { headers: { Cookie: 'imt_token=t' } });
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect((fetchMock.mock.calls[0] as unknown[])[0]).toBe('https://ready.example/api/members/me');
+  });
+
   it('社区模式(flag=false)直通,不验证', async () => {
     vi.stubEnv('BFF_ENABLE_IMT_CANVAS_AGENTS', 'false');
     const fetchMock = vi.fn();

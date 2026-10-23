@@ -13,7 +13,8 @@
 // - /admin/wizard/status        公开(authMiddleware.publicPrefixes)
 // - /admin/wizard/backend-types 公开(authMiddleware.publicPrefixes)
 // - /admin/wizard/probe         公开(authMiddleware.publicPrefixes,SSRF 防护 + IP 速率限制)
-// - /admin/wizard/setup         admin OR bootstrap token(wizardSetupAuth 中间件)
+// - /admin/wizard/setup         admin OR bootstrap token(wizardSetupAuth 中间件;
+//                               方案 A 下 admin 凭据须为经 checkImtSession 真实校验的 imt cookie)
 // 非租户隔离:Wizard 是运维全局操作,无 backendContextMiddleware。
 
 import { Hono, type Context } from 'hono';
@@ -26,6 +27,8 @@ import { safeFetch, isUrlSafe, SSRF_PRIVATE_IP_HINT } from '../services/ssrf-gua
 import { validateTenantConfigs, fetchTenantInfo } from '../services/tenant-validator';
 import { BootstrapTokenManager } from '../services/bootstrap-token';
 import { buildCompanionRagConfig } from '../services/rag-plugin-backend';
+import { checkImtSession } from '../middleware/imt-session-guard';
+import { isImtCanvasAgentsEnabled } from '../utils/feature-flags';
 import type { HarnessStoreListConfigs } from '../types/harness-admin';
 import type { HarnessBackendConfig, BackendType, HarnessCapabilities } from '../types/harness';
 import type { AuthMode } from '../types/tenant';
@@ -239,11 +242,18 @@ function checkProbeRateLimit(clientIp: string): boolean {
 }
 
 function getClientIp(c: Context): string {
-  const forwarded = c.req.header('x-forwarded-for');
-  if (forwarded) {
-    return forwarded.split(',')[0].trim();
+  // X-Forwarded-For / X-Real-IP 可被客户端伪造,直连形态下用作限流键
+  // 等于允许轮换头绕过限流;仅在显式声明前置可信反代(nginx)时采用。
+  if (process.env.BFF_TRUST_PROXY === 'true') {
+    const forwarded = c.req.header('x-forwarded-for');
+    if (forwarded) {
+      return forwarded.split(',')[0].trim();
+    }
+    return c.req.header('x-real-ip') || 'unknown';
   }
-  return c.req.header('x-real-ip') || 'unknown';
+  // @hono/node-server 注入的原始 socket 地址,客户端不可伪造
+  const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } };
+  return env?.incoming?.socket?.remoteAddress ?? 'unknown';
 }
 
 // ---------------------------------------------------------------------------
@@ -360,37 +370,64 @@ function getBootstrapManager(c: Context): BootstrapTokenManager {
   return (c.get('bootstrapTokenManager') as BootstrapTokenManager) ?? DEFAULT_BOOTSTRAP_MANAGER;
 }
 
-function isAdminAuthorized(c: Context): boolean {
-  // 社区版:Authorization header 存在即视为 admin 鉴权通过(authMiddleware 已校验)
-  if (c.req.header('Authorization')) return true;
-  // 企业版:imt_token cookie 存在即视为 admin 鉴权通过
-  if (getCookie(c, AUTH_COOKIE_NAME)) return true;
-  return false;
+type AdminAuthVerdict =
+  | { authorized: true }
+  | {
+      authorized: false;
+      // checkImtSession 给出的具体失败(401/502/503),透传给调用方以便区分
+      // "未授权"与"认证源不可用/未配置";纯无凭据时缺省,走统一 401 文案
+      failure?: { status: 401 | 502 | 503; message: string };
+    };
+
+/**
+ * admin 鉴权(方案 A 修复 2026-10:真实校验,不再信任凭据"存在即 admin")。
+ *
+ * authMiddleware 将 /admin/wizard/setup 列入 publicPrefixes 跳过校验,
+ * 鉴权完全由本函数负责——原先"Authorization 头存在即放行"的假设
+ * ("authMiddleware 已校验")在该路径不成立,任意 Bearer 串均可绕过。
+ * - 方案 A(默认,flag 开):与 authMiddleware 一致只认 imt_token cookie,
+ *   且经 checkImtSession 真实校验(gateway /api/members/me,60s 缓存,fail-closed);
+ * - 社区模式(flag='false'):沿用 authMiddleware 社区契约,Authorization 头 /
+ *   cookie 存在即放行,JWT 由 RAG 上游验证(setup 无上游调用,维持原契约)。
+ */
+async function authorizeAdmin(c: Context): Promise<AdminAuthVerdict> {
+  if (isImtCanvasAgentsEnabled()) {
+    const cookie = getCookie(c, AUTH_COOKIE_NAME);
+    if (!cookie) {
+      return { authorized: false };
+    }
+    const check = await checkImtSession(c, cookie);
+    return check.ok ? { authorized: true } : { authorized: false, failure: check };
+  }
+  if (c.req.header('Authorization') || getCookie(c, AUTH_COOKIE_NAME)) {
+    return { authorized: true };
+  }
+  return { authorized: false };
 }
 
 /**
  * spec-010 v8 §9.4 (B1 修复):Wizard setup 端点鉴权中间件。
- * 接受 admin token(JWT/cookie)或 bootstrap token(首次安装专用)。
+ * 接受 admin 会话(方案 A:已验证的 imt cookie;社区模式:Authorization/cookie)
+ * 或 bootstrap token(首次安装专用)。
  */
 async function wizardSetupAuth(
   c: Context,
   next: () => Promise<void>,
 ): Promise<void | Response> {
   // 1. admin 鉴权通过则放行
-  if (isAdminAuthorized(c)) {
+  const admin = await authorizeAdmin(c);
+  if (admin.authorized) {
     await next();
     return;
   }
 
-  // 2. 尝试 bootstrap token 鉴权
+  // 2. 尝试 bootstrap token 鉴权。
+  //    matches() 为非消耗式校验:作废延迟到 handler 成功创建后(step 8 invalidate),
+  //    避免 handler 因 400/409 拒绝时把一次性 token 烧掉、首装半途需重启 BFF。
   const auth = c.req.header('Authorization');
-  if (auth?.startsWith('Bearer ')) {
-    const token = auth.slice(7);
-    const manager = getBootstrapManager(c);
-    if (manager.verify(token)) {
-      await next();
-      return;
-    }
+  if (auth?.startsWith('Bearer ') && getBootstrapManager(c).matches(auth.slice(7))) {
+    await next();
+    return;
   }
 
   // 3. 首次安装放行(spec §9.4):当 bootstrap 模式启用且尚无就绪后端时,
@@ -405,8 +442,13 @@ async function wizardSetupAuth(
     }
   }
 
+  // 4. 拒绝。认证源不可达(502)/未配置(503)时透传具体状态(fail-closed 可观测),
+  // 其余(无凭据/凭据无效)统一 401 文案。
   // 修复(Bug1):必须 return——中间件 void 返回值下裸调 c.json() 会使
   // Hono 报 "Context is not finalized",未授权请求得到 500 而非 401
+  if (admin.failure) {
+    return c.json({ code: admin.failure.status, message: admin.failure.message }, admin.failure.status);
+  }
   return c.json(
     { code: 401, message: 'Unauthorized: admin token or bootstrap token required' },
     401,
@@ -668,6 +710,8 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
         await store.saveConfig(existing);
         await store.load();
         registry.invalidate(backendId);
+        // 凭据一并回收:634/640 行已写入 vault 的企业版凭据不能遗留为孤儿条目
+        await vault?.deleteCredentials(backendId);
         if (ragConfig) {
           registry.invalidate(ragConfig.id);
           await vault?.deleteCredentials(ragConfig.id);
@@ -696,14 +740,27 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   const defaultTenantId = '0';
   const bStore = c.get('backendStore');
   const existingDefaultTenant = bStore.getBackend(defaultTenantId);
+  // 新后端是否"就绪"(token 已加载):未就绪时 HarnessStore.get 返回 undefined,
+  // setHarnessBinding 会抛 BackendNotConfiguredError → 500,而此时配置已落盘。
+  const newBackendReady = store.list().some((b) => b.id === backendId);
+  const warnings: string[] = [];
   if (existingDefaultTenant) {
-    // 更新现有默认 tenant 的绑定
-    if (existingDefaultTenant.intellectBackendId !== backendId) {
-      await bStore.setHarnessBinding(defaultTenantId, backendId);
-    }
-    await bStore.setAuthMode(defaultTenantId, wizardAuthMode);
-    if (req.type === 'intellect-enterprise' && req.intellectTenantId) {
-      await bStore.setIntellectBinding(defaultTenantId, req.intellectTenantId);
+    if (!newBackendReady) {
+      // env-var 模式(token 后置)的合法场景:保持现有绑定不动,等 token 设置并
+      // 重启加载后由 Admin 重新绑定;不能让 500 留下"配置已落盘 + 绑定半更新"的脏状态
+      warnings.push(
+        `Backend "${backendId}" 未就绪(token 未设置),本次未更新默认租户绑定;` +
+          'token 设置并重启 BFF 加载后,请在 Admin 中重新绑定。',
+      );
+    } else {
+      // 更新现有默认 tenant 的绑定
+      if (existingDefaultTenant.intellectBackendId !== backendId) {
+        await bStore.setHarnessBinding(defaultTenantId, backendId);
+      }
+      await bStore.setAuthMode(defaultTenantId, wizardAuthMode);
+      if (req.type === 'intellect-enterprise' && req.intellectTenantId) {
+        await bStore.setIntellectBinding(defaultTenantId, req.intellectTenantId);
+      }
     }
   } else {
     // 全新安装(无 bff-tenants.json 或文件中无 tenant '0'):创建默认 tenant
@@ -715,6 +772,12 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
       wizardAuthMode,
       defaultTenantId,
     );
+    if (!newBackendReady) {
+      warnings.push(
+        `Backend "${backendId}" 未就绪(token 未设置),默认租户已先指向该后端;` +
+          'token 设置并重启 BFF 加载后生效(期间该租户请求将降级)。',
+      );
+    }
   }
   if (ragConfig) {
     await bStore.setCanvasBinding(defaultTenantId, ragConfig.id);
@@ -730,5 +793,10 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
     ? `# 添加到 .env 文件\n${adminTokenEnvVar}=<your-token>\n${ragConfig.adminTokenEnvVar}=<your-rag-api-key>`
     : `# 添加到 .env 文件\n${adminTokenEnvVar}=<your-token>`;
 
-  return c.json({ success: true, backendId, envSnippet } satisfies WizardSetupResponse);
+  return c.json({
+    success: true,
+    backendId,
+    envSnippet,
+    ...(warnings.length > 0 ? { warnings } : {}),
+  } satisfies WizardSetupResponse);
 });

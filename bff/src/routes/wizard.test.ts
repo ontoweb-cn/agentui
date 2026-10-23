@@ -2,10 +2,13 @@
 // Constitution Principle VII (Test-First): 覆盖 4 个端点 + SSRF 防护 + Token Security。
 // Mock HarnessStore + BackendStore + AdapterRegistry + TokenVault + safeFetch + validateTenantConfigs。
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import { Hono } from 'hono';
 import { wizardRoutes, ragProbePaths } from './wizard';
+import { clearImtSessionCache } from '../middleware/imt-session-guard';
+import { AUTH_COOKIE_NAME } from '../types/auth';
+import type { BootstrapTokenManager } from '../services/bootstrap-token';
 import type { HarnessStore } from '../types/stores';
 import type { BackendStore } from '../types/stores';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
@@ -126,13 +129,17 @@ interface TestVariables {
   tokenVault?: ITokenVault;
 }
 
-function createApp(stores: MockStores): Hono<{ Variables: TestVariables }> {
+function createApp(stores: MockStores, bootstrapManager?: unknown): Hono<{ Variables: TestVariables }> {
   const app = new Hono<{ Variables: TestVariables }>();
   app.use('*', async (c, next) => {
     c.set('harnessStore', stores.harnessStore as HarnessStore);
     c.set('backendStore', stores.backendStore);
     c.set('adapterRegistry', stores.registry);
     c.set('tokenVault', stores.vault);
+    if (bootstrapManager !== undefined) {
+      // 注入式 fake manager,避免用例触碰真实 bff/data/.bootstrap-token(与其他测试文件并行竞争)
+      c.set('bootstrapTokenManager' as never, bootstrapManager as never);
+    }
     await next();
   });
   app.route('/', wizardRoutes as unknown as Hono<{ Variables: TestVariables }>);
@@ -146,6 +153,17 @@ function createApp(stores: MockStores): Hono<{ Variables: TestVariables }> {
 describe('wizard 路由 (B-3)', () => {
   let stores: MockStores;
   let app: Hono<{ Variables: TestVariables }>;
+
+  beforeAll(() => {
+    // 2026-10 方案A鉴权修复后,默认模式下 setup 的 admin 凭据须为经真实校验的
+    // imt cookie;既有用例的 `Authorization: Bearer test` 头对应社区模式契约。
+    // 整体切到社区模式(flag='false')保持这些用例原意(覆盖 handler 逻辑),
+    // 默认模式的鉴权矩阵在下方专门 describe 覆盖。
+    process.env.BFF_ENABLE_IMT_CANVAS_AGENTS = 'false';
+  });
+  afterAll(() => {
+    delete process.env.BFF_ENABLE_IMT_CANVAS_AGENTS;
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -931,5 +949,259 @@ describe('wizard 路由 (B-3)', () => {
 
       warnSpy.mockRestore();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/wizard/setup — 方案A鉴权(默认 flag 开,imt cookie 真实校验)
+// 2026-10 安全修复回归:任意 Authorization Bearer 不再等价 admin。
+// ---------------------------------------------------------------------------
+
+describe('POST /admin/wizard/setup 方案A鉴权(默认模式)', () => {
+  const enterpriseConfig: HarnessBackendConfig = {
+    id: 'ent-1',
+    name: 'Ent',
+    type: 'intellect-enterprise',
+    endpoint: 'https://gw.example',
+    adminTokenEnvVar: 'HARNESS_ENT_TOKEN',
+    capabilities: {
+      canvas: true,
+      knowledgeBase: true,
+      memory: true,
+      mcp: true,
+      multiTenant: true,
+      modelManagement: true,
+    },
+  };
+
+  const setupBody = {
+    name: 'Sec Backend',
+    type: 'intellect-community',
+    endpoint: 'http://localhost:9380',
+    credentialKind: 'bearer-token',
+    token: 't',
+  };
+
+  /** gateway 响应桩:validateImtToken 走全局 fetch。 */
+  function gw(status: number) {
+    return vi.fn(async () => new Response(null, { status }));
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(isUrlSafe).mockResolvedValue(true);
+    vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+    // 恢复默认(方案 A)模式:空串 !== 'false' → flag 开
+    vi.stubEnv('BFF_ENABLE_IMT_CANVAS_AGENTS', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    clearImtSessionCache();
+  });
+
+  it('安全回归:任意 Authorization Bearer 不再等价 admin,已有就绪后端时 401 且不落盘', async () => {
+    const stores = createMockStores([], [ragBackend]);
+    const app = createApp(stores);
+    const res = await app.request('/admin/wizard/setup', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer arbitrary-garbage', 'Content-Type': 'application/json' },
+      body: JSON.stringify(setupBody),
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.message).toContain('admin token or bootstrap token');
+    expect(stores.saveConfigMock).not.toHaveBeenCalled();
+  });
+
+  it('方案A:无凭据 + 无就绪后端 → 首次安装放行(spec §9.4)仍可用', async () => {
+    const stores = createMockStores([], [], []);
+    const app = createApp(stores);
+    const res = await app.request('/admin/wizard/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(setupBody),
+    });
+    expect(res.status).toBe(200);
+    expect(stores.saveConfigMock).toHaveBeenCalled();
+  });
+
+  it('方案A:经 gateway 验证的 imt cookie → 放行执行 setup', async () => {
+    vi.stubGlobal('fetch', gw(200));
+    const stores = createMockStores([enterpriseConfig], [ragBackend]);
+    const app = createApp(stores);
+    const res = await app.request('/admin/wizard/setup', {
+      method: 'POST',
+      headers: { Cookie: `${AUTH_COOKIE_NAME}=valid-token`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(setupBody),
+    });
+    expect(res.status).toBe(200);
+    expect(stores.saveConfigMock).toHaveBeenCalled();
+  });
+
+  it('方案A:伪造 imt cookie(gateway 401)→ 401 且不落盘', async () => {
+    vi.stubGlobal('fetch', gw(401));
+    const stores = createMockStores([enterpriseConfig], [ragBackend]);
+    const app = createApp(stores);
+    const res = await app.request('/admin/wizard/setup', {
+      method: 'POST',
+      headers: { Cookie: `${AUTH_COOKIE_NAME}=forged`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(setupBody),
+    });
+    expect(res.status).toBe(401);
+    expect(stores.saveConfigMock).not.toHaveBeenCalled();
+  });
+
+  it('方案A:gateway 不可达 → 502 fail-closed', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('gateway down');
+      }),
+    );
+    const stores = createMockStores([enterpriseConfig], [ragBackend]);
+    const app = createApp(stores);
+    const res = await app.request('/admin/wizard/setup', {
+      method: 'POST',
+      headers: { Cookie: `${AUTH_COOKIE_NAME}=some-token`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(setupBody),
+    });
+    expect(res.status).toBe(502);
+  });
+
+  it('方案A:cookie 存在但无 enterprise backend 可校验 → 503', async () => {
+    vi.stubGlobal('fetch', gw(200));
+    const stores = createMockStores([], [ragBackend]);
+    const app = createApp(stores);
+    const res = await app.request('/admin/wizard/setup', {
+      method: 'POST',
+      headers: { Cookie: `${AUTH_COOKIE_NAME}=some-token`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(setupBody),
+    });
+    expect(res.status).toBe(503);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/wizard/setup — bootstrap 消费时机 + 未就绪租户门控(方案A)
+// ---------------------------------------------------------------------------
+
+describe('POST /admin/wizard/setup bootstrap 消费时机 + 租户门控(方案A)', () => {
+  const enterpriseConfig: HarnessBackendConfig = {
+    id: 'ent-1',
+    name: 'Ent',
+    type: 'intellect-enterprise',
+    endpoint: 'https://gw.example',
+    adminTokenEnvVar: 'HARNESS_ENT_TOKEN',
+    capabilities: {
+      canvas: true,
+      knowledgeBase: true,
+      memory: true,
+      mcp: true,
+      multiTenant: true,
+      modelManagement: true,
+    },
+  };
+
+  const tenant0: BffTenant = {
+    id: '0',
+    name: 'Old',
+    intellectBackendId: 'old-ent',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  const setupBody = {
+    name: 'Sec Backend',
+    type: 'intellect-community',
+    endpoint: 'http://localhost:9380',
+    credentialKind: 'bearer-token',
+    token: 't',
+  };
+
+  const BOOT_TOKEN = 'b'.repeat(64);
+
+  /** 注入式 fake manager(非消耗式 matches),避免触碰真实 bootstrap token 文件。 */
+  function fakeBootstrapManager(validToken: string | null): BootstrapTokenManager & {
+    matches: Mock;
+    verify: Mock;
+    invalidate: Mock;
+  } {
+    return {
+      matches: vi.fn((t: string) => validToken !== null && t === validToken),
+      verify: vi.fn((t: string) => validToken !== null && t === validToken),
+      invalidate: vi.fn(),
+    } as unknown as BootstrapTokenManager & { matches: Mock; verify: Mock; invalidate: Mock };
+  }
+
+  function gw(status: number) {
+    return vi.fn(async () => new Response(null, { status }));
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(isUrlSafe).mockResolvedValue(true);
+    vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+    vi.stubEnv('BFF_ENABLE_IMT_CANVAS_AGENTS', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    clearImtSessionCache();
+  });
+
+  it('有效 bootstrap token → 放行(首装放行不可用)且 handler 成功后作废一次', async () => {
+    const manager = fakeBootstrapManager(BOOT_TOKEN);
+    // 就绪后端存在 → 首次安装放行分支不可用,200 只能来自 bootstrap token 分支
+    const stores = createMockStores([], [ragBackend]);
+    const app = createApp(stores, manager);
+    const res = await app.request('/admin/wizard/setup', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${BOOT_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(setupBody),
+    });
+    expect(res.status).toBe(200);
+    expect(manager.invalidate).toHaveBeenCalledOnce();
+  });
+
+  it('handler 400 拒绝时 token 不被烧掉,同一 token 可重试成功', async () => {
+    const manager = fakeBootstrapManager(BOOT_TOKEN);
+    const stores = createMockStores([], [ragBackend]);
+    const app = createApp(stores, manager);
+
+    const bad = await app.request('/admin/wizard/setup', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${BOOT_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'kag' }), // 缺 name/endpoint/credentialKind → 400
+    });
+    expect(bad.status).toBe(400);
+    // 非消耗式 matches:400 不得作废 token(修复前 verify-on-match 即烧掉)
+    expect(manager.invalidate).not.toHaveBeenCalled();
+
+    const good = await app.request('/admin/wizard/setup', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${BOOT_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(setupBody),
+    });
+    expect(good.status).toBe(200);
+    expect(manager.invalidate).toHaveBeenCalledOnce();
+  });
+
+  it('默认租户已存在 + 新后端未就绪 → 跳过绑定并返回 warnings(P2 回归)', async () => {
+    vi.stubGlobal('fetch', gw(200));
+    // list 不含即将创建的 'sec-backend' → newBackendReady=false → 不得绑定
+    const stores = createMockStores([enterpriseConfig], [ragBackend], [tenant0]);
+    const app = createApp(stores);
+    const res = await app.request('/admin/wizard/setup', {
+      method: 'POST',
+      headers: { Cookie: `${AUTH_COOKIE_NAME}=valid-token`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(setupBody),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.warnings)).toBe(true);
+    expect(body.warnings[0]).toContain('未就绪');
+    expect(stores.backendStore.setHarnessBinding).not.toHaveBeenCalled();
+    expect(stores.saveConfigMock).toHaveBeenCalled(); // 配置本身仍正常落盘
   });
 });

@@ -70,6 +70,8 @@ export interface WizardSetupResponse {
   // env 模式:展示 .env 片段
   envSnippet?: string;
   error?: string;
+  /** 非阻断告警(如新后端未就绪、默认租户绑定未更新),前端可展示 */
+  warnings?: string[];
 }
 
 // Wizard 状态
