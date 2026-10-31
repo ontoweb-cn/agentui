@@ -13,11 +13,25 @@
  * Filters transfer-encoding and content-encoding headers (handled by
  * the underlying HTTP server, not to be forwarded).
  */
-export function streamResponse(upstream: Response): Response {
+export interface StreamResponseOptions {
+  /** 需要丢弃的上游响应头(小写匹配),例如 set-cookie */
+  stripHeaders?: readonly string[];
+}
+
+export function streamResponse(
+  upstream: Response,
+  options: StreamResponseOptions = {},
+): Response {
   const responseHeaders = new Headers();
+  const stripped = new Set(
+    (options.stripHeaders ?? []).map((header) => header.toLowerCase()),
+  );
   upstream.headers.forEach((value, key) => {
     const lower = key.toLowerCase();
     if (lower === 'transfer-encoding' || lower === 'content-encoding') {
+      return;
+    }
+    if (stripped.has(lower)) {
       return;
     }
     responseHeaders.set(key, value);

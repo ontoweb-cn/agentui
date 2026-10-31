@@ -18,6 +18,7 @@ import { llmProxyRoutes } from './routes/llm-proxy';
 import { teamRoutes } from './routes/teams';
 import { projectRoutes } from './routes/projects';
 import { tenantBindingRoutes } from './routes/tenant-bindings';
+import { hieduRoutes } from './routes/hiedu';
 import { authSessionMiddleware } from './middleware/auth-session';
 import { requireValidImtSession } from './middleware/imt-session-guard';
 import { isImtCanvasAgentsEnabled } from './utils/feature-flags';
@@ -127,6 +128,16 @@ app.use('*', async (c, next) => {
 
 // Health check (no auth required)
 app.route('/health', healthRoutes);
+
+// P0-1: hiedu 门户断言代理。
+// 前端 /api/bff/hiedu/* 经 Vite rewrite 去掉 /api/bff 后落到 /hiedu/*;
+// 同时保留 /api/bff/hiedu/* 供非 Vite 调用方直连。
+// 鉴权失败统一由路由返回 403 + auth.reject 审计,因此必须注册在通用
+// /api/* authMiddleware 之前,避免被其 401 抢先拦截。
+// authSessionMiddleware 只注入 imt_token 会话,不做拦截。
+app.use('/hiedu/*', authSessionMiddleware);
+app.use('/api/bff/hiedu/*', authSessionMiddleware);
+app.route('/', hieduRoutes);
 
 // Auth-protected routes
 app.use('/api/*', authMiddleware);
