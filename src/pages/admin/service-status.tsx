@@ -102,8 +102,12 @@ function AdminServiceStatus() {
 
   const { data: serviceDetails, error: serviceDetailsError } = useQuery({
     queryKey: ['admin/serviceDetails', itemToMakeAction?.id],
-    queryFn: async () =>
-      (await showServiceDetails(itemToMakeAction!?.id)).data.data,
+    queryFn: async () => {
+      if (!itemToMakeAction) {
+        throw new Error('missing service id');
+      }
+      return (await showServiceDetails(itemToMakeAction.id)).data.data;
+    },
     enabled: !!(itemToMakeAction && detailModalOpen),
     retry: false,
   });
@@ -244,11 +248,11 @@ function AdminServiceStatus() {
                       <RadioGroup
                         value={
                           (table
-                            .getColumn('service_type')!
+                            .getColumn('service_type')
                             ?.getFilterValue() as string) ?? ''
                         }
                         onValueChange={
-                          table.getColumn('service_type')!?.setFilterValue
+                          table.getColumn('service_type')?.setFilterValue
                         }
                       >
                         <Label className="flex items-center space-x-2">

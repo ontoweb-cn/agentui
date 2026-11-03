@@ -84,5 +84,12 @@ module.exports = {
         'check-file/folder-naming-convention': 'off',
       },
     },
+    {
+      // features 私有注册表/类型文件按约定使用 `_` 前缀。
+      files: ['src/features/_*.ts'],
+      rules: {
+        'check-file/filename-naming-convention': 'off',
+      },
+    },
   ],
 };

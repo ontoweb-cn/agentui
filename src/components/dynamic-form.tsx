@@ -625,7 +625,7 @@ export const RenderField = ({
 // Dynamic form component
 const DynamicForm = {
   Root: forwardRef(
-    <T extends FieldValues>(
+    function DynamicFormRoot<T extends FieldValues>(
       {
         fields: originFields,
         onSubmit,
@@ -636,7 +636,7 @@ const DynamicForm = {
         labelClassName,
       }: DynamicFormProps<T>,
       ref: React.Ref<any>,
-    ) => {
+    ) {
       // Generate validation schema and default values
       const [fields, setFields] = useState(originFields);
       useMemo(() => {
@@ -993,7 +993,5 @@ const DynamicForm = {
     );
   },
 };
-
-(DynamicForm.Root as any).displayName = 'DynamicFormRoot';
 
 export { DynamicForm };

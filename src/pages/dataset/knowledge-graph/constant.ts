@@ -121,7 +121,7 @@ const nodes = [
     entity_type: '"EVENT"',
     id: '"主要财务指标"',
   },
-].map(({ type, ...x }) => ({ ...x }));
+].map(({ type: _type, ...x }) => ({ ...x }));
 
 const edges = [
   {
