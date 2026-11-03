@@ -263,8 +263,15 @@ function createPluginMountPage(
       );
     }
 
+    // 宿主 html/#root 为 overflow:hidden,文档本身不滚动,插件页面与宿主页面
+    // 一样要自备滚动容器(同 PageContainer),否则超高内容会被裁出视口外。
+    // 不套 PageContainer:插件自管间距,宿主只提供滚动。
     return (
-      <div ref={ref} data-plugin-app={meta.id} className="w-full min-h-full" />
+      <div
+        ref={ref}
+        data-plugin-app={meta.id}
+        className="size-full overflow-auto"
+      />
     );
   }
   PluginMountPage.displayName = `PluginMountPage(${meta.id})`;
