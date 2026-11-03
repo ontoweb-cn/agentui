@@ -1083,6 +1083,9 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
       enableToolCallTip: '当所选模型类型支持工具调用时，允许该模型调用工具。',
       deleteModel: '删除模型',
       modelEmptyTip: '暂无可用模型,<br>请先在右侧面板添加模型。',
+      modelManagementLoadFailed:
+        '模型管理数据加载失败，请检查 BFF 与 RAG 后端的认证配置。',
+      retry: '重试',
       sourceEmptyTip: '暂未添加任何数据源，请从下方选择一个进行连接。',
       seconds: '秒',
       minutes: '分',

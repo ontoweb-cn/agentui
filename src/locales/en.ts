@@ -1200,6 +1200,9 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
         'If you select this mode, the Amazon EC2 instance will assume its existing role to access AWS services. No additional credentials are required.',
       modelEmptyTip:
         'No models available. <br>Please add models from the panel on the right.',
+      modelManagementLoadFailed:
+        'Failed to load model management data. Check the BFF and RAG backend authentication.',
+      retry: 'Retry',
       sourceEmptyTip: 'No data sources added yet. Select one below to connect.',
       seconds: 'seconds',
       minutes: 'minutes',

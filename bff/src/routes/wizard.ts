@@ -120,7 +120,8 @@ const RAG_PLUGIN_OPTION: WizardBackendTypeOption = {
   label: 'Intellect RAG',
   description: 'Canvas engine + knowledge base (plugin of intellect-enterprise)',
   defaultEndpoint: 'http://localhost:9380',
-  capabilities: { canvas: true, knowledgeBase: true, memory: true, mcp: false, multiTenant: false, modelManagement: false },
+  // 与 RAG_PLUGIN_CAPABILITIES 保持一致(模型管理为 RAG 自生能力,默认开)
+  capabilities: { canvas: true, knowledgeBase: true, memory: true, mcp: false, multiTenant: false, modelManagement: true },
   credentialKind: 'bearer-token',
 };
 

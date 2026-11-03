@@ -3,7 +3,9 @@ import { LLMFactory } from '@/constants/llm';
 import {
   useAddInstanceModel,
   useAddProviderInstance,
+  useFetchAllAddedModels,
   useFetchAvailableProviders,
+  useFetchDefaultModels,
   useVerifyProviderConnection,
 } from '@/hooks/use-llm-request';
 import { IInstanceModel, IProviderInstance } from '@/interfaces/database/llm';
@@ -12,6 +14,7 @@ import type {
   IModelInfo,
 } from '@/interfaces/request/llm';
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { isLocalLlmFactory } from '../utils';
 import SystemSetting from './components/system-setting';
 import { AvailableModels } from './components/un-add-model';
@@ -49,7 +52,25 @@ const ModelProviders = () => {
   const { addProviderInstance } = useAddProviderInstance();
   const { addInstanceModel } = useAddInstanceModel();
   const { verifyProviderConnection } = useVerifyProviderConnection();
-  const { data: availableProviders } = useFetchAvailableProviders();
+  const { t } = useTranslation();
+  const {
+    data: availableProviders,
+    error: providersError,
+    refetch: refetchProviders,
+  } = useFetchAvailableProviders();
+
+  // 错误横幅:三个主查询任一失败即显示(P1-a,docs/model-provider-empty-models-fix-design.md §5.2)。
+  // react-query 按 queryKey 去重,与子组件的重复调用只发一次请求。
+  const { error: modelsError, refetch: refetchModels } =
+    useFetchAllAddedModels();
+  const { error: defaultsError, refetch: refetchDefaults } =
+    useFetchDefaultModels();
+  const loadError = providersError ?? modelsError ?? defaultsError;
+  const refetchAll = useCallback(() => {
+    refetchProviders();
+    refetchModels();
+    refetchDefaults();
+  }, [refetchProviders, refetchModels, refetchDefaults]);
 
   // Convert IAvailableProvider.url to baseUrlOptions
   // IAvailableProvider.url looks like { default?: string; cn?: string; intl?: string; ... }
@@ -343,42 +364,59 @@ const ModelProviders = () => {
   }, []);
 
   return (
-    <div className="flex w-full border-[0.5px] border-border-button rounded-lg relative ">
-      <Spotlight />
-      <section className="flex flex-col gap-4 w-3/5 px-5 border-r-[0.5px] border-border-button overflow-auto scrollbar-auto">
-        <SystemSetting />
-        <UsedModel
-          handleAddModel={handleAddModel}
-          onEditInstance={handleEditInstance}
+    <div className="flex flex-col w-full gap-2">
+      {loadError && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-state-error/20 bg-state-error/10 px-4 py-2 text-sm">
+          <span className="min-w-0 text-state-error">
+            {t('setting.modelManagementLoadFailed')}
+            {loadError.message ? ` (${loadError.message})` : ''}
+          </span>
+          <button
+            type="button"
+            onClick={refetchAll}
+            className="shrink-0 rounded-md border border-state-error/20 px-2 py-1 text-xs text-state-error hover:bg-state-error/10"
+          >
+            {t('setting.retry')}
+          </button>
+        </div>
+      )}
+      <div className="flex w-full border-[0.5px] border-border-button rounded-lg relative ">
+        <Spotlight />
+        <section className="flex flex-col gap-4 w-3/5 px-5 border-r-[0.5px] border-border-button overflow-auto scrollbar-auto">
+          <SystemSetting />
+          <UsedModel
+            handleAddModel={handleAddModel}
+            onEditInstance={handleEditInstance}
+          />
+          <GatewayProviderPanel />
+        </section>
+        <section className="flex flex-col w-2/5 overflow-auto scrollbar-auto">
+          <AvailableModels handleAddModel={handleAddModel} />
+        </section>
+
+        {/* Unified ProviderModal (replaces 9 independent modals) */}
+        <ProviderModal
+          visible={providerVisible}
+          hideModal={hideProviderModal}
+          llmFactory={currentLlmFactory}
+          loading={providerLoading}
+          viewMode={viewMode}
+          initialValues={viewModeInitialValues}
+          baseUrlOptions={currentBaseUrlOptions as any}
+          onOk={handleProviderOk}
+          onVerify={handleProviderVerify}
+          onViewModeOk={handleViewModeOk}
         />
-        <GatewayProviderPanel />
-      </section>
-      <section className="flex flex-col w-2/5 overflow-auto scrollbar-auto">
-        <AvailableModels handleAddModel={handleAddModel} />
-      </section>
 
-      {/* Unified ProviderModal (replaces 9 independent modals) */}
-      <ProviderModal
-        visible={providerVisible}
-        hideModal={hideProviderModal}
-        llmFactory={currentLlmFactory}
-        loading={providerLoading}
-        viewMode={viewMode}
-        initialValues={viewModeInitialValues}
-        baseUrlOptions={currentBaseUrlOptions as any}
-        onOk={handleProviderOk}
-        onVerify={handleProviderVerify}
-        onViewModeOk={handleViewModeOk}
-      />
-
-      <BedrockModal
-        visible={bedrockAddingVisible}
-        hideModal={hideBedrockAddingModal}
-        onOk={onBedrockAddingOk}
-        loading={bedrockAddingLoading}
-        llmFactory={LLMFactory.Bedrock}
-        onVerify={(payload) => onBedrockAddingOk(payload, true)}
-      ></BedrockModal>
+        <BedrockModal
+          visible={bedrockAddingVisible}
+          hideModal={hideBedrockAddingModal}
+          onOk={onBedrockAddingOk}
+          loading={bedrockAddingLoading}
+          llmFactory={LLMFactory.Bedrock}
+          onVerify={(payload) => onBedrockAddingOk(payload, true)}
+        ></BedrockModal>
+      </div>
     </div>
   );
 };

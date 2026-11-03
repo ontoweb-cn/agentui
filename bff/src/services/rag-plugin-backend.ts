@@ -12,7 +12,11 @@ export const RAG_PLUGIN_CAPABILITIES: HarnessCapabilities = {
   memory: true,
   mcp: false,
   multiTenant: false,
-  modelManagement: false,
+  // 模型管理是 RAG 自生能力(/providers、/models REST API),默认开启。
+  // 置 false 会经 capabilities 合并(以 RAG 声明为准)门控整个模型提供商页;
+  // 目标 RAG 缺该 API 时开启后表现为前端错误横幅,诚实可诊断。
+  // 见 docs/model-provider-empty-models-fix-design.md §6。
+  modelManagement: true,
 };
 
 export const DEFAULT_RAG_PLUGIN_ENDPOINT = 'http://localhost:9380';

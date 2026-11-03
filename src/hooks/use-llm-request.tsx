@@ -1,4 +1,5 @@
 import message from '@/components/ui/message';
+import i18n from '@/locales/config';
 import { ModelTypeToField } from '@/constants/llm';
 import {
   IAddedModel,
@@ -68,10 +69,45 @@ export const LlmKeys = {
   defaultModels: () => [LLMApiAction.ListDefaultModels] as const,
 };
 
+// ---------------------------------------------------------------------------
+// 信封解包与 401 诚实化(P1-a,docs/model-provider-empty-models-fix-design.md §5)
+// ---------------------------------------------------------------------------
+
+/**
+ * 解开 BFF/RAG 信封:非零 code 视为失败抛错,让 react-query 进入 isError。
+ * 模型页据此渲染错误横幅;未消费 isError 的组件 data 仍为 initialData([]),
+ * 渲染行为不变。
+ */
+function unwrapEnvelope<T>(
+  res?: { code?: number; data?: T; message?: string },
+): T | undefined {
+  if (!res || res.code !== 0) {
+    throw new Error(res?.message || `request failed: ${res?.code ?? 'unknown'}`);
+  }
+  return res.data;
+}
+
+/**
+ * 401 是 axios 拦截器在企业模式下唯一静默的失败码(request.ts 对企业 401
+ * 跳过登出与提示),mutation 层必须自行提示,否则鉴权故障下保存/删除表现为
+ * 假成功。其他非零码(业务错误、HTTP 403)由拦截器统一提示,此处不重复。
+ */
+function notifyUnauthorized(data?: { code?: number; message?: string }) {
+  if (data?.code === 401) {
+    message.error(data.message || i18n.t('message.401'));
+  }
+}
+
 export const useFetchAvailableProviders = () => {
   // RAG 依赖:/providers 由 /proxy/v1 透传,无 intellect-rag 后端时跳过调用
   const modelManagement = useIsCapabilityEnabled('modelManagement');
-  const { data, isFetching: loading } = useQuery<IAvailableProvider[]>({
+  const {
+    data,
+    isFetching: loading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<IAvailableProvider[]>({
     queryKey: LlmKeys.availableProviders(),
     initialData: [],
     gcTime: 0,
@@ -80,16 +116,18 @@ export const useFetchAvailableProviders = () => {
       const params: IListProvidersRequestParams = { available: true };
       const { data } = await llmService.listProviders({ params }, true);
 
-      return data?.data ?? [];
+      return (unwrapEnvelope<IAvailableProvider[]>(data) ?? []) as IAvailableProvider[];
     },
   });
 
-  return { data, loading };
+  return { data, loading, isError, error, refetch };
 };
 
 export const useFetchAddedProviders = () => {
   const modelManagement = useIsCapabilityEnabled('modelManagement');
-  const { data, isFetching: loading } = useQuery<IAvailableProvider[]>({
+  const { data, isFetching: loading, isError, refetch } = useQuery<
+    IAvailableProvider[]
+  >({
     queryKey: LlmKeys.addedProviders(),
     initialData: [],
     gcTime: 0,
@@ -97,18 +135,24 @@ export const useFetchAddedProviders = () => {
     queryFn: async () => {
       const { data } = await llmService.listProviders({ params: {} }, true);
 
-      return data?.data ?? [];
+      return (unwrapEnvelope<IAvailableProvider[]>(data) ?? []) as IAvailableProvider[];
     },
   });
 
-  return { data, loading };
+  return { data, loading, isError, refetch };
 };
 
 export const useFetchAllAddedModels = (modelType?: string) => {
   // RAG 依赖:/models 由 /proxy/v1 透传(聊天页模型选择器/ChatSettings 数据源),
   // 无 intellect-rag 后端时跳过调用
   const modelManagement = useIsCapabilityEnabled('modelManagement');
-  const { data, isFetching: loading } = useQuery<IAddedModel[]>({
+  const {
+    data,
+    isFetching: loading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<IAddedModel[]>({
     queryKey: LlmKeys.allModels(modelType),
     initialData: [],
     gcTime: 0,
@@ -120,11 +164,11 @@ export const useFetchAllAddedModels = (modelType?: string) => {
       }
       const { data } = await llmService.listAllAddedModels({ params }, true);
 
-      return data?.data ?? [];
+      return (unwrapEnvelope<IAddedModel[]>(data) ?? []) as IAddedModel[];
     },
   });
 
-  return { data, loading };
+  return { data, loading, isError, error, refetch };
 };
 
 export function useFindLlmByUuid() {
@@ -145,7 +189,12 @@ export function useFindLlmByUuid() {
 }
 
 export const useFetchProviderInstances = (providerName: string) => {
-  const { data, isFetching: loading } = useQuery<IProviderInstance[]>({
+  const {
+    data,
+    isFetching: loading,
+    isError,
+    refetch,
+  } = useQuery<IProviderInstance[]>({
     queryKey: LlmKeys.providerInstances(providerName),
     initialData: [],
     gcTime: 0,
@@ -155,11 +204,11 @@ export const useFetchProviderInstances = (providerName: string) => {
         { provider_name: providerName },
         true,
       );
-      return data?.data ?? [];
+      return (unwrapEnvelope<IProviderInstance[]>(data) ?? []) as IProviderInstance[];
     },
   });
 
-  return { data, loading };
+  return { data, loading, isError, refetch };
 };
 
 /**
@@ -182,7 +231,7 @@ export const useFetchProviderInstance = (
         { provider_name: providerName, instance_name: instanceName },
         true,
       );
-      return (data?.data ?? {}) as IProviderInstance;
+      return (unwrapEnvelope<IProviderInstance>(data) ?? {}) as IProviderInstance;
     },
   });
 };
@@ -191,7 +240,12 @@ export const useFetchInstanceModels = (
   providerName: string,
   instanceName: string,
 ) => {
-  const { data, isFetching: loading } = useQuery<IInstanceModel[]>({
+  const {
+    data,
+    isFetching: loading,
+    isError,
+    refetch,
+  } = useQuery<IInstanceModel[]>({
     queryKey: LlmKeys.instanceModels(providerName, instanceName),
     initialData: [],
     gcTime: 0,
@@ -201,11 +255,11 @@ export const useFetchInstanceModels = (
         { provider_name: providerName, instance_name: instanceName },
         true,
       );
-      return data?.data ?? [];
+      return (unwrapEnvelope<IInstanceModel[]>(data) ?? []) as IInstanceModel[];
     },
   });
 
-  return { data, loading };
+  return { data, loading, isError, refetch };
 };
 
 export type LlmItem = { name: string; logo: string } & IMyLlmValue;
@@ -233,6 +287,7 @@ export const useAddProvider = () => {
         // ignore list failure and proceed to add
       }
       const { data } = await llmService.addProvider(params);
+      notifyUnauthorized(data);
       return data;
     },
   });
@@ -270,6 +325,7 @@ export const useAddProviderInstance = () => {
       }
 
       const { data } = await llmService.addProviderInstance(params);
+      notifyUnauthorized(data);
       if (data?.code === 0 && !params.verify) {
         queryClient.invalidateQueries({
           queryKey: LlmKeys.addedProviders(),
@@ -350,6 +406,7 @@ export const useAddInstanceModel = () => {
       } & IAddInstanceModelRequestBody,
     ) => {
       const { data } = await llmService.addInstanceModel(params);
+      notifyUnauthorized(data);
       if (data?.code === 0) {
         queryClient.invalidateQueries({
           queryKey: LlmKeys.addedProviders(),
@@ -381,6 +438,7 @@ export const useEditInstanceModel = () => {
       } & IEditInstanceModelRequestBody,
     ) => {
       const { data } = await llmService.editInstanceModel(params);
+      notifyUnauthorized(data);
       if (data?.code === 0) {
         message.success(t('message.modified'));
         queryClient.invalidateQueries({
@@ -414,6 +472,7 @@ export const useDeleteProviderInstance = () => {
     mutationKey: [LLMApiAction.DeleteProviderInstance],
     mutationFn: async (params: IDeleteProviderInstanceRequestBody) => {
       const { data } = await llmService.deleteProviderInstance(params);
+      notifyUnauthorized(data);
       if (data?.code === 0) {
         queryClient.invalidateQueries({
           queryKey: LlmKeys.addedProviders(),
@@ -445,6 +504,7 @@ export const useUpdateModelStatus = () => {
     mutationKey: [LLMApiAction.AddedProviders, 'updateModelStatus'],
     mutationFn: async (params: IUpdateModelStatusRequestBody) => {
       const { data } = await llmService.updateModelStatus(params);
+      notifyUnauthorized(data);
       if (data?.code === 0) {
         message.success(t('message.modified'));
         queryClient.invalidateQueries({
@@ -466,18 +526,26 @@ export const useUpdateModelStatus = () => {
 
 export const useFetchDefaultModels = () => {
   const modelManagement = useIsCapabilityEnabled('modelManagement');
-  const { data, isFetching: loading } = useQuery<IDefaultModel[]>({
+  const {
+    data,
+    isFetching: loading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<IDefaultModel[]>({
     queryKey: LlmKeys.defaultModels(),
     initialData: [],
     gcTime: 0,
     enabled: modelManagement,
     queryFn: async () => {
       const { data } = await llmService.listDefaultModels({}, true);
-      return data?.data?.models ?? [];
+      return (
+        unwrapEnvelope<{ models?: IDefaultModel[] }>(data)?.models ?? []
+      ) as IDefaultModel[];
     },
   });
 
-  return { data, loading };
+  return { data, loading, isError, error, refetch };
 };
 
 export const useFetchDefaultModelDictionary = () => {
@@ -503,6 +571,7 @@ export const useSetDefaultModel = () => {
     mutationKey: [LLMApiAction.SetDefaultModel],
     mutationFn: async (params: ISetDefaultModelRequestBody) => {
       const { data } = await llmService.setDefaultModel(params);
+      notifyUnauthorized(data);
       if (data?.code === 0) {
         message.success(t('message.modified'));
         queryClient.invalidateQueries({

@@ -12,6 +12,12 @@ interface ProxyVariables {
   harnessStore: HarnessStore;
 }
 
+// 模型管理路径:providers 目录与实例 CRUD、models 列表与默认模型。
+// 不含 users/me/models(身份绑定语义,"当前用户的租户信息"不适用服务视角)。
+// 消费方:上游 401 的诚实透传(P1-a)与后续服务令牌强制/写门控(P1-b),
+// 见 docs/model-provider-empty-models-fix-design.md §4。
+export const MODEL_MANAGEMENT_PATH_RE = /^(providers|models)(\/|$)/;
+
 // ---------------------------------------------------------------------------
 // BFF 透明反向代理路由 (Multi-Harness P0-前置, Constitution Principle I)
 // ---------------------------------------------------------------------------
@@ -51,6 +57,8 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
       400,
     );
   }
+
+  const isModelMgmtPath = MODEL_MANAGEMENT_PATH_RE.test(relativePath);
 
   // 构造 query string(保留原始 ? 前缀)
   const queryString = c.req.url.includes('?')
@@ -92,6 +100,12 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
       }
     }
   }
+  // 全 0 是向导的占位租户值,注入只会误导 RAG 的租户解析。
+  // 与 backend-context 对缺省值 "0" 的过滤语义对齐(设计文档 §4.3)。
+  const injectableTenantId =
+    intellectTenantId && !/^0+$/.test(intellectTenantId)
+      ? intellectTenantId
+      : undefined;
 
   // R5.1: chat 路由已迁移到 Rust Gateway。前端 use-chat-request.ts 已全部转向
   // gatewayChatService(BFF /agents/* 路由),不再调用 /proxy/v1/chats。
@@ -159,7 +173,7 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
     intellectRole,
     intellectTeamId,
     intellectProjectId,
-    intellectTenantId,
+    intellectTenantId: injectableTenantId,
     sessionToken,
     ragBaseUrl,
     ragAdminToken,
@@ -185,8 +199,22 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
   const elapsed = Date.now() - startedAt;
   console.log(`[proxy] ${method} ${fullPath} - ${upstream.status} (${elapsed}ms)`);
 
-  // 上游返回 401 时,企业版用户降级返回空数据,避免触发前端 401 拦截器跳转登录页
+  // 上游 401 处理(docs/model-provider-empty-models-fix-design.md §4.2):
+  // - 一律记录诊断日志(上游响应体;信封不含令牌,日志语句本身不含 Authorization)
+  // - 成员身份(sessionToken 存在)发出的模型管理请求:诚实透传 401 与上游信封,
+  //   由模型页以错误横幅/mutation toast 呈现。企业模式下前端拦截器对 401
+  //   静默(request.ts 企业分支跳过登出与提示),透传不会引发跳登录。
+  // - 其余场景维持改写为空数据:社区模式下 code:401 会触发前端登出跳转,而 RAG
+  //   管理令牌失效无法靠重新登录解决,透传会形成登出循环;非模型路径的全局
+  //   诚实化见设计文档 §7(后续项)。
   if (upstream.status === 401) {
+    const bodyText = await upstream.clone().text().catch(() => '');
+    console.warn(
+      `[proxy] upstream 401 ${method} ${fullPath}: ${bodyText.slice(0, 500)}`,
+    );
+    if (sessionToken && isModelMgmtPath) {
+      return streamResponse(upstream);
+    }
     // 返回 null data,前端 hooks 通过 data?.data ?? fallback 自动使用默认值
     // (如 { chats: [], total: 0 }, [] 等),避免 data:[] 导致 .chats.slice() 崩溃
     return c.json({ code: 0, data: null, message: 'success' });

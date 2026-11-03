@@ -71,7 +71,9 @@ export const useFetchTenantInfo = (
     gcTime: 0,
     queryFn: async () => {
       const { data: res } = await userService.getTenantInfo();
-      if (res.code === 0) {
+      // res.data 为空时(BFF 把上游 401 改写为 {code:0,data:null})直接返回信封,
+      // 避免对 null 赋值抛 TypeError
+      if (res.code === 0 && res.data) {
         // llm_id is chat_id
         // asr_id is speech2txt
         const { data } = res;
