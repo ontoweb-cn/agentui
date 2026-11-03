@@ -150,6 +150,82 @@ const routeConfigOptions = [
             path: `${Routes.UserSetting}${Routes.ChatChannel}`,
             Component: () => import('@/pages/user-setting/chat-channel'),
           },
+          {
+            // 统一认证内置页：仅能力开启时侧栏可见；路由常驻，页面内做能力/权限门控。
+            path: `${Routes.UserSetting}${Routes.IntellectAuth}`,
+            Component: () => import('@/pages/user-setting/intellect-auth'),
+            children: [
+              {
+                index: true,
+                element: (
+                  <Navigate
+                    to={`${Routes.UserSetting}${Routes.IntellectAuthOverview}`}
+                    replace
+                  />
+                ),
+              },
+              {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthOverview}`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/overview'),
+              },
+              {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthUnits}`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/units'),
+              },
+              {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthPersons}`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/persons'),
+              },
+              {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthPersonCreate}`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/person-create'),
+              },
+              {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthPersons}/:id`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/person-detail'),
+              },
+              {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthProjects}`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/projects'),
+              },
+              {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthClasses}`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/classes'),
+              },
+              {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthDicts}`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/dicts'),
+              },
+              {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthJobs}`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/jobs'),
+              },
+              {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthReconcile}`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/reconcile'),
+              },
+              {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthAuditLogs}`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/audit-logs'),
+              },
+              {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthImports}`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/imports'),
+              },
+            ],
+          },
         ],
       },
       {

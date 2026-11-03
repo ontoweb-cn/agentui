@@ -1,6 +1,7 @@
 import { IconFontFill } from '@/components/icon-font';
 import { IntellectAvatar } from '@/components/intellect-avatar';
 import { Button } from '@/components/ui/button';
+import { useIsFeatureEnabled } from '@/hooks/use-feature-flags';
 import { useLogout } from '@/hooks/use-login-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { cn } from '@/lib/utils';
@@ -14,6 +15,7 @@ import {
   LucidePanelLeftClose,
   LucidePanelLeftOpen,
   LucideServer,
+  LucideShieldCheck,
   LucideUnplug,
   LucideUser,
   LucideUsers,
@@ -24,44 +26,57 @@ import { useHandleMenuClick } from './hooks';
 // 用户文档入口(原顶栏"?"按钮迁入侧边栏)
 const DOC_URL = 'https://intellect.ontoweb.cn/docs/dev/category/user-guides';
 
-const menuItems = (t: TFunction) => [
-  {
-    icon: <LucideServer className="size-[1em]" />,
-    label: t('setting.dataSources'),
-    key: Routes.DataSource,
-  },
-  {
-    icon: <LucideMessagesSquare className="size-[1em]" />,
-    label: t('setting.chatChannels'),
-    key: Routes.ChatChannel,
-  },
-  {
-    icon: <LucideBox className="size-[1em]" />,
-    label: t('setting.model'),
-    key: Routes.Model,
-    'data-testid': 'settings-nav-model-providers',
-  },
-  {
-    icon: <IconFontFill name="mcp" className="size-[1em]" />,
-    label: 'MCP',
-    key: Routes.Mcp,
-  },
-  {
-    icon: <LucideUsers className="size-[1em]" />,
-    label: t('setting.team'),
-    key: Routes.Team,
-  },
-  {
-    icon: <LucideUser className="size-[1em]" />,
-    label: t('setting.profile'),
-    key: Routes.Profile,
-  },
-  {
-    icon: <LucideUnplug className="size-[1em]" />,
-    label: t('setting.api'),
-    key: Routes.Api,
-  },
-];
+const menuItems = (t: TFunction, intellectAuthEnabled: boolean) => {
+  const items = [
+    {
+      icon: <LucideServer className="size-[1em]" />,
+      label: t('setting.dataSources'),
+      key: Routes.DataSource,
+    },
+    {
+      icon: <LucideMessagesSquare className="size-[1em]" />,
+      label: t('setting.chatChannels'),
+      key: Routes.ChatChannel,
+    },
+    {
+      icon: <LucideBox className="size-[1em]" />,
+      label: t('setting.model'),
+      key: Routes.Model,
+      'data-testid': 'settings-nav-model-providers',
+    },
+    {
+      icon: <IconFontFill name="mcp" className="size-[1em]" />,
+      label: 'MCP',
+      key: Routes.Mcp,
+    },
+    {
+      icon: <LucideUsers className="size-[1em]" />,
+      label: t('setting.team'),
+      key: Routes.Team,
+    },
+    {
+      icon: <LucideUser className="size-[1em]" />,
+      label: t('setting.profile'),
+      key: Routes.Profile,
+    },
+    {
+      icon: <LucideUnplug className="size-[1em]" />,
+      label: t('setting.api'),
+      key: Routes.Api,
+    },
+  ];
+
+  // 统一认证入口仅在 features['intellect-auth'] === true 时出现。
+  if (intellectAuthEnabled) {
+    items.unshift({
+      icon: <LucideShieldCheck className="size-[1em]" />,
+      label: t('setting.intellectAuth'),
+      key: Routes.IntellectAuth,
+    });
+  }
+
+  return items;
+};
 
 export function SideBar({
   collapsed,
@@ -74,6 +89,7 @@ export function SideBar({
   const { handleMenuClick, active: activeItemKey } = useHandleMenuClick();
   const { t } = useTranslation();
   const { logout } = useLogout();
+  const intellectAuthEnabled = useIsFeatureEnabled('intellect-auth');
 
   return (
     <aside
@@ -134,7 +150,7 @@ export function SideBar({
             !collapsed && 'md:px-6 md:gap-3 md:items-stretch',
           )}
         >
-          {menuItems(t).map((item) => {
+          {menuItems(t, intellectAuthEnabled).map((item) => {
             const { key, icon, label, ...rest } = item;
 
             return (

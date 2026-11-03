@@ -44,6 +44,14 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 /** 允许代理的方法;其余(如 OPTIONS/TRACE)直接拒绝 */
 const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'DELETE']);
 
+/**
+ * If-Match 白名单形态（RFC 7232）：
+ * - `*` 或一个/多个强实体标签（引号包裹，逗号分隔）；
+ * - 拒绝弱标签（W/）与控制字符——If-Match 要求强比较，weak 标签无法生效。
+ */
+const IF_MATCH_PATTERN =
+  /^(?:\*|"[^\x00-\x1F\x7F"\\]*"(?:\s*,\s*"[^\x00-\x1F\x7F"\\]*")*)$/;
+
 /** 上游路径白名单:仅允许 hiedu 的 /api 路径,避免把 /healthz 等非 API 暴露给浏览器 */
 const UPSTREAM_PATH_PATTERN = /^\/api\/[A-Za-z0-9_./{}$-]*$/;
 
@@ -243,6 +251,21 @@ export function createHieduRoutes(
     const accept = c.req.header('Accept');
     if (accept) {
       headers.set('Accept', accept);
+    }
+    // 并发控制：If-Match 必须透传，否则后端乐观锁永不触发（P1 评审发现）。
+    const ifMatch = c.req.header('If-Match')?.trim();
+    if (ifMatch) {
+      if (!IF_MATCH_PATTERN.test(ifMatch)) {
+        return c.json(
+          {
+            code: 400,
+            error: 'INVALID_IF_MATCH',
+            message: 'If-Match must be * or strong entity-tag(s)',
+          },
+          400,
+        );
+      }
+      headers.set('If-Match', ifMatch);
     }
     headers.set('X-Hiedu-Assertion', signed.assertion);
     headers.set('X-Request-Id', requestId);

@@ -1,6 +1,7 @@
 /node_modules
 /.npm-cache/
 /bff/node_modules/
+/bff/dist/
 /.env.local
 /dist
 .swc

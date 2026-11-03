@@ -34,6 +34,18 @@
      --from-literal=token="$(openssl rand -hex 32)"
    ```
 
+2b. 统一认证断言密钥 Secret（能力开启前必须完成；清单中为 `optional: true`，缺失时能力保持 false）：
+
+   ```bash
+   # kid 与私钥须与 hiedu 的 HIEDU_AUTH_PUBLIC_KEYS 对齐
+   kubectl -n <ns> create secret generic agentui-hiedu-assertion \
+     --from-literal=kid='<kid>' \
+     --from-file=private-key-pem=/path/to/ed25519-pkcs8.pem
+   ```
+
+   开启能力：将 `deploy/k8s/agentui.yaml` 的 `INTELLECT_AUTH_ENABLED` 改为 `'true'`
+   并确认 `HIEDU_BASE_URL` 指向集群内 hiedu Service（默认 `http://hiedu:8099`）。
+
 3. 镜像拉取凭证(项目私有时需要):已建最小权限机器人
    `robot$intellect+agentui-pull`(仅 pull,密钥在发版机
    `~/.config/agentui/harbor-robots/agentui-pull.env`,600 权限):
@@ -72,6 +84,9 @@ kubectl apply -f deploy/k8s/
 | `BFF_PLUGIN_BACKEND_OVERRIDES` | 插件代理 target 覆盖,install 时应用并重过 SSRF 白名单 |
 | `BFF_PLUGIN_INSTALL_TOKEN` | 插件安装 token(Secret 注入);BFF 本身绑定容器内回环 |
 | `BFF_PLUGIN_INSTALL_SOURCES` | 安装来源开关(默认 `local,zip`,zip 上传通道 2026-10-21 起默认启用;设 `local` 收回) |
+| `INTELLECT_AUTH_ENABLED` | 统一认证能力总闸，默认 `false`；`true` 且 hiedu 断言配置完整时，user-setting 出现"统一认证"入口，`/api/bff/hiedu/*` 可用 |
+| `HIEDU_BASE_URL` | hiedu API 基址（集群内 `http://hiedu:8099` 或网关 URL） |
+| `agentui-hiedu-assertion` Secret | `kid` + `private-key-pem`；私钥不得入库/入镜像/入日志 |
 
 ## 注意
 

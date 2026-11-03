@@ -9,6 +9,8 @@ import { adminRoutes } from './routes/admin';
 import { authRoutes } from './routes/auth';
 import { bffAgentRoutes } from './routes/bff-agents';
 import { capabilitiesRoutes } from './routes/capabilities';
+import { featuresRoutes } from './routes/features';
+import { intellectAuthGate } from './middleware/intellect-auth-gate';
 import { harnessAdminRoutes } from './routes/harness-admin';
 import { inviteRoutes } from './routes/invites';
 import { sessionRoutes } from './routes/session';
@@ -135,6 +137,9 @@ app.route('/health', healthRoutes);
 // 鉴权失败统一由路由返回 403 + auth.reject 审计,因此必须注册在通用
 // /api/* authMiddleware 之前,避免被其 401 抢先拦截。
 // authSessionMiddleware 只注入 imt_token 会话,不做拦截。
+// 统一认证总闸（D2=B）：能力关闭时 hiedu 代理直接 503，避免"页面隐藏但接口仍可用"。
+app.use('/hiedu/*', intellectAuthGate);
+app.use('/api/bff/hiedu/*', intellectAuthGate);
 app.use('/hiedu/*', authSessionMiddleware);
 app.use('/api/bff/hiedu/*', authSessionMiddleware);
 app.route('/', hieduRoutes);
@@ -217,6 +222,12 @@ app.use('/capabilities/*', authMiddleware);
 app.use('/capabilities/*', requireValidImtSession);
 app.use('/capabilities/*', backendContextMiddleware);
 app.route('/', capabilitiesRoutes);
+
+// 系统级能力路由 /features/*（统一认证等，与 harness 后端无关）。
+// 前端 /api/bff/features → rewrite 去 /api/bff → BFF 收到 /features。
+app.use('/features/*', authMiddleware);
+app.use('/features/*', requireValidImtSession);
+app.route('/', featuresRoutes);
 
 // 运行时插件路由 /plugins/*(PawAPP 式动态装载,docs/cognitive-wargame-plugin-migration-design.md)。
 // 路径:前端 /api/bff/plugins/* → Vite proxy rewrite 去掉 /api/bff → BFF 收到 /plugins/*。

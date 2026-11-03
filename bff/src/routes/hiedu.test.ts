@@ -132,6 +132,7 @@ describe('hiedu 断言代理路由', () => {
         'X-Request-Id': 'req-client-1',
         'X-Hiedu-Assertion': 'forged-assertion',
         'X-Hiedu-User': 'attacker',
+        'If-Match': '"v1"',
       },
     });
 
@@ -151,6 +152,8 @@ describe('hiedu 断言代理路由', () => {
     expect(headers.get('Accept')).toBe('application/json');
     // 合法 X-Request-Id 保留
     expect(headers.get('X-Request-Id')).toBe('req-client-1');
+    // If-Match 透传（并发控制依赖它触发后端 409）
+    expect(headers.get('If-Match')).toBe('"v1"');
 
     // 注入的断言结构/claims 正确且可验签
     const assertion = headers.get('X-Hiedu-Assertion') ?? '';
@@ -164,6 +167,26 @@ describe('hiedu 断言代理路由', () => {
     expect(claims.org).toBe('wust');
     expect(claims.exp - claims.iat).toBeLessThanOrEqual(60);
     expect(signature).not.toBe('');
+  });
+
+  it('非法 If-Match（弱标签/控制字符）→ 400 且不转发', async () => {
+    const { calls, fetchImpl } = createFetchMock();
+    const app = createApp({ fetchImpl });
+
+    const res = await app.request('/api/bff/hiedu/api/units/1', {
+      method: 'PUT',
+      headers: {
+        Cookie: `${AUTH_COOKIE_NAME}=imt_valid_token`,
+        'If-Match': 'W/"v1"',
+      },
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      code: 400,
+      error: 'INVALID_IF_MATCH',
+    });
+    expect(calls).toHaveLength(0);
   });
 
   it('无客户端 X-Request-Id → 生成并注入', async () => {

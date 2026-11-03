@@ -60,6 +60,30 @@ spec:
               value: cognitive-wargame=https://ai.wust.edu.cn/wargame
             - name: BFF_PORT
               value: '9390'
+            # 统一认证能力：默认关闭；试点验证后改为 'true'，并完成 hiedu 断言密钥 Secret。
+            - name: INTELLECT_AUTH_ENABLED
+              value: 'false'
+            # hiedu 断言代理（BFF → hiedu API）；ISS/AUD/ORG 缺省为 gateway/hiedu/wust。
+            - name: HIEDU_AUTH_MODE
+              value: 'gateway'
+            - name: HIEDU_BASE_URL
+              value: 'http://hiedu:8099'
+            # 组织编码须与 hiedu 侧 HIEDU_ORG_CODE 一致（缺省 wust）。
+            - name: HIEDU_ORG_CODE
+              value: 'wust'
+            # kid + Ed25519 私钥（PKCS#8 PEM）从 Secret 注入。
+            - name: HIEDU_BFF_ASSERT_KID
+              valueFrom:
+                secretKeyRef:
+                  name: agentui-hiedu-assertion
+                  key: kid
+                  optional: true
+            - name: HIEDU_BFF_ASSERT_PRIVATE_KEY_PEM
+              valueFrom:
+                secretKeyRef:
+                  name: agentui-hiedu-assertion
+                  key: private-key-pem
+                  optional: true
             # 插件安装 token 从 Secret 注入(见 README 创建命令)
             - name: BFF_PLUGIN_INSTALL_TOKEN
               valueFrom:

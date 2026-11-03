@@ -1299,6 +1299,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
       model: '模型提供商',
       systemModelDescription: '请在开始之前完成这些设置',
       dataSources: '数据源',
+      intellectAuth: '统一认证',
       help: '帮助',
       team: '团队',
       system: '系统',
