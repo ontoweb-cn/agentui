@@ -180,6 +180,20 @@ const routeConfigOptions = [
                   import('@/pages/user-setting/intellect-auth/roles'),
               },
               {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthApps}`,
+                Component: () => import('@/pages/user-setting/intellect-auth/apps'),
+              },
+              {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthApps}/:code`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/app-detail'),
+              },
+              {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthProjects}/:id`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/project-detail'),
+              },
+              {
                 path: `${Routes.UserSetting}${Routes.IntellectAuthPersons}`,
                 Component: () =>
                   import('@/pages/user-setting/intellect-auth/persons'),

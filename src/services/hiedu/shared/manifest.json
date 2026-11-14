@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "sourceCommit": "7fa8ee2",
+  "syncedAt": "2026-11-14T11:03:30.955Z",
+  "files": {
+    "client.ts": "8d8492abe1dd8ddb62316166765c9e6f8bb524cd99e43bb68b5e9e40508dc960",
+    "contract.ts": "a8cd0962e8f02610a0b40c1b6a39f58b84f772866456d6da8e580c7dc6e44431",
+    "format.ts": "cc7c8e5f55ce54086e4812da27c3c2b8e0e2f8fda07e1bea970577e584672018",
+    "index.ts": "d4544ef3d7d3ae76c7aba6f18736b4901cf91c0e39a6663a15da3671a30cf210",
+    "permissions.ts": "09ed7025038b18d7c88c0ade144c44848d57d76fadb4d103b2535174c1d6774a",
+    "resources.ts": "8d2ba17ae96aeebf766bf054e5c1f16ee09d1ff4f0d3638bedf1bdbd55eff213",
+    "version.ts": "3ccaf8ddc5e53eeabdd7c98dab1084db92cdca34453f7543dba4f5c0f3a422f9"
+  }
+}

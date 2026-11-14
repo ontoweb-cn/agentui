@@ -54,6 +54,17 @@ import {
 } from './components/state';
 import { useMe } from './hooks';
 
+/** 应用权限徽标：从角色权限点拆出 app/<code>:<perm> 分组计数（对齐 hiedu-web Roles.tsx）。 */
+function appPermBadges(permissions: string[] | undefined) {
+  const counts = new Map<string, number>();
+  for (const perm of permissions ?? []) {
+    if (!perm.startsWith('app/')) continue;
+    const code = perm.slice('app/'.length).split(':')[0];
+    if (code) counts.set(code, (counts.get(code) ?? 0) + 1);
+  }
+  return [...counts.entries()];
+}
+
 // 系统角色承担平台级授权，编码收敛到固定集合，避免铸造永久不可治理的角色。
 const SYSTEM_ROLE_CODES = ['ORG_ADMIN', 'AUDITOR'];
 
@@ -260,11 +271,22 @@ export default function RolesPage() {
                     <TableCell className="font-medium">{role.name}</TableCell>
                     <TableCell>{role.permissions?.length ?? 0}</TableCell>
                     <TableCell>
-                      {role.is_system ? (
-                        <span className="text-xs text-text-secondary">系统角色</span>
-                      ) : (
-                        <span className="text-xs text-text-tertiary">业务角色</span>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1">
+                        {role.is_system ? (
+                          <span className="text-xs text-text-secondary">系统角色</span>
+                        ) : (
+                          <span className="text-xs text-text-tertiary">业务角色</span>
+                        )}
+                        {appPermBadges(role.permissions).map(([code, count]) => (
+                          <span
+                            key={code}
+                            className="rounded bg-state-warning/10 px-1 text-xs text-state-warning"
+                            title={`应用权限：app/${code}:* ×${count}（经 IdP 角色壳分发平台档）`}
+                          >
+                            {code} ×{count}
+                          </span>
+                        ))}
+                      </div>
                     </TableCell>
                     <TableCell className="text-text-secondary">
                       {role.scope_all ? '全校' : '按分配'}

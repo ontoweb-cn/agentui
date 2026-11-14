@@ -45,6 +45,12 @@ const NAV_ITEMS: NavItem[] = [
     permission: 'role:admin',
     orgScope: true,
   },
+  {
+    to: Routes.IntellectAuthApps,
+    label: '应用管理',
+    permission: 'role:admin',
+    orgScope: true,
+  },
   { to: Routes.IntellectAuthPersons, label: '人员管理', permission: 'person:read' },
   {
     to: Routes.IntellectAuthProjects,
