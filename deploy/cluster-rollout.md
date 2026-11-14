@@ -61,7 +61,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ai.wust.edu.cn/wargame/api/v1/s
 
 ### 1.1 登录
 
-浏览器打开 `http://10.99.24.15:32080/`,用线下提供的管理员账密登录。
+浏览器打开 `http://<jenkins-host>:32080/`,用线下提供的管理员账密登录。
 
 ### 1.2 Agent 环境核验(一次性核验 job)
 
@@ -271,7 +271,7 @@ Jenkins 侧回滚 = 任务 Disable(不删,保留历史)。
 ## §5 执行记录(2026-10-14,首次落地)
 
 > 执行机:Simon 的 Mac(arm64,docker+skopeo);集群操作经 Jenkins
-> (http://10.99.24.15:32080/)脚本控制台/FreeStyle job + 其 Pod 内
+> (http://<jenkins-host>:32080/)脚本控制台/FreeStyle job + 其 Pod 内
 > ServiceAccount(jenkins ns,全集群工作负载 CRUD、无 ns/Ingress 权限)。
 > **拓扑变化(相对 §0-§2 的原方案)**:wargamesrv 部署进集群(intellect ns),
 > agentui 双通道改走集群内 Service——公网网关只剩「浏览器直连 /wargame」
@@ -308,13 +308,13 @@ Jenkins 侧回滚 = 任务 Disable(不删,保留历史)。
 
 - wargamesrv:pod Ready;healthz 200(`redis:ok`、auth token 模式);
   启动日志 `storage=pg agent_loop=intellect`、`wargame schema 初始化完成`;
-- REST 通道:`http://10.99.24.15:31390/api/v1/wargame/system/healthz` → 200
+- REST 通道:`http://<cluster-node-ip>:31390/api/v1/wargame/system/healthz` → 200
   (经 agentui nginx → wargamesrv);`/api/v1/wargame/scenarios` 无 token 401 /
   带 token `{"status":"ok","count":0}`(新库空列表,符合预期);
 - 插件:`/api/bff/plugins` 200 返回 cognitive-wargame 0.1.0,
   `backendTargetOverride=http://wargamesrv:9385` 生效;
-- 访问入口(内网):agentui **http://10.99.24.15:31390/**,
-  wargamesrv 直连 http://10.99.24.15:31385/;
+- 访问入口(内网):agentui **http://<cluster-node-ip>:31390/**,
+  wargamesrv 直连 http://<cluster-node-ip>:31385/;
 - 待人工:浏览器登录向导(`/admin/wizard`,企业 endpoint=
   `https://ai.wust.edu.cn/intellect-gateway`)、SSE 推演实测、chat 实测。
 
@@ -375,14 +375,14 @@ FreeStyle 过渡方案已废弃,以下为最终形态。**
 
 ### 5.4 遗留:公网 `/wargame`(需网关 VM 权限方执行)
 
-网关(59.68.176.94 → 内网 10.99.24.12)为集群外独立 nginx,**Jenkins SA 与
+网关(<public-ip> → 内网 <internal-ip>)为集群外独立 nginx,**Jenkins SA 与
 执行机均无其配置权限**。在 ai.wust.edu.cn 的 443 server{} 加:
 
 ```nginx
 # cognitive-wargame:纯剥前缀透传(SSE 禁缓冲)。
 # 验证:curl -s -o /dev/null -w '%{http_code}\n' https://ai.wust.edu.cn/wargame/api/v1/scenarios  → 期望 401
 location /wargame/ {
-    proxy_pass http://10.99.24.15:31385/;
+    proxy_pass http://<cluster-node-ip>:31385/;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;

@@ -95,6 +95,8 @@ export interface MarketAsset {
   spec: Record<string, unknown>;
   hardware?: AssetHardware;
   resources?: AssetResources;
+  /** 当前主体是否已收藏；仅 aihub 配置了数据库时返回。 */
+  favorited?: boolean;
 }
 
 export interface MarketPage {
@@ -176,3 +178,14 @@ export const fetchMarketPage = ({
 
 export const fetchAsset = (id: string) =>
   request.get<MarketAsset>(`/api/bff/aihub/assets/${encodeURIComponent(id)}`);
+
+export interface FavoriteToggleResult {
+  asset_id: string;
+  favorited: boolean;
+}
+
+/** 收藏/取消（幂等 toggle）。 */
+export const toggleFavorite = (id: string) =>
+  request.post<FavoriteToggleResult>(
+    `/api/bff/aihub/assets/${encodeURIComponent(id)}/favorite`,
+  );

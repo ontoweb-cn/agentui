@@ -257,7 +257,7 @@ function allowedInstallSources(): Set<string> {
 
 /**
  * 解析 BFF_PLUGIN_BACKEND_OVERRIDES(#2b 部署形态):
- * 形如 "cognitive-wargame=http://wargamesrv:9385,other=http://10.0.0.2:9000"。
+ * 形如 "cognitive-wargame=http://wargamesrv:9385,other=http://other-host:9000"。
  * 仅在 install 时应用并重过 SSRF 校验(见 install handler)。
  */
 export function parseBackendOverrides(): Map<string, string> {

@@ -55,6 +55,9 @@ export default {
       notFound: 'This asset does not exist or has been retired.',
       copy: 'Copy identifier',
       copied: 'Copied',
+      favorite: 'Add to favorites',
+      unfavorite: 'Remove from favorites',
+      favoriteError: 'Favorite action failed, please try again later.',
       imageReady: 'Images ready',
       imagePending: 'Images pending',
       actions: {

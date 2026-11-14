@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { LucidePanelRightClose } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { LucidePanelRightClose, LucideStar } from 'lucide-react';
 import {
   useEffect,
   useRef,
@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-import { fetchAsset, type MarketAsset } from '../api';
+import { fetchAsset, toggleFavorite, type MarketAsset } from '../api';
 import { AssetImage } from './asset-image';
 import {
   acceleratorLabelKey,
@@ -76,6 +76,7 @@ export function AssetWorkspace({
   onClose,
 }: AssetWorkspaceProps) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('overview');
   const [copied, setCopied] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -91,10 +92,23 @@ export function AssetWorkspace({
     staleTime: 60_000,
   });
 
+  const favorite = useMutation({
+    mutationFn: async () => (await toggleFavorite(assetId as string)).data,
+    onSuccess: (result) => {
+      queryClient.setQueryData<MarketAsset>(
+        ['aihub-asset', assetId],
+        (previous) =>
+          previous ? { ...previous, favorited: result.favorited } : previous,
+      );
+    },
+  });
+  const resetFavorite = favorite.reset;
+
   useEffect(() => {
     setActiveTab('overview');
     setCopied(false);
-  }, [assetId]);
+    resetFavorite();
+  }, [assetId, resetFavorite]);
 
   useEffect(() => {
     if (visible) closeRef.current?.focus();
@@ -161,18 +175,51 @@ export function AssetWorkspace({
             <span className="truncate text-base text-text-primary">
               {asset?.label ?? t('aihub.detail.title')}
             </span>
-            <Button
-              ref={closeRef}
-              variant="transparent"
-              size="icon-sm"
-              className="border-0"
-              onClick={onClose}
-              aria-label={t('aihub.detail.close')}
-              data-testid="aihub-asset-workspace-close"
-            >
-              <LucidePanelRightClose className="size-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              {asset?.favorited !== undefined && (
+                <Button
+                  variant="transparent"
+                  size="icon-sm"
+                  className="border-0"
+                  aria-pressed={asset.favorited}
+                  aria-label={
+                    asset.favorited
+                      ? t('aihub.detail.unfavorite')
+                      : t('aihub.detail.favorite')
+                  }
+                  title={
+                    asset.favorited
+                      ? t('aihub.detail.unfavorite')
+                      : t('aihub.detail.favorite')
+                  }
+                  disabled={favorite.isPending}
+                  onClick={() => favorite.mutate()}
+                  data-testid="aihub-asset-favorite"
+                >
+                  <LucideStar
+                    className={cn('size-4', asset.favorited && 'fill-current')}
+                  />
+                </Button>
+              )}
+              <Button
+                ref={closeRef}
+                variant="transparent"
+                size="icon-sm"
+                className="border-0"
+                onClick={onClose}
+                aria-label={t('aihub.detail.close')}
+                data-testid="aihub-asset-workspace-close"
+              >
+                <LucidePanelRightClose className="size-4" />
+              </Button>
+            </div>
           </div>
+
+          {favorite.isError && (
+            <p className="px-5 pb-1 text-xs text-text-secondary">
+              {t('aihub.detail.favoriteError')}
+            </p>
+          )}
 
           {asset && (
             <div

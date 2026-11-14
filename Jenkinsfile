@@ -1,4 +1,4 @@
-// AgentUI 宿主 CI/发版流水线(华为集群 Jenkins,http://10.99.24.15:32080/)
+// AgentUI 宿主 CI/发版流水线(华为集群 Jenkins,http://<jenkins-host>:32080/)
 //
 // 前置(管理员一次性):
 //   1. agent 需 Node 20+(node 在 PATH)与 Docker;

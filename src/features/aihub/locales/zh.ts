@@ -54,6 +54,9 @@ export default {
       notFound: '资源不存在或已下线。',
       copy: '复制标识',
       copied: '已复制',
+      favorite: '收藏',
+      unfavorite: '取消收藏',
+      favoriteError: '收藏操作失败，请稍后重试。',
       imageReady: '镜像就绪',
       imagePending: '镜像未就绪',
       actions: {

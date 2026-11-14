@@ -23,12 +23,44 @@ import {
 import { streamResponse } from '../utils/response';
 
 const PREFIXES = ['/api/bff/aihub', '/aihub'] as const;
-// M0/M1 市场只读；仅 admin 子路径额外放行 POST（SameSite=Lax cookie + aihub 白名单）。
+// M0/M1 市场只读；仅 admin 子路径与收藏 toggle 额外放行 POST（SameSite=Lax cookie + aihub 白名单）。
 const READ_METHODS = new Set(['GET', 'HEAD']);
 const ADMIN_PREFIXES = ['/api/bff/aihub/admin/', '/aihub/admin/'] as const;
 const ADMIN_METHODS = new Set(['POST']);
+// 精确白名单：`/aihub/assets/{id}/favorite`（M1 收藏）。不放行其他 `/assets/*` 写方法。
+const FAVORITE_ROUTE = /^\/(?:api\/bff\/aihub|aihub)\/assets\/[^/]+\/favorite$/;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const UPSTREAM_TIMEOUT_MS = 15_000;
+const MAX_PROXY_BODY_BYTES = 8 * 1024 * 1024;
+const BODY_TOO_LARGE = 'AIHUB_PAYLOAD_TOO_LARGE';
+
+/** 流式计数：超过上限即中断，避免 chunked 请求绕过 Content-Length 检查。 */
+function guardBodySize(
+  body: ReadableStream<Uint8Array>,
+  maxBytes: number,
+): ReadableStream<Uint8Array> {
+  let total = 0;
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        total += chunk.byteLength;
+        if (total > maxBytes) {
+          controller.error(new Error(BODY_TOO_LARGE));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+}
+
+/** undici 可能把流错误包在 `cause` 中，这里两处都检查。 */
+function isBodyTooLargeError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : '';
+  const cause = (err as { cause?: unknown } | null)?.cause;
+  const causeMessage = cause instanceof Error ? cause.message : '';
+  return message.includes(BODY_TOO_LARGE) || causeMessage.includes(BODY_TOO_LARGE);
+}
 
 /** `/api/bff/aihub/meta` → `/api/v1/aihub/meta`。 */
 export function resolveAihubUpstreamPath(path: string): string | undefined {
@@ -96,7 +128,13 @@ export function createAihubRoutes(deps: AihubRouteDeps = {}): Hono {
     const isAdminPath = ADMIN_PREFIXES.some((prefix) =>
       c.req.path.startsWith(prefix),
     );
-    if (!READ_METHODS.has(c.req.method) && !(isAdminPath && ADMIN_METHODS.has(c.req.method))) {
+    const isFavoriteWrite =
+      c.req.method === 'POST' && FAVORITE_ROUTE.test(c.req.path);
+    if (
+      !READ_METHODS.has(c.req.method) &&
+      !(isAdminPath && ADMIN_METHODS.has(c.req.method)) &&
+      !isFavoriteWrite
+    ) {
       return c.json(
         { code: 405, error: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' },
         405,
@@ -193,13 +231,45 @@ export function createAihubRoutes(deps: AihubRouteDeps = {}): Hono {
     c.req.raw.signal.addEventListener('abort', onClientAbort, { once: true });
 
     let upstream: Response;
+    const declaredLength = Number(c.req.header('Content-Length') ?? '0');
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_PROXY_BODY_BYTES) {
+      return c.json(
+        {
+          code: 413,
+          error: 'PAYLOAD_TOO_LARGE',
+          message: 'Request body exceeds 8MB limit',
+        },
+        413,
+      );
+    }
+
+    const init: RequestInit & { duplex?: 'half' } = {
+      method: c.req.method,
+      headers,
+      signal: controller.signal,
+    };
+    if (!READ_METHODS.has(c.req.method)) {
+      const body = c.req.raw.body;
+      if (body) {
+        init.body = guardBodySize(body, MAX_PROXY_BODY_BYTES);
+        // Node fetch 转发请求流时必需，避免整体缓冲到内存。
+        init.duplex = 'half';
+      }
+    }
+
     try {
-      upstream = await fetchImpl(targetUrl, {
-        method: c.req.method,
-        headers,
-        signal: controller.signal,
-      });
+      upstream = await fetchImpl(targetUrl, init);
     } catch (err) {
+      if (isBodyTooLargeError(err)) {
+        return c.json(
+          {
+            code: 413,
+            error: 'PAYLOAD_TOO_LARGE',
+            message: 'Request body exceeds 8MB limit',
+          },
+          413,
+        );
+      }
       if (timedOut) {
         return c.json(
           {

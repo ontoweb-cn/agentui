@@ -69,7 +69,7 @@ CI 自动发版(华为集群 Jenkins,两仓 Jenkinsfile 已就绪):见 [ci-jenki
 `docker-compose.yml` 已含全部所需 env。要点:
 
 - `WARGAME_HOST`:wargamesrv 与本 compose 同网络时用服务名;
-  独立部署时用宿主地址(`host.docker.internal` / `172.17.0.1` / 实际 IP);
+  独立部署时用宿主地址(`host.docker.internal` / 宿主机实际 IP);
 - `BFF_PLUGIN_INSTALL_TOKEN`:必填(未设置 compose 直接报错),生产用强随机值;
 - `BFF_PLUGIN_INSTALL_SOURCES`:安装来源开关,默认 `local,zip`
   (2026-10-21 起 zip 上传通道默认启用);设为 `local` 可收回。zip 上传:

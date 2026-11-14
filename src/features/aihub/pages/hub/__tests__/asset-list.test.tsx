@@ -12,6 +12,7 @@ import {
   fetchAsset,
   fetchMarketPage,
   fetchTaxonomies,
+  toggleFavorite,
   type MarketAsset,
   type MarketPage,
   type Taxonomies,
@@ -23,6 +24,7 @@ jest.mock('@/features/aihub/api', () => ({
   fetchAsset: jest.fn(),
   fetchMarketPage: jest.fn(),
   fetchTaxonomies: jest.fn(),
+  toggleFavorite: jest.fn(),
 }));
 
 const mockFetchAsset = fetchAsset as jest.MockedFunction<typeof fetchAsset>;
@@ -31,6 +33,9 @@ const mockFetchMarketPage = fetchMarketPage as jest.MockedFunction<
 >;
 const mockFetchTaxonomies = fetchTaxonomies as jest.MockedFunction<
   typeof fetchTaxonomies
+>;
+const mockToggleFavorite = toggleFavorite as jest.MockedFunction<
+  typeof toggleFavorite
 >;
 
 const asset: MarketAsset = {
@@ -247,6 +252,38 @@ describe('AIHub asset list + workspace', () => {
         '/hub/models?field=cv',
       ),
     );
+  });
+
+  it('详情可收藏，成功后就地更新按钮状态', async () => {
+    mockFetchAsset.mockResolvedValue({
+      data: { ...asset, favorited: false },
+    } as never);
+    mockToggleFavorite.mockResolvedValue({
+      data: { asset_id: 'm1', favorited: true },
+    } as never);
+
+    renderAt('/hub/models/m1');
+
+    const button = await screen.findByTestId('aihub-asset-favorite');
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(button);
+
+    await waitFor(() => expect(mockToggleFavorite).toHaveBeenCalledWith('m1'));
+    await waitFor(() =>
+      expect(button).toHaveAttribute('aria-pressed', 'true'),
+    );
+  });
+
+  it('未配置收藏（favorited 缺失）时不渲染收藏按钮', async () => {
+    renderAt('/hub/models/m1');
+
+    expect(
+      await screen.findByTestId('aihub-asset-workspace-close'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('aihub-asset-favorite'),
+    ).not.toBeInTheDocument();
   });
 
   it('非法资源类型重定向到默认类型', async () => {

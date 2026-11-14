@@ -15,7 +15,7 @@ services:
       - BFF_TRUST_PROXY=true
       # cognitive-wargame 管理服务地址(nginx REST 通道 + BFF 插件代理 override)。
       # wargamesrv 与本 compose 同网络时用服务名(如 wargamesrv);
-      # 独立部署时用宿主地址(host.docker.internal / 172.17.0.1 / 实际 IP)。
+      # 独立部署时用宿主地址(host.docker.internal / 宿主机实际 IP)。
       - WARGAME_HOST=${WARGAME_HOST:-host.docker.internal}
       - WARGAME_PORT=9385
       # 运行时插件(#2b):镜像内置 bundle 的安装 token(entrypoint 用),
