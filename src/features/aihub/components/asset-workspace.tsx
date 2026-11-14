@@ -45,6 +45,17 @@ function formatSpecValue(value: unknown): string {
   return JSON.stringify(value) ?? '';
 }
 
+/** 仅放行 http(s) 文档链接，避免后端数据注入 javascript:/data: 等协议。 */
+function safeDocUrl(doc?: string): string | undefined {
+  if (!doc) return undefined;
+  try {
+    const { protocol } = new URL(doc, 'http://localhost');
+    return protocol === 'http:' || protocol === 'https:' ? doc : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * 资源详情右栏。
  *
@@ -94,6 +105,7 @@ export function AssetWorkspace({
   }, [visible, onClose]);
 
   const asset = detail.data ?? fallbackAsset;
+  const docUrl = safeDocUrl(asset?.doc);
   const tabs: WorkspaceTab[] = ['overview', 'docs'];
   const specEntries = Object.entries(asset?.spec ?? {});
   const errorMessage = detail.error?.message ?? '';
@@ -131,9 +143,11 @@ export function AssetWorkspace({
       className={cn(
         'flex shrink-0 flex-col overflow-hidden bg-bg-base',
         'transition-[width] ease-out duration-300',
-        visible ? 'md:w-[440px] md:border-l md:border-border-button' : 'md:w-0',
-        'max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-[min(440px,calc(100vw-4rem))] max-md:border-l max-md:border-border-button max-md:shadow-xl',
-        !visible && 'max-md:hidden',
+        visible
+          ? 'xl:w-[440px] xl:border-l xl:border-border-button'
+          : 'xl:w-0',
+        'max-xl:fixed max-xl:inset-y-0 max-xl:right-0 max-xl:z-40 max-xl:w-[min(440px,calc(100vw-4rem))] max-xl:border-l max-xl:border-border-button max-xl:shadow-xl',
+        !visible && 'max-xl:hidden',
       )}
     >
       {visible && (
@@ -311,9 +325,9 @@ export function AssetWorkspace({
                 role="tabpanel"
                 className="flex flex-col gap-3 p-5 text-sm"
               >
-                {asset.doc ? (
+                {docUrl ? (
                   <a
-                    href={asset.doc}
+                    href={docUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="text-text-primary underline hover:text-text-secondary"

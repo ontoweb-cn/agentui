@@ -22,11 +22,17 @@ import { AssetCard } from '../../components/asset-card';
 import { AssetWorkspace } from '../../components/asset-workspace';
 import {
   DEFAULT_RESOURCE_TYPE,
-  isResourceType,
-  resourceTypeMeta,
+  isSafeResourceType,
 } from '../../resource-types';
 
 const PAGE_SIZE = 20;
+
+const SAFE_FILTER_KEY = /^[A-Za-z0-9._-]{1,64}$/;
+
+/** 筛选 key 只接受安全 slug，异常值回落 all（避免拼入 BFF 路径时改变路径）。 */
+function readFilterKey(value: string | null): string {
+  return value && SAFE_FILTER_KEY.test(value) ? value : 'all';
+}
 
 function Chip({
   active,
@@ -60,7 +66,7 @@ function Chip({
 export default function AssetListRoute() {
   const { type, assetId } = useParams();
 
-  if (!isResourceType(type)) {
+  if (!isSafeResourceType(type)) {
     return <Navigate to={`${Routes.Hub}/${DEFAULT_RESOURCE_TYPE}`} replace />;
   }
 
@@ -73,8 +79,8 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
   const queryClient = useQueryClient();
   const [params] = useSearchParams();
 
-  const field = params.get('field') || 'all';
-  const domain = params.get('domain') || 'all';
+  const field = readFilterKey(params.get('field'));
+  const domain = readFilterKey(params.get('domain'));
   const q = params.get('q') ?? '';
   const page = Math.max(1, Number(params.get('page') ?? 1) || 1);
 
@@ -154,7 +160,9 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
   };
 
   const openAsset = (id: string) => {
-    navigate(`${listPath}/${id}${queryString ? `?${queryString}` : ''}`);
+    navigate(
+      `${listPath}/${encodeURIComponent(id)}${queryString ? `?${queryString}` : ''}`,
+    );
   };
 
   const prefetchAsset = (id: string) => {
@@ -169,22 +177,24 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
     const previousId = assetId;
     navigate(listUrl);
     if (!previousId) return;
-    // 关闭后把焦点还给触发卡片（移动端抽屉/桌面右栏共用）
+    // 关闭后把焦点还给触发卡片（移动端抽屉/桌面右栏共用）。
+    // 用属性遍历而非拼选择器，避免 assetId 含引号/方括号时 querySelector 抛错。
     window.setTimeout(() => {
-      document
-        .querySelector<HTMLElement>(`[data-asset-id="${previousId}"]`)
-        ?.focus();
+      const target = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-asset-id]'),
+      ).find((node) => node.dataset.assetId === previousId);
+      target?.focus();
     }, 0);
   };
 
-  const typeTitle = resourceTypeMeta(type).labelKey;
+  const typeTitle = t(`aihub.type.${type}`, { defaultValue: type });
 
   return (
     <div className="flex min-h-0 flex-1 gap-2.5">
       <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-0.5">
         <header className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold text-text-primary">
-            {t(typeTitle)}
+            {typeTitle}
           </h1>
           <p className="text-sm text-text-secondary">{t('aihub.subtitle')}</p>
         </header>
@@ -360,7 +370,7 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
 
       {assetId && (
         <div
-          className="fixed inset-y-0 left-16 right-0 z-30 bg-black/30 md:hidden"
+          className="fixed inset-y-0 left-16 right-0 z-30 bg-black/30 xl:hidden"
           onClick={closeAsset}
           aria-hidden
           data-testid="aihub-asset-backdrop"

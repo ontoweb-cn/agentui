@@ -72,6 +72,13 @@ describe('AIHub hub 容器', () => {
             enabled: true,
             count: 0,
           },
+          {
+            slug: 'benchmarks',
+            type: 'benchmarks',
+            label: { zh: '基准', en: 'Benchmarks' },
+            enabled: true,
+            count: 3,
+          },
         ],
       },
     } as never);
@@ -88,6 +95,10 @@ describe('AIHub hub 容器', () => {
     );
     expect(screen.getByTestId('aihub-submenu-models')).toHaveTextContent('488');
     expect(screen.getByTestId('aihub-submenu-agents')).toBeInTheDocument();
+    // 后端新增类型即使不在静态清单内也应出现在菜单
+    expect(
+      await screen.findByTestId('aihub-submenu-benchmarks'),
+    ).toHaveTextContent('Benchmarks');
     await waitFor(() =>
       expect(
         screen.queryByTestId('aihub-submenu-datasets'),

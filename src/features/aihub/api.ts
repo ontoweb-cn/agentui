@@ -105,9 +105,11 @@ export const fetchMarketPage = ({
   pageSize = 20,
 }: MarketQueryParams) =>
   request.get<MarketPage>(
-    `/api/bff/aihub/markets/${assetType}/${field}/${domain}`,
+    `/api/bff/aihub/markets/${encodeURIComponent(assetType)}/${encodeURIComponent(
+      field,
+    )}/${encodeURIComponent(domain)}`,
     { params: { q: q || undefined, page, page_size: pageSize } },
   );
 
 export const fetchAsset = (id: string) =>
-  request.get<MarketAsset>(`/api/bff/aihub/assets/${id}`);
+  request.get<MarketAsset>(`/api/bff/aihub/assets/${encodeURIComponent(id)}`);

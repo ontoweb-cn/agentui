@@ -36,12 +36,13 @@ export const RESOURCE_TYPES: ResourceTypeMeta[] = [
 
 export const DEFAULT_RESOURCE_TYPE = 'models';
 
-export function isResourceType(key?: string): key is string {
-  return RESOURCE_TYPES.some((item) => item.key === key);
-}
+const SAFE_TYPE_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/i;
 
-export function resourceTypeMeta(key: string): ResourceTypeMeta {
-  return (
-    RESOURCE_TYPES.find((item) => item.key === key) ?? RESOURCE_TYPES[0]
-  );
+/**
+ * 路由参数校验：只约束可安全用于 URL 的 slug 形态。
+ *
+ * 具体类型是否存在由后端 `/markets` 决定（配置新增类型无需改前端白名单）。
+ */
+export function isSafeResourceType(key?: string): key is string {
+  return Boolean(key && SAFE_TYPE_PATTERN.test(key));
 }

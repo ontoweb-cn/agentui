@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { LucideLibrary } from 'lucide-react';
+import { LucideBox, LucideLibrary } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Outlet } from 'react-router';
 
@@ -54,20 +54,37 @@ export default function AihubHubPage() {
     (markets.data ?? []).map((market) => [market.slug, market]),
   );
 
-  const items: HubMenuItem[] = RESOURCE_TYPES.filter(
-    (meta) => marketBySlug.get(meta.key)?.enabled !== false,
-  ).map((meta) => {
-    const market = marketBySlug.get(meta.key);
-    const Icon = meta.icon;
+  const items: HubMenuItem[] = [
+    ...RESOURCE_TYPES.map((meta) => ({
+      key: meta.key,
+      icon: meta.icon,
+      fallbackLabel: t(meta.labelKey),
+    })),
+    // 后端配置新增的类型不在静态清单内，也并入菜单（默认图标，名称取 /markets.label）
+    ...(markets.data ?? [])
+      .filter(
+        (market) =>
+          !RESOURCE_TYPES.some((meta) => meta.key === market.slug),
+      )
+      .map((market) => ({
+        key: market.slug,
+        icon: LucideBox,
+        fallbackLabel: market.slug,
+      })),
+  ]
+    .filter((meta) => marketBySlug.get(meta.key)?.enabled !== false)
+    .map((meta) => {
+      const market = marketBySlug.get(meta.key);
+      const Icon = meta.icon;
 
-    return {
-      key: `${Routes.Hub}/${meta.key}`,
-      label: menuLabel(market, isZh, t(meta.labelKey)),
-      icon: <Icon className="size-[1em]" />,
-      suffix: market ? market.count : undefined,
-      testId: `aihub-submenu-${meta.key}`,
-    };
-  });
+      return {
+        key: `${Routes.Hub}/${meta.key}`,
+        label: menuLabel(market, isZh, meta.fallbackLabel),
+        icon: <Icon className="size-[1em]" />,
+        suffix: market ? String(market.count) : undefined,
+        testId: `aihub-submenu-${meta.key}`,
+      };
+    });
 
   return (
     <HubLayout

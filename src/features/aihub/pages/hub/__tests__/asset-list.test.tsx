@@ -174,10 +174,27 @@ describe('AIHub asset list + workspace', () => {
   });
 
   it('非法资源类型重定向到默认类型', async () => {
-    renderAt('/hub/unknown');
+    renderAt('/hub/a%20b');
 
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent('/hub/models'),
+    );
+  });
+
+  it('拒绝非 http(s) 文档链接', async () => {
+    mockFetchAsset.mockResolvedValue({
+      data: { ...asset, doc: 'javascript:alert(1)' },
+    } as never);
+
+    renderAt('/hub/models/m1');
+
+    fireEvent.click(
+      await screen.findByRole('tab', { name: 'aihub.detail.docs' }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId('aihub-asset-doc-link'),
+      ).not.toBeInTheDocument(),
     );
   });
 });
