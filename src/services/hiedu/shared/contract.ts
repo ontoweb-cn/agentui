@@ -1,5 +1,5 @@
 // hiedu 契约类型与错误(shared 层,双门户共享——方案 docs/hiedu-web与AgentUI复用-方案分析.md)。
-// 本文件由 api.ts 机械拆分生成,禁止引入宿主特有依赖(import.meta.env/window)。
+// 本文件由 api.ts 机械拆分生成,禁止引入宿主环境读取(import.meta.env、localStorage、SSO 深链)。
 // 宿主: hiedu-web src/api.ts(独立门户) / agentui src/services/hiedu/api.ts(BFF 代理)。
 
 // ---------- 契约类型 ----------
@@ -291,7 +291,6 @@ export interface ExportJob {
   created_at: string;
 }
 
-// 后端 PersonChange 已声明 JSON tag；兼容旧版首字母大写键以平滑升级。
 
 export interface QueryParams {
   [key: string]: string | number | boolean | null | undefined;

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // hiedu shared 层漂移门禁:校验 src/services/hiedu/shared/ 快照与 manifest.json 的
-// SHA256 一致。任何对快照的手工改动都会使校验失败——必须回退手改,或在源仓
-// (intellect-auth hiedu/web/src/shared)修改后重跑 sync-hiedu-shared.mjs。
-// 单仓可执行(不依赖同级 checkout);禁止静默跳过(评审 §8.1)。
+// SHA256 一致。快照被手工改动而未重跑 sync-hiedu-shared.mjs 即失败;若文件与
+// manifest 被同时改动则本门禁不可见(以 PR 评审 + 夜间跨仓对账兜底,见复用方案 §8.1)。
+// 单仓可执行(不依赖同级 checkout);禁止静默跳过。
 
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -17,6 +17,10 @@ if (!existsSync(manifestPath)) {
   process.exit(1);
 }
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+if (!manifest || typeof manifest.files !== 'object' || manifest.files === null) {
+  console.error('[check-hiedu-shared] manifest.json 缺少 files 键(损坏?请重跑 sync:hiedu-shared)');
+  process.exit(1);
+}
 const errors = [];
 const seen = new Set();
 

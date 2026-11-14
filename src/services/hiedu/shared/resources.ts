@@ -30,6 +30,7 @@ import type {
   UnitImpact,
 } from './contract';
 
+// 后端 PersonChange 已声明 JSON tag；兼容旧版首字母大写键以平滑升级。
 interface RawPersonChange {
   id?: number;
   ID?: number;

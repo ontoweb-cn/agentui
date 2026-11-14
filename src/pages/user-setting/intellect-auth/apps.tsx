@@ -29,10 +29,10 @@ import {
   type AppSummary,
   type IdpApplication,
 } from '@/services/hiedu/api';
-import { statusLabel, statusTone } from '@/services/hiedu/format';
+import { hasPermission, statusLabel, statusTone } from '@/services/hiedu/format';
 import { AppModal } from './components/modal';
 import { Field, PageHeader, Panel } from './components/page';
-import { EmptyState, ErrorState, LoadingState } from './components/state';
+import { EmptyState, ErrorState, ForbiddenState, LoadingState } from './components/state';
 import { useMe } from './hooks';
 
 const SYNC_MODE_LABEL: Record<string, string> = {
@@ -89,6 +89,9 @@ const EMPTY_FORM: AppRegisterInput = {
 
 export default function AppsPage() {
   const me = useMe();
+  // 页内权限门控(模块约定:路由常驻、页面内门控;对齐 roles.tsx 与源仓 PermissionGate)。
+  const canAdmin = hasPermission(me.permissions, 'role:admin');
+  const orgScope = me.scopes.some((scope) => scope.all);
   const [apps, setApps] = useState<AppSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -147,9 +150,11 @@ export default function AppsPage() {
   }, []);
 
   useEffect(() => {
+    // 未授权不发业务请求(避免噪音 403),仅呈现无权限态。
+    if (!canAdmin || !orgScope) return;
     void load();
     void loadIdpApps();
-  }, [load, loadIdpApps]);
+  }, [load, loadIdpApps, canAdmin, orgScope]);
 
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -232,6 +237,15 @@ export default function AppsPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!canAdmin || !orgScope) {
+    return (
+      <ForbiddenState
+        message="无权限访问应用管理"
+        detail="需要校级范围的 role:admin 权限。"
+      />
+    );
   }
 
   return (

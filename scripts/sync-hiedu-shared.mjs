@@ -16,6 +16,15 @@ const srcDir = process.env.HIEDU_SHARED_SRC
   : path.resolve(repoRoot, '..', 'intellect-auth', 'hiedu', 'web', 'src', 'shared');
 const destDir = path.resolve(repoRoot, 'src', 'services', 'hiedu', 'shared');
 
+// 自指守卫(评审 R2):源=快照目录时,rmSync 会先删源再崩,清空快照。
+{
+  const rel = path.relative(destDir, srcDir);
+  if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) {
+    console.error(`[sync-hiedu-shared] 源目录不能位于快照目录内: ${srcDir}`);
+    process.exit(1);
+  }
+}
+
 if (!existsSync(srcDir)) {
   console.error(
     `[sync-hiedu-shared] 源目录不存在: ${srcDir}\n` +

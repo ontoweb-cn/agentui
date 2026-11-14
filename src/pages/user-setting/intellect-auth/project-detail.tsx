@@ -34,7 +34,13 @@ import {
 import { hasPermission } from '@/services/hiedu/format';
 import { AppModal } from './components/modal';
 import { Field, PageHeader, Panel } from './components/page';
-import { EmptyState, ErrorState, LoadingState, StatusBadge } from './components/state';
+import {
+  EmptyState,
+  ErrorState,
+  ForbiddenState,
+  LoadingState,
+  StatusBadge,
+} from './components/state';
 import { useMe } from './hooks';
 
 const PROJECTS_BASE = `${Routes.UserSetting}${Routes.IntellectAuthProjects}`;
@@ -55,6 +61,10 @@ export default function ProjectDetailPage() {
   const me = useMe();
   const params = useParams<{ id: string }>();
   const projectId = Number(params.id ?? '');
+  // 页内权限门控:anyOf(project:read | project:read:own),对齐源仓路由门。
+  const canReadAny =
+    hasPermission(me.permissions, 'project:read') ||
+    hasPermission(me.permissions, 'project:read:own');
   const canWrite = hasPermission(me.permissions, 'project:write');
   const canReadMembers = hasPermission(me.permissions, 'project:read');
 
@@ -179,8 +189,10 @@ export default function ProjectDetailPage() {
   }, [canReadMembers, canWrite, projectId]);
 
   useEffect(() => {
+    // 未授权不发业务请求(避免噪音 403)。
+    if (!canReadAny) return;
     void load();
-  }, [load]);
+  }, [load, canReadAny]);
 
   const personById = useMemo(() => {
     const map = new Map<number, Person>();
@@ -259,6 +271,15 @@ export default function ProjectDetailPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!canReadAny) {
+    return (
+      <ForbiddenState
+        message="无权限访问项目详情"
+        detail="需要 project:read 或 project:read:own 权限。"
+      />
+    );
   }
 
   if (loading) {

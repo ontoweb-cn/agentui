@@ -3,7 +3,8 @@
 //  - agentui:  /api/bff/hiedu 断言代理(无租户头)
 // 契约(复用方案评审 §8.2):① basePath 在本层拼接,资源方法传裸路径(防双重前缀);
 // ② extraHeaders 每请求求值;③ 401 继续派发 UNAUTHORIZED_EVENT(宿主监听零改动);
-// ④ import.meta.env/window 仅限宿主适配层。
+// ④ 宿主环境读取(import.meta.env、localStorage、SSO 深链)不得进 shared;
+//    浏览器平台 API(事件派发/超时/Blob 下载)属传输本体,允许在本层使用。
 
 import { ApiError, ApiResult, QueryParams } from './contract';
 
@@ -39,6 +40,11 @@ export interface HieduClient {
 
 export function createHieduClient(config: HieduClientConfig): HieduClient {
   const apiBase = config.basePath.replace(/\/+$/, '');
+  // basePath 形态守卫(评审 R2):只允许空串或以单个 / 开头的站内路径——
+  // 拒绝 '//host'(协议相对跨源)与绝对 URL,防止 credentials:'include' 被引向外部源。
+  if (apiBase !== '' && !/^\/[^/]/.test(apiBase)) {
+    throw new Error(`hiedu client: basePath must be an in-site path, got: ${JSON.stringify(config.basePath)}`);
+  }
   const timeoutMs = config.timeoutMs ?? 60_000;
 
   function withBase(path: string): string {

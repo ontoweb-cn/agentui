@@ -43,7 +43,13 @@ import {
 import { formatDateTime, hasPermission } from '@/services/hiedu/format';
 import { AppModal } from './components/modal';
 import { Field, PageHeader, Panel } from './components/page';
-import { EmptyState, ErrorState, LoadingState, StatusBadge } from './components/state';
+import {
+  EmptyState,
+  ErrorState,
+  ForbiddenState,
+  LoadingState,
+  StatusBadge,
+} from './components/state';
 import { AppStatusBadge, syncModeLabel } from './apps';
 import { useMe } from './hooks';
 
@@ -97,6 +103,9 @@ export default function AppDetailPage() {
   const me = useMe();
   const params = useParams<{ code: string }>();
   const code = params.code ?? '';
+  // 页内权限门控:role:admin + 校级(对齐源仓 PermissionGate requireOrgScope)。
+  const canAdmin = hasPermission(me.permissions, 'role:admin');
+  const orgScope = me.scopes.some((scope) => scope.all);
   const [app, setApp] = useState<AppRegistry | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,8 +126,19 @@ export default function AppDetailPage() {
   }, [code]);
 
   useEffect(() => {
+    // 未授权不发业务请求(避免噪音 403)。
+    if (!canAdmin || !orgScope) return;
     void load();
-  }, [load]);
+  }, [load, canAdmin, orgScope]);
+
+  if (!canAdmin || !orgScope) {
+    return (
+      <ForbiddenState
+        message="无权限访问应用详情"
+        detail="需要校级范围的 role:admin 权限。"
+      />
+    );
+  }
 
   if (loading) {
     return (
