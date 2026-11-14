@@ -45,7 +45,7 @@ export default {
       imagesStatus: '镜像状态',
       images: '镜像清单',
       hot: '热度',
-      enterprise: '企业版',
+      enterprise: '需授权',
       spec: '技术规格',
       docsEmpty: '暂无文档',
       docsOpen: '打开文档',

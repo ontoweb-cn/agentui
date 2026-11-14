@@ -46,7 +46,7 @@ export default {
       imagesStatus: 'Image status',
       images: 'Images',
       hot: 'Popularity',
-      enterprise: 'Enterprise',
+      enterprise: 'Auth required',
       spec: 'Specification',
       docsEmpty: 'No documentation',
       docsOpen: 'Open documentation',
