@@ -72,6 +72,29 @@ describe('aihub proxy', () => {
     expect(res.status).toBe(503);
   });
 
+  it('maps upstream network failure to 502', async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error('connect ECONNREFUSED');
+    });
+    const app = new Hono();
+    app.use('*', authSessionMiddleware);
+    app.route(
+      '/',
+      createAihubRoutes({
+        configLoader: () => okConfig,
+        resolveMemberId: async () => 'member-1',
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        now: () => 1_000_000,
+      }),
+    );
+    const res = await app.request('/aihub/meta', {
+      headers: { cookie: 'imt_token=token-1' },
+    });
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).toBe('AIHUB_UPSTREAM_UNREACHABLE');
+  });
+
   it('injects assertion and forwards to /api/v1/aihub', async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(JSON.stringify({ ok: true }), {
