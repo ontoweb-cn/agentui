@@ -32,6 +32,10 @@ const FAVORITE_ROUTE = new RegExp(String.raw`^${AIHUB_PREFIX}\/assets\/[^/]+\/fa
 // 精确白名单：发布 dataset、下载、安装、打开安装、对话，卸载用 DELETE。
 const WRITE_RULES: ReadonlyArray<{ method: string; pattern: RegExp }> = [
   { method: 'POST', pattern: new RegExp(String.raw`^${AIHUB_PREFIX}\/assets$`) },
+  {
+    method: 'PATCH',
+    pattern: new RegExp(String.raw`^${AIHUB_PREFIX}\/assets\/[^/]+$`),
+  },
   { method: 'POST', pattern: FAVORITE_ROUTE },
   {
     method: 'POST',
@@ -40,6 +44,10 @@ const WRITE_RULES: ReadonlyArray<{ method: string; pattern: RegExp }> = [
   {
     method: 'POST',
     pattern: new RegExp(String.raw`^${AIHUB_PREFIX}\/assets\/[^/]+\/install$`),
+  },
+  {
+    method: 'POST',
+    pattern: new RegExp(String.raw`^${AIHUB_PREFIX}\/assets\/[^/]+\/publish$`),
   },
   {
     method: 'POST',
@@ -52,6 +60,10 @@ const WRITE_RULES: ReadonlyArray<{ method: string; pattern: RegExp }> = [
   {
     method: 'DELETE',
     pattern: new RegExp(String.raw`^${AIHUB_PREFIX}\/installations\/[^/]+$`),
+  },
+  {
+    method: 'DELETE',
+    pattern: new RegExp(String.raw`^${AIHUB_PREFIX}\/chat\/sessions\/[^/]+$`),
   },
 ];
 const CHAT_STREAM_ROUTE = new RegExp(

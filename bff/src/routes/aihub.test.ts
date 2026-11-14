@@ -85,11 +85,14 @@ describe('aihub proxy', () => {
     app.route('/', createAihubRoutes({ configLoader: () => okConfig }));
     const allowed = [
       ['/aihub/assets', 'POST'],
+      ['/aihub/assets/abc', 'PATCH'],
       ['/aihub/assets/abc/actions/download', 'POST'],
       ['/aihub/assets/abc/install', 'POST'],
+      ['/aihub/assets/abc/publish', 'POST'],
       ['/aihub/installations/inst-1/open', 'POST'],
       ['/aihub/installations/inst-1', 'DELETE'],
       ['/api/bff/aihub/chat/completions', 'POST'],
+      ['/aihub/chat/sessions/api_1', 'DELETE'],
     ] as const;
     for (const [path, method] of allowed) {
       const res = await app.request(path, { method });
