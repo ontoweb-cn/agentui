@@ -110,7 +110,12 @@ export interface MarketPage {
 export interface MarketQueryParams {
   assetType: string;
   field: string;
+  /** 路径中的单 domain；使用多选时传 all */
   domain: string;
+  /** 多选行业（query `domains=`）；非空时路径 domain 强制 all */
+  domains?: string[];
+  /** 多选匹配模式，默认 any */
+  domainMatch?: 'any' | 'all';
   q?: string;
   page?: number;
   pageSize?: number;
@@ -135,22 +140,31 @@ export const fetchMarketPage = ({
   assetType,
   field,
   domain,
+  domains,
+  domainMatch,
   q,
   page = 1,
   pageSize = 20,
   arch,
   accelerator,
   minVram,
-}: MarketQueryParams) =>
-  request.get<MarketPage>(
+}: MarketQueryParams) => {
+  const selectedDomains = (domains ?? []).filter(Boolean);
+  const domainPath = selectedDomains.length > 0 ? 'all' : domain;
+
+  return request.get<MarketPage>(
     `/api/bff/aihub/markets/${encodeURIComponent(assetType)}/${encodeURIComponent(
       field,
-    )}/${encodeURIComponent(domain)}`,
+    )}/${encodeURIComponent(domainPath)}`,
     {
       params: {
         q: q || undefined,
         page,
         page_size: pageSize,
+        domains:
+          selectedDomains.length > 0 ? selectedDomains.join(',') : undefined,
+        domain_match:
+          selectedDomains.length > 1 ? (domainMatch ?? 'any') : undefined,
         arch: arch && arch !== 'all' ? arch : undefined,
         accelerator:
           accelerator && accelerator !== 'all' ? accelerator : undefined,
@@ -158,6 +172,7 @@ export const fetchMarketPage = ({
       },
     },
   );
+};
 
 export const fetchAsset = (id: string) =>
   request.get<MarketAsset>(`/api/bff/aihub/assets/${encodeURIComponent(id)}`);

@@ -39,7 +39,7 @@ const asset: MarketAsset = {
   name: 'resnet50',
   label: 'ResNet-50',
   field: 'cv',
-  domains: ['industry'],
+  domains: ['industrial'],
   status: 'online',
   hot: 12,
   price: 0,
@@ -69,6 +69,13 @@ const taxonomies: Taxonomies = {
   asset_type: 'models',
   fields: [
     {
+      key: 'all',
+      label: { zh: '全部', en: 'All' },
+      count: 40,
+      synthetic: true,
+      order: 0,
+    },
+    {
       key: 'cv',
       label: { zh: '计算机视觉', en: 'CV' },
       count: 10,
@@ -78,11 +85,60 @@ const taxonomies: Taxonomies = {
   ],
   domains: [
     {
-      key: 'industry',
-      label: { zh: '工业', en: 'Industry' },
+      key: 'all',
+      label: { zh: '全部', en: 'All' },
+      count: 40,
+      synthetic: true,
+      order: 0,
+    },
+    {
+      key: 'biology',
+      label: { zh: '生物', en: 'Biology' },
+      count: 0,
+      synthetic: false,
+      order: 10,
+    },
+    {
+      key: 'medical',
+      label: { zh: '医药', en: 'Pharma & Healthcare' },
+      count: 0,
+      synthetic: false,
+      order: 20,
+    },
+    {
+      key: 'industrial',
+      label: { zh: '工业', en: 'Industrial' },
       count: 5,
       synthetic: false,
-      order: 1,
+      order: 30,
+    },
+    {
+      key: 'finance',
+      label: { zh: '金融', en: 'Finance' },
+      count: 0,
+      synthetic: false,
+      order: 40,
+    },
+    {
+      key: 'transport',
+      label: { zh: '交通', en: 'Transportation' },
+      count: 0,
+      synthetic: false,
+      order: 50,
+    },
+    {
+      key: 'government',
+      label: { zh: '政务', en: 'Government' },
+      count: 0,
+      synthetic: false,
+      order: 60,
+    },
+    {
+      key: 'general',
+      label: { zh: '通用', en: 'General' },
+      count: 0,
+      synthetic: false,
+      order: 70,
     },
   ],
   hardware: {
@@ -106,7 +162,9 @@ const taxonomies: Taxonomies = {
 function LocationProbe() {
   const location = useLocation();
   return (
-    <div data-testid="location">{`${location.pathname}${location.search}`}</div>
+    <div data-testid="location">
+      {decodeURIComponent(`${location.pathname}${location.search}`)}
+    </div>
   );
 }
 
@@ -194,6 +252,88 @@ describe('AIHub asset list + workspace', () => {
   it('非法资源类型重定向到默认类型', async () => {
     renderAt('/hub/a%20b');
 
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent('/hub/models'),
+    );
+  });
+
+  it('渲染全部 7 个行业分类，且不重复合成「全部」项', async () => {
+    renderAt('/hub/models');
+    await screen.findByTestId('aihub-asset-card-m1');
+
+    for (const key of [
+      'biology',
+      'medical',
+      'industrial',
+      'finance',
+      'transport',
+      'government',
+      'general',
+    ]) {
+      expect(screen.getByTestId(`aihub-filter-domain-${key}`)).toBeInTheDocument();
+    }
+    expect(screen.getAllByTestId('aihub-filter-domain-all')).toHaveLength(1);
+    expect(screen.getAllByTestId('aihub-filter-field-all')).toHaveLength(1);
+  });
+
+  it('任意行业分类都可触发筛选并透传给列表查询', async () => {
+    renderAt('/hub/models');
+
+    fireEvent.click(
+      await screen.findByTestId('aihub-filter-domain-government'),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/hub/models?domains=government',
+      ),
+    );
+    await waitFor(() =>
+      expect(mockFetchMarketPage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          domain: 'all',
+          domains: ['government'],
+        }),
+      ),
+    );
+  });
+
+  it('行业支持多选，写入 domains 与 domain_match，再次点击可取消', async () => {
+    renderAt('/hub/models');
+
+    fireEvent.click(
+      await screen.findByTestId('aihub-filter-domain-government'),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/hub/models?domains=government',
+      ),
+    );
+
+    fireEvent.click(screen.getByTestId('aihub-filter-domain-medical'));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/hub/models?domains=government,medical&domain_match=any',
+      ),
+    );
+    await waitFor(() =>
+      expect(mockFetchMarketPage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          domain: 'all',
+          domains: ['government', 'medical'],
+          domainMatch: 'any',
+        }),
+      ),
+    );
+
+    fireEvent.click(screen.getByTestId('aihub-filter-domain-government'));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/hub/models?domains=medical',
+      ),
+    );
+
+    fireEvent.click(screen.getByTestId('aihub-filter-domain-all'));
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent('/hub/models'),
     );

@@ -34,6 +34,19 @@ function readFilterKey(value: string | null): string {
   return value && SAFE_FILTER_KEY.test(value) ? value : 'all';
 }
 
+/** 兼容单值 ?domain= 与多值 ?domains=a,b；输出去重后的合法 key。 */
+function readDomains(value: string | null, legacy: string): string[] {
+  const domains = (value ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(
+      (item) => item && item !== 'all' && SAFE_FILTER_KEY.test(item),
+    );
+  const unique = Array.from(new Set(domains));
+  if (unique.length === 0 && legacy !== 'all') return [legacy];
+  return unique;
+}
+
 function Chip({
   active,
   children,
@@ -80,7 +93,10 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
   const [params] = useSearchParams();
 
   const field = readFilterKey(params.get('field'));
-  const domain = readFilterKey(params.get('domain'));
+  const legacyDomain = readFilterKey(params.get('domain'));
+  const domains = readDomains(params.get('domains'), legacyDomain);
+  const domainKey = domains.join(',');
+  const domainMatch = params.get('domain_match') === 'all' ? 'all' : 'any';
   const arch = readFilterKey(params.get('arch'));
   const accelerator = readFilterKey(params.get('accelerator'));
   const q = params.get('q') ?? '';
@@ -106,7 +122,8 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
       'aihub-market',
       type,
       field,
-      domain,
+      domainKey,
+      domainMatch,
       arch,
       accelerator,
       q,
@@ -117,7 +134,9 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
         await fetchMarketPage({
           assetType: type,
           field,
-          domain,
+          domain: 'all',
+          domains,
+          domainMatch,
           q,
           page,
           pageSize: PAGE_SIZE,
@@ -150,7 +169,7 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const filtered =
     field !== 'all' ||
-    domain !== 'all' ||
+    domains.length > 0 ||
     arch !== 'all' ||
     accelerator !== 'all' ||
     Boolean(q);
@@ -183,6 +202,37 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
     }
     const query = next.toString();
     navigate(query ? `${listPath}?${query}` : listPath);
+  };
+
+  /** 多选行业：写 ?domains=a,b；选中 >1 时保留/补 domain_match */
+  const updateDomains = (next: string[]) => {
+    const unique = Array.from(new Set(next));
+    const nextParams = new URLSearchParams(params);
+    nextParams.delete('page');
+    nextParams.delete('domain');
+    if (unique.length === 0) {
+      nextParams.delete('domains');
+      nextParams.delete('domain_match');
+    } else {
+      nextParams.set('domains', unique.join(','));
+      if (unique.length > 1) {
+        if (!nextParams.get('domain_match')) {
+          nextParams.set('domain_match', 'any');
+        }
+      } else {
+        nextParams.delete('domain_match');
+      }
+    }
+    const query = nextParams.toString();
+    navigate(query ? `${listPath}?${query}` : listPath);
+  };
+
+  const toggleDomain = (key: string) => {
+    updateDomains(
+      domains.includes(key)
+        ? domains.filter((item) => item !== key)
+        : [...domains, key],
+    );
   };
 
   const openAsset = (id: string) => {
@@ -239,7 +289,9 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
                 >
                   {t('aihub.filter.all')}
                 </Chip>
-                {(taxonomies.data?.fields ?? []).map((item) => (
+                {(taxonomies.data?.fields ?? [])
+                  .filter((item) => !item.synthetic)
+                  .map((item) => (
                   <Chip
                     key={item.key}
                     active={field === item.key}
@@ -259,25 +311,27 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
                   {t('aihub.filter.domain')}
                 </span>
                 <Chip
-                  active={domain === 'all'}
-                  onClick={() => navigateWith({ domain: 'all' })}
+                  active={domains.length === 0}
+                  onClick={() => updateDomains([])}
                   testId="aihub-filter-domain-all"
                 >
                   {t('aihub.filter.all')}
                 </Chip>
-                {(taxonomies.data?.domains ?? []).map((item) => (
-                  <Chip
-                    key={item.key}
-                    active={domain === item.key}
-                    onClick={() => navigateWith({ domain: item.key })}
-                    testId={`aihub-filter-domain-${item.key}`}
-                  >
-                    {labelOf(taxonomies.data?.domains, item.key)}
-                    <span className="ml-1 text-[11px] text-text-secondary">
-                      {item.count}
-                    </span>
-                  </Chip>
-                ))}
+                {(taxonomies.data?.domains ?? [])
+                  .filter((item) => !item.synthetic)
+                  .map((item) => (
+                    <Chip
+                      key={item.key}
+                      active={domains.includes(item.key)}
+                      onClick={() => toggleDomain(item.key)}
+                      testId={`aihub-filter-domain-${item.key}`}
+                    >
+                      {labelOf(taxonomies.data?.domains, item.key)}
+                      <span className="ml-1 text-[11px] text-text-secondary">
+                        {item.count}
+                      </span>
+                    </Chip>
+                  ))}
               </div>
             </div>
 
