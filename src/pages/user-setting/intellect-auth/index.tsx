@@ -32,11 +32,19 @@ interface NavItem {
   label: string;
   permission?: string;
   anyOf?: string[];
+  /** 需要校级数据范围（与 hiedu 独立门户的 requireOrgScope 一致）。 */
+  orgScope?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { to: Routes.IntellectAuthOverview, label: '工作台' },
   { to: Routes.IntellectAuthUnits, label: '组织架构', permission: 'unit:read' },
+  {
+    to: Routes.IntellectAuthRoles,
+    label: '角色与授权',
+    permission: 'role:admin',
+    orgScope: true,
+  },
   { to: Routes.IntellectAuthPersons, label: '人员管理', permission: 'person:read' },
   {
     to: Routes.IntellectAuthProjects,
@@ -74,7 +82,9 @@ export function FeatureDisabledState() {
 }
 
 function visibleNav(me: Me): NavItem[] {
+  const orgScope = me.scopes.some((scope) => scope.all);
   return NAV_ITEMS.filter((item) => {
+    if (item.orgScope && !orgScope) return false;
     if (item.anyOf) {
       return item.anyOf.some((permission) =>
         hasPermission(me.permissions, permission),

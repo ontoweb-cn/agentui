@@ -175,6 +175,11 @@ const routeConfigOptions = [
                   import('@/pages/user-setting/intellect-auth/units'),
               },
               {
+                path: `${Routes.UserSetting}${Routes.IntellectAuthRoles}`,
+                Component: () =>
+                  import('@/pages/user-setting/intellect-auth/roles'),
+              },
+              {
                 path: `${Routes.UserSetting}${Routes.IntellectAuthPersons}`,
                 Component: () =>
                   import('@/pages/user-setting/intellect-auth/persons'),

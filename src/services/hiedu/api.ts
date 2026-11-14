@@ -321,6 +321,81 @@ export interface ApiResult<T> {
   etag: string | null;
 }
 
+// ---------- 角色与授权 ----------
+
+export interface Role {
+  id?: number;
+  org_code: string;
+  code: string;
+  name: string;
+  permissions: string[];
+  scope_all: boolean;
+  is_system: boolean;
+  status: string;
+}
+
+export interface RoleSummary extends Role {
+  assignment_count: number;
+  assigned_person_count: number;
+  updated_at?: string;
+}
+
+export interface RoleInput {
+  code: string;
+  name: string;
+  permissions: string[];
+  scope_all?: boolean;
+  is_system?: boolean;
+  /** 仅创建：编码已存在时后端返回 409，避免覆盖既有角色。 */
+  create_only?: boolean;
+}
+
+export interface RoleAssignment {
+  id?: number;
+  org_code?: string;
+  person_id: number;
+  role_code: string;
+  unit_id?: number;
+  include_descendants: boolean;
+}
+
+export interface RoleAssignmentDetail {
+  id: number;
+  person_id: number;
+  person_no: string;
+  person_name: string;
+  person_type: string;
+  person_status: string;
+  role_code: string;
+  role_name: string;
+  role_status: string;
+  scope_all: boolean;
+  unit_id?: number;
+  unit_name?: string;
+  unit_path?: string;
+  unit_status?: string;
+  include_descendants: boolean;
+  created_at: string;
+}
+
+export interface AppRegistry {
+  id: number;
+  org_code: string;
+  app_code: string;
+  display_name: string;
+  status: string;
+}
+
+export interface AppPermission {
+  id: number;
+  org_code: string;
+  app_code: string;
+  perm_code: string;
+  display_name?: string;
+  kind: string;
+  status: string;
+}
+
 // ---------- 错误 ----------
 
 // 会话中途失效时由 App 监听并切换到未登录页，避免每个页面各自处理。
@@ -881,6 +956,74 @@ export const api = {
     return downloadFile(
       withBase(`/api/exports/${encodeURIComponent(id)}/download`),
       `export-${id}.csv`,
+    );
+  },
+
+  roles(): Promise<ApiResult<RoleSummary[]>> {
+    return requestJSON<RoleSummary[]>('/api/roles');
+  },
+
+  role(code: string): Promise<ApiResult<RoleSummary>> {
+    return requestJSON<RoleSummary>(`/api/roles/${encodeURIComponent(code)}`);
+  },
+
+  upsertRole(body: RoleInput, ifMatch?: string): Promise<ApiResult<RoleSummary>> {
+    return requestJSON<RoleSummary>('/api/roles', { method: 'POST', body, ifMatch });
+  },
+
+  setRoleEnabled(code: string, enabled: boolean): Promise<ApiResult<null>> {
+    return requestJSON<null>(
+      `/api/roles/${encodeURIComponent(code)}/${enabled ? 'enable' : 'disable'}`,
+      { method: 'POST' },
+    );
+  },
+
+  roleAssignmentsByRole(
+    code: string,
+    params?: QueryParams,
+  ): Promise<ApiResult<RoleAssignmentDetail[]>> {
+    return requestJSON<RoleAssignmentDetail[]>(
+      `/api/roles/${encodeURIComponent(code)}/assignments`,
+      { params },
+    );
+  },
+
+  rolePermissions(): Promise<ApiResult<{ local: string[] }>> {
+    return requestJSON<{ local: string[] }>('/api/role-permissions');
+  },
+
+  roleAssignments(personID: number): Promise<ApiResult<RoleAssignment[]>> {
+    return requestJSON<RoleAssignment[]>('/api/role-assignments', {
+      params: { person_id: personID },
+    });
+  },
+
+  assignRole(body: RoleAssignment): Promise<ApiResult<null>> {
+    return requestJSON<null>('/api/role-assignments', { method: 'POST', body });
+  },
+
+  revokeRoleAssignment(
+    personID: number,
+    roleCode: string,
+    unitID?: number,
+  ): Promise<ApiResult<null>> {
+    return requestJSON<null>('/api/role-assignments', {
+      method: 'DELETE',
+      params: {
+        person_id: personID,
+        role_code: roleCode,
+        ...(unitID ? { unit_id: unitID } : {}),
+      },
+    });
+  },
+
+  apps(): Promise<ApiResult<AppRegistry[]>> {
+    return requestJSON<AppRegistry[]>('/api/apps');
+  },
+
+  appPermissions(appCode: string): Promise<ApiResult<AppPermission[]>> {
+    return requestJSON<AppPermission[]>(
+      `/api/apps/${encodeURIComponent(appCode)}/permissions`,
     );
   },
 };
