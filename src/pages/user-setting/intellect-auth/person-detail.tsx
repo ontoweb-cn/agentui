@@ -17,7 +17,9 @@ import {
 import { useParams } from 'react-router';
 
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -41,6 +43,8 @@ import {
   type Person,
   type PersonChange,
   type PersonRelation,
+  type RoleAssignment,
+  type RoleSummary,
   type Unit,
 } from '@/services/hiedu/api';
 import {
@@ -90,6 +94,7 @@ function fieldValue(field: string, value: string): string {
 type DialogState =
   | { kind: 'edit' }
   | { kind: 'transfer' }
+  | { kind: 'roles' }
   | { kind: 'end'; relation: PersonRelation };
 
 interface EditForm {
@@ -150,6 +155,10 @@ export default function PersonDetailPage() {
   const canWrite = hasPermission(me.permissions, 'person:write');
   const canWritePII = hasPermission(me.permissions, 'person:pii:write') && me.pii.write;
   const isOrgScope = me.scopes.some((scope) => scope.all);
+  // 部门级 role:admin 可在人员详情只读查看范围内分配；写操作要求校级。
+  const canViewRoles = hasPermission(me.permissions, 'role:admin');
+  const canManageRoles = canViewRoles && isOrgScope;
+  const canReadUnits = hasPermission(me.permissions, 'unit:read');
 
   const [person, setPerson] = useState<Person | null>(null);
   const [history, setHistory] = useState<PersonChange[]>([]);
@@ -159,6 +168,13 @@ export default function PersonDetailPage() {
   const [error, setError] = useState<DetailError | null>(null);
 
   const [units, setUnits] = useState<Unit[]>([]);
+  const [roleRows, setRoleRows] = useState<RoleAssignment[]>([]);
+  const [roleOptions, setRoleOptions] = useState<RoleSummary[]>([]);
+  const [roleForm, setRoleForm] = useState({
+    role_code: '',
+    unit_id: '',
+    include_descendants: true,
+  });
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -183,6 +199,7 @@ export default function PersonDetailPage() {
       setPerson(null);
       setHistory([]);
       setRelations([]);
+      setRoleRows([]);
       setLoading(false);
       setError({ message: '无效的人员 ID' });
       return;
@@ -202,6 +219,34 @@ export default function PersonDetailPage() {
       setRelations(
         Array.isArray(relationResult.data) ? relationResult.data : [],
       );
+      if (canViewRoles) {
+        // 分配记录与“可选角色”分开加载：后者失败时仍能展示已有分配。
+        try {
+          const assignResult = await api.roleAssignments(personId);
+          if (requestSeq.current !== seq) return;
+          setRoleRows(
+            Array.isArray(assignResult.data) ? assignResult.data : [],
+          );
+        } catch {
+          setRoleRows([]);
+        }
+        if (canManageRoles) {
+          try {
+            const roleResult = await api.roles();
+            if (requestSeq.current !== seq) return;
+            setRoleOptions(
+              (roleResult.data ?? []).filter((role) => role.status === 'active'),
+            );
+          } catch {
+            // 角色下拉不可用时保留已有分配列表。
+            setRoleOptions([]);
+          }
+        } else {
+          setRoleOptions([]);
+        }
+      } else {
+        setRoleRows([]);
+      }
     } catch (err) {
       if (requestSeq.current !== seq) return;
       setError({
@@ -211,10 +256,11 @@ export default function PersonDetailPage() {
       setPerson(null);
       setHistory([]);
       setRelations([]);
+      setRoleRows([]);
     } finally {
       if (requestSeq.current === seq) setLoading(false);
     }
-  }, [canRead, personId, validId]);
+  }, [canRead, personId, validId, canViewRoles, canManageRoles]);
 
   useEffect(() => {
     void load();
@@ -241,6 +287,58 @@ export default function PersonDetailPage() {
     if (busy) return;
     setDialog(null);
     setFormError(null);
+  }
+
+  async function openRoleDialog() {
+    await loadUnits();
+    setRoleForm({ role_code: '', unit_id: '', include_descendants: true });
+    setFormError(null);
+    setDialog({ kind: 'roles' });
+  }
+
+  async function submitRole() {
+    if (!person) return;
+    const role = roleOptions.find((item) => item.code === roleForm.role_code);
+    if (!role) {
+      setFormError('请选择角色');
+      return;
+    }
+    if (!role.scope_all && !roleForm.unit_id) {
+      setFormError('该角色需要选择一个部门');
+      return;
+    }
+    setBusy(true);
+    setFormError(null);
+    try {
+      await api.assignRole({
+        person_id: person.id,
+        role_code: role.code,
+        unit_id: role.scope_all ? undefined : Number(roleForm.unit_id),
+        include_descendants: role.scope_all ? false : roleForm.include_descendants,
+      });
+      setDialog(null);
+      await load();
+    } catch (err) {
+      setFormError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revokeRole(row: RoleAssignment) {
+    if (!person) return;
+    const name = roleOptions.find((role) => role.code === row.role_code)?.name ?? row.role_code;
+    if (!window.confirm(`确认撤销 ${person.name} 的「${name}」分配？`)) return;
+    setBusy(true);
+    setFormError(null);
+    try {
+      await api.revokeRoleAssignment(person.id, row.role_code, row.unit_id);
+      await load();
+    } catch (err) {
+      setFormError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
   }
 
   function openEdit() {
@@ -364,6 +462,14 @@ export default function PersonDetailPage() {
 
   const activeRelations = relations.filter(
     (relation) => relation.status === 'active',
+  );
+
+  const roleNameByCode = new Map(
+    roleOptions.map((role) => [role.code, role.name]),
+  );
+  const unitNameByID = new Map(units.map((unit) => [unit.id, unit.name]));
+  const selectedRole = roleOptions.find(
+    (role) => role.code === roleForm.role_code,
   );
 
   return (
@@ -509,6 +615,92 @@ export default function PersonDetailPage() {
               />
             )}
           </Panel>
+
+          {canViewRoles ? (
+            <Panel
+              title="角色分配"
+              extra={
+                canManageRoles ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => void openRoleDialog()}
+                  >
+                    新增分配
+                  </Button>
+                ) : (
+                  <span className="text-xs text-text-secondary">只读</span>
+                )
+              }
+            >
+              {canManageRoles ? null : (
+                <p className="mb-3 text-xs text-text-secondary">
+                  当前账号仅可查看范围内人员的角色分配，修改需校级角色管理员。
+                  {canReadUnits ? '' : '当前账号无 unit:read，部门名称不可见，仅显示部门 ID。'}
+                </p>
+              )}
+              {formError && dialog?.kind !== 'roles' ? (
+                <p className="mb-3 text-sm text-state-error">{formError}</p>
+              ) : null}
+              {roleRows.length > 0 ? (
+                <Table rootClassName="rounded-none bg-transparent">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>角色</TableHead>
+                      <TableHead>部门</TableHead>
+                      <TableHead>范围</TableHead>
+                      <TableHead>操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {roleRows.map((row) => (
+                      <TableRow key={`${row.role_code}-${row.unit_id ?? 0}`}>
+                        <TableCell className="font-medium">
+                          {roleNameByCode.get(row.role_code) ?? row.role_code}
+                          <div className="text-xs text-text-tertiary">
+                            <code>{row.role_code}</code>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {row.unit_id
+                            ? (unitNameByID.get(row.unit_id) ?? `部门 #${row.unit_id}`)
+                            : '全校'}
+                        </TableCell>
+                        <TableCell className="text-text-secondary">
+                          {row.unit_id
+                            ? row.include_descendants
+                              ? '含下级部门'
+                              : '仅本部门'
+                            : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {canManageRoles ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-state-error"
+                              disabled={busy}
+                              onClick={() => void revokeRole(row)}
+                            >
+                              撤销
+                            </Button>
+                          ) : (
+                            <span className="text-text-tertiary">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <EmptyState
+                  title="暂无角色分配"
+                  description="该人员尚未分配任何角色。"
+                />
+              )}
+            </Panel>
+          ) : null}
 
           <Panel
             title="字段变更历史"
@@ -802,6 +994,98 @@ export default function PersonDetailPage() {
               {formError}
             </p>
           ) : null}
+        </AppModal>
+      ) : null}
+
+      {dialog?.kind === 'roles' ? (
+        <AppModal
+          title={`新增角色分配 · ${person?.name ?? ''}`}
+          className="sm:max-w-lg"
+          onClose={closeDialog}
+          footer={
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={closeDialog}
+                disabled={busy}
+              >
+                取消
+              </Button>
+              <Button size="sm" loading={busy} onClick={() => void submitRole()}>
+                {busy ? '分配中…' : '确认分配'}
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-text-secondary">角色 *</span>
+              <Select
+                value={roleForm.role_code}
+                onValueChange={(value) =>
+                  setRoleForm({ role_code: value, unit_id: '', include_descendants: true })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="请选择角色" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roleOptions.map((role) => (
+                    <SelectItem key={role.code} value={role.code}>
+                      {role.name}（{role.code}）
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            {selectedRole && !selectedRole.scope_all ? (
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-text-secondary">部门 *</span>
+                <Select
+                  value={roleForm.unit_id}
+                  onValueChange={(value) =>
+                    setRoleForm({ ...roleForm, unit_id: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="请选择部门" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {units.map((unit) => (
+                      <SelectItem key={unit.id} value={String(unit.id)}>
+                        {unit.name}（{unit.unit_code}）
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+            ) : null}
+            {selectedRole && !selectedRole.scope_all ? (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="role-include-descendants"
+                  checked={roleForm.include_descendants}
+                  onCheckedChange={(checked) =>
+                    setRoleForm({
+                      ...roleForm,
+                      include_descendants: checked === true,
+                    })
+                  }
+                />
+                <Label htmlFor="role-include-descendants">含下级部门</Label>
+              </div>
+            ) : null}
+            <p className="text-xs text-text-secondary">
+              全校范围角色无需指定部门；分配后权限立即对该人员生效。
+            </p>
+            {formError ? (
+              <p role="alert" className="text-sm text-state-error">
+                {formError}
+              </p>
+            ) : null}
+          </div>
         </AppModal>
       ) : null}
     </div>

@@ -75,6 +75,8 @@ export enum Routes {
   IntellectAuth = '/intellect-auth',
   IntellectAuthOverview = `${Routes.IntellectAuth}/overview`,
   IntellectAuthUnits = `${Routes.IntellectAuth}/units`,
+  IntellectAuthRoles = `${Routes.IntellectAuth}/roles`,
+  IntellectAuthApps = `${Routes.IntellectAuth}/apps`,
   IntellectAuthPersons = `${Routes.IntellectAuth}/persons`,
   IntellectAuthPersonCreate = `${Routes.IntellectAuth}/persons/new`,
   IntellectAuthProjects = `${Routes.IntellectAuth}/projects`,
