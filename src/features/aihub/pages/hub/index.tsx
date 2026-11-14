@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { LucideBox, LucideLibrary } from 'lucide-react';
+import { LucideBox, LucideLibrary, LucidePackage } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Outlet } from 'react-router';
 
@@ -85,6 +85,14 @@ export default function AihubHubPage() {
         testId: `aihub-submenu-${meta.key}`,
       };
     });
+
+  // 安装记录入口（M2）：不在 /markets 清单内，固定放在资源类型之后。
+  items.push({
+    key: `${Routes.Hub}/library`,
+    label: t('aihub.library.title'),
+    icon: <LucidePackage className="size-[1em]" />,
+    testId: 'aihub-submenu-library',
+  });
 
   return (
     <HubLayout

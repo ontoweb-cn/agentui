@@ -80,6 +80,29 @@ describe('aihub proxy', () => {
     expect(otherWrite.status).toBe(405);
   });
 
+  it('allows M2 write routes and blocks other writes', async () => {
+    const app = new Hono();
+    app.route('/', createAihubRoutes({ configLoader: () => okConfig }));
+    const allowed = [
+      ['/aihub/assets', 'POST'],
+      ['/aihub/assets/abc/actions/download', 'POST'],
+      ['/aihub/assets/abc/install', 'POST'],
+      ['/aihub/installations/inst-1/open', 'POST'],
+      ['/aihub/installations/inst-1', 'DELETE'],
+      ['/api/bff/aihub/chat/completions', 'POST'],
+    ] as const;
+    for (const [path, method] of allowed) {
+      const res = await app.request(path, { method });
+      // 未携带会话：证明方法已放行，进入鉴权阶段。
+      expect(res.status, `${method} ${path}`).toBe(401);
+    }
+
+    const blocked = await app.request('/aihub/installations/inst-1', {
+      method: 'PUT',
+    });
+    expect(blocked.status).toBe(405);
+  });
+
   it('forwards request body for write methods and omits it for GET', async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(JSON.stringify({ ok: true }), {

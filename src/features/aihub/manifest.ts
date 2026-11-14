@@ -32,6 +32,10 @@ const definition: ModuleDefinition = {
               loader: () => redirect(`${Routes.Hub}/${DEFAULT_RESOURCE_TYPE}`),
             },
             {
+              path: 'library',
+              Component: () => import('./pages/hub/installations'),
+            },
+            {
               path: ':type',
               Component: () => import('./pages/hub/asset-list'),
             },

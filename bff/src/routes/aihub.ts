@@ -23,12 +23,40 @@ import {
 import { streamResponse } from '../utils/response';
 
 const PREFIXES = ['/api/bff/aihub', '/aihub'] as const;
-// M0/M1 市场只读；仅 admin 子路径与收藏 toggle 额外放行 POST（SameSite=Lax cookie + aihub 白名单）。
+// 市场只读；以下写路径精确放行（SameSite=Lax cookie + aihub 断言 + jti 去重）。
 const READ_METHODS = new Set(['GET', 'HEAD']);
 const ADMIN_PREFIXES = ['/api/bff/aihub/admin/', '/aihub/admin/'] as const;
 const ADMIN_METHODS = new Set(['POST']);
-// 精确白名单：`/aihub/assets/{id}/favorite`（M1 收藏）。不放行其他 `/assets/*` 写方法。
-const FAVORITE_ROUTE = /^\/(?:api\/bff\/aihub|aihub)\/assets\/[^/]+\/favorite$/;
+const AIHUB_PREFIX = String.raw`\/(?:api\/bff\/aihub|aihub)`;
+const FAVORITE_ROUTE = new RegExp(String.raw`^${AIHUB_PREFIX}\/assets\/[^/]+\/favorite$`);
+// 精确白名单：发布 dataset、下载、安装、打开安装、对话，卸载用 DELETE。
+const WRITE_RULES: ReadonlyArray<{ method: string; pattern: RegExp }> = [
+  { method: 'POST', pattern: new RegExp(String.raw`^${AIHUB_PREFIX}\/assets$`) },
+  { method: 'POST', pattern: FAVORITE_ROUTE },
+  {
+    method: 'POST',
+    pattern: new RegExp(String.raw`^${AIHUB_PREFIX}\/assets\/[^/]+\/actions\/download$`),
+  },
+  {
+    method: 'POST',
+    pattern: new RegExp(String.raw`^${AIHUB_PREFIX}\/assets\/[^/]+\/install$`),
+  },
+  {
+    method: 'POST',
+    pattern: new RegExp(String.raw`^${AIHUB_PREFIX}\/installations\/[^/]+\/open$`),
+  },
+  {
+    method: 'POST',
+    pattern: new RegExp(String.raw`^${AIHUB_PREFIX}\/chat\/completions$`),
+  },
+  {
+    method: 'DELETE',
+    pattern: new RegExp(String.raw`^${AIHUB_PREFIX}\/installations\/[^/]+$`),
+  },
+];
+const CHAT_STREAM_ROUTE = new RegExp(
+  String.raw`^${AIHUB_PREFIX}\/chat\/completions$`,
+);
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const UPSTREAM_TIMEOUT_MS = 15_000;
 const MAX_PROXY_BODY_BYTES = 8 * 1024 * 1024;
@@ -62,6 +90,63 @@ function isBodyTooLargeError(err: unknown): boolean {
   return message.includes(BODY_TOO_LARGE) || causeMessage.includes(BODY_TOO_LARGE);
 }
 
+/**
+ * SSE 透传：把上游流原样转发，并在流结束或客户端断开时清理监听与取消上游。
+ * 仅用于 `chat/completions`（无总超时）。
+ */
+function streamWithCleanup(
+  upstream: Response,
+  cleanup: () => void,
+  controller: AbortController,
+): Response {
+  const headers = new Headers(upstream.headers);
+  headers.delete('set-cookie');
+  headers.delete('transfer-encoding');
+  headers.delete('content-encoding');
+  const contentType = headers.get('Content-Type') ?? '';
+  if (
+    contentType.includes('text/event-stream') &&
+    !headers.has('X-Accel-Buffering')
+  ) {
+    headers.set('X-Accel-Buffering', 'no');
+  }
+  const source = upstream.body;
+  if (!source) {
+    cleanup();
+    return new Response(null, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers,
+    });
+  }
+  const body = new ReadableStream<Uint8Array>({
+    async start(target) {
+      const reader = source.getReader();
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          target.enqueue(value);
+        }
+        target.close();
+      } catch (err) {
+        target.error(err);
+      } finally {
+        cleanup();
+      }
+    },
+    cancel() {
+      controller.abort();
+      cleanup();
+    },
+  });
+  return new Response(body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers,
+  });
+}
+
 /** `/api/bff/aihub/meta` → `/api/v1/aihub/meta`。 */
 export function resolveAihubUpstreamPath(path: string): string | undefined {
   const prefix = PREFIXES.find(
@@ -77,6 +162,7 @@ export function resolveAihubUpstreamPath(path: string): string | undefined {
 export interface AihubRouteDeps {
   configLoader?: () => AihubConfigResult;
   resolveMemberId?: (c: Context) => Promise<string | undefined>;
+  resolveRole?: (c: Context) => Promise<string | undefined>;
   fetchImpl?: typeof fetch;
   now?: () => number;
   requestIdFactory?: () => string;
@@ -95,6 +181,9 @@ export function createAihubRoutes(deps: AihubRouteDeps = {}): Hono {
   const resolveMemberId =
     deps.resolveMemberId ??
     (async (c) => (await resolveMemberInfoFromContext(c))?.memberId);
+  const resolveRole =
+    deps.resolveRole ??
+    (async (c) => (await resolveMemberInfoFromContext(c))?.role);
   const fetchImpl = deps.fetchImpl ?? fetch;
   const now = deps.now ?? Date.now;
   const requestIdFactory = deps.requestIdFactory ?? randomUUID;
@@ -128,12 +217,13 @@ export function createAihubRoutes(deps: AihubRouteDeps = {}): Hono {
     const isAdminPath = ADMIN_PREFIXES.some((prefix) =>
       c.req.path.startsWith(prefix),
     );
-    const isFavoriteWrite =
-      c.req.method === 'POST' && FAVORITE_ROUTE.test(c.req.path);
+    const isAllowedWrite = WRITE_RULES.some(
+      (rule) => rule.method === c.req.method && rule.pattern.test(c.req.path),
+    );
     if (
       !READ_METHODS.has(c.req.method) &&
       !(isAdminPath && ADMIN_METHODS.has(c.req.method)) &&
-      !isFavoriteWrite
+      !isAllowedWrite
     ) {
       return c.json(
         { code: 405, error: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' },
@@ -204,6 +294,7 @@ export function createAihubRoutes(deps: AihubRouteDeps = {}): Hono {
     const signed = signAihubAssertion({
       config: configResult.config,
       memberId,
+      role: await resolveRole(c),
       nowMs: now(),
     });
 
@@ -221,18 +312,27 @@ export function createAihubRoutes(deps: AihubRouteDeps = {}): Hono {
     const targetUrl = `${configResult.config.baseUrl}${upstreamPath}${query}`;
 
     // 超时 + 客户端断开取消：避免上游挂起长期占用 BFF 连接。
+    // SSE（chat/completions）不设总超时，客户端断开时通过 abort 取消上游。
+    const isChatStream = CHAT_STREAM_ROUTE.test(c.req.path);
     const controller = new AbortController();
     let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, UPSTREAM_TIMEOUT_MS);
+    const timer = isChatStream
+      ? undefined
+      : setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, UPSTREAM_TIMEOUT_MS);
     const onClientAbort = () => controller.abort();
     c.req.raw.signal.addEventListener('abort', onClientAbort, { once: true });
+    const cleanup = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      c.req.raw.signal.removeEventListener('abort', onClientAbort);
+    };
 
     let upstream: Response;
     const declaredLength = Number(c.req.header('Content-Length') ?? '0');
     if (Number.isFinite(declaredLength) && declaredLength > MAX_PROXY_BODY_BYTES) {
+      cleanup();
       return c.json(
         {
           code: 413,
@@ -292,10 +392,12 @@ export function createAihubRoutes(deps: AihubRouteDeps = {}): Hono {
         502,
       );
     } finally {
-      clearTimeout(timer);
-      c.req.raw.signal.removeEventListener('abort', onClientAbort);
+      if (!isChatStream) cleanup();
     }
 
+    if (isChatStream) {
+      return streamWithCleanup(upstream, cleanup, controller);
+    }
     return streamResponse(upstream, { stripHeaders: ['set-cookie'] });
   };
 

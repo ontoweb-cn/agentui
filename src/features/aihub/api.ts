@@ -189,3 +189,157 @@ export const toggleFavorite = (id: string) =>
   request.post<FavoriteToggleResult>(
     `/api/bff/aihub/assets/${encodeURIComponent(id)}/favorite`,
   );
+
+export interface Installation {
+  id: string;
+  asset_id: string;
+  asset_type: string;
+  status: string;
+  binding: Record<string, unknown>;
+  created_at?: string;
+  name?: string | null;
+  label?: string | null;
+}
+
+export const fetchInstallations = () =>
+  request.get<{ items: Installation[]; total: number }>(
+    '/api/bff/aihub/installations',
+  );
+
+export const installAsset = (id: string) =>
+  request.post<Installation>(
+    `/api/bff/aihub/assets/${encodeURIComponent(id)}/install`,
+  );
+
+export const openInstallation = (id: string) =>
+  request.post<Installation>(
+    `/api/bff/aihub/installations/${encodeURIComponent(id)}/open`,
+  );
+
+export const removeInstallation = (id: string) =>
+  request.delete<{ id: string; status: string }>(
+    `/api/bff/aihub/installations/${encodeURIComponent(id)}`,
+  );
+
+export interface DownloadResult {
+  asset_id: string;
+  storage_uri: string;
+  name: string;
+}
+
+export const downloadAsset = (id: string) =>
+  request.post<DownloadResult>(
+    `/api/bff/aihub/assets/${encodeURIComponent(id)}/actions/download`,
+  );
+
+export interface PublishDatasetInput {
+  name: string;
+  label?: string;
+  field: string;
+  domains: string[];
+  description?: string;
+  format?: string;
+  sizeBytes?: number;
+  license?: string;
+  checksum?: string;
+  storageUri: string;
+}
+
+/** 发布本地 dataset（M2）；体积单位字节。 */
+export const publishDataset = (input: PublishDatasetInput) =>
+  request.post<MarketAsset>('/api/bff/aihub/assets', {
+    asset_type: 'dataset',
+    name: input.name,
+    label: input.label ?? input.name,
+    field: input.field,
+    domains: input.domains,
+    description: input.description ?? '',
+    spec: {
+      format: input.format || undefined,
+      size_bytes: input.sizeBytes,
+      license: input.license || undefined,
+      checksum: input.checksum || undefined,
+      storage_uri: input.storageUri,
+    },
+  });
+
+export interface ChatModel {
+  id: string;
+}
+
+export const fetchChatModels = () =>
+  request.get<{ items: ChatModel[] }>('/api/bff/aihub/chat/models');
+
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+/**
+ * 流式对话（SSE）：逐 token 回调 `onDelta`；调用方用 AbortSignal 取消。
+ * 直接使用 fetch 读取 ReadableStream，避免 axios 缓冲整个响应。
+ */
+export async function streamChat(params: {
+  assetId?: string;
+  model?: string;
+  messages: ChatMessage[];
+  signal?: AbortSignal;
+  onDelta: (text: string) => void;
+}): Promise<void> {
+  const response = await fetch('/api/bff/aihub/chat/completions', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(params.assetId ? { 'X-Aihub-Asset-Id': params.assetId } : {}),
+    },
+    body: JSON.stringify({
+      model: params.model || undefined,
+      messages: params.messages,
+      stream: true,
+    }),
+    signal: params.signal,
+  });
+
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const body = (await response.json()) as { message?: string; error?: string };
+      message = body.message || body.error || message;
+    } catch {
+      // 上游返回非 JSON 时保留状态码
+    }
+    throw new Error(message);
+  }
+  if (!response.body) {
+    throw new Error('EMPTY_STREAM');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+    const frames = buffer.split('\n\n');
+    buffer = frames.pop() ?? '';
+    for (const frame of frames) {
+      const line = frame
+        .split('\n')
+        .find((item) => item.startsWith('data:'));
+      if (!line) continue;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+      try {
+        const chunk = JSON.parse(payload) as {
+          choices?: Array<{ delta?: { content?: string } }>;
+        };
+        const delta = chunk.choices?.[0]?.delta?.content;
+        if (typeof delta === 'string' && delta) params.onDelta(delta);
+      } catch {
+        // keep-alive 或非 JSON 帧直接忽略
+      }
+    }
+  }
+}

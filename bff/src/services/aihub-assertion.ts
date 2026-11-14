@@ -36,6 +36,8 @@ export interface AihubAssertionClaims {
   iat: number;
   exp: number;
   jti: string;
+  /** gateway 成员角色（用于 aihub 管理端点 RBAC）。 */
+  role?: string;
 }
 
 export type AihubConfigFailureCode =
@@ -118,6 +120,7 @@ export interface SignedAihubAssertion {
 export function signAihubAssertion(params: {
   config: AihubAssertionConfig;
   memberId: string;
+  role?: string;
   nowMs?: number;
   ttlSeconds?: number;
   jti?: string;
@@ -125,6 +128,7 @@ export function signAihubAssertion(params: {
   const {
     config,
     memberId,
+    role,
     nowMs = Date.now(),
     ttlSeconds = DEFAULT_EXP_SECONDS,
     jti = randomUUID(),
@@ -142,6 +146,7 @@ export function signAihubAssertion(params: {
     iat,
     exp: iat + expSeconds,
     jti,
+    ...(role ? { role } : {}),
   };
   return {
     assertion: signEd25519Jws({

@@ -20,6 +20,7 @@ import {
 } from '../../api';
 import { AssetCard } from '../../components/asset-card';
 import { AssetWorkspace } from '../../components/asset-workspace';
+import { DatasetPublish } from '../../components/dataset-publish';
 import {
   DEFAULT_RESOURCE_TYPE,
   isSafeResourceType,
@@ -275,6 +276,20 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
           <p className="text-sm text-text-secondary">{t('aihub.subtitle')}</p>
         </header>
 
+        {type === 'datasets' && (
+          <DatasetPublish
+            fields={taxonomies.data?.fields ?? []}
+            domains={taxonomies.data?.domains ?? []}
+            onPublished={() => {
+              void list.refetch();
+              void taxonomies.refetch();
+              void queryClient.invalidateQueries({
+                queryKey: ['aihub-markets'],
+              });
+            }}
+          />
+        )}
+
         <section className="flex flex-col gap-3 rounded-lg border border-border p-3">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="flex min-w-0 flex-col gap-3">
@@ -508,6 +523,7 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
         fieldLabel={fieldLabel}
         domainLabel={domainLabel}
         onClose={closeAsset}
+        onOpenAsset={openAsset}
       />
 
       {assetId && (

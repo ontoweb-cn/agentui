@@ -12,7 +12,15 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-import { fetchAsset, toggleFavorite, type MarketAsset } from '../api';
+import {
+  downloadAsset,
+  fetchAsset,
+  fetchMarketPage,
+  installAsset,
+  toggleFavorite,
+  type MarketAsset,
+} from '../api';
+import { AgentChat } from './agent-chat';
 import { AssetImage } from './asset-image';
 import {
   acceleratorLabelKey,
@@ -20,7 +28,7 @@ import {
   sourceLabelKey,
 } from './hardware-labels';
 
-type WorkspaceTab = 'overview' | 'docs';
+type WorkspaceTab = 'overview' | 'docs' | 'related' | 'chat';
 
 export interface AssetWorkspaceProps {
   visible: boolean;
@@ -30,7 +38,20 @@ export interface AssetWorkspaceProps {
   fieldLabel: (key: string) => string;
   domainLabel: (key: string) => string;
   onClose: () => void;
+  /** 相关资产点击后切换到目标详情。 */
+  onOpenAsset?: (id: string) => void;
 }
+
+const RESOURCE_SLUGS: Record<string, string> = {
+  model: 'models',
+  dataset: 'datasets',
+  agent: 'agents',
+  skill: 'skills',
+  tool: 'tools',
+  mcp: 'mcps',
+  solution: 'solutions',
+  app: 'apps',
+};
 
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -48,6 +69,18 @@ function formatSpecValue(value: unknown): string {
     return String(value);
   }
   return JSON.stringify(value) ?? '';
+}
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return '—';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = value;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
 /** 仅放行 http(s) 文档链接，避免后端数据注入 javascript:/data: 等协议。 */
@@ -74,6 +107,7 @@ export function AssetWorkspace({
   fieldLabel,
   domainLabel,
   onClose,
+  onOpenAsset,
 }: AssetWorkspaceProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -104,11 +138,22 @@ export function AssetWorkspace({
   });
   const resetFavorite = favorite.reset;
 
+  const install = useMutation({
+    mutationFn: async () => (await installAsset(assetId as string)).data,
+  });
+  const resetInstall = install.reset;
+  const download = useMutation({
+    mutationFn: async () => (await downloadAsset(assetId as string)).data,
+  });
+  const resetDownload = download.reset;
+
   useEffect(() => {
     setActiveTab('overview');
     setCopied(false);
     resetFavorite();
-  }, [assetId, resetFavorite]);
+    resetInstall();
+    resetDownload();
+  }, [assetId, resetFavorite, resetInstall, resetDownload]);
 
   useEffect(() => {
     if (visible) closeRef.current?.focus();
@@ -125,7 +170,36 @@ export function AssetWorkspace({
 
   const asset = detail.data ?? fallbackAsset;
   const docUrl = safeDocUrl(asset?.doc);
-  const tabs: WorkspaceTab[] = ['overview', 'docs'];
+  const isAgent = asset?.asset_type === 'agent';
+  const isDataset = asset?.asset_type === 'dataset';
+  const typeSlug = asset
+    ? RESOURCE_SLUGS[asset.asset_type] ?? `${asset.asset_type}s`
+    : undefined;
+  const related = useQuery({
+    queryKey: ['aihub-related', typeSlug, asset?.field, asset?.id],
+    enabled: visible && Boolean(typeSlug && asset?.field),
+    queryFn: async () => {
+      const page = (
+        await fetchMarketPage({
+          assetType: typeSlug as string,
+          field: asset?.field ?? 'all',
+          domain: 'all',
+          page: 1,
+          pageSize: 8,
+        })
+      ).data;
+      return page.items.filter((item) => item.id !== asset?.id).slice(0, 6);
+    },
+  });
+  const tabs: WorkspaceTab[] = isAgent
+    ? ['overview', 'docs', 'related', 'chat']
+    : ['overview', 'docs', 'related'];
+  const spec = (asset?.spec ?? {}) as Record<string, unknown>;
+  const storageUri =
+    typeof spec.storage_uri === 'string' ? spec.storage_uri : undefined;
+  const tips = Array.isArray(spec.tips)
+    ? spec.tips.filter((item): item is string => typeof item === 'string')
+    : undefined;
   const specEntries = Object.entries(asset?.spec ?? {});
   const errorMessage = detail.error?.message ?? '';
   const notFound = /404|not[_ ]?found/i.test(errorMessage);
@@ -384,6 +458,39 @@ export function AssetWorkspace({
                       </span>
                     </DetailRow>
                   )}
+                  {isDataset && (
+                    <>
+                      {typeof spec.format === 'string' && (
+                        <DetailRow label={t('aihub.dataset.formatLabel')}>
+                          {spec.format}
+                        </DetailRow>
+                      )}
+                      {typeof spec.size_bytes === 'number' && (
+                        <DetailRow label={t('aihub.dataset.sizeLabel')}>
+                          {formatBytes(spec.size_bytes)}
+                        </DetailRow>
+                      )}
+                      {typeof spec.license === 'string' && (
+                        <DetailRow label={t('aihub.dataset.licenseLabel')}>
+                          {spec.license}
+                        </DetailRow>
+                      )}
+                      {typeof spec.checksum === 'string' && (
+                        <DetailRow label={t('aihub.dataset.checksumLabel')}>
+                          <span className="break-all text-xs">{spec.checksum}</span>
+                        </DetailRow>
+                      )}
+                      <DetailRow label={t('aihub.dataset.storageLabel')}>
+                        {storageUri ? (
+                          <span className="break-all text-xs">{storageUri}</span>
+                        ) : (
+                          <span className="text-text-secondary">
+                            {t('aihub.dataset.storageRestricted')}
+                          </span>
+                        )}
+                      </DetailRow>
+                    </>
+                  )}
                 </dl>
 
                 {specEntries.length > 0 && (
@@ -401,26 +508,139 @@ export function AssetWorkspace({
                   </details>
                 )}
 
-                <div className="flex flex-col gap-1 border-t border-border pt-3">
-                  <div className="flex flex-wrap gap-2">
-                    {(['develop', 'finetune', 'deploy'] as const).map(
-                      (action) => (
-                        <Button
-                          key={action}
-                          variant="outline"
-                          size="sm"
-                          disabled
-                          title={t('aihub.detail.actions.hint')}
-                        >
-                          {t(`aihub.detail.actions.${action}`)}
-                        </Button>
-                      ),
+                {isDataset ? (
+                  <div className="flex flex-col gap-2 border-t border-border pt-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={download.isPending}
+                        onClick={() => download.mutate()}
+                        data-testid="aihub-asset-download"
+                      >
+                        {download.isPending
+                          ? t('aihub.dataset.downloading')
+                          : t('aihub.dataset.download')}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={install.isPending || install.isSuccess}
+                        onClick={() => install.mutate()}
+                        data-testid="aihub-asset-install"
+                      >
+                        {install.isSuccess
+                          ? t('aihub.install.installed')
+                          : install.isPending
+                            ? t('aihub.install.installing')
+                            : t('aihub.install.action')}
+                      </Button>
+                    </div>
+                    {download.data && (
+                      <p className="break-all rounded bg-bg-secondary p-2 text-xs text-text-secondary">
+                        {download.data.storage_uri}
+                      </p>
+                    )}
+                    {download.isError && (
+                      <p className="text-xs text-text-secondary">
+                        {t('aihub.dataset.downloadError', {
+                          message: (download.error as Error).message,
+                        })}
+                      </p>
+                    )}
+                    {install.isError && (
+                      <p className="text-xs text-text-secondary">
+                        {t('aihub.install.error', {
+                          message: (install.error as Error).message,
+                        })}
+                      </p>
                     )}
                   </div>
-                  <p className="text-xs text-text-secondary">
-                    {t('aihub.detail.actions.hint')}
+                ) : isAgent ? (
+                  <div className="flex flex-col gap-1 border-t border-border pt-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={install.isPending || install.isSuccess}
+                        onClick={() => install.mutate()}
+                        data-testid="aihub-asset-install"
+                      >
+                        {install.isSuccess
+                          ? t('aihub.install.installed')
+                          : install.isPending
+                            ? t('aihub.install.installing')
+                            : t('aihub.install.action')}
+                      </Button>
+                    </div>
+                    {install.isError && (
+                      <p className="text-xs text-text-secondary">
+                        {t('aihub.install.error', {
+                          message: (install.error as Error).message,
+                        })}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1 border-t border-border pt-3">
+                    <div className="flex flex-wrap gap-2">
+                      {(['develop', 'finetune', 'deploy'] as const).map(
+                        (action) => (
+                          <Button
+                            key={action}
+                            variant="outline"
+                            size="sm"
+                            disabled
+                            title={t('aihub.detail.actions.hint')}
+                          >
+                            {t(`aihub.detail.actions.${action}`)}
+                          </Button>
+                        ),
+                      )}
+                    </div>
+                    <p className="text-xs text-text-secondary">
+                      {t('aihub.detail.actions.hint')}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : asset && activeTab === 'related' ? (
+              <div
+                id="aihub-asset-panel-related"
+                role="tabpanel"
+                className="flex flex-col gap-2 p-5 text-sm"
+                data-testid="aihub-related-list"
+              >
+                {related.isLoading ? (
+                  <p className="text-text-secondary">{t('aihub.loading')}</p>
+                ) : related.isError ? (
+                  <p className="text-text-secondary">
+                    {t('aihub.detail.relatedError')}
                   </p>
-                </div>
+                ) : (related.data?.length ?? 0) === 0 ? (
+                  <p className="text-text-secondary">
+                    {t('aihub.detail.relatedEmpty')}
+                  </p>
+                ) : (
+                  related.data?.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => onOpenAsset?.(item.id)}
+                      className="flex flex-col items-start gap-1 rounded-md border border-border p-2 text-left hover:bg-bg-secondary"
+                      data-testid="aihub-related-item"
+                    >
+                      <span className="text-text-primary">{item.label}</span>
+                      <span className="line-clamp-2 text-xs text-text-secondary">
+                        {item.description || item.name}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : asset && activeTab === 'chat' ? (
+              <div id="aihub-asset-panel-chat" role="tabpanel">
+                <AgentChat assetId={asset.id} tips={tips} />
               </div>
             ) : asset ? (
               <div
