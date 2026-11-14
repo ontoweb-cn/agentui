@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "sourceCommit": "47db38c",
-  "syncedAt": "2026-11-14T12:25:14.888Z",
+  "sourceCommit": "cc541b3",
+  "syncedAt": "2026-11-14T12:36:08.932Z",
   "files": {
     "client.ts": "0bac6071ab9f5c56d5322115ab288412b9232a9b951f0761c205c3baba58a36b",
     "contract.ts": "587347b028e0d460d3a0708cd56cd9bc18f3029e425577060e4051294d180f38",
