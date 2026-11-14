@@ -4,6 +4,11 @@ import { cn } from '@/lib/utils';
 
 import type { MarketAsset } from '../api';
 import { AssetImage } from './asset-image';
+import {
+  acceleratorLabelKey,
+  archLabelKey,
+  hasHardwareLabel,
+} from './hardware-labels';
 
 export function AssetCard({
   asset,
@@ -20,6 +25,7 @@ export function AssetCard({
   onPrefetch?: () => void;
 }) {
   const { t } = useTranslation();
+  const gpuCount = asset.resources?.gpu ?? 0;
 
   return (
     <button
@@ -51,6 +57,29 @@ export function AssetCard({
         <p className="line-clamp-2 text-xs text-text-secondary">
           {asset.description || t('aihub.detail.noDescription')}
         </p>
+        {(hasHardwareLabel(asset.hardware) || gpuCount > 0) && (
+          <div className="flex flex-wrap items-center gap-1 text-[10px] text-text-secondary">
+            {asset.hardware?.arch && asset.hardware.arch !== 'unknown' && (
+              <span className="rounded border border-border px-1">
+                {t(archLabelKey(asset.hardware.arch))}
+              </span>
+            )}
+            {asset.hardware?.accelerator &&
+              asset.hardware.accelerator !== 'unknown' && (
+                <span className="rounded border border-border px-1">
+                  {t(acceleratorLabelKey(asset.hardware.accelerator))}
+                  {asset.hardware.accelerator_model
+                    ? ` ${asset.hardware.accelerator_model}`
+                    : ''}
+                </span>
+              )}
+            {gpuCount > 0 && (
+              <span className="rounded border border-border px-1">
+                {t('aihub.hardware.gpuCountValue', { count: gpuCount })}
+              </span>
+            )}
+          </div>
+        )}
         <div className="mt-auto flex items-center justify-between pt-2 text-[11px] text-text-secondary">
           <span>{fieldLabel(asset.field)}</span>
           <span>
