@@ -13,6 +13,8 @@ export interface HubMenuItem {
   key: string;
   label: string;
   icon: ReactNode;
+  /** 右侧附加信息(如资源计数);收起态不显示 */
+  suffix?: ReactNode;
   testId?: string;
 }
 
@@ -32,6 +34,7 @@ export function HubLayout({
   activeKey: controlledActiveKey,
   onSelect,
   testIdPrefix,
+  contentClassName,
   children,
 }: {
   title?: ReactNode;
@@ -40,6 +43,8 @@ export function HubLayout({
   activeKey?: string;
   onSelect?: (key: string) => void;
   testIdPrefix?: string;
+  /** 内容区附加类名；默认保持 overflow-auto，需要列内独立滚动时传 overflow-hidden */
+  contentClassName?: string;
   children: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -154,6 +159,16 @@ export function HubLayout({
                         {item.label}
                       </span>
                     </span>
+                    {item.suffix && (
+                      <span
+                        className={cn(
+                          'ml-auto hidden text-[11px] text-text-secondary',
+                          !collapsed && 'md:inline',
+                        )}
+                      >
+                        {item.suffix}
+                      </span>
+                    )}
                   </Button>
                 </li>
               );
@@ -163,7 +178,12 @@ export function HubLayout({
       </aside>
 
       {/* 内容区间距对齐 chat 页:上 2px/左右 10px/下 10px */}
-      <div className="px-2.5 pt-0.5 pb-2.5 flex flex-col min-w-0 rounded-lg overflow-auto">
+      <div
+        className={cn(
+          'px-2.5 pt-0.5 pb-2.5 flex flex-col min-w-0 rounded-lg overflow-auto',
+          contentClassName,
+        )}
+      >
         {children}
       </div>
     </section>

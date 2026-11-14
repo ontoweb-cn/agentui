@@ -19,7 +19,7 @@ describe('feature registry:顶部导航与应用插件', () => {
       '/knowledge',
       '/memories',
       '/applications',
-      '/resources',
+      '/hub',
     ]);
   });
 

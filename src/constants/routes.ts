@@ -89,6 +89,11 @@ export enum Routes {
   DataflowResult = '/dataflow-result',
   Admin = '/admin',
   // AIHub 能力：顶部「资源」入口（M0 为静态资源类型，M1 起由 taxonomy 驱动）。
+  // /hub/:type/:assetId 为选中资源详情（右侧 workspace 区）。
+  Hub = '/hub',
+  HubType = `${Routes.Hub}/:type`,
+  HubAsset = `${Routes.Hub}/:type/:assetId`,
+  // 历史路径：保留常量供路由重定向使用，新代码一律使用 Hub 系列。
   Resources = '/resources',
   ResourcesType = `${Routes.Resources}/:type`,
   AdminServices = `${Routes.Admin}/services`,
