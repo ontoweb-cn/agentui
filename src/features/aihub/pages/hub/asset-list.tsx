@@ -81,6 +81,8 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
 
   const field = readFilterKey(params.get('field'));
   const domain = readFilterKey(params.get('domain'));
+  const arch = readFilterKey(params.get('arch'));
+  const accelerator = readFilterKey(params.get('accelerator'));
   const q = params.get('q') ?? '';
   const page = Math.max(1, Number(params.get('page') ?? 1) || 1);
 
@@ -100,7 +102,16 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
   });
 
   const list = useQuery({
-    queryKey: ['aihub-market', type, field, domain, q, page],
+    queryKey: [
+      'aihub-market',
+      type,
+      field,
+      domain,
+      arch,
+      accelerator,
+      q,
+      page,
+    ],
     queryFn: async () =>
       (
         await fetchMarketPage({
@@ -110,6 +121,8 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
           q,
           page,
           pageSize: PAGE_SIZE,
+          arch,
+          accelerator,
         })
       ).data,
   });
@@ -122,12 +135,25 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
   };
   const fieldLabel = (key: string) => labelOf(taxonomies.data?.fields, key);
   const domainLabel = (key: string) => labelOf(taxonomies.data?.domains, key);
+  const facetLabel = (item: { key: string; label: { zh: string; en?: string } }) =>
+    (isZh ? item.label.zh : item.label.en || item.label.zh) || item.key;
+  const archFacets = (taxonomies.data?.hardware?.arch ?? []).filter(
+    (item) => item.count > 0,
+  );
+  const accelFacets = (
+    taxonomies.data?.hardware?.accelerators ?? []
+  ).filter((item) => item.count > 0);
 
   const assets = list.data?.items ?? [];
   const fallbackAsset = assets.find((asset) => asset.id === assetId);
   const total = list.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const filtered = field !== 'all' || domain !== 'all' || Boolean(q);
+  const filtered =
+    field !== 'all' ||
+    domain !== 'all' ||
+    arch !== 'all' ||
+    accelerator !== 'all' ||
+    Boolean(q);
 
   // page 越界（筛选后总数变小 / 手改 URL）时收敛到最后一页并回写 URL
   useEffect(() => {
@@ -200,56 +226,118 @@ function AssetList({ type, assetId }: { type: string; assetId?: string }) {
         </header>
 
         <section className="flex flex-col gap-3 rounded-lg border border-border p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-text-secondary">
-              {t('aihub.filter.field')}
-            </span>
-            <Chip
-              active={field === 'all'}
-              onClick={() => navigateWith({ field: 'all' })}
-              testId="aihub-filter-field-all"
-            >
-              {t('aihub.filter.all')}
-            </Chip>
-            {(taxonomies.data?.fields ?? []).map((item) => (
-              <Chip
-                key={item.key}
-                active={field === item.key}
-                onClick={() => navigateWith({ field: item.key })}
-                testId={`aihub-filter-field-${item.key}`}
-              >
-                {labelOf(taxonomies.data?.fields, item.key)}
-                <span className="ml-1 text-[11px] text-text-secondary">
-                  {item.count}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-text-secondary">
+                  {t('aihub.filter.field')}
                 </span>
-              </Chip>
-            ))}
-          </div>
+                <Chip
+                  active={field === 'all'}
+                  onClick={() => navigateWith({ field: 'all' })}
+                  testId="aihub-filter-field-all"
+                >
+                  {t('aihub.filter.all')}
+                </Chip>
+                {(taxonomies.data?.fields ?? []).map((item) => (
+                  <Chip
+                    key={item.key}
+                    active={field === item.key}
+                    onClick={() => navigateWith({ field: item.key })}
+                    testId={`aihub-filter-field-${item.key}`}
+                  >
+                    {labelOf(taxonomies.data?.fields, item.key)}
+                    <span className="ml-1 text-[11px] text-text-secondary">
+                      {item.count}
+                    </span>
+                  </Chip>
+                ))}
+              </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-text-secondary">
-              {t('aihub.filter.domain')}
-            </span>
-            <Chip
-              active={domain === 'all'}
-              onClick={() => navigateWith({ domain: 'all' })}
-              testId="aihub-filter-domain-all"
-            >
-              {t('aihub.filter.all')}
-            </Chip>
-            {(taxonomies.data?.domains ?? []).map((item) => (
-              <Chip
-                key={item.key}
-                active={domain === item.key}
-                onClick={() => navigateWith({ domain: item.key })}
-                testId={`aihub-filter-domain-${item.key}`}
-              >
-                {labelOf(taxonomies.data?.domains, item.key)}
-                <span className="ml-1 text-[11px] text-text-secondary">
-                  {item.count}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-text-secondary">
+                  {t('aihub.filter.domain')}
                 </span>
-              </Chip>
-            ))}
+                <Chip
+                  active={domain === 'all'}
+                  onClick={() => navigateWith({ domain: 'all' })}
+                  testId="aihub-filter-domain-all"
+                >
+                  {t('aihub.filter.all')}
+                </Chip>
+                {(taxonomies.data?.domains ?? []).map((item) => (
+                  <Chip
+                    key={item.key}
+                    active={domain === item.key}
+                    onClick={() => navigateWith({ domain: item.key })}
+                    testId={`aihub-filter-domain-${item.key}`}
+                  >
+                    {labelOf(taxonomies.data?.domains, item.key)}
+                    <span className="ml-1 text-[11px] text-text-secondary">
+                      {item.count}
+                    </span>
+                  </Chip>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-3">
+              {archFacets.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-text-secondary">
+                    {t('aihub.hardware.archLabel')}
+                  </span>
+                  <Chip
+                    active={arch === 'all'}
+                    onClick={() => navigateWith({ arch: 'all' })}
+                    testId="aihub-filter-arch-all"
+                  >
+                    {t('aihub.filter.all')}
+                  </Chip>
+                  {archFacets.map((item) => (
+                    <Chip
+                      key={item.key}
+                      active={arch === item.key}
+                      onClick={() => navigateWith({ arch: item.key })}
+                      testId={`aihub-filter-arch-${item.key}`}
+                    >
+                      {facetLabel(item)}
+                      <span className="ml-1 text-[11px] text-text-secondary">
+                        {item.count}
+                      </span>
+                    </Chip>
+                  ))}
+                </div>
+              )}
+
+              {accelFacets.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-text-secondary">
+                    {t('aihub.hardware.accelLabel')}
+                  </span>
+                  <Chip
+                    active={accelerator === 'all'}
+                    onClick={() => navigateWith({ accelerator: 'all' })}
+                    testId="aihub-filter-accel-all"
+                  >
+                    {t('aihub.filter.all')}
+                  </Chip>
+                  {accelFacets.map((item) => (
+                    <Chip
+                      key={item.key}
+                      active={accelerator === item.key}
+                      onClick={() => navigateWith({ accelerator: item.key })}
+                      testId={`aihub-filter-accel-${item.key}`}
+                    >
+                      {facetLabel(item)}
+                      <span className="ml-1 text-[11px] text-text-secondary">
+                        {item.count}
+                      </span>
+                    </Chip>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <form

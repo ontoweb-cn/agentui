@@ -14,6 +14,11 @@ import { cn } from '@/lib/utils';
 
 import { fetchAsset, type MarketAsset } from '../api';
 import { AssetImage } from './asset-image';
+import {
+  acceleratorLabelKey,
+  archLabelKey,
+  sourceLabelKey,
+} from './hardware-labels';
 
 type WorkspaceTab = 'overview' | 'docs';
 
@@ -266,6 +271,57 @@ export function AssetWorkspace({
                       ? t('aihub.detail.imagePending')
                       : t('aihub.detail.imageReady')}
                   </DetailRow>
+                  <DetailRow label={t('aihub.hardware.archLabel')}>
+                    {t(archLabelKey(asset.hardware?.arch))}
+                  </DetailRow>
+                  <DetailRow label={t('aihub.hardware.accelLabel')}>
+                    {t(acceleratorLabelKey(asset.hardware?.accelerator))}
+                    {asset.hardware?.accelerator_model
+                      ? ` · ${asset.hardware.accelerator_model}`
+                      : ''}
+                  </DetailRow>
+                  {asset.hardware?.vram_gb != null && (
+                    <DetailRow label={t('aihub.hardware.vramLabel')}>
+                      {t('aihub.hardware.memoryValue', {
+                        size: asset.hardware.vram_gb,
+                      })}
+                    </DetailRow>
+                  )}
+                  {asset.resources?.gpu != null && (
+                    <DetailRow label={t('aihub.hardware.gpuCountLabel')}>
+                      {t('aihub.hardware.gpuCountValue', {
+                        count: asset.resources.gpu,
+                      })}
+                    </DetailRow>
+                  )}
+                  {asset.resources?.cpu != null && (
+                    <DetailRow label={t('aihub.hardware.cpuCountLabel')}>
+                      {t('aihub.hardware.cpuCountValue', {
+                        count: asset.resources.cpu,
+                      })}
+                    </DetailRow>
+                  )}
+                  {asset.resources?.memory_gb != null && (
+                    <DetailRow label={t('aihub.hardware.memoryLabel')}>
+                      {t('aihub.hardware.memoryValue', {
+                        size: asset.resources.memory_gb,
+                      })}
+                    </DetailRow>
+                  )}
+                  {(asset.hardware?.framework ||
+                    asset.hardware?.runtime) && (
+                    <DetailRow label={t('aihub.hardware.frameworkLabel')}>
+                      {[asset.hardware?.framework, asset.hardware?.runtime]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </DetailRow>
+                  )}
+                  {asset.hardware?.source &&
+                    asset.hardware.source !== 'unknown' && (
+                      <DetailRow label={t('aihub.hardware.sourceLabel')}>
+                        {t(sourceLabelKey(asset.hardware.source))}
+                      </DetailRow>
+                    )}
                   <DetailRow label={t('aihub.detail.hot')}>
                     {asset.hot}
                   </DetailRow>

@@ -31,12 +31,42 @@ export interface TaxonomyItem {
   icon?: string | null;
 }
 
+export interface HardwareFacet {
+  key: string;
+  label: TaxonomyLabel;
+  count: number;
+}
+
 export interface Taxonomies {
   version: number;
   config_hash: string;
   asset_type: string;
   fields: TaxonomyItem[];
   domains: TaxonomyItem[];
+  hardware?: {
+    arch: HardwareFacet[];
+    accelerators: HardwareFacet[];
+  };
+}
+
+export interface AssetHardware {
+  /** x86_64 | arm64 | unknown */
+  arch: string;
+  /** nvidia | ascend | amd | gpu | cpu | unknown */
+  accelerator: string;
+  accelerator_model?: string;
+  vram_gb?: number | null;
+  framework?: string;
+  runtime?: string;
+  /** declared | curated | inferred | unknown */
+  source?: string;
+  note?: string;
+}
+
+export interface AssetResources {
+  gpu?: number | null;
+  cpu?: number | null;
+  memory_gb?: number | null;
 }
 
 export interface MarketType {
@@ -63,6 +93,8 @@ export interface MarketAsset {
   images: string;
   images_status: string;
   spec: Record<string, unknown>;
+  hardware?: AssetHardware;
+  resources?: AssetResources;
 }
 
 export interface MarketPage {
@@ -82,6 +114,9 @@ export interface MarketQueryParams {
   q?: string;
   page?: number;
   pageSize?: number;
+  arch?: string;
+  accelerator?: string;
+  minVram?: number;
 }
 
 /** `GET /api/bff/aihub/meta`（原始 JSON，无 code/data 信封）。 */
@@ -103,12 +138,25 @@ export const fetchMarketPage = ({
   q,
   page = 1,
   pageSize = 20,
+  arch,
+  accelerator,
+  minVram,
 }: MarketQueryParams) =>
   request.get<MarketPage>(
     `/api/bff/aihub/markets/${encodeURIComponent(assetType)}/${encodeURIComponent(
       field,
     )}/${encodeURIComponent(domain)}`,
-    { params: { q: q || undefined, page, page_size: pageSize } },
+    {
+      params: {
+        q: q || undefined,
+        page,
+        page_size: pageSize,
+        arch: arch && arch !== 'all' ? arch : undefined,
+        accelerator:
+          accelerator && accelerator !== 'all' ? accelerator : undefined,
+        min_vram: minVram,
+      },
+    },
   );
 
 export const fetchAsset = (id: string) =>

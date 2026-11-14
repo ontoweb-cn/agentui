@@ -49,6 +49,8 @@ const asset: MarketAsset = {
   images: '',
   images_status: 'ready',
   spec: {},
+  hardware: { arch: 'x86_64', accelerator: 'gpu', source: 'inferred' },
+  resources: { gpu: 1, cpu: 8 },
 };
 
 const page: MarketPage = {
@@ -83,6 +85,22 @@ const taxonomies: Taxonomies = {
       order: 1,
     },
   ],
+  hardware: {
+    arch: [
+      {
+        key: 'x86_64',
+        label: { zh: 'x86_64', en: 'x86_64' },
+        count: 1,
+      },
+    ],
+    accelerators: [
+      {
+        key: 'gpu',
+        label: { zh: 'GPU（厂商未标注）', en: 'GPU (vendor unknown)' },
+        count: 1,
+      },
+    ],
+  },
 };
 
 function LocationProbe() {
@@ -178,6 +196,23 @@ describe('AIHub asset list + workspace', () => {
 
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent('/hub/models'),
+    );
+  });
+
+  it('硬件筛选写入 URL 并透传给列表查询', async () => {
+    renderAt('/hub/models');
+
+    fireEvent.click(await screen.findByTestId('aihub-filter-accel-gpu'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/hub/models?accelerator=gpu',
+      ),
+    );
+    await waitFor(() =>
+      expect(mockFetchMarketPage).toHaveBeenCalledWith(
+        expect.objectContaining({ accelerator: 'gpu' }),
+      ),
     );
   });
 
