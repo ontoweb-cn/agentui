@@ -89,6 +89,7 @@ describe('aihub proxy', () => {
       ['/aihub/assets/abc/actions/download', 'POST'],
       ['/aihub/assets/abc/install', 'POST'],
       ['/aihub/assets/abc/publish', 'POST'],
+      ['/aihub/skills', 'POST'],
       ['/aihub/installations/inst-1/open', 'POST'],
       ['/aihub/installations/inst-1', 'DELETE'],
       ['/api/bff/aihub/chat/completions', 'POST'],

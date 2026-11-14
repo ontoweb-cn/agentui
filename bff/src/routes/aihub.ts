@@ -36,6 +36,10 @@ const WRITE_RULES: ReadonlyArray<{ method: string; pattern: RegExp }> = [
     method: 'PATCH',
     pattern: new RegExp(String.raw`^${AIHUB_PREFIX}\/assets\/[^/]+$`),
   },
+  {
+    method: 'POST',
+    pattern: new RegExp(String.raw`^${AIHUB_PREFIX}\/skills$`),
+  },
   { method: 'POST', pattern: FAVORITE_ROUTE },
   {
     method: 'POST',
