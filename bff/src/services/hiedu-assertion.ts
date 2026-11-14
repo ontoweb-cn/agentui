@@ -16,14 +16,17 @@
  */
 
 import {
-  createPrivateKey,
   randomUUID,
-  sign,
   type KeyObject,
 } from 'node:crypto';
 
-/** 断言 header 固定算法(Ed25519 在 JWS 中记为 EdDSA) */
-const JWS_ALG = 'EdDSA';
+import {
+  base64UrlJson,
+  normalizePem,
+  parseEd25519PrivateKey,
+  signEd25519Jws,
+} from './ed25519-jws';
+
 /** 断言最大有效期(秒),需求硬上限 60 */
 const MAX_EXP_SECONDS = 60;
 /** 默认有效期(秒):低于硬上限,为 BFF 与 hiedu 的时钟偏差留余量 */
@@ -94,29 +97,8 @@ function misconfigured(message: string): HieduConfigResult {
   };
 }
 
-/**
- * 支持 env 中的转义换行:`\n` 字面量替换为真实换行。
- * (PEM 通过 docker/env 文件传递时常被写成单行 + `\n`)
- */
-function normalizePem(raw: string): string {
-  return raw.replace(/\\n/g, '\n').trim();
-}
-
 function readEnv(env: NodeJS.ProcessEnv, key: string): string {
   return (env[key] ?? '').trim();
-}
-
-/**
- * 解析 Ed25519 PKCS#8 私钥;失败返回 undefined(调用方转 503,不抛进程级错误)。
- * 拒绝非 Ed25519 密钥(RSA 等无法用 `sign(null, ...)` 生成 EdDSA 断言)。
- */
-function parseEd25519PrivateKey(pem: string): KeyObject | undefined {
-  try {
-    const key = createPrivateKey(normalizePem(pem));
-    return key.asymmetricKeyType === 'ed25519' ? key : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 /**
@@ -237,16 +219,11 @@ export interface SignHieduAssertionParams {
   jti?: string;
 }
 
-function base64UrlJson(value: unknown): string {
-  return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
-}
-
 /**
  * 即时签发 hiedu Ed25519 JWS 断言。
  *
  * header: `{alg:"EdDSA", kid}`
  * claims: `{iss, aud, sub:"intellect:{memberId}", org, iat, exp, jti}`
- * 签名: `crypto.sign(null, Buffer.from(`${header}.${payload}`), privateKey)`
  */
 export function signHieduAssertion(
   params: SignHieduAssertionParams,
@@ -276,18 +253,12 @@ export function signHieduAssertion(
     jti,
   };
 
-  const header = { alg: JWS_ALG, kid: key.kid };
-  const encodedHeader = base64UrlJson(header);
-  const encodedPayload = base64UrlJson(claims);
-  const signingInput = `${encodedHeader}.${encodedPayload}`;
-  const signature = sign(
-    null,
-    Buffer.from(signingInput, 'utf8'),
-    key.privateKey,
-  );
-
   return {
-    assertion: `${signingInput}.${signature.toString('base64url')}`,
+    assertion: signEd25519Jws({
+      kid: key.kid,
+      privateKey: key.privateKey,
+      claims: { ...claims },
+    }),
     kid: key.kid,
     claims,
   };

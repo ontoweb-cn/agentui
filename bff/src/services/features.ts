@@ -10,11 +10,17 @@
 
 import { loadHieduConfig } from './hiedu-assertion';
 import type { HieduConfigResult } from './hiedu-assertion';
+import { loadAihubConfig } from './aihub-assertion';
+import type { AihubConfigResult } from './aihub-assertion';
 import type { Features } from '../types/features';
 
 export type HieduConfigLoader = (
   env: NodeJS.ProcessEnv,
 ) => HieduConfigResult;
+
+export type AihubConfigLoader = (
+  env: NodeJS.ProcessEnv,
+) => AihubConfigResult;
 
 function isEnabledFlag(value: string | undefined): boolean {
   return (value ?? '').trim().toLowerCase() === 'true';
@@ -26,10 +32,13 @@ function isEnabledFlag(value: string | undefined): boolean {
 export function resolveFeatures(
   env: NodeJS.ProcessEnv = process.env,
   configLoader: HieduConfigLoader = loadHieduConfig,
+  aihubLoader: AihubConfigLoader = loadAihubConfig,
 ): Features {
   const enabled = isEnabledFlag(env.INTELLECT_AUTH_ENABLED);
+  const aihubEnabled = isEnabledFlag(env.AIHUB_ENABLED);
   return {
     'intellect-auth': enabled && configLoader(env).ok,
+    aihub: aihubEnabled && aihubLoader(env).ok,
   };
 }
 
@@ -49,4 +58,9 @@ export function resetFeaturesCacheForTests(): void {
 /** 总闸判定：false 时 hiedu 代理与内置页面同时不可用。 */
 export function isIntellectAuthEnabled(): boolean {
   return getFeatures()['intellect-auth'];
+}
+
+/** aihub 总闸判定：false 时「资源」入口与代理同时不可用。 */
+export function isAihubEnabled(): boolean {
+  return getFeatures().aihub;
 }

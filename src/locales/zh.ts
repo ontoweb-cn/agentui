@@ -111,6 +111,7 @@ export default {
       register: '注册',
       signin: '登录',
       home: '首页',
+      resources: '资源',
       setting: '用户设置',
       logout: '登出',
       fileManager: '文件管理',

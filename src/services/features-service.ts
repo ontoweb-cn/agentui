@@ -12,6 +12,8 @@ export interface Features {
    * 统一认证能力。按产品约定 JSON 键名使用连字符 `intellect-auth`。
    */
   'intellect-auth': boolean;
+  /** AIHub 能力：控制顶部「资源」入口与 `/api/bff/aihub/*`。 */
+  aihub: boolean;
 }
 
 export interface FeaturesResponse {

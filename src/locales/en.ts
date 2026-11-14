@@ -125,6 +125,7 @@ export default {
       register: 'Register',
       signin: 'Sign in',
       home: 'Home',
+      resources: 'Resources',
       setting: 'User settings',
       logout: 'Log out',
       fileManager: 'File',

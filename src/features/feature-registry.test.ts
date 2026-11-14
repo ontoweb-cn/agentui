@@ -19,6 +19,7 @@ describe('feature registry:顶部导航与应用插件', () => {
       '/knowledge',
       '/memories',
       '/applications',
+      '/resources',
     ]);
   });
 
@@ -61,6 +62,11 @@ describe('feature registry:顶部导航与应用插件', () => {
   it('header.knowledge(知识导航项)在主词条 zh/en 中存在', () => {
     expect(mainZh.translation.header.knowledge).toBeTruthy();
     expect(mainEn.translation.header.knowledge).toBeTruthy();
+  });
+
+  it('header.resources(AIHub「资源」导航项)在主词条 zh/en 中存在', () => {
+    expect(mainZh.translation.header.resources).toBeTruthy();
+    expect(mainEn.translation.header.resources).toBeTruthy();
   });
 
     it('应用页文案在模块词条 zh/en 中存在', () => {

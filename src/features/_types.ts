@@ -13,6 +13,8 @@ export interface NavItem {
   pathMap?: string[];
   order?: number;
   testId?: string;
+  /** 系统级能力键（features）:缺省 true；指定时仅在对应 feature=true 时显示。 */
+  feature?: string;
   [key: string]: unknown;
 }
 

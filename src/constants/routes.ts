@@ -88,6 +88,9 @@ export enum Routes {
   DataSetSetting = '/configuration',
   DataflowResult = '/dataflow-result',
   Admin = '/admin',
+  // AIHub 能力：顶部「资源」入口（M0 为静态资源类型，M1 起由 taxonomy 驱动）。
+  Resources = '/resources',
+  ResourcesType = `${Routes.Resources}/:type`,
   AdminServices = `${Routes.Admin}/services`,
   AdminUserManagement = `${Routes.Admin}/users`,
   AdminSandboxSettings = `${Routes.Admin}/sandbox-settings`,

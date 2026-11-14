@@ -9,6 +9,10 @@ import {
   CapabilityName,
   useIsCapabilityEnabled,
 } from '@/hooks/use-harness-capabilities';
+import {
+  useFeatureFlags,
+  type FeatureName,
+} from '@/hooks/use-feature-flags';
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 import { supportsCssAnchor } from '@/utils/css-support';
@@ -36,6 +40,7 @@ const navCapabilityMap: Record<string, CapabilityName> = {
 function useNavMenu() {
   const knowledgeBase = useIsCapabilityEnabled('knowledgeBase');
   const memory = useIsCapabilityEnabled('memory');
+  const { features } = useFeatureFlags();
   const capabilityValues: Partial<Record<CapabilityName, boolean>> = {
     knowledgeBase,
     memory,
@@ -47,13 +52,18 @@ function useNavMenu() {
       name: item.labelKey,
       ...(item.icon ? { icon: item.icon } : {}),
       ...(item.testId ? { 'data-testid': item.testId } : {}),
+      ...(item.feature ? { feature: item.feature } : {}),
     }));
     return [...staticMenuItems, ...featureNavItems].filter((item) => {
+      // 系统级 feature 门控（如 aihub「资源」）；缺省 false。
+      if ('feature' in item && item.feature) {
+        return features?.[item.feature as FeatureName] === true;
+      }
       const cap = navCapabilityMap[item.path];
       return !cap || capabilityValues[cap] === true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [knowledgeBase, memory]);
+  }, [knowledgeBase, memory, features]);
 
   const pathMap = useMemo(() => {
     const featureItems = collectNav();

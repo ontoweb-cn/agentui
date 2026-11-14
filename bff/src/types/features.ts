@@ -10,6 +10,11 @@ export interface Features {
    * 仅当 INTELLECT_AUTH_ENABLED=true 且 hiedu 断言代理配置完整时为 true。
    */
   'intellect-auth': boolean;
+  /**
+   * AIHub 能力。仅当 AIHUB_ENABLED=true 且 aihub 代理/断言配置完整时为 true。
+   * 控制 AgentUI 顶部「资源」入口与 `/api/bff/aihub/*` 代理总闸。
+   */
+  aihub: boolean;
 }
 
 export interface FeaturesResponse {

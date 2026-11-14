@@ -21,6 +21,8 @@ import { teamRoutes } from './routes/teams';
 import { projectRoutes } from './routes/projects';
 import { tenantBindingRoutes } from './routes/tenant-bindings';
 import { hieduRoutes } from './routes/hiedu';
+import { aihubRoutes } from './routes/aihub';
+import { aihubGate } from './middleware/aihub-gate';
 import { authSessionMiddleware } from './middleware/auth-session';
 import { requireValidImtSession } from './middleware/imt-session-guard';
 import { isImtCanvasAgentsEnabled } from './utils/feature-flags';
@@ -143,6 +145,15 @@ app.use('/api/bff/hiedu/*', intellectAuthGate);
 app.use('/hiedu/*', authSessionMiddleware);
 app.use('/api/bff/hiedu/*', authSessionMiddleware);
 app.route('/', hieduRoutes);
+
+// AIHub 代理（M0）：/api/bff/aihub/* → aihub /api/v1/aihub/*。
+// 与 hiedu 同层级挂载：能力总闸 → 会话注入 → 路由内解析 member 并签发断言。
+// 必须先于通用 /api/* authMiddleware 注册，避免被其 401 抢先拦截。
+app.use('/aihub/*', aihubGate);
+app.use('/api/bff/aihub/*', aihubGate);
+app.use('/aihub/*', authSessionMiddleware);
+app.use('/api/bff/aihub/*', authSessionMiddleware);
+app.route('/', aihubRoutes);
 
 // Auth-protected routes
 app.use('/api/*', authMiddleware);
