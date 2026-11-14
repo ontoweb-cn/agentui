@@ -55,6 +55,16 @@ describe('aihub proxy', () => {
     expect(res.status).toBe(405);
   });
 
+  it('allows POST only on admin paths (then enforces session)', async () => {
+    const app = new Hono();
+    app.route('/', createAihubRoutes({ configLoader: () => okConfig }));
+    const res = await app.request('/aihub/admin/seed/import', {
+      method: 'POST',
+    });
+    expect(res.status).toBe(401);
+    expect((await res.json()).error).toBe('AIHUB_SESSION_REQUIRED');
+  });
+
   it('returns 503 when proxy config is incomplete', async () => {
     const app = new Hono();
     app.route(

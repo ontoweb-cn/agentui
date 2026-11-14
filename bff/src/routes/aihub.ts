@@ -23,8 +23,10 @@ import {
 import { streamResponse } from '../utils/response';
 
 const PREFIXES = ['/api/bff/aihub', '/aihub'] as const;
-// M0 仅有只读接口；写方法在 M1 写接口 + CSRF/jti 去重就绪后再开放。
-const ALLOWED_METHODS = new Set(['GET', 'HEAD']);
+// M0/M1 市场只读；仅 admin 子路径额外放行 POST（SameSite=Lax cookie + aihub 白名单）。
+const READ_METHODS = new Set(['GET', 'HEAD']);
+const ADMIN_PREFIXES = ['/api/bff/aihub/admin/', '/aihub/admin/'] as const;
+const ADMIN_METHODS = new Set(['POST']);
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const UPSTREAM_TIMEOUT_MS = 15_000;
 
@@ -91,7 +93,10 @@ export function createAihubRoutes(deps: AihubRouteDeps = {}): Hono {
         404,
       );
     }
-    if (!ALLOWED_METHODS.has(c.req.method)) {
+    const isAdminPath = ADMIN_PREFIXES.some((prefix) =>
+      c.req.path.startsWith(prefix),
+    );
+    if (!READ_METHODS.has(c.req.method) && !(isAdminPath && ADMIN_METHODS.has(c.req.method))) {
       return c.json(
         { code: 405, error: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' },
         405,

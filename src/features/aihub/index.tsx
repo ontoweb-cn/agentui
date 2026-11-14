@@ -76,6 +76,37 @@ function Chip({
   );
 }
 
+function AssetImage({ asset }: { asset: MarketAsset }) {
+  const [failed, setFailed] = useState(false);
+  const absolute = /^https?:\/\//i.test(asset.pic);
+  const src = absolute
+    ? asset.pic
+    : asset.pic
+      ? `/api/bff/aihub/static/deep-learning/${encodeURIComponent(asset.name)}/${asset.pic
+          .split('/')
+          .map(encodeURIComponent)
+          .join('/')}`
+      : '';
+
+  if (!src || failed) {
+    return (
+      <div className="flex h-32 w-full items-center justify-center bg-bg-secondary text-xs text-text-secondary">
+        暂无示例图
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={asset.label}
+      className="h-32 w-full object-cover"
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function AssetCard({
   asset,
   fieldLabel,
@@ -91,19 +122,7 @@ function AssetCard({
       onClick={onOpen}
       className="flex flex-col overflow-hidden rounded-lg border border-border text-left transition-colors hover:bg-bg-secondary"
     >
-      {/^https?:\/\//i.test(asset.pic) ? (
-        <img
-          src={asset.pic}
-          alt={asset.label}
-          className="h-32 w-full object-cover"
-          loading="lazy"
-          referrerPolicy="no-referrer"
-        />
-      ) : (
-        <div className="flex h-32 w-full items-center justify-center bg-bg-secondary text-xs text-text-secondary">
-          暂无示例图
-        </div>
-      )}
+      <AssetImage asset={asset} />
       <div className="flex flex-1 flex-col gap-1 p-3">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium text-text-primary">
