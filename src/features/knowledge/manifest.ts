@@ -9,8 +9,11 @@ import { FileRoutes } from '../files/routes';
 import { SearchRoutes } from '../searches/routes';
 
 /**
- * 知识 hub:一级导航"知识"收敛原"知识库/文件管理/搜索"三个入口。
- * 侧栏子菜单切换内容区,复用 datasets / files / next-searches 列表页组件。
+ * 知识 hub:一级导航"知识"收敛知识库/记忆/文件管理/搜索入口。
+ * 侧栏子菜单切换内容区,复用 datasets / memories / files / next-searches 列表页组件。
+ *
+ * 记忆页面路由注册在此处，以保证始终渲染在知识 hub 布局内；
+ * 旧的 /memories、/memory/* 由 memories manifest 重定向到 /knowledge/*。
  *
  * 知识库子菜单的隐藏由页面内 useIsCapabilityEnabled 响应式处理(能力来自
  * 登录后的 /capabilities 查询,路由表加载期不可得);/knowledge/dataset
@@ -36,6 +39,24 @@ const definition: ModuleDefinition = {
             {
               path: Routes.KnowledgeDataset,
               Component: () => import('@/pages/datasets'),
+            },
+            {
+              path: Routes.Memories,
+              Component: () => import('@/pages/memories'),
+            },
+            {
+              path: Routes.Memory,
+              Component: () => import('@/pages/memory'),
+              children: [
+                {
+                  path: 'memory-message/:id',
+                  Component: () => import('@/pages/memory/memory-message'),
+                },
+                {
+                  path: 'memory-setting/:id',
+                  Component: () => import('@/pages/memory/memory-setting'),
+                },
+              ],
             },
             {
               path: Routes.KnowledgeFiles,

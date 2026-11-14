@@ -3,6 +3,7 @@ import { Routes } from '@/constants/routes';
 import { useIsCapabilityEnabled } from '@/hooks/use-harness-capabilities';
 import {
   LucideBookOpen,
+  LucideBrain,
   LucideDatabase,
   LucideFolderOpen,
   LucideSearch,
@@ -22,6 +23,7 @@ import { Outlet } from 'react-router';
 const Knowledge = () => {
   const { t } = useTranslation();
   const knowledgeBase = useIsCapabilityEnabled('knowledgeBase');
+  const memory = useIsCapabilityEnabled('memory');
 
   const items: HubMenuItem[] = [
     ...(knowledgeBase
@@ -31,6 +33,17 @@ const Knowledge = () => {
             label: t('header.dataset'),
             icon: <LucideDatabase className="size-[1em]" />,
             testId: 'knowledge-submenu-dataset',
+          },
+        ]
+      : []),
+    ...(memory
+      ? [
+          {
+            key: Routes.Memories,
+            activeKeys: [Routes.Memories, Routes.Memory],
+            label: t('header.memories'),
+            icon: <LucideBrain className="size-[1em]" />,
+            testId: 'knowledge-submenu-memories',
           },
         ]
       : []),

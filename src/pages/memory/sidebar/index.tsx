@@ -1,17 +1,17 @@
 import { IntellectAvatar } from '@/components/intellect-avatar';
 import { Button } from '@/components/ui/button';
-import { useSecondPathName } from '@/hooks/route-hook';
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 import { formatPureDate } from '@/utils/date';
 import { MemoryStick, Settings } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router';
 import { useFetchMemoryBaseConfiguration } from '../hooks/use-memory-setting';
 import { useHandleMenuClick } from './hooks';
 
 export function SideBar() {
-  const pathName = useSecondPathName();
+  const { pathname } = useLocation();
   const { handleMenuClick } = useHandleMenuClick();
   // refreshCount: be for avatar img sync update on top left
   const { data } = useFetchMemoryBaseConfiguration();
@@ -57,7 +57,8 @@ export function SideBar() {
 
       <div className="w-[200px] flex flex-col gap-5">
         {items.map((item, itemIdx) => {
-          const active = '/' + pathName === item.key;
+          const active =
+            pathname.includes(`${item.key}/`) || pathname.endsWith(item.key);
           return (
             <Button
               key={itemIdx}

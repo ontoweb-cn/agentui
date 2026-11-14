@@ -5,7 +5,7 @@ import appEn from './applications/locales/en';
 import appZh from './applications/locales/zh';
 
 // 菜单需求(首页为导航栏静态项,不在 collectNav 范围内):
-// 任务(聊天/智能体)、知识(知识库/文件管理/搜索)→记忆→应用。
+// 任务(聊天/智能体)、知识(知识库/记忆/文件管理/搜索)→应用→资源。
 // order 定义在各模块 manifest,此测试防止 order 调整或新模块加入悄悄改变菜单顺序。
 //
 // cognitive-wargame 已迁出为运行时插件(cognitive-wargame 仓库 web/agentui,
@@ -17,7 +17,6 @@ describe('feature registry:顶部导航与应用插件', () => {
     expect(collectNav().map((n) => n.path)).toEqual([
       '/tasks',
       '/knowledge',
-      '/memories',
       '/applications',
       '/hub',
     ]);

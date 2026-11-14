@@ -13,6 +13,8 @@ export interface HubMenuItem {
   key: string;
   label: string;
   icon: ReactNode;
+  /** 额外参与选中态匹配的路径前缀(如详情页);缺省仅用 key */
+  activeKeys?: string[];
   /** 右侧附加信息(如资源计数);收起态不显示 */
   suffix?: ReactNode;
   testId?: string;
@@ -56,9 +58,15 @@ export function HubLayout({
   const activeKey =
     controlledActiveKey ??
     items
-      .filter((x) => pathname.startsWith(x.key))
-      .map((x) => x.key)
-      .sort((a, b) => b.length - a.length)[0];
+      .map((item) => ({
+        item,
+        matched: (item.activeKeys ?? [item.key])
+          .filter((key) => pathname.startsWith(key))
+          .sort((a, b) => b.length - a.length)[0],
+      }))
+      .filter((entry) => entry.matched)
+      .sort((a, b) => (b.matched?.length ?? 0) - (a.matched?.length ?? 0))[0]
+      ?.item.key;
 
   return (
     <section

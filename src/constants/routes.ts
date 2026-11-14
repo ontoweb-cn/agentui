@@ -21,8 +21,9 @@ export enum Routes {
   Agents = '/agents',
   Explore = '/explore',
   AgentExplore = `${Routes.Agent}/:id/explore`,
-  Memories = '/memories',
-  Memory = '/memory',
+  // 记忆已并入知识 hub（二级菜单）；旧路径 /memories、/memory/* 由 memories manifest 重定向。
+  Memories = '/knowledge/memories',
+  Memory = '/knowledge/memory',
   MemoryMessage = '/memory-message',
   MemorySetting = '/memory-setting',
   AgentList = '/agent-list',

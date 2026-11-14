@@ -1,6 +1,5 @@
+/** 记忆已并入知识 hub；此对象仅保留旧路径重定向常量。 */
 export const MemoriesRoutes = {
-  Memories: '/memories',
-  Memory: '/memory',
-  MemoryMessage: '/memory-message',
-  MemorySetting: '/memory-setting',
+  LegacyMemories: '/memories',
+  LegacyMemory: '/memory',
 } as const;
