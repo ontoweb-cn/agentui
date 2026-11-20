@@ -1,3 +1,6 @@
 # shell 脚本必须保持 LF:autocrlf 环境下检出转 CRLF 会让 sh 直接执行失败
 *.sh text eol=lf
 *.mjs text eol=lf
+
+# hiedu shared 快照按源仓原始字节校验 SHA256,必须保持 LF
+src/services/hiedu/shared/*.ts text eol=lf
