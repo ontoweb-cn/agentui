@@ -21,7 +21,7 @@
 FROM hub.wust.edu.cn/intellect/node:20-alpine AS frontend-builder
 WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
-RUN npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund --engine-strict=false
 COPY . .
 
 # 子目录前缀(构建时注入,如 "agentui";不带前后斜杠)

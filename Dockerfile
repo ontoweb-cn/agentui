@@ -2,7 +2,7 @@
 FROM hub.wust.edu.cn/intellect/node:20-alpine AS frontend-builder
 WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
-RUN npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund --engine-strict=false
 COPY . .
 RUN NODE_OPTIONS="--max-old-space-size=8192" \
     VITE_BUILD_SOURCEMAP=false VITE_MINIFY=esbuild \
@@ -15,7 +15,7 @@ RUN npm run build:canvas-plugin
 FROM hub.wust.edu.cn/intellect/node:20-alpine AS bff-builder
 WORKDIR /app/bff
 COPY bff/package.json bff/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund --engine-strict=false
 COPY bff/ ./
 RUN npx esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.mjs
 
