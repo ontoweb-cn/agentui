@@ -31,7 +31,7 @@ pipeline {
   parameters {
     booleanParam(name: 'RELEASE', defaultValue: false,
       description: '勾选则构建并推送正式镜像到 Harbor(否则仅验证)')
-    string(name: 'IMAGE_TAG', defaultValue: '0.4.4',
+    string(name: 'IMAGE_TAG', defaultValue: '0.4.5',
       description: '镜像 tag(手动构建时使用;tag 触发时自动取 TAG_NAME 去 v 前缀)')
     string(name: 'PLUGIN_BUNDLE_IMAGE', defaultValue: '',
       description: '插件 bundle 镜像(cognitive-wargame CI 发布,如 hub.wust.edu.cn/intellect/wargame-plugin-bundle:0d8b07d);留空=纯宿主镜像')
