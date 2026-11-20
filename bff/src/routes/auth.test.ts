@@ -1265,52 +1265,35 @@ describe('auth 路由 (P4b US1)', () => {
   // GET /auth/oauth/callback — OAuth 回调 + token 签发
   // -------------------------------------------------------------------------
 
-  it('US3:企业版 callback 成功 → 200/302 + Set-Cookie + 调 callback + token 签发', async () => {
+  it('US3:企业版 callback 成功 → 302 + Set-Cookie（直接使用 callback 返回的 token）', async () => {
     const backendStore = createMockBackendStore([enterpriseTenant]);
     const app = createApp(backendStore);
 
-    const fetchMock = vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(
-        // Step 1: callback
-        new Response(
-          JSON.stringify({
-            ok: true,
-            provider_id: 'github',
-            member_id: 'm-oauth-001',
-            claims: { sub: 'gh:123' },
-          }),
-          { status: 200 },
-        ),
-      )
-      .mockResolvedValueOnce(
-        // Step 2: token 签发
-        new Response(
-          JSON.stringify({ token_id: 'tk-1', token: 'imt_oauth_token_xxx' }),
-          { status: 201 },
-        ),
-      );
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      // callback 已签发 token，无需二次调用 /api/members/{id}/token
+      new Response(
+        JSON.stringify({
+          ok: true,
+          provider_id: 'github',
+          member_id: 'm-oauth-001',
+          token: 'imt_oauth_token_xxx',
+          claims: { sub: 'gh:123' },
+        }),
+        { status: 200 },
+      ),
+    );
 
     const resp = await app.request(
       '/auth/oauth/callback?code=gh-code&state=gh-state',
       { method: 'GET', headers: { 'X-Backend-Id': 'tenant-enterprise' } },
     );
 
-    // 验证 Step 1: callback 调用
+    // 仅调用一次 callback，不再调用 token 签发端点
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       'http://mock-enterprise:9381/api/oauth/callback?code=gh-code&state=gh-state',
       expect.objectContaining({ method: 'GET' }),
-    );
-    // 验证 Step 2: token 签发调用
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      'http://mock-enterprise:9381/api/members/m-oauth-001/token',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          Authorization: 'Bearer test-api-server-key',  // 从 harnessStore 获取的 adminToken
-        }),
-      }),
     );
 
     expect(resp.status).toBe(302);
@@ -1350,29 +1333,25 @@ describe('auth 路由 (P4b US1)', () => {
     expect(resp.status).toBe(502);
   });
 
-  it('US3:企业版 callback token 签发返回 403 → 403(API_SERVER_KEY 无效)', async () => {
+  it('US3:企业版 callback 未返回 token → 502', async () => {
     const backendStore = createMockBackendStore([enterpriseTenant]);
     const app = createApp(backendStore);
 
-    vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ ok: true, member_id: 'm-x', provider_id: 'github' }),
-          { status: 200 },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: 'invalid api server key' }), { status: 403 }),
-      );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ ok: true, member_id: 'm-x', provider_id: 'github' }),
+        { status: 200 },
+      ),
+    );
 
     const resp = await app.request(
       '/auth/oauth/callback?code=x&state=y',
       { method: 'GET', headers: { 'X-Backend-Id': 'tenant-enterprise' } },
     );
 
-    expect(resp.status).toBe(403);
+    expect(resp.status).toBe(502);
     const body = await resp.json();
-    expect(body.message).toContain('Token issue forbidden');
+    expect(body.message).toContain('GATEWAY_INCOMPATIBLE');
   });
 
   it('US3:企业版 callback 不可达 → 502', async () => {
