@@ -47,6 +47,7 @@ pub struct SsoExchangeResp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SsoExchangeErrorCode {
     InvalidRequest,
+    Forbidden,
     UnsupportedGrant,
     UnknownProvider,
     ProviderDisabled,
@@ -69,6 +70,7 @@ impl SsoExchangeErrorCode {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::InvalidRequest => "invalid_request",
+            Self::Forbidden => "forbidden",
             Self::UnsupportedGrant => "unsupported_grant",
             Self::UnknownProvider => "unknown_provider",
             Self::ProviderDisabled => "provider_disabled",
@@ -101,7 +103,10 @@ impl SsoExchangeErrorCode {
             | Self::TokenExpired
             | Self::NonceMismatch
             | Self::AccountDisabled => 401,
-            Self::TenantMismatch | Self::MemberNotProvisioned | Self::IdentityConflict => 403,
+            Self::TenantMismatch
+            | Self::MemberNotProvisioned
+            | Self::IdentityConflict
+            | Self::Forbidden => 403,
             Self::TooManyRequests => 429,
             Self::InternalError => 500,
             Self::ServiceUnavailable => 503,

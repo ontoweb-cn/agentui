@@ -59,6 +59,7 @@ export interface SsoExchangeResponse {
 
 export type SsoExchangeErrorCode =
   | 'invalid_request'
+  | 'forbidden'
   | 'unsupported_grant'
   | 'unknown_provider'
   | 'provider_disabled'
@@ -84,6 +85,7 @@ export interface SsoExchangeError {
 /** HTTP 状态码映射（与 spec §端点契约 一致）。 */
 export const SSO_ERROR_STATUS: Record<SsoExchangeErrorCode, number> = {
   invalid_request: 400,
+  forbidden: 403,
   unsupported_grant: 400,
   unknown_provider: 400,
   provider_disabled: 400,
