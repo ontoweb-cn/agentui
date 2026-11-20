@@ -11,4 +11,5 @@ spec:
   resources:
     requests:
       storage: 2Gi
-  # storageClassName: <按集群实际填写；留空使用默认 StorageClass>
+  # 与集群现有应用一致（hiedu/intellect-team 均使用 nfs-csi）
+  storageClassName: nfs-csi
