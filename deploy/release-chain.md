@@ -1,6 +1,6 @@
 # 发版链路 Runbook — tag → Jenkins → Harbor → ArgoCD → 域名
 
-拓扑：**独立子域根路径** `https://agentui.wust.edu.cn`（2026-11-20 确认）。
+拓扑：**ai.wust.edu.cn 根路径 `/`**（原 `/frontend` 门户保留在子路径）。
 
 ## 1. 发版（Gitee tag）
 
@@ -44,10 +44,11 @@ kubectl apply -f deploy/argocd/application.yaml
 
 ## 3. 域名与网关
 
-外部 nginx（ai.wust.edu.cn 所在网关）引用 [agentui-subdomain.conf](../gateway/agentui-subdomain.conf)：
-- `agentui.wust.edu.cn` → `<cluster-node-ip>:31390`；
-- 关闭代理缓冲（SSE）、超时 3600s、`client_max_body_size 1024m`；
-- 证书路径按网关实际填写，DNS 指向网关公网 IP。
+外部 nginx（ai.wust.edu.cn 所在网关）引用 [agentui-root.conf](../gateway/agentui-root.conf)：
+- 在现有 `ai.wust.edu.cn` 443 server 中新增 `location /`，反代 `<cluster-node-ip>:31390`；
+- **删除原有** `location = / { return 301 /frontend/; }`，否则根路径仍跳门户；
+- `/frontend/`、`/auth/`、`/intellect-gateway`、`/intellect-kb`、`/wargame/` 等更具体 location 保持不变；
+- 关闭代理缓冲（SSE）、超时 3600s、`client_max_body_size 1024m`。
 
 ## 4. Secret（一次性）
 
@@ -67,19 +68,19 @@ kubectl -n intellect create secret generic agentui-sso \
 ## 5. 启用 SSO
 
 前置（网关侧）：provider `intellect-auth`（issuer `https://ai.wust.edu.cn/auth`）、
-`redirect_uris=https://agentui.wust.edu.cn/api/bff/auth/oauth/callback`、
+`redirect_uris=https://ai.wust.edu.cn/api/bff/auth/oauth/callback`、
 `INTELLECT_OAUTH_EXCHANGE_ENABLED=true`；IdP 侧 client 已注册。
 
 步骤：
 1. 创建 `agentui-sso` Secret；
 2. 在 Git 中把 `deploy/k8s/agentui-config.yaml` 的 `BFF_SSO_ENABLED` 改为 `"true"` 并提交（**不要 kubectl edit**：ArgoCD `selfHeal` 会回滚）；
-3. 确认 `BFF_PUBLIC_ORIGIN=https://agentui.wust.edu.cn`；
+3. 确认 `BFF_PUBLIC_ORIGIN=https://ai.wust.edu.cn`；
 4. 提交后 ArgoCD 同步，跑冒烟。
 
 ## 6. 冒烟
 
 ```bash
-bash scripts/smoke-deploy.sh https://agentui.wust.edu.cn
+bash scripts/smoke-deploy.sh https://ai.wust.edu.cn
 ```
 
 Jenkins 发版参数 `SMOKE_URL` 非空时自动执行同一脚本。
