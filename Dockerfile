@@ -1,5 +1,5 @@
 # ===== Stage 1: Frontend build =====
-FROM node:20-alpine AS frontend-builder
+FROM docker.1ms.run/library/node:20-alpine AS frontend-builder
 WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci --no-audit --no-fund
@@ -12,7 +12,7 @@ RUN NODE_OPTIONS="--max-old-space-size=8192" \
 RUN npm run build:canvas-plugin
 
 # ===== Stage 2: BFF build(独立 lock 钉版:bff/package-lock.json,评审 Q1)=====
-FROM node:20-alpine AS bff-builder
+FROM docker.1ms.run/library/node:20-alpine AS bff-builder
 WORKDIR /app/bff
 COPY bff/package.json bff/package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -20,7 +20,7 @@ COPY bff/ ./
 RUN npx esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.mjs
 
 # ===== Stage 3: Production runtime =====
-FROM node:20-alpine AS production
+FROM docker.1ms.run/library/node:20-alpine AS production
 RUN apk add --no-cache nginx gettext
 WORKDIR /app
 
