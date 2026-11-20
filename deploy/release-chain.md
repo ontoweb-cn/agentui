@@ -1,6 +1,6 @@
 # 发版链路 Runbook — tag → Jenkins → Harbor → ArgoCD → 域名
 
-拓扑：**ai.wust.edu.cn 根路径 `/`**（原 `/frontend` 门户保留在子路径）。
+拓扑：**ai.wust.edu.cn 根路径 `/`**（原 `/frontend` 门户下线）。
 
 ## 1. 发版（Gitee tag）
 
@@ -46,8 +46,8 @@ kubectl apply -f deploy/argocd/application.yaml
 
 外部 nginx（ai.wust.edu.cn 所在网关）引用 [agentui-root.conf](../gateway/agentui-root.conf)：
 - 在现有 `ai.wust.edu.cn` 443 server 中新增 `location /`，反代 `<cluster-node-ip>:31390`；
-- **删除原有** `location = / { return 301 /frontend/; }`，否则根路径仍跳门户；
-- `/frontend/`、`/auth/`、`/intellect-gateway`、`/intellect-kb`、`/wargame/` 等更具体 location 保持不变；
+- **删除**原有 `location = / { return 301 /frontend/; }` 及 `/frontend/` 相关 location（门户下线）；
+- `/auth/`、`/intellect-gateway`、`/intellect-kb`、`/wargame/` 等更具体 location 保持不变；
 - 关闭代理缓冲（SSE）、超时 3600s、`client_max_body_size 1024m`。
 
 ## 4. Secret（一次性）

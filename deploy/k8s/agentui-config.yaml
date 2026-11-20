@@ -1,5 +1,5 @@
 # AgentUI 非敏感运行时配置（由 Deployment envFrom 注入）
-# 拓扑：ai.wust.edu.cn 根路径（原 /frontend 门户仍保留在其子路径）
+# 拓扑：ai.wust.edu.cn 根路径（原 /frontend 门户下线，不再保留）
 # 启用 SSO 前需创建 agentui-sso Secret（key=state-secret），并完成网关 provider 配置。
 apiVersion: v1
 kind: ConfigMap
