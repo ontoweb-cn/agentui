@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-20
 
-**Status**: P1 Implemented (v1.4；已按代码评审修复安全/一致性问题，BFF 侧 P2 待实施)
+**Status**: P1 Implemented (v1.5；已按两轮代码评审修复安全/一致性问题，BFF 侧 P2 待实施)
 
 **Input**: 用户需求："在启用 SSO（例如 intellect-auth）的情形下，agentui 是否可以免除配置 TOKEN？直接通过 OAuth 登录 intellect-team，并可以访问其它应用资源（例如 aidevops）。" — 本 spec 落地方案 2（BFF 作为 OIDC RP，网关提供授权码兑换端点）。
 
@@ -122,10 +122,10 @@
 - **FR-006**: JIT 建号 MUST 默认关闭（`auto_provision=0`），开启时并发安全（唯一索引 + upsert）
 - **FR-007**: 网关 MUST 校验成员 `enabled==1`，否则 401 `account_disabled`
 - **FR-008**: 网关 MUST 签发 `imt_*`（复用 `generate_member_token` + `create_api_token`，kind=`sso_login`），TTL 默认 28800s，可由 `INTELLECT_OAUTH_TOKEN_TTL_SECS` 或 provider `token_ttl_secs` 覆盖，且 MUST clamp 到 `[60, 7d]`
-- **FR-009**: 网关 MUST 记录审计事件（provider/sub 指纹/member_id/jti/tenant/结果），**不得**记录原始 code、code_verifier、id_token、token
+- **FR-009**: 网关 MUST 将审计事件持久化到 `member_admin_audit_log`（`source=sso`，action=`sso.login` / `sso.login.reject`），包含 provider/sub 指纹/member_id/tenant/结果，**不得**记录原始 code、code_verifier、id_token、token；审计写失败仅告警不影响登录
 - **FR-010**: 网关 MUST 校验 `X-Intellect-Tenant` 与实例一致，不一致 403 `tenant_mismatch`
 - **FR-011**: 网关 MUST 对该端点做调用方限制：默认仅内网/NetworkPolicy 可达；可配置 HMAC 头 `X-BFF-Signature`（时间戳 + 请求体摘要）；生产环境禁止直接暴露公网
-- **FR-012**: 网关 MUST 在 provider 校验通过后按（**可信**客户端 IP + provider）限流，超限 429；IP MUST 取 TCP peer，仅当 `INTELLECT_TRUST_PROXY_HEADERS=true` 时才信任 `X-Real-IP`/`X-Forwarded-For`；单副本进程内限流即可，多副本一致性列入遗留项
+- **FR-012**: 网关 MUST 在 provider 校验通过后按（**可信**客户端 IP + provider）以 **10 次/分钟**固定窗口限流，超限返回 429 + `Retry-After`；IP MUST 取 TCP peer，仅当 `INTELLECT_TRUST_PROXY_HEADERS=true` 时才信任 `X-Real-IP`/`X-Forwarded-For`；单副本进程内限流即可，多副本一致性列入遗留项
 - **FR-013**: 网关 MUST 在公开的 `GET /api/members/oauth/providers` 中补充 `client_id`（OIDC client_id 非机密），供 BFF 构造 authorize 请求
 - **FR-014**: 网关 MUST 校验 `azp`：intellect-auth 的 id_token 同时携带 `aud=[client_id]` 与 `azp=client_id`（[token_jwt.go](../../../intellect-auth/object/token_jwt.go#L606-L633)）；若客户端配置为 shared（`isShared=true`），`aud` 会变成 `clientId-org-<owner>`，网关 MUST 显式拒绝或按后缀匹配，**默认拒绝 shared client**
 - **FR-015**: 网关 SHOULD 支持可选的 `member_id_claim`（provider 级配置，默认空）：当日志中该 claim 命中已存在的 member 且该 member 尚无该 `(provider_id, sub)` 绑定时，自动建立绑定而非新建账号；用于对接 hiedu 已同步的成员（详见 §intellect-auth 对接配置）
@@ -190,7 +190,7 @@ X-BFF-Signature: <ts>.<hex-hmac-sha256>  # 可选，启用调用方限制时必�
 | 400 | `redirect_uri_not_allowed` | 不在白名单 |
 | 400 | `token_exchange_failed` | IdP 拒绝 code 兑换 |
 | 401 | `invalid_token` / `token_expired` / `nonce_mismatch` / `account_disabled` | 验签或成员状态失败 |
-| 403 | `tenant_mismatch` / `member_not_provisioned` / `identity_conflict` | 租户不一致 / 未建号且 JIT 关闭 / 该 member 已绑定同 provider 的其它身份 |
+| 403 | `tenant_mismatch` / `member_not_provisioned` / `identity_conflict` / `forbidden` | 租户不一致 / 未建号且 JIT 关闭 / 该 member 已绑定同 provider 的其它身份 / members 系统关闭 |
 | 429 | `too_many_requests` | 限流 |
 | 500 | `internal_error` | 存储/解密失败 |
 | 503 | `service_unavailable` | oauth store 或 member store 不可用 |
@@ -330,6 +330,11 @@ hiedu 的 `external_identity` 是 **person → intellect member id** 的映射�
 | 接管并发安全 | ✅ | `MemberStore::bind_identity_if_absent`（新增，`ON CONFLICT DO NOTHING` + 回读） |
 | TTL clamp / 单活跃 token | ✅ | `clamp_sso_ttl`（60s–7d）+ 签发前撤销旧 `sso_login` token |
 | `validate_nbf` | ✅ | `oidc.rs` 已开启 |
+| 持久审计 | ✅ | `member_admin_audit_log`（source=sso） |
+| 10 次/分钟专用限流 + `Retry-After` | ✅ | `sso_exchange_rate_limit` / `sso_rate_limited_response` |
+| 身份唯一约束 | ✅ | 迁移 `20261120000001_identities_unique_member_provider.sql` |
+| token 原子轮换 | ✅ | `MemberStore::replace_api_token` |
+| 验签失败 fail-closed | ✅ | `extract_user_claims` 不再回落 userinfo |
 | 公开 provider 列表返回 `client_id` | ✅ | `OAuthProviderInfo.client_id` |
 | 调用方 HMAC（FR-011 可选部分） | ⏸ 未实现 | 依赖内网/NetworkPolicy；如跨集群再补 |
 | BFF OIDC RP 改造（P2） | ⏳ 待实施 | agentui `bff/src/routes/auth.ts` |
@@ -358,6 +363,17 @@ hiedu 的 `external_identity` 是 **person → intellect member id** 的映射�
 | 8 | minor | TTL 无上限 | `clamp_sso_ttl` 限制 60s–7d（FR-008） |
 | 9 | minor | 旧 `sso_login` token 堆积 | 签发前撤销同 member 旧 token（FR-019） |
 | 10 | minor | 旧网关兼容性问题 | BFF 返回 502 `GATEWAY_INCOMPATIBLE` + 升级指引；发布顺序写入 FR-020 |
+
+## 第二轮代码评审修复（v1.5）
+
+| # | 严重度 | 问题 | 修复 |
+|---|---|---|---|
+| 7 | major | 接管存在 TOCTOU（读写分离、无唯一约束） | 新增 `UNIQUE(member_id, provider)` 迁移，冲突在 DB 层兜底 |
+| 8 | major | 缺少持久审计 | `record_audit(source=sso)`：成功、接管、禁用、身份冲突均落库 |
+| 9 | major | id_token 验签失败回落 userinfo，绕过 azp/nbf | 验签失败直接 401，不再回落 |
+| 10 | minor | 限流用 anonymous 桶（120/min）、429 无 `Retry-After` | 专用 10/min 固定窗口 + `Retry-After` |
+| 11 | minor | 旧 token 撤销与新 token 创建非原子 | `replace_api_token`（DELETE+INSERT 单事务） |
+| 12 | minor | 契约缺 `forbidden` 错误码 | TS/Rust 契约同步补齐 |
 
 ## 评审记录（v1.0 → v1.2）
 
