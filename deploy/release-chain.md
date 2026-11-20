@@ -44,6 +44,9 @@ kubectl apply -f deploy/argocd/application.yaml
 
 ## 3. 域名与网关
 
+> 待执行的网关切换清单（含配置、验证、回滚、责任边界）见
+> [ai-wust-gateway-cutover.md](./ai-wust-gateway-cutover.md)。
+
 外部 nginx（ai.wust.edu.cn 所在网关）引用 [agentui-root.conf](../gateway/agentui-root.conf)：
 - 在现有 `ai.wust.edu.cn` 443 server 中新增 `location /`，反代 `<cluster-node-ip>:31390`；
 - **删除**原有 `location = / { return 301 /frontend/; }` 及 `/frontend/` 相关 location（门户下线）；
