@@ -477,8 +477,11 @@ export enum StringTransformMethod {
 
 export enum StringTransformDelimiter {
   Comma = ',',
+  ChineseComma = '，',
   Semicolon = ';',
+  ChineseSemicolon = '；',
   Period = '.',
+  ChinesePeriod = '。',
   LineBreak = '\n',
   Tab = '\t',
   Space = ' ',
