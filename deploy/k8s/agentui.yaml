@@ -39,6 +39,9 @@ spec:
     metadata:
       labels:
         app: agentui
+      annotations:
+        # 变更 ConfigMap 环境变量后用于触发滚动重启（更新该时间戳即可）
+        kubectl.kubernetes.io/restartedAt: "2026-11-21T01:30:00Z"
     spec:
       # 私有 Harbor 必须带拉取凭证（Secret 创建命令见 README §3）
       imagePullSecrets:
