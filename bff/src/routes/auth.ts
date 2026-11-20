@@ -824,7 +824,6 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
     if (!backend) {
       return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
     }
-    const { baseUrl, apiServerKey } = backend;
     const frontendHome = process.env.BFF_OAUTH_FRONTEND_HOME || '/';
 
     // Step 1: 调 intellect-team GET /api/oauth/callback?code=&state=
@@ -853,52 +852,31 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
       ok: boolean;
       provider_id: string;
       member_id: string;
+      /** 网关在 callback 内已签发 member token，BFF 直接使用。 */
+      token?: string;
       claims?: Record<string, unknown>;
     };
     if (!cbData.ok || !cbData.member_id) {
       return c.json(fail(502, 'OAuth callback did not return valid member_id'), 502);
     }
-
-    // Step 2: 调 intellect-team POST /api/members/{member_id}/token 签发 token
-    // 用 API_SERVER_KEY 鉴权(Principle VIII:BFF 内部管理操作)
-    let tokenResp: Response;
-    try {
-      tokenResp = await fetch(`${baseUrl}/api/members/${cbData.member_id}/token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiServerKey}`,
-        },
-        body: JSON.stringify({
-          name: `agentui-session-${Date.now()}`,
-          permissions: ['chat', 'read'],
-        }),
-      });
-    } catch (err) {
-      console.error('[auth] intellect-team token issue fetch error:', (err as Error).message);
-      return c.json(fail(502, 'intellect-team unreachable'), 502);
-    }
-
-    if (tokenResp.status === 403) {
-      console.error('[auth] intellect-team token issue 403 (API_SERVER_KEY invalid?)');
-      return c.json(fail(403, 'Token issue forbidden'), 403);
-    }
-    if (!tokenResp.ok) {
-      const text = await tokenResp.text().catch(() => '');
-      console.error(`[auth] intellect-team token issue failed: ${tokenResp.status}`, text);
+    // 直接使用 callback 返回的 token：POST /api/members/{id}/token 要求 Member
+    // 身份，API_SERVER_KEY(Profile 模式)会被 401 拒绝，且属多余往返。
+    if (!cbData.token) {
+      // 发布顺序：intellect-team 必须先于 agentui 升级（spec-014 P0）。
+      console.error(
+        '[auth] GATEWAY_INCOMPATIBLE: intellect-team did not return a member token from /api/oauth/callback — upgrade the gateway before agentui',
+      );
       return c.json(
-        fail(tokenResp.status, 'intellect-team token issue failed'),
-        tokenResp.status as 400 | 500 | 502 | 503,
+        fail(
+          502,
+          'GATEWAY_INCOMPATIBLE: intellect-team did not return a member token; upgrade gateway first',
+        ),
+        502,
       );
     }
 
-    const tokenData = (await tokenResp.json()) as { token_id: string; token: string };
-    if (!tokenData.token) {
-      return c.json(fail(502, 'Token issue response missing token'), 502);
-    }
-
-    // Step 3: Set-Cookie + 302 重定向前端首页
-    setCookie(c, AUTH_COOKIE_NAME, tokenData.token, {
+    // Step 2: Set-Cookie + 302 重定向前端首页
+    setCookie(c, AUTH_COOKIE_NAME, cbData.token, {
       httpOnly: true,
       sameSite: 'Lax',
       path: '/',
