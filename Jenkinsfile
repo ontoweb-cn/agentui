@@ -99,15 +99,28 @@ pipeline {
             passwordVariable: 'HARBOR_SECRET')]) {
           sh 'echo "$HARBOR_SECRET" | docker login hub.wust.edu.cn -u "$HARBOR_USER" --password-stdin'
           sh '''
-            set -e
             IMG=hub.wust.edu.cn/intellect/node:20-alpine
             if docker manifest inspect "$IMG" >/dev/null 2>&1; then
               echo "基础镜像已存在: $IMG"
-            else
-              docker pull docker.1ms.run/library/node:20-alpine
-              docker tag docker.1ms.run/library/node:20-alpine "$IMG"
-              docker push "$IMG"
+              exit 0
             fi
+            for SRC in \
+              hub.wust.edu.cn/dockerhub/library/node:20-alpine \
+              hub.wust.edu.cn/proxy/library/node:20-alpine \
+              docker.m.daocloud.io/library/node:20-alpine \
+              docker.nju.edu.cn/library/node:20-alpine \
+              docker.1ms.run/library/node:20-alpine
+            do
+              echo "尝试基础镜像源: $SRC"
+              if docker pull "$SRC"; then
+                docker tag "$SRC" "$IMG"
+                docker push "$IMG"
+                echo "已转存: $SRC -> $IMG"
+                exit 0
+              fi
+            done
+            echo "所有基础镜像源均不可达，请手动推送 node:20-alpine 到 $IMG" >&2
+            exit 1
           '''
         }
       }
