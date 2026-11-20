@@ -10,6 +10,7 @@ import {
 import { IntellectSelect } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
+import { ComparisonOperator } from '@/constants/agent';
 import { SwitchLogicOperator } from '@agentui/canvas-plugin/constant';
 import { useBuildSwitchOperatorOptions } from '@/hooks/logic-hooks/use-build-operator-options';
 import { useBuildSwitchLogicOperatorOptions } from '@/hooks/logic-hooks/use-build-options';
@@ -30,6 +31,24 @@ import { useWatchFormChange } from './use-watch-change';
 const ConditionKey = 'conditions';
 const ItemKey = 'items';
 
+// Keep this list aligned with intellect_dsl/component/switch.py.  The shared
+// operator catalogue also contains `in` / `not in`, but the Switch executor
+// does not support them yet, so they must not be offered by this form.
+const SupportedSwitchOperators = [
+  ComparisonOperator.Equal,
+  ComparisonOperator.NotEqual,
+  ComparisonOperator.GreatThan,
+  ComparisonOperator.GreatEqual,
+  ComparisonOperator.LessThan,
+  ComparisonOperator.LessEqual,
+  ComparisonOperator.Contains,
+  ComparisonOperator.NotContains,
+  ComparisonOperator.StartWith,
+  ComparisonOperator.EndWith,
+  ComparisonOperator.Empty,
+  ComparisonOperator.NotEmpty,
+];
+
 type ConditionCardsProps = {
   name: string;
   removeParent(index: number): void;
@@ -45,7 +64,9 @@ function ConditionCards({
 }: ConditionCardsProps) {
   const form = useFormContext();
 
-  const switchOperatorOptions = useBuildSwitchOperatorOptions();
+  const switchOperatorOptions = useBuildSwitchOperatorOptions(
+    SupportedSwitchOperators,
+  );
 
   const name = `${parentName}.${ItemKey}`;
 
@@ -153,7 +174,9 @@ function ConditionCards({
 function SwitchForm({ node }: IOperatorForm) {
   const { t } = useTranslation();
   const values = useValues(node);
-  const switchOperatorOptions = useBuildSwitchOperatorOptions();
+  const switchOperatorOptions = useBuildSwitchOperatorOptions(
+    SupportedSwitchOperators,
+  );
 
   const FormSchema = z.object({
     conditions: z.array(
