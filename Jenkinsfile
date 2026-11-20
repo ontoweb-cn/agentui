@@ -92,7 +92,10 @@ pipeline {
       steps {
         sh 'node --version'
         // bff 为根 workspaces 成员,根 lock 统一钉版,无需单独 install(评审 Q1)
-        sh 'npm ci --no-audit --no-fund'
+        // Jenkins agent 目前为 Node 20，而 devDependencies 中 chromatic>=17 要求 Node >=22；
+        // chromatic 不参与构建/测试，使用 --engine-strict=false 解除安装阻断。
+        // 后续应把 Jenkins agent 镜像升级到 Node 22，并移除该参数。
+        sh 'npm ci --no-audit --no-fund --engine-strict=false'
       }
     }
 
