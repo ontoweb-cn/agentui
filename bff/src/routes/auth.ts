@@ -181,10 +181,21 @@ function resolveSsoTenantBackend(
   return getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
 }
 
+/** 前端基路径（支持子目录部署）；非法值回落根路径。 */
+function getFrontendBase(): string {
+  const raw = (process.env.BFF_FRONTEND_BASE ?? '').trim().replace(/\/+$/, '');
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '';
+  return raw;
+}
+
+function loginPagePath(): string {
+  return `${getFrontendBase()}/login`;
+}
+
 /** 浏览器可见的 SSO 失败统一回登录页，带可读错误码。 */
 function redirectToLoginError(c: Context<{ Variables: AuthVariables }>, code: string): Response {
   c.header('Cache-Control', 'no-store');
-  return c.redirect(`/login?error=${encodeURIComponent(code)}`, 302);
+  return c.redirect(`${loginPagePath()}?error=${encodeURIComponent(code)}`, 302);
 }
 
 /** 网关 exchange 错误 → 前端错误码。 */
@@ -225,7 +236,9 @@ async function handleSsoAuthorize(
 ): Promise<Response> {
   const config = loadSsoConfig();
   if (!config.enabled) {
-    return c.json(fail(404, 'SSO is not enabled'), 404);
+    // 关闭态被直接访问时回登录页，避免浏览器看到 JSON 404。
+    c.header('Cache-Control', 'no-store');
+    return c.redirect(loginPagePath(), 302);
   }
 
   const backend = resolveSsoTenantBackend(c, tenantId);
@@ -905,17 +918,17 @@ authRoutes.get('/auth/sso/relogin', async (c) => {
 
   if (!config.enabled || !config.silentRelogin) {
     c.header('Cache-Control', 'no-store');
-    return c.redirect('/login', 302);
+    return c.redirect(loginPagePath(), 302);
   }
 
-  // 登出会清除 sso_provider；缺失即视为「用户已主动登出」，不自动重登。
-  const providerId = readSsoProviderCookie(c);
-  if (!providerId) {
+  // 登出会清除 sso_provider；缺失/租户不匹配即视为「用户已主动登出」，不自动重登。
+  const storedProvider = await readSsoProviderCookie(c, config.stateSecret);
+  if (!storedProvider || storedProvider.tenant_id !== tenantId) {
     c.header('Cache-Control', 'no-store');
-    return c.redirect('/login', 302);
+    return c.redirect(loginPagePath(), 302);
   }
 
-  return handleSsoAuthorize(c, providerId, tenantId, c.req.query('returnTo'), true);
+  return handleSsoAuthorize(c, storedProvider.provider_id, tenantId, c.req.query('returnTo'), true);
 });
 
 // ---------------------------------------------------------------------------
@@ -1035,6 +1048,7 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
 
     // 验签失败时 getSignedCookie 会退化为「无 Cookie」，需用原始 Cookie 存在性兜底判定。
     if (read.status === 'invalid' || (read.status === 'absent' && hasSsoStateCookie)) {
+      deleteCookie(c, SSO_STATE_COOKIE_NAME, { path: '/' });
       return redirectToLoginError(c, 'sso_state_invalid');
     }
 
@@ -1088,19 +1102,35 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
         `[auth] sso login ok: tenant=${payload.tenant_id} provider=${payload.provider_id} member=${result.data.member?.id ?? 'unknown'}`,
       );
 
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const tokenTtlSeconds = Number.isFinite(result.data.expires_at)
+        ? result.data.expires_at - nowSeconds
+        : AUTH_COOKIE_MAX_AGE;
+      const cookieMaxAge = Math.max(60, Math.min(AUTH_COOKIE_MAX_AGE, tokenTtlSeconds));
+
       setCookie(c, AUTH_COOKIE_NAME, result.data.token, {
         httpOnly: true,
         sameSite: 'Lax',
         path: '/',
-        maxAge: AUTH_COOKIE_MAX_AGE,
-        secure: process.env.NODE_ENV === 'production',
+        maxAge: cookieMaxAge,
+        secure: isSecureCookie(ssoConfig),
       });
-      writeSsoProviderCookie(c, payload.provider_id, isSecureCookie(ssoConfig));
+      await writeSsoProviderCookie(
+        c,
+        { provider_id: payload.provider_id, tenant_id: payload.tenant_id },
+        ssoConfig.stateSecret,
+        isSecureCookie(ssoConfig),
+      );
 
       c.header('Cache-Control', 'no-store');
       return c.redirect(sanitizeReturnTo(payload.return_to), 302);
     }
-    // absent：开关开启但无 state Cookie（旧页面在途），落到下方旧链路兜底。
+
+    // 开关开启但无 state Cookie：不再回落旧链路（避免绕过 BFF 的 state 绑定）。
+    if (ssoConfig.enabled) {
+      return redirectToLoginError(c, 'sso_state_invalid');
+    }
+    // 开关关闭且无 Cookie：保留一个发布周期的旧链路。
   }
 
   // ---- 旧链路（FR-024 回滚保留一个发布周期）----

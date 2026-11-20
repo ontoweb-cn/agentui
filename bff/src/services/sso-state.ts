@@ -7,7 +7,7 @@
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Context } from 'hono';
-import { deleteCookie, getCookie, getSignedCookie, setCookie, setSignedCookie } from 'hono/cookie';
+import { deleteCookie, getSignedCookie, setSignedCookie } from 'hono/cookie';
 import { z } from 'zod';
 
 export const SSO_STATE_COOKIE_NAME = 'sso_state';
@@ -107,8 +107,18 @@ export function ssoStateMatches(expected: string, actual: string | undefined): b
   return timingSafeEqual(expectedBuffer, actualBuffer);
 }
 
-export function writeSsoProviderCookie(c: Context, providerId: string, secure: boolean): void {
-  setCookie(c, SSO_PROVIDER_COOKIE_NAME, providerId, {
+export interface SsoProviderCookiePayload {
+  provider_id: string;
+  tenant_id: string;
+}
+
+export async function writeSsoProviderCookie(
+  c: Context,
+  payload: SsoProviderCookiePayload,
+  secret: string,
+  secure: boolean,
+): Promise<void> {
+  await setSignedCookie(c, SSO_PROVIDER_COOKIE_NAME, JSON.stringify(payload), secret, {
     httpOnly: true,
     sameSite: 'Lax',
     path: '/',
@@ -117,9 +127,22 @@ export function writeSsoProviderCookie(c: Context, providerId: string, secure: b
   });
 }
 
-export function readSsoProviderCookie(c: Context): string | undefined {
-  const value = getCookie(c, SSO_PROVIDER_COOKIE_NAME);
-  return value && value.trim() ? value.trim() : undefined;
+export async function readSsoProviderCookie(
+  c: Context,
+  secret: string,
+): Promise<SsoProviderCookiePayload | undefined> {
+  const raw = await getSignedCookie(c, secret, SSO_PROVIDER_COOKIE_NAME);
+  if (typeof raw !== 'string') return undefined;
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<SsoProviderCookiePayload>;
+    if (typeof parsed.provider_id !== 'string' || typeof parsed.tenant_id !== 'string') {
+      return undefined;
+    }
+    return { provider_id: parsed.provider_id, tenant_id: parsed.tenant_id };
+  } catch {
+    return undefined;
+  }
 }
 
 export function clearSsoProviderCookie(c: Context): void {

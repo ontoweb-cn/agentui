@@ -83,7 +83,8 @@ async function loadRawProviders(
   tenantId: string,
   config: SsoConfig,
 ): Promise<PublicOAuthProvider[]> {
-  const cached = cache.get(tenantId);
+  const cacheKey = `${tenantId}@${baseUrl}`;
+  const cached = cache.get(cacheKey);
   const now = Date.now();
 
   if (cached && now - cached.fetchedAt <= config.providerCacheMs) {
@@ -92,7 +93,7 @@ async function loadRawProviders(
 
   try {
     const raw = await fetchPublicProviders(baseUrl);
-    cache.set(tenantId, { fetchedAt: now, raw });
+    cache.set(cacheKey, { fetchedAt: now, raw });
     return raw;
   } catch (err) {
     if (cached && now - cached.fetchedAt <= Math.max(config.providerCacheMs, STALE_MAX_MS)) {

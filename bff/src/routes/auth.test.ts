@@ -1445,7 +1445,9 @@ function readSetCookies(resp: Response): string[] {
 }
 
 function findCookie(cookies: string[], name: string): string | undefined {
-  return cookies.find((cookie) => cookie.startsWith(`${name}=`));
+  // 同一响应可能同时包含删除(空值)与新值，取最后一个匹配项。
+  const matches = cookies.filter((cookie) => cookie.startsWith(`${name}=`));
+  return matches.length > 0 ? matches[matches.length - 1] : undefined;
 }
 
 describe('auth 路由 — SSO P2 (spec-014)', () => {
@@ -1467,6 +1469,7 @@ describe('auth 路由 — SSO P2 (spec-014)', () => {
     delete process.env.BFF_SSO_SILENT_RELOGIN;
     delete process.env.BFF_SSO_EXCHANGE_TIMEOUT_MS;
     delete process.env.BFF_SSO_PROVIDER_CACHE_MS;
+    delete process.env.BFF_FRONTEND_BASE;
     clearProviderCache();
     vi.restoreAllMocks();
   });
@@ -1681,6 +1684,21 @@ describe('auth 路由 — SSO P2 (spec-014)', () => {
     expect(resp.headers.get('location')).toBe('/login?error=sso_unavailable');
   });
 
+  async function completeLogin(
+    app: Hono<{ Variables: TestVariables }>,
+    fetchMock: { mockResolvedValueOnce: (value: Response) => unknown },
+  ): Promise<{ providerCookie: string }> {
+    const started = await authorize(app);
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EXCHANGE_OK), { status: 200 }));
+    const loginResp = await app.request(
+      `/auth/oauth/callback?code=auth-code&state=${started.state}`,
+      { headers: { Cookie: started.cookieHeader } },
+    );
+    return {
+      providerCookie: (findCookie(readSetCookies(loginResp), 'sso_provider') ?? '').split(';')[0],
+    };
+  }
+
   it('relogin：无 sso_provider（已登出）→ 直接回登录页', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     const app = createApp(createMockBackendStore([enterpriseTenant]));
@@ -1692,19 +1710,121 @@ describe('auth 路由 — SSO P2 (spec-014)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('relogin：有 sso_provider → prompt=none 静默授权', async () => {
+  it('relogin：有签名 sso_provider → prompt=none 静默授权', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     mockProviders(fetchMock);
     const app = createApp(createMockBackendStore([enterpriseTenant]));
+    const { providerCookie } = await completeLogin(app, fetchMock);
 
     const resp = await app.request('/auth/sso/relogin?tenant=tenant-enterprise&returnTo=/chat', {
-      headers: { Cookie: 'sso_provider=intellect-auth' },
+      headers: { Cookie: providerCookie },
     });
 
     const url = new URL(resp.headers.get('location') ?? '');
     expect(resp.status).toBe(302);
     expect(url.searchParams.get('prompt')).toBe('none');
     expect(url.searchParams.get('response_type')).toBe('code');
+  });
+
+  it('relogin：伪造 sso_provider → 回登录页', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+
+    const resp = await app.request('/auth/sso/relogin?tenant=tenant-enterprise', {
+      headers: { Cookie: 'sso_provider=intellect-auth' },
+    });
+
+    expect(resp.headers.get('location')).toBe('/login');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('callback：开关开启但无 sso_state → 直接失败，不回落旧链路', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+
+    const resp = await app.request('/auth/oauth/callback?code=c&state=s');
+
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get('location')).toBe('/login?error=sso_state_invalid');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('静默重登失败一次 → 交互式重试；再失败回登录页', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    mockProviders(fetchMock);
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+    const { providerCookie } = await completeLogin(app, fetchMock);
+
+    const relogin = await app.request('/auth/sso/relogin?tenant=tenant-enterprise&returnTo=/chat', {
+      headers: { Cookie: providerCookie },
+    });
+    const reloginUrl = new URL(relogin.headers.get('location') ?? '');
+    expect(reloginUrl.searchParams.get('prompt')).toBe('none');
+    const silentCookie = (findCookie(readSetCookies(relogin), 'sso_state') ?? '').split(';')[0];
+    const silentState = reloginUrl.searchParams.get('state') ?? '';
+
+    const retry = await app.request(
+      `/auth/oauth/callback?error=login_required&state=${silentState}`,
+      { headers: { Cookie: silentCookie } },
+    );
+    const retryUrl = new URL(retry.headers.get('location') ?? '');
+    expect(retry.status).toBe(302);
+    expect(retryUrl.searchParams.get('prompt')).toBeNull();
+    const retryCookie = (findCookie(readSetCookies(retry), 'sso_state') ?? '').split(';')[0];
+    const retryState = retryUrl.searchParams.get('state') ?? '';
+
+    const finalResp = await app.request(
+      `/auth/oauth/callback?error=login_required&state=${retryState}`,
+      { headers: { Cookie: retryCookie } },
+    );
+    expect(finalResp.headers.get('location')).toBe('/login?error=sso_session_expired');
+  });
+
+  it('callback：exchange 超时 → sso_unavailable', async () => {
+    process.env.BFF_SSO_EXCHANGE_TIMEOUT_MS = '20';
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    mockProviders(fetchMock);
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+    const started = await authorize(app);
+
+    fetchMock.mockImplementationOnce(
+      ((_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            const err = new Error('aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        })) as unknown as typeof fetch,
+    );
+
+    const resp = await app.request(
+      `/auth/oauth/callback?code=auth-code&state=${started.state}`,
+      { headers: { Cookie: started.cookieHeader } },
+    );
+
+    expect(resp.headers.get('location')).toBe('/login?error=sso_unavailable');
+  });
+
+  it('authorize：开关关闭 → 302 登录页（不返回 JSON）', async () => {
+    delete process.env.BFF_SSO_ENABLED;
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+
+    const resp = await app.request('/auth/sso/authorize/intellect-auth?tenant=tenant-enterprise');
+
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get('location')).toBe('/login');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('BFF_FRONTEND_BASE 生效：错误回跳带子路径', async () => {
+    process.env.BFF_FRONTEND_BASE = '/agentui';
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+
+    const resp = await app.request('/auth/oauth/callback?code=c&state=s');
+
+    expect(resp.headers.get('location')).toBe('/agentui/login?error=sso_state_invalid');
   });
 
   it('旧入口：开关开启时转发到 BFF authorize；未知渠道 fail-closed', async () => {

@@ -39,8 +39,17 @@ export interface ILoginChannel {
   icon: string;
 }
 
+/** 登录页租户解析：URL `?tenant=` 优先，其次 localStorage，最后缺省 '0'（与 useAuthMode 对齐）。 */
+const resolveLoginTenant = (): string => {
+  if (typeof window !== 'undefined') {
+    const urlTenant = new URLSearchParams(window.location.search).get('tenant');
+    if (urlTenant) return urlTenant;
+  }
+  return localStorage.getItem(BackendId) || '0';
+};
+
 export const useLoginChannels = () => {
-  const tenantId = localStorage.getItem(BackendId) || '0';
+  const tenantId = resolveLoginTenant();
   const { data, isLoading } = useQuery({
     queryKey: ['loginChannels', tenantId],
     queryFn: async () => {

@@ -75,3 +75,20 @@
 1 调研 ✅（`outline/bff-sso-p2-research.md`）；2 手册 ✅；3 双向检视 ✅（差异 X-01~X-06）；4 大纲/用例/夹具 ✅；5 执行 ✅（基线 + 61 用例）；批准门 ✅（用户预授权）；6 修复 ✅（T0~T8）；7 审查/构建/验证 ✅；8 回归 ✅；9 报告/归档 ✅。
 
 本次改动未提交 Git，等待评审后执行 commit。
+
+## 七、评审修复记录（2026-11-20）
+
+| # | 修复 | 验证 |
+|---|---|---|
+| 1 | SSO 开启且无 `sso_state` 时不再回落旧链路，直接 `sso_state_invalid` | 新增单测「开关开启但无 sso_state」 |
+| 2 | 新增 `BFF_FRONTEND_BASE`，`/login` 回跳支持子目录部署 | 单测「BFF_FRONTEND_BASE 生效」 |
+| 3 | 登录页租户解析改为 URL `?tenant=` 优先，与 authConfig 对齐 | 前端 tsc/lint |
+| 4 | 验签失败时删除坏 `sso_state` Cookie | 代码路径复核 |
+| 5 | `imt_token` 的 Secure 统一用 `isSecureCookie` | 单测回归 |
+| 6 | Cookie maxAge 取 `min(86400, expires_at-now)` | 单测回归 |
+| 7 | provider 缓存 key 改为 `tenant@baseUrl` | 单测回归 |
+| 8 | SSO 关闭时直达 authorize → 302 登录页 | 新增单测 + 运行时 302 复核 |
+| 9 | `sso_provider` 改为签名 Cookie 并绑定 tenant | 新增伪造 Cookie 单测 |
+| 10 | 补超时、`interaction_required` 重试、登出后 relogin 用例 | auth 67/67；全量 1077/1077 |
+
+复跑命令：`cd bff && npx vitest run src/routes/auth.test.ts`。
