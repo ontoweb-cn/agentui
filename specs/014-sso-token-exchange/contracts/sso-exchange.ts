@@ -113,8 +113,12 @@ export interface SsoStateCookiePayload {
   code_verifier: string;
   nonce: string;
   provider_id: string;
+  /** BFF 租户 ID；回调按此解析网关实例，忽略 query 中的 tenant（防篡改）。 */
+  tenant_id: string;
   /** 登录成功后的回跳路径，必须同源相对路径。 */
   return_to: string;
   /** 创建时间（epoch 秒），用于服务端二次过期校验。 */
   issued_at: number;
+  /** true = 本次为 prompt=none 静默重登；失败后最多一次交互式重试。 */
+  silent: boolean;
 }

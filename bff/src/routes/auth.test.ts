@@ -12,6 +12,9 @@ import type { BffTenant } from '../types/tenant';
 import type { AuthSession } from '../types/auth';
 import { AUTH_SESSION_KEY } from '../middleware/auth-session';
 import { AUTH_COOKIE_NAME } from '../types/auth';
+import { clearProviderCache } from '../services/sso-providers';
+import { sanitizeReturnTo } from '../services/sso-state';
+import { loadSsoConfig, validateSsoConfig } from '../services/sso-config';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -1387,5 +1390,393 @@ describe('auth 路由 (P4b US1)', () => {
     const body = await resp.json();
     expect(body.code).toBe(400);
     expect(body.message).toContain('enterprise mode');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// spec-014 P2:SSO（BFF 作为 OIDC RP）
+// 覆盖 plan-p2 §八 用例：渠道、授权、回调、错误映射、静默重登、登出、配置校验。
+// ---------------------------------------------------------------------------
+
+const PUBLIC_PROVIDERS = [
+  {
+    id: 'intellect-auth',
+    name: '统一认证',
+    usage: 'login',
+    enabled: true,
+    client_id: 'ia-agentui',
+    authorize_url: 'https://idp.example.com/auth/login/oauth/authorize',
+    scopes: 'openid profile email',
+    pkce: true,
+  },
+  {
+    id: 'broken-provider',
+    name: '缺客户端',
+    usage: 'login',
+    enabled: true,
+    authorize_url: 'https://idp.example.com/auth/login/oauth/authorize',
+    pkce: true,
+  },
+  {
+    id: 'disabled-provider',
+    name: '停用',
+    usage: 'login',
+    enabled: false,
+    client_id: 'ia-agentui',
+    authorize_url: 'https://idp.example.com/auth/login/oauth/authorize',
+    pkce: true,
+  },
+];
+
+const EXCHANGE_OK = {
+  token: 'imt_test_token',
+  token_id: 'tok_1',
+  expires_at: 1900000000,
+  member: { id: 'mem_1', display_name: '张三', role: 'member', enabled: 1 },
+  email: 'zhangsan@example.com',
+  tenant_id: '0',
+};
+
+function readSetCookies(resp: Response): string[] {
+  const headers = resp.headers as Headers & { getSetCookie?: () => string[] };
+  if (typeof headers.getSetCookie === 'function') return headers.getSetCookie();
+  const raw = resp.headers.get('set-cookie');
+  return raw ? [raw] : [];
+}
+
+function findCookie(cookies: string[], name: string): string | undefined {
+  return cookies.find((cookie) => cookie.startsWith(`${name}=`));
+}
+
+describe('auth 路由 — SSO P2 (spec-014)', () => {
+  beforeEach(() => {
+    clearProviderCache();
+    process.env.BFF_SSO_ENABLED = 'true';
+    process.env.BFF_SSO_STATE_SECRET = 's'.repeat(32);
+    process.env.BFF_PUBLIC_ORIGIN = 'https://agentui.test';
+    process.env.BFF_SSO_SILENT_RELOGIN = 'true';
+    process.env.BFF_SSO_EXCHANGE_TIMEOUT_MS = '2000';
+    process.env.BFF_SSO_PROVIDER_CACHE_MS = '30000';
+    delete process.env.BFF_SSO_PROVIDERS;
+  });
+
+  afterEach(() => {
+    delete process.env.BFF_SSO_ENABLED;
+    delete process.env.BFF_SSO_STATE_SECRET;
+    delete process.env.BFF_PUBLIC_ORIGIN;
+    delete process.env.BFF_SSO_SILENT_RELOGIN;
+    delete process.env.BFF_SSO_EXCHANGE_TIMEOUT_MS;
+    delete process.env.BFF_SSO_PROVIDER_CACHE_MS;
+    clearProviderCache();
+    vi.restoreAllMocks();
+  });
+
+  function mockProviders(fetchMock: { mockResolvedValueOnce: (value: Response) => unknown }): void {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(PUBLIC_PROVIDERS), { status: 200 }),
+    );
+  }
+
+  async function authorize(
+    app: Hono<{ Variables: TestVariables }>,
+    options: { provider?: string; returnTo?: string; tenant?: string } = {},
+  ) {
+    const provider = options.provider ?? 'intellect-auth';
+    const tenant = options.tenant ?? 'tenant-enterprise';
+    const returnTo = options.returnTo ?? '/chat';
+    const resp = await app.request(
+      `/auth/sso/authorize/${provider}?tenant=${tenant}&returnTo=${encodeURIComponent(returnTo)}`,
+    );
+    const location = resp.headers.get('location') ?? '';
+    const cookies = readSetCookies(resp);
+    const stateCookie = findCookie(cookies, 'sso_state') ?? '';
+    let state = '';
+    let nonce = '';
+    try {
+      const url = new URL(location);
+      state = url.searchParams.get('state') ?? '';
+      nonce = url.searchParams.get('nonce') ?? '';
+    } catch {
+      // location 不是绝对 URL 时保持空值（错误跳转场景）
+    }
+    return {
+      resp,
+      location,
+      cookies,
+      cookieHeader: stateCookie.split(';')[0],
+      state,
+      nonce,
+    };
+  }
+
+  it('channels：开关开启 → 公开端点、不带 Authorization、过滤停用/缺字段', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    mockProviders(fetchMock);
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+
+    const resp = await app.request('/auth/login/channels', {
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
+    });
+
+    expect(resp.status).toBe(200);
+    const body = (await resp.json()) as { data: { channel: string }[] };
+    expect(body.data.map((item) => item.channel)).toEqual(['intellect-auth']);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://mock-enterprise:9381/api/members/oauth/providers');
+    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+  });
+
+  it('channels：公开列表不可达 → 502，不影响密码登录', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+
+    const resp = await app.request('/auth/login/channels', {
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
+    });
+
+    expect(resp.status).toBe(502);
+  });
+
+  it('authorize：302 到 IdP，含 PKCE/nonce/response_mode 与 no-store', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    mockProviders(fetchMock);
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+
+    const result = await authorize(app);
+    const url = new URL(result.location);
+
+    expect(result.resp.status).toBe(302);
+    expect(url.origin + url.pathname).toBe(
+      'https://idp.example.com/auth/login/oauth/authorize',
+    );
+    expect(url.searchParams.get('response_type')).toBe('code');
+    expect(url.searchParams.get('client_id')).toBe('ia-agentui');
+    expect(url.searchParams.get('redirect_uri')).toBe(
+      'https://agentui.test/api/bff/auth/oauth/callback',
+    );
+    expect(url.searchParams.get('scope')).toBe('openid profile email');
+    expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(url.searchParams.get('code_challenge')?.length).toBeGreaterThan(20);
+    expect(url.searchParams.get('response_mode')).toBe('query');
+    expect(url.searchParams.get('prompt')).toBeNull();
+
+    expect(result.resp.headers.get('cache-control')).toBe('no-store');
+    const cookie = findCookie(result.cookies, 'sso_state');
+    expect(cookie).toContain('HttpOnly');
+    expect(cookie).toContain('Max-Age=600');
+    expect(cookie).toContain('SameSite=Lax');
+  });
+
+  it('authorize：未知/非企业版租户 → 登录页 tenant_not_found', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+
+    const resp = await app.request(
+      '/auth/sso/authorize/intellect-auth?tenant=missing-tenant',
+    );
+
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get('location')).toBe('/login?error=tenant_not_found');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('callback：成功 → exchange 入参正确、写 imt_token + sso_provider', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    mockProviders(fetchMock);
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+    const started = await authorize(app);
+
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EXCHANGE_OK), { status: 200 }));
+
+    const resp = await app.request(
+      `/auth/oauth/callback?code=auth-code&state=${started.state}`,
+      { headers: { Cookie: started.cookieHeader } },
+    );
+
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get('location')).toBe('/chat');
+
+    const [exchangeUrl, exchangeInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(exchangeUrl).toBe('http://mock-enterprise:9381/api/members/oauth/exchange');
+    const body = JSON.parse(String(exchangeInit.body)) as Record<string, string>;
+    expect(body.grant).toBe('authorization_code');
+    expect(body.provider_id).toBe('intellect-auth');
+    expect(body.code).toBe('auth-code');
+    expect(body.code_verifier).toBeTruthy();
+    expect(body.nonce).toBe(started.nonce);
+    expect(body.redirect_uri).toBe('https://agentui.test/api/bff/auth/oauth/callback');
+
+    const cookies = readSetCookies(resp);
+    expect(findCookie(cookies, 'imt_token')).toContain('imt_test_token');
+    expect(findCookie(cookies, 'sso_provider')).toContain('intellect-auth');
+  });
+
+  it('callback：state 不匹配 → sso_state_invalid，且不调用 exchange', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    mockProviders(fetchMock);
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+    const started = await authorize(app);
+
+    const resp = await app.request(
+      '/auth/oauth/callback?code=auth-code&state=wrong-state',
+      { headers: { Cookie: started.cookieHeader } },
+    );
+
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get('location')).toBe('/login?error=sso_state_invalid');
+    expect(fetchMock).toHaveBeenCalledTimes(1); // 仅 provider 列表
+  });
+
+  it('callback：伪造/过期 state Cookie → sso_state_invalid，不调 exchange', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+
+    const resp = await app.request(
+      '/auth/oauth/callback?code=auth-code&state=abc',
+      { headers: { Cookie: 'sso_state=not-a-signed-value' } },
+    );
+
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get('location')).toBe('/login?error=sso_state_invalid');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('callback：网关 403 member_not_provisioned → 可读错误且不写 imt_token', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    mockProviders(fetchMock);
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+    const started = await authorize(app);
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ error: 'member_not_provisioned', message: 'not provisioned' }),
+        { status: 403 },
+      ),
+    );
+
+    const resp = await app.request(
+      `/auth/oauth/callback?code=auth-code&state=${started.state}`,
+      { headers: { Cookie: started.cookieHeader } },
+    );
+
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get('location')).toBe('/login?error=member_not_provisioned');
+    expect(findCookie(readSetCookies(resp), 'imt_token')).toBeUndefined();
+  });
+
+  it('callback：网关不可达 → sso_unavailable', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    mockProviders(fetchMock);
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+    const started = await authorize(app);
+
+    fetchMock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    const resp = await app.request(
+      `/auth/oauth/callback?code=auth-code&state=${started.state}`,
+      { headers: { Cookie: started.cookieHeader } },
+    );
+
+    expect(resp.headers.get('location')).toBe('/login?error=sso_unavailable');
+  });
+
+  it('relogin：无 sso_provider（已登出）→ 直接回登录页', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+
+    const resp = await app.request('/auth/sso/relogin?tenant=tenant-enterprise&returnTo=/chat');
+
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get('location')).toBe('/login');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('relogin：有 sso_provider → prompt=none 静默授权', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    mockProviders(fetchMock);
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+
+    const resp = await app.request('/auth/sso/relogin?tenant=tenant-enterprise&returnTo=/chat', {
+      headers: { Cookie: 'sso_provider=intellect-auth' },
+    });
+
+    const url = new URL(resp.headers.get('location') ?? '');
+    expect(resp.status).toBe(302);
+    expect(url.searchParams.get('prompt')).toBe('none');
+    expect(url.searchParams.get('response_type')).toBe('code');
+  });
+
+  it('旧入口：开关开启时转发到 BFF authorize；未知渠道 fail-closed', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    mockProviders(fetchMock);
+    const app = createApp(createMockBackendStore([enterpriseTenant]));
+
+    const okResp = await app.request(
+      '/auth/login/intellect-auth?tenant=tenant-enterprise',
+    );
+    expect(okResp.status).toBe(302);
+    expect(new URL(okResp.headers.get('location') ?? '').host).toBe('idp.example.com');
+
+    const unknownResp = await app.request(
+      '/auth/login/unknown-channel?tenant=tenant-enterprise',
+    );
+    expect(unknownResp.headers.get('location')).toBe('/login?error=unknown_provider');
+  });
+
+  it('登出：清除 imt_token 与 sso_provider', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    );
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore, {
+      token: 'imt_session_token',
+      backendId: 'tenant-enterprise',
+      authMode: 'intellect-enterprise',
+    });
+
+    const resp = await app.request('/auth/logout', {
+      method: 'POST',
+      headers: { 'X-Backend-Id': 'tenant-enterprise' },
+    });
+
+    expect(resp.status).toBe(200);
+    const cookies = readSetCookies(resp);
+    expect(findCookie(cookies, 'imt_token')).toContain('Max-Age=0');
+    expect(findCookie(cookies, 'sso_provider')).toContain('Max-Age=0');
+  });
+
+  it('returnTo 白名单：拒绝开放重定向与非法字符', () => {
+    expect(sanitizeReturnTo('/chat?x=1')).toBe('/chat?x=1');
+    expect(sanitizeReturnTo('//evil.com')).toBe('/');
+    expect(sanitizeReturnTo('https://evil.com')).toBe('/');
+    expect(sanitizeReturnTo('/\\evil.com')).toBe('/');
+    expect(sanitizeReturnTo('/ok\r\nSet-Cookie: x')).toBe('/');
+    expect(sanitizeReturnTo(undefined)).toBe('/');
+  });
+
+  it('配置校验：启用时缺失/过短密钥与 http 生产源 → fail-fast；允许显式降级', () => {
+    const config = loadSsoConfig({
+      BFF_SSO_ENABLED: 'true',
+      BFF_SSO_STATE_SECRET: 's'.repeat(32),
+      BFF_PUBLIC_ORIGIN: 'https://agentui.test',
+    } as NodeJS.ProcessEnv);
+
+    expect(() => validateSsoConfig(config)).not.toThrow();
+    expect(() =>
+      validateSsoConfig({ ...config, stateSecret: 'short' }),
+    ).toThrow(/BFF_SSO_STATE_SECRET/);
+    expect(() => validateSsoConfig({ ...config, publicOrigin: '' })).toThrow(
+      /BFF_PUBLIC_ORIGIN/,
+    );
+    expect(() => validateSsoConfig({ ...config, publicOrigin: 'http://a.test' }, 'production')).toThrow(
+      /https/,
+    );
+    expect(() =>
+      validateSsoConfig(
+        { ...config, publicOrigin: 'http://a.test', allowInsecure: true },
+        'production',
+      ),
+    ).not.toThrow();
   });
 });

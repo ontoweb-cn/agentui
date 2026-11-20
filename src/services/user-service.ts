@@ -1,4 +1,5 @@
 import api from '@/utils/api';
+import { BackendId } from '@/constants/authorization';
 import registerServer from '@/utils/register-server';
 import request, { post } from '@/utils/request';
 
@@ -65,9 +66,17 @@ const methods = {
 
 const userService = registerServer<keyof typeof methods>(methods, request);
 
-export const getLoginChannels = () => request.get(api.loginChannels);
-export const loginWithChannel = (channel: string) =>
-  (window.location.href = api.loginChannel(channel));
+export const getLoginChannels = (headers?: Record<string, string>) =>
+  request.get(api.loginChannels, headers ? { headers } : undefined);
+
+/**
+ * 浏览器整页跳转无法携带 X-Backend-Id，租户经 query 传给 BFF（spec-014 P2）。
+ */
+export const loginWithChannel = (channel: string) => {
+  const tenantId = localStorage.getItem(BackendId) || '0';
+  const url = `${api.loginChannel(channel)}?tenant=${encodeURIComponent(tenantId)}`;
+  return (window.location.href = url);
+};
 
 // T004:logout 支持传自定义 headers(X-Backend-Id),避免 BFF 严格 400
 export const logoutWithHeaders = (headers: Record<string, string>) =>

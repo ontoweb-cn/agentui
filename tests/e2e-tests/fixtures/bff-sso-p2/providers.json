@@ -1,0 +1,44 @@
+{
+  "description": "BFF SSO 渠道元数据夹具：complete 为完整 provider；broken 缺 client_id，用于校验降级不展示",
+  "providers": [
+    {
+      "id": "intellect-auth",
+      "name": "统一认证",
+      "usage": "login",
+      "auth_flow": "authorization_code",
+      "enabled": true,
+      "logo_svg": "",
+      "is_builtin": true,
+      "display_order": 1,
+      "client_id": "ia-agentui",
+      "authorize_url": "https://idp.example.com/auth/login/oauth/authorize",
+      "scopes": "openid profile email",
+      "pkce": true
+    },
+    {
+      "id": "broken-provider",
+      "name": "缺少客户端 ID",
+      "usage": "login",
+      "auth_flow": "authorization_code",
+      "enabled": true,
+      "is_builtin": false,
+      "display_order": 2,
+      "authorize_url": "https://idp.example.com/auth/login/oauth/authorize",
+      "scopes": "openid profile email",
+      "pkce": true
+    },
+    {
+      "id": "disabled-provider",
+      "name": "已停用",
+      "usage": "login",
+      "auth_flow": "authorization_code",
+      "enabled": false,
+      "is_builtin": false,
+      "display_order": 3,
+      "client_id": "ia-agentui",
+      "authorize_url": "https://idp.example.com/auth/login/oauth/authorize",
+      "scopes": "openid profile email",
+      "pkce": true
+    }
+  ]
+}

@@ -114,6 +114,22 @@ export default {
       register: 'Create an account',
       continue: 'Continue',
       title: 'INTELLECT AGENT HARNESS',
+      ssoError: {
+        sso_state_invalid: 'Sign-in request expired. Please try again.',
+        sso_code_invalid: 'Sign-in failed. Please try again.',
+        sso_session_expired: 'Your session expired. Please sign in again.',
+        account_disabled: 'This account has been disabled. Contact your administrator.',
+        member_not_provisioned:
+          'This account is not provisioned for this application. Contact your administrator.',
+        sso_forbidden: 'You are not allowed to sign in to this application.',
+        sso_rate_limited: 'Too many attempts. Please try again later.',
+        sso_unavailable:
+          'Authentication service is temporarily unavailable. Try again or use password sign-in.',
+        unknown_provider: 'This sign-in channel is unavailable.',
+        tenant_not_found: 'The selected workspace is not available.',
+        sso_pkce_unsupported: 'This sign-in channel is not supported.',
+        sso_misconfigured: 'This sign-in channel is misconfigured. Contact your administrator.',
+      },
     },
     header: {
       knowledgeBase: 'Dataset',

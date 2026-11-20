@@ -40,10 +40,13 @@ export interface ILoginChannel {
 }
 
 export const useLoginChannels = () => {
+  const tenantId = localStorage.getItem(BackendId) || '0';
   const { data, isLoading } = useQuery({
-    queryKey: ['loginChannels'],
+    queryKey: ['loginChannels', tenantId],
     queryFn: async () => {
-      const { data: res = {} } = await getLoginChannels();
+      const { data: res = {} } = await getLoginChannels({
+        'X-Backend-Id': tenantId,
+      });
       return res.data || [];
     },
   });

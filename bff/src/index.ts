@@ -46,6 +46,7 @@ import { pluginsChatRoutes } from './routes/plugins-chat';
 import { wizardRoutes } from './routes/wizard';
 // spec-010 v8 B-1 (B1 修复): BootstrapTokenManager 单例,供 wizard setup 鉴权
 import { BootstrapTokenManager } from './services/bootstrap-token';
+import { assertSsoConfigAtStartup } from './services/sso-config';
 const bootstrapTokenManager = new BootstrapTokenManager();
 import type { HarnessStore, BackendStore } from './types';
 import type { BackendContext } from './types/tenant';
@@ -62,6 +63,9 @@ interface AppVariables {
 }
 
 const app = new Hono<{ Variables: AppVariables }>();
+
+// spec-014 P2:SSO 配置启动校验（开关开启但密钥/公开源缺失时 fail-fast）。
+assertSsoConfigAtStartup();
 
 // Multi-Harness P0 Phase 5 + P1 US3:启动时初始化 Store + Registry。
 // Constitution Principle V (Tenant Isolation) + Principle II (Adapter Abstraction)。

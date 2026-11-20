@@ -18,6 +18,7 @@
  */
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { setCookie, deleteCookie, getCookie } from 'hono/cookie';
 import type { BackendStore, HarnessStore } from '../types/stores';
 import type { AuthSession } from '../types/auth';
@@ -25,6 +26,24 @@ import { AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE } from '../types/auth';
 import type { AuthMode } from '../types/tenant';
 import { getAuthSession, AUTH_SESSION_KEY } from '../middleware/auth-session';
 import { getRagBaseUrl } from '../utils/rag-base-url';
+import {
+  getSsoRedirectUri,
+  isSecureCookie,
+  loadSsoConfig,
+} from '../services/sso-config';
+import {
+  createSsoTransaction,
+  readAndClearSsoStateCookie,
+  readSsoProviderCookie,
+  clearSsoProviderCookie,
+  sanitizeReturnTo,
+  ssoStateMatches,
+  writeSsoProviderCookie,
+  writeSsoStateCookie,
+  SSO_STATE_COOKIE_NAME,
+} from '../services/sso-state';
+import { getLoginProviders } from '../services/sso-providers';
+import { exchangeAuthorizationCode } from '../services/sso-exchange';
 
 /**
  * OAuth state cookie 名(用于 CSRF 防护,在 /auth/login/:channel 时写入,
@@ -146,6 +165,130 @@ export async function enterpriseFetch(
       ...init?.headers,
     },
   });
+}
+
+/**
+ * 解析 SSO 租户对应的企业版网关；tenant 不存在或非企业版返回 null。
+ * 浏览器导航无法携带 X-Backend-Id，故 SSO 路由通过 query.tenant 显式传入。
+ */
+function resolveSsoTenantBackend(
+  c: Context<{ Variables: AuthVariables }>,
+  tenantId: string,
+): { baseUrl: string; apiServerKey: string } | null {
+  const backendStore = c.get('backendStore');
+  const tenant = backendStore?.getBackend(tenantId);
+  if (!tenant || tenant.authMode !== 'intellect-enterprise') return null;
+  return getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
+}
+
+/** 浏览器可见的 SSO 失败统一回登录页，带可读错误码。 */
+function redirectToLoginError(c: Context<{ Variables: AuthVariables }>, code: string): Response {
+  c.header('Cache-Control', 'no-store');
+  return c.redirect(`/login?error=${encodeURIComponent(code)}`, 302);
+}
+
+/** 网关 exchange 错误 → 前端错误码。 */
+function mapExchangeError(status: number, code: string): string {
+  switch (code) {
+    case 'too_many_requests':
+      return 'sso_rate_limited';
+    case 'account_disabled':
+      return 'account_disabled';
+    case 'member_not_provisioned':
+      return 'member_not_provisioned';
+    case 'identity_conflict':
+    case 'tenant_mismatch':
+      return 'sso_forbidden';
+    case 'unknown_provider':
+    case 'provider_disabled':
+    case 'invalid_provider':
+      return 'unknown_provider';
+    case 'timeout':
+    case 'network_error':
+    case 'invalid_response':
+      return 'sso_unavailable';
+    default:
+      return status >= 500 || status === 429 ? 'sso_unavailable' : 'sso_code_invalid';
+  }
+}
+
+/**
+ * 构造并跳转 OIDC 授权请求（BFF 作为 RP）。
+ * 开关关闭时返回 404；tenant/provider 异常统一 302 回登录页。
+ */
+async function handleSsoAuthorize(
+  c: Context<{ Variables: AuthVariables }>,
+  providerId: string,
+  tenantId: string,
+  returnTo: string | undefined,
+  silent: boolean,
+): Promise<Response> {
+  const config = loadSsoConfig();
+  if (!config.enabled) {
+    return c.json(fail(404, 'SSO is not enabled'), 404);
+  }
+
+  const backend = resolveSsoTenantBackend(c, tenantId);
+  if (!backend) {
+    return redirectToLoginError(c, 'tenant_not_found');
+  }
+
+  let selection: Awaited<ReturnType<typeof getLoginProviders>>;
+  try {
+    selection = await getLoginProviders(backend.baseUrl, tenantId, config);
+  } catch (err) {
+    console.error('[auth] sso provider list failed:', (err as Error).message);
+    return redirectToLoginError(c, 'sso_unavailable');
+  }
+
+  const provider = selection.providers.find((item) => item.id === providerId);
+  if (!provider) {
+    return redirectToLoginError(
+      c,
+      selection.misconfigured.includes(providerId) ? 'sso_misconfigured' : 'unknown_provider',
+    );
+  }
+
+  const transaction = createSsoTransaction();
+  const nowSeconds = Math.floor(Date.now() / 1000);
+
+  await writeSsoStateCookie(
+    c,
+    {
+      state: transaction.state,
+      code_verifier: transaction.codeVerifier,
+      nonce: transaction.nonce,
+      provider_id: provider.id,
+      tenant_id: tenantId,
+      return_to: sanitizeReturnTo(returnTo),
+      issued_at: nowSeconds,
+      silent,
+    },
+    config.stateSecret,
+    isSecureCookie(config),
+  );
+
+  let authorizeUrl: URL;
+  try {
+    authorizeUrl = new URL(provider.authorizeUrl);
+  } catch {
+    console.error(`[auth] provider ${provider.id} has invalid authorize_url`);
+    return redirectToLoginError(c, 'sso_misconfigured');
+  }
+
+  authorizeUrl.searchParams.set('response_type', 'code');
+  authorizeUrl.searchParams.set('client_id', provider.clientId);
+  authorizeUrl.searchParams.set('redirect_uri', getSsoRedirectUri(config));
+  authorizeUrl.searchParams.set('scope', provider.scopes);
+  authorizeUrl.searchParams.set('state', transaction.state);
+  authorizeUrl.searchParams.set('nonce', transaction.nonce);
+  authorizeUrl.searchParams.set('code_challenge', transaction.codeChallenge);
+  authorizeUrl.searchParams.set('code_challenge_method', 'S256');
+  authorizeUrl.searchParams.set('response_mode', 'query');
+  if (silent) authorizeUrl.searchParams.set('prompt', 'none');
+
+  c.header('Cache-Control', 'no-store');
+  return c.redirect(authorizeUrl.toString(), 302);
 }
 
 // ---------------------------------------------------------------------------
@@ -532,6 +675,9 @@ authRoutes.post('/auth/logout', async (c) => {
   // 缺省 X-Backend-Id 默认为 '0'(向后兼容,与其他端点一致)
   const tenantId = c.req.header('X-Backend-Id') || '0';
 
+  // spec-014 P2:清除最近登录渠道，抑制登出后的静默重登（无 SLO 时的登出语义保障）。
+  clearSsoProviderCookie(c);
+
   const backendStore = c.get('backendStore');
   const authMode = getAuthMode(backendStore, tenantId);
 
@@ -639,6 +785,30 @@ authRoutes.get('/auth/login/channels', async (c) => {
   const authMode = getAuthMode(backendStore, tenantId);
 
   if (authMode === 'intellect-enterprise') {
+    // spec-014 P2:开关开启时走公开 provider 端点（不携带 API_SERVER_KEY）。
+    const ssoConfig = loadSsoConfig();
+    if (ssoConfig.enabled) {
+      const backend = getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
+      if (!backend) {
+        return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
+      }
+      try {
+        const { providers } = await getLoginProviders(backend.baseUrl, tenantId, ssoConfig);
+        return c.json(
+          ok(
+            providers.map((provider) => ({
+              channel: provider.id,
+              display_name: provider.displayName,
+              icon: provider.icon,
+            })),
+          ),
+        );
+      } catch (err) {
+        console.error('[auth] sso provider list fetch error:', (err as Error).message);
+        return c.json(fail(502, 'SSO provider list unavailable'), 502);
+      }
+    }
+
     // 企业版:调 intellect-team GET /api/oauth/providers,转换格式
     const backend = getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
     if (!backend) {
@@ -709,6 +879,46 @@ authRoutes.get('/auth/login/channels', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/bff/auth/sso/authorize/:provider — BFF 作为 OIDC RP 发起授权
+// ---------------------------------------------------------------------------
+
+authRoutes.get('/auth/sso/authorize/:provider', async (c) => {
+  // 浏览器导航无法携带 X-Backend-Id，租户经 query 传入（缺省 '0' 向后兼容）
+  const tenantId = c.req.query('tenant') || c.req.header('X-Backend-Id') || '0';
+  const silent = c.req.query('prompt') === 'none';
+  return handleSsoAuthorize(
+    c,
+    c.req.param('provider') ?? '',
+    tenantId,
+    c.req.query('returnTo'),
+    silent,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/bff/auth/sso/relogin — 静默重登（prompt=none）
+// ---------------------------------------------------------------------------
+
+authRoutes.get('/auth/sso/relogin', async (c) => {
+  const config = loadSsoConfig();
+  const tenantId = c.req.query('tenant') || c.req.header('X-Backend-Id') || '0';
+
+  if (!config.enabled || !config.silentRelogin) {
+    c.header('Cache-Control', 'no-store');
+    return c.redirect('/login', 302);
+  }
+
+  // 登出会清除 sso_provider；缺失即视为「用户已主动登出」，不自动重登。
+  const providerId = readSsoProviderCookie(c);
+  if (!providerId) {
+    c.header('Cache-Control', 'no-store');
+    return c.redirect('/login', 302);
+  }
+
+  return handleSsoAuthorize(c, providerId, tenantId, c.req.query('returnTo'), true);
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/bff/auth/login/:channel — OAuth 授权重定向
 // ---------------------------------------------------------------------------
 
@@ -722,9 +932,17 @@ authRoutes.get('/auth/login/:channel', async (c) => {
   }
 
   const backendStore = c.get('backendStore');
-  const authMode = getAuthMode(backendStore, tenantId);
+  const ssoConfig = loadSsoConfig();
+  // 开关开启时以导航参数 tenant 判定租户（浏览器无法携带 X-Backend-Id）；否则沿用 header。
+  const ssoTenantId = c.req.query('tenant') || tenantId;
+  const authMode = getAuthMode(backendStore, ssoConfig.enabled ? ssoTenantId : tenantId);
 
   if (authMode === 'intellect-enterprise') {
+    // spec-014 P2:开关开启时由 BFF 作为 OIDC RP 发起授权；未知渠道 fail-closed。
+    if (ssoConfig.enabled) {
+      return handleSsoAuthorize(c, channel, ssoTenantId, c.req.query('returnTo'), false);
+    }
+
     // 企业版:调 intellect-team GET /api/oauth/login/{provider}(P4a-4,直接 302 重定向)
     // 比 POST /api/oauth/authorize 更简单:intellect-team 直接返回 302 + Location,
     // BFF 透传 302 即可,无需先 POST 拿 redirect_uri 再 302。
@@ -801,6 +1019,91 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
 
   const code = c.req.query('code');
   const state = c.req.query('state');
+
+  // spec-014 P2:新链路以签名 state Cookie 判定（与全局开关无关，保证切换/滚动发布时在途授权可收尾）。
+  const ssoConfig = loadSsoConfig();
+  const rawSsoStateCookie = getCookie(c, SSO_STATE_COOKIE_NAME);
+  const hasSsoStateCookie = Boolean(rawSsoStateCookie);
+  if (ssoConfig.enabled || hasSsoStateCookie) {
+    // 回滚场景：开关关闭且密钥已清空时，不再验签（空密钥会抛错），直接判定失效。
+    if (hasSsoStateCookie && ssoConfig.stateSecret.length < 32) {
+      deleteCookie(c, SSO_STATE_COOKIE_NAME, { path: '/' });
+      return redirectToLoginError(c, 'sso_state_invalid');
+    }
+
+    const read = await readAndClearSsoStateCookie(c, ssoConfig.stateSecret);
+
+    // 验签失败时 getSignedCookie 会退化为「无 Cookie」，需用原始 Cookie 存在性兜底判定。
+    if (read.status === 'invalid' || (read.status === 'absent' && hasSsoStateCookie)) {
+      return redirectToLoginError(c, 'sso_state_invalid');
+    }
+
+    if (read.status === 'ok') {
+      const payload = read.payload;
+
+      if (!state || !ssoStateMatches(payload.state, state)) {
+        return redirectToLoginError(c, 'sso_state_invalid');
+      }
+
+      const idpError = c.req.query('error');
+      if (idpError) {
+        const isLoginRequired = idpError === 'login_required' || idpError === 'interaction_required';
+        if (isLoginRequired && payload.silent) {
+          // 最多一次交互式重试：新 state 的 silent=false，再次失败即回登录页。
+          return handleSsoAuthorize(c, payload.provider_id, payload.tenant_id, payload.return_to, false);
+        }
+        return redirectToLoginError(c, isLoginRequired ? 'sso_session_expired' : 'sso_code_invalid');
+      }
+
+      if (!code) {
+        return redirectToLoginError(c, 'sso_code_invalid');
+      }
+
+      const backend = resolveSsoTenantBackend(c, payload.tenant_id);
+      if (!backend) {
+        return redirectToLoginError(c, 'tenant_not_found');
+      }
+
+      const result = await exchangeAuthorizationCode(
+        backend.baseUrl,
+        {
+          grant: 'authorization_code',
+          provider_id: payload.provider_id,
+          code,
+          code_verifier: payload.code_verifier,
+          redirect_uri: getSsoRedirectUri(ssoConfig),
+          nonce: payload.nonce,
+        },
+        ssoConfig.exchangeTimeoutMs,
+      );
+
+      if (!result.ok) {
+        console.error(
+          `[auth] sso exchange failed: tenant=${payload.tenant_id} provider=${payload.provider_id} status=${result.status} code=${result.code}`,
+        );
+        return redirectToLoginError(c, mapExchangeError(result.status, result.code));
+      }
+
+      console.log(
+        `[auth] sso login ok: tenant=${payload.tenant_id} provider=${payload.provider_id} member=${result.data.member?.id ?? 'unknown'}`,
+      );
+
+      setCookie(c, AUTH_COOKIE_NAME, result.data.token, {
+        httpOnly: true,
+        sameSite: 'Lax',
+        path: '/',
+        maxAge: AUTH_COOKIE_MAX_AGE,
+        secure: process.env.NODE_ENV === 'production',
+      });
+      writeSsoProviderCookie(c, payload.provider_id, isSecureCookie(ssoConfig));
+
+      c.header('Cache-Control', 'no-store');
+      return c.redirect(sanitizeReturnTo(payload.return_to), 302);
+    }
+    // absent：开关开启但无 state Cookie（旧页面在途），落到下方旧链路兜底。
+  }
+
+  // ---- 旧链路（FR-024 回滚保留一个发布周期）----
   if (!code || !state) {
     return c.json(fail(400, 'Missing code or state query parameter'), 400);
   }

@@ -5,10 +5,35 @@ import authorizationUtil from '@/utils/authorization-util';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
+import { useTranslation } from 'react-i18next';
 
 import { useAuthMode } from './use-login-request';
 
+/** 静默重登节流：5 分钟内最多触发一次，避免探测/401 抖动造成重定向循环。 */
+const SSO_RELOGIN_THROTTLE_MS = 5 * 60 * 1000;
+const SSO_RELOGIN_STORAGE_KEY = 'sso_relogin_attempt';
+
+/**
+ * 触发一次 prompt=none 静默重登（spec-014 P2）。
+ * 是否真正静默由 BFF 开关与 sso_provider Cookie 决定；登出后 BFF 会直接回登录页。
+ */
+const redirectToSilentRelogin = () => {
+  try {
+    const last = Number(sessionStorage.getItem(SSO_RELOGIN_STORAGE_KEY) || 0);
+    if (Date.now() - last < SSO_RELOGIN_THROTTLE_MS) return;
+    sessionStorage.setItem(SSO_RELOGIN_STORAGE_KEY, String(Date.now()));
+  } catch {
+    // sessionStorage 不可用时仍允许一次跳转（由 BFF 兜底）
+  }
+  const tenantId = localStorage.getItem(BackendId) || '0';
+  const returnTo = `${window.location.pathname}${window.location.search}`;
+  window.location.replace(
+    `/api/bff/auth/sso/relogin?tenant=${encodeURIComponent(tenantId)}&returnTo=${encodeURIComponent(returnTo)}`,
+  );
+};
+
 export const useOAuthCallback = () => {
+  const { t } = useTranslation('translation', { keyPrefix: 'login.ssoError' });
   const [currentQueryParameters, setSearchParams] = useSearchParams();
   const error = currentQueryParameters.get('error');
   const newQueryParameters: URLSearchParams = useMemo(
@@ -19,7 +44,7 @@ export const useOAuthCallback = () => {
 
   useEffect(() => {
     if (error) {
-      message.error(error);
+      message.error(t(error, { defaultValue: error }));
       setTimeout(() => {
         navigate('/login');
         newQueryParameters.delete('error');
@@ -41,6 +66,7 @@ export const useOAuthCallback = () => {
     newQueryParameters,
     navigate,
     setSearchParams,
+    t,
   ]);
 
   return currentQueryParameters.get('auth');
@@ -91,8 +117,12 @@ const useEnterpriseCookieProbe = () => {
           headers: { 'X-Backend-Id': tenantId },
         });
         if (!resp.ok) {
-          // 401/其他错误:cookie 过期或无效,清除 localStorage 标记,
-          // 使 useAuth 中 isLogin 变 false → AuthWrapper 跳转登录页。
+          // 401:cookie 过期或无效。优先尝试一次静默重登（spec-014 P2）；
+          // 是否真正静默由 BFF 开关与 sso_provider Cookie 决定。
+          if (resp.status === 401) {
+            redirectToSilentRelogin();
+          }
+          // 清除 localStorage 标记，使 useAuth 中 isLogin 变 false → AuthWrapper 跳转登录页。
           localStorage.removeItem(AuthMode);
           return false;
         }
