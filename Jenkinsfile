@@ -41,6 +41,8 @@ pipeline {
       description: 'PLUGIN_BUNDLE_ARTIFACT_URL 对应的 tarball sha256(64 位 hex,必填)')
     string(name: 'SMOKE_URL', defaultValue: '',
       description: '发版后冒烟基址(如 https://agentui.wust.edu.cn);留空跳过冒烟')
+    booleanParam(name: 'BOOTSTRAP_BASE_IMAGE', defaultValue: false,
+      description: '首次使用 Harbor 基础镜像时勾选:从 1ms.run 拉取 node:20-alpine 并推送到 Harbor')
   }
 
   environment {
@@ -84,6 +86,29 @@ pipeline {
           env.EFFECTIVE_TAG = effective
           env.IS_RELEASE = (params.RELEASE || rawTag) ? 'true' : 'false'
           echo "构建来源=${rawTag ? 'tag:' + rawTag : '手动'}，镜像 tag=${effective}，发版=${env.IS_RELEASE}"
+        }
+      }
+    }
+
+    stage('准备基础镜像') {
+      when { expression { env.IS_RELEASE == 'true' && params.BOOTSTRAP_BASE_IMAGE } }
+      steps {
+        withCredentials([usernamePassword(
+            credentialsId: 'harbor-agentui-release',
+            usernameVariable: 'HARBOR_USER',
+            passwordVariable: 'HARBOR_SECRET')]) {
+          sh 'echo "$HARBOR_SECRET" | docker login hub.wust.edu.cn -u "$HARBOR_USER" --password-stdin'
+          sh '''
+            set -e
+            IMG=hub.wust.edu.cn/intellect/node:20-alpine
+            if docker manifest inspect "$IMG" >/dev/null 2>&1; then
+              echo "基础镜像已存在: $IMG"
+            else
+              docker pull docker.1ms.run/library/node:20-alpine
+              docker tag docker.1ms.run/library/node:20-alpine "$IMG"
+              docker push "$IMG"
+            fi
+          '''
         }
       }
     }
@@ -169,7 +194,14 @@ pipeline {
             echo '发版纯宿主镜像(无插件,应用页为空)——确认这是预期(评审 Q4)'
           }
         }
-        sh 'docker build -t "$IMAGE_REPO:$EFFECTIVE_TAG" .'
+        withCredentials([usernamePassword(
+            credentialsId: 'harbor-agentui-release',
+            usernameVariable: 'HARBOR_USER',
+            passwordVariable: 'HARBOR_SECRET')]) {
+          // 基础镜像来自私有 Harbor，构建前必须先登录
+          sh 'echo "$HARBOR_SECRET" | docker login hub.wust.edu.cn -u "$HARBOR_USER" --password-stdin'
+          sh 'docker build -t "$IMAGE_REPO:$EFFECTIVE_TAG" .'
+        }
       }
     }
 
