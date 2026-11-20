@@ -21,8 +21,8 @@
    cid=$(docker create hub.wust.edu.cn/intellect/wargame-plugin-bundle:<ref>) \
      && mkdir -p deploy/plugin-bundles \
      && docker cp "$cid":/opt/bundled-plugins/. deploy/plugin-bundles/ && docker rm "$cid"
-   docker build -t hub.wust.edu.cn/intellect/agentui:0.4.0 .
-   docker push hub.wust.edu.cn/intellect/agentui:0.4.0
+   docker build -t hub.wust.edu.cn/intellect/agentui:0.4.3 .
+   docker push hub.wust.edu.cn/intellect/agentui:0.4.3
    ```
 
    不跑第 1 步则构建出「纯宿主」镜像(无插件,应用页为空)。
@@ -46,7 +46,7 @@
    开启能力：将 `deploy/k8s/agentui.yaml` 的 `INTELLECT_AUTH_ENABLED` 改为 `'true'`
    并确认 `HIEDU_BASE_URL` 指向集群内 hiedu Service（默认 `http://hiedu:8099`）。
 
-3. 镜像拉取凭证(项目私有时需要):已建最小权限机器人
+3. 镜像拉取凭证（**必需**，清单已启用 `imagePullSecrets`）：已建最小权限机器人
    `robot$intellect+agentui-pull`(仅 pull,密钥在发版机
    `~/.config/agentui/harbor-robots/agentui-pull.env`,600 权限):
 
@@ -55,7 +55,6 @@
    kubectl -n <ns> create secret docker-registry agentui-pull-secret \
      --docker-server=hub.wust.edu.cn \
      --docker-username="$HARBOR_USER" --docker-password="$HARBOR_SECRET"
-   # 并在 deployment.yaml 取消 imagePullSecrets 注释
    ```
 
    发版/CI 用 `robot$intellect+agentui-release`(push+pull,365 天需轮换),
@@ -69,12 +68,23 @@
 
 ## 部署/更新
 
+**主路径：ArgoCD**（见 `deploy/argocd/application.yaml` 与 `deploy/release-chain.md`）：
+
+```bash
+kubectl apply -f deploy/argocd/application.yaml
+# 镜像升级：改 deploy/k8s/kustomization.yaml 的 images.newTag 并提交
+```
+
+手动兜底（不推荐用于日常）：
+
 ```bash
 # 按环境修改 deployment.yaml 中的镜像 tag 与 WARGAME_HOST 后:
 kubectl apply -f deploy/k8s/
 ```
 
 更新发版 = 换镜像 tag 重新 apply;插件版本随镜像 tag 锁定,回滚即回滚镜像。
+数据目录已通过 PVC `agentui-data` 挂载到 `/app/data`（生产 `dist/index.mjs` 运行时路径），
+首次接入需重跑 `/admin/wizard` 或从旧 Pod 拷贝数据。
 
 ## 变量说明
 

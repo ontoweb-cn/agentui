@@ -1,0 +1,29 @@
+# ArgoCD Application（拓扑 B：独立子域根路径）
+# 前置：
+#   1. ArgoCD 已配置本仓库（https://gitee.com/wustbd/agentui.git）访问凭据；
+#   2. 命名空间 intellect 已存在（CreateNamespace=false）；
+#   3. 集群已存在 Secret：agentui-pull-secret / agentui-plugin-admin；
+#      启用 SSO 时再创建 agentui-sso。
+# 应用：kubectl apply -f deploy/argocd/application.yaml
+# 首次接入建议先把 automated 注释掉，手动 sync 核对差异后再开启。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agentui
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://gitee.com/wustbd/agentui.git
+    # 生产不要跟踪 dev：用稳定分支（main）或固定 release tag
+    targetRevision: main
+    path: deploy/k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: intellect
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

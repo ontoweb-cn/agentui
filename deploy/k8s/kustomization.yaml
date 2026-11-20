@@ -1,0 +1,12 @@
+# Kustomize 入口：ArgoCD 指向本目录
+# 发版时只改 images.newTag（或由 ArgoCD Image Updater 自动更新）
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: intellect
+resources:
+  - agentui.yaml
+  - agentui-config.yaml
+  - agentui-pvc.yaml
+images:
+  - name: hub.wust.edu.cn/intellect/agentui
+    newTag: 0.4.3

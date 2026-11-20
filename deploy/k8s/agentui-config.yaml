@@ -1,0 +1,17 @@
+# AgentUI 非敏感运行时配置（由 Deployment envFrom 注入）
+# 拓扑：独立子域根路径 https://agentui.wust.edu.cn
+# 启用 SSO 前需创建 agentui-sso Secret（key=state-secret），并完成网关 provider 配置。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentui-config
+data:
+  BFF_SSO_ENABLED: "false"
+  BFF_PUBLIC_ORIGIN: "https://agentui.wust.edu.cn"
+  BFF_FRONTEND_BASE: ""
+  BFF_SSO_PROVIDERS: ""
+  BFF_SSO_SILENT_RELOGIN: "false"
+  BFF_SSO_EXCHANGE_TIMEOUT_MS: "10000"
+  BFF_SSO_PROVIDER_CACHE_MS: "30000"
+  BFF_OAUTH_FRONTEND_HOME: "/"
+  CORS_ALLOWED_ORIGINS: "https://agentui.wust.edu.cn"

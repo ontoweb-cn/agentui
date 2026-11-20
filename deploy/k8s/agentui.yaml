@@ -11,12 +11,15 @@ metadata:
   labels:
     app: agentui
 spec:
+  # 与线上保持一致的固定 NodePort（31390）；ArgoCD 同步不会再把类型回滚成 ClusterIP
+  type: NodePort
   selector:
     app: agentui
   ports:
     - name: http
       port: 80
       targetPort: 80
+      nodePort: 31390
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -26,6 +29,9 @@ metadata:
     app: agentui
 spec:
   replicas: 1
+  # RWO PVC 不能跨节点多挂载，滚动更新会卡在 Multi-Attach；用 Recreate 先停旧 Pod
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: agentui
@@ -34,14 +40,21 @@ spec:
       labels:
         app: agentui
     spec:
+      # 私有 Harbor 必须带拉取凭证（Secret 创建命令见 README §3）
+      imagePullSecrets:
+        - name: agentui-pull-secret
       containers:
         - name: agentui
           # 内网制品库 hub.wust.edu.cn;tag 与插件 bundle 版本一一对应
-          image: hub.wust.edu.cn/intellect/agentui:0.4.0
+          image: hub.wust.edu.cn/intellect/agentui:0.4.3
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
               name: http
+          # 非敏感 SSO/站点配置（见 agentui-config.yaml）
+          envFrom:
+            - configMapRef:
+                name: agentui-config
           env:
             # 网关化拓扑(2026-10-14 决策):三后端经 ai.wust.edu.cn 公网网关访问,
             # 集群需放行 egress 443(前提核验见 deploy/cluster-rollout.md)
@@ -90,6 +103,17 @@ spec:
                 secretKeyRef:
                   name: agentui-plugin-admin
                   key: token
+            # SSO state Cookie 签名密钥（启用 SSO 前必须创建 agentui-sso Secret）
+            - name: BFF_SSO_STATE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: agentui-sso
+                  key: state-secret
+                  optional: true
+          volumeMounts:
+            # 生产运行 dist/index.mjs，数据目录解析为 /app/data（不是 /app/bff/data）
+            - name: agentui-data
+              mountPath: /app/data
           resources:
             requests:
               cpu: 200m
@@ -109,6 +133,7 @@ spec:
               port: http
             initialDelaySeconds: 15
             periodSeconds: 20
-      # 镜像来自内网制品库时按需配置拉取凭证:
-      # imagePullSecrets:
-      #   - name: hub-wust-pull-secret
+      volumes:
+        - name: agentui-data
+          persistentVolumeClaim:
+            claimName: agentui-data

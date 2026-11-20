@@ -1,0 +1,54 @@
+# 子目录部署参考 Ingress（方案 A / 非当前主拓扑）
+#
+# 当前生产采用拓扑 B（独立子域根路径），本文件仅作为子路径部署的参考模板，
+# 不包含在 deploy/k8s 的 Kustomize resources 中。
+# 使用前替换 host、TLS Secret 与命名空间：
+#   kubectl apply -f deploy/subpath/k8s-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agentui-ingress
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-body-size: "1024m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location ~* /api/v1/wargame/events {
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 0;
+        proxy_send_timeout 0;
+      }
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - example.com
+      secretName: agentui-tls
+  rules:
+    - host: example.com
+      http:
+        paths:
+          - path: /agentui
+            pathType: Prefix
+            backend:
+              service:
+                name: agentui
+                port:
+                  number: 80
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: agentui
+                port:
+                  number: 80
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: agentui
+                port:
+                  number: 80

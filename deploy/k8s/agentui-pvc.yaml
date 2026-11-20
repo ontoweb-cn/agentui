@@ -1,0 +1,14 @@
+# bff/data 持久化（后端/租户配置、token vault key、插件安装数据）
+# 说明：首次接入 PVC 时，旧 Pod 临时盘中的数据不会自动迁移，
+#       需重新执行 /admin/wizard 或从旧 Pod 拷贝 bff/data。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agentui-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  # storageClassName: <按集群实际填写；留空使用默认 StorageClass>

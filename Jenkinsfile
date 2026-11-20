@@ -8,9 +8,11 @@
 //      HARBOR_USER / HARBOR_SECRET(robot$intellect+agentui-release,push+pull);
 //   3. 新建任务:Pipeline → Pipeline script from SCM → 本仓库 gitee URL(dev 分支)。
 //
-// 日常:仅验证(类型检查 + 双侧测试);勾选 RELEASE 进入发版:
+// 日常:仅验证(类型检查 + 双侧测试);勾选 RELEASE 或推送 tag 进入发版:
 //   镜像 = hub.wust.edu.cn/intellect/agentui:$IMAGE_TAG,
 //   PLUGIN_BUNDLE_IMAGE 非空时拉取 wargame 插件 bundle 镜像解包烤入。
+// Tag 发版:Jenkins 任务需为 Multibranch Pipeline 并开启 tag discovery,
+//   推送 vX.Y.Z tag 时自动 RELEASE=true,IMAGE_TAG 取去掉 v 前缀的 tag。
 // 职责边界(2026-10-15):agentui 是前端宿主,wargame 的 CI/CD 归
 //   cognitive-wargame 仓(其 Jenkinsfile 参数化发布 wargamesrv 镜像与
 //   插件 bundle 镜像);本仓只消费成品 bundle 镜像,不再拉取其源码打包。
@@ -29,14 +31,16 @@ pipeline {
   parameters {
     booleanParam(name: 'RELEASE', defaultValue: false,
       description: '勾选则构建并推送正式镜像到 Harbor(否则仅验证)')
-    string(name: 'IMAGE_TAG', defaultValue: '0.4.0',
-      description: '镜像 tag(RELEASE=true 时使用)')
+    string(name: 'IMAGE_TAG', defaultValue: '0.4.3',
+      description: '镜像 tag(手动构建时使用;tag 触发时自动取 TAG_NAME 去 v 前缀)')
     string(name: 'PLUGIN_BUNDLE_IMAGE', defaultValue: '',
       description: '插件 bundle 镜像(cognitive-wargame CI 发布,如 hub.wust.edu.cn/intellect/wargame-plugin-bundle:0d8b07d);留空=纯宿主镜像')
     string(name: 'PLUGIN_BUNDLE_ARTIFACT_URL', defaultValue: '',
       description: '插件 bundle tarball URL(hTTPS,如 Harbor OCI artifact 导出地址);与 PLUGIN_BUNDLE_IMAGE 二选一;留空=纯宿主镜像')
     string(name: 'PLUGIN_BUNDLE_SHA256', defaultValue: '',
       description: 'PLUGIN_BUNDLE_ARTIFACT_URL 对应的 tarball sha256(64 位 hex,必填)')
+    string(name: 'SMOKE_URL', defaultValue: '',
+      description: '发版后冒烟基址(如 https://agentui.wust.edu.cn);留空跳过冒烟')
   }
 
   environment {
@@ -47,9 +51,7 @@ pipeline {
     stage('参数校验') {
       steps {
         script {
-          if (!(params.IMAGE_TAG =~ /^[A-Za-z0-9._-]+$/)) {
-            error("IMAGE_TAG 非法(仅允许字母数字与 . _ -,不得为空): '${params.IMAGE_TAG}'")
-          }
+          // IMAGE_TAG 在「解析版本」统一校验（tag 触发时以 TAG_NAME 为准）
           if (params.PLUGIN_BUNDLE_IMAGE?.trim() &&
               !(params.PLUGIN_BUNDLE_IMAGE.trim() =~ '^hub\\.wust\\.edu\\.cn/[A-Za-z0-9._/-]+:[A-Za-z0-9._-]+$')) {
             error("PLUGIN_BUNDLE_IMAGE 非法(仅允许 hub.wust.edu.cn/<repo>:<tag> 形态): '${params.PLUGIN_BUNDLE_IMAGE}'")
@@ -66,6 +68,22 @@ pipeline {
           if (params.PLUGIN_BUNDLE_IMAGE?.trim() && params.PLUGIN_BUNDLE_ARTIFACT_URL?.trim()) {
             error('PLUGIN_BUNDLE_IMAGE 与 PLUGIN_BUNDLE_ARTIFACT_URL 只能二选一')
           }
+        }
+      }
+    }
+
+    stage('解析版本') {
+      steps {
+        script {
+          // tag 触发优先: v0.4.2 -> 0.4.2；tag 构建自动进入发版
+          def rawTag = env.TAG_NAME?.trim()
+          def effective = rawTag ? rawTag.replaceFirst('^v', '') : params.IMAGE_TAG
+          if (!(effective ==~ /^[A-Za-z0-9._-]+$/)) {
+            error("镜像 tag 非法(仅允许字母数字与 . _ -,不得为空): '${effective}'")
+          }
+          env.EFFECTIVE_TAG = effective
+          env.IS_RELEASE = (params.RELEASE || rawTag) ? 'true' : 'false'
+          echo "构建来源=${rawTag ? 'tag:' + rawTag : '手动'}，镜像 tag=${effective}，发版=${env.IS_RELEASE}"
         }
       }
     }
@@ -100,7 +118,7 @@ pipeline {
     }
 
     stage('拉取插件 bundle') {
-      when { expression { params.RELEASE &&
+      when { expression { env.IS_RELEASE == 'true' &&
         (params.PLUGIN_BUNDLE_IMAGE?.trim() || params.PLUGIN_BUNDLE_ARTIFACT_URL?.trim()) } }
       steps {
         script {
@@ -133,13 +151,13 @@ pipeline {
             sha = sh(returnStdout: true,
               script: 'docker inspect --format "{{index .RepoDigests 0}}" "$PLUGIN_BUNDLE_IMAGE" | cut -d@ -f2').trim()
           }
-          sh "bash scripts/write-release-metadata.sh --source '${src}' --sha256 '${sha}' --image-tag '${params.IMAGE_TAG}'"
+          sh "bash scripts/write-release-metadata.sh --source '${src}' --sha256 '${sha}' --image-tag '${env.EFFECTIVE_TAG}'"
         }
       }
     }
 
     stage('镜像构建') {
-      when { expression { params.RELEASE } }
+      when { expression { env.IS_RELEASE == 'true' } }
       steps {
         script {
           if (params.PLUGIN_BUNDLE_IMAGE?.trim() || params.PLUGIN_BUNDLE_ARTIFACT_URL?.trim()) {
@@ -148,12 +166,12 @@ pipeline {
             echo '发版纯宿主镜像(无插件,应用页为空)——确认这是预期(评审 Q4)'
           }
         }
-        sh 'docker build -t "$IMAGE_REPO:$IMAGE_TAG" .'
+        sh 'docker build -t "$IMAGE_REPO:$EFFECTIVE_TAG" .'
       }
     }
 
     stage('镜像推送') {
-      when { expression { params.RELEASE } }
+      when { expression { env.IS_RELEASE == 'true' } }
       steps {
         withCredentials([usernamePassword(
             credentialsId: 'harbor-agentui-release',
@@ -162,18 +180,27 @@ pipeline {
           sh 'echo "$HARBOR_SECRET" | docker login hub.wust.edu.cn -u "$HARBOR_USER" --password-stdin'
           // Harbor 偶发 EOF(2026-10-13 本机实测),自动重试一次(评审 Q3)
           retry(2) {
-            sh 'docker push "$IMAGE_REPO:$IMAGE_TAG"'
+            sh 'docker push "$IMAGE_REPO:$EFFECTIVE_TAG"'
           }
         }
+      }
+    }
+
+    stage('冒烟验证') {
+      when { expression { env.IS_RELEASE == 'true' && params.SMOKE_URL?.trim() } }
+      steps {
+        sh "bash scripts/smoke-deploy.sh '${params.SMOKE_URL.trim()}'"
       }
     }
   }
 
   post {
     always {
+      // 失败路径也要归档发版元数据（存在才归档），再清 workspace
+      archiveArtifacts artifacts: 'deploy/release-metadata.json', allowEmptyArchive: true
       // 失败路径也要清凭据:push 失败时 robot token 不得残留 agent(评审 S2)
       script {
-        if (params.RELEASE) {
+        if (env.IS_RELEASE == 'true') {
           sh 'docker logout hub.wust.edu.cn || true'
         }
       }
