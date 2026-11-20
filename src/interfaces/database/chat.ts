@@ -1,4 +1,4 @@
-import { MessageType } from '@/constants/chat';
+import { MessageType, WebSearchProvider } from '@/constants/chat';
 import { IAttachment } from '@/hooks/use-send-message';
 
 export interface IDocumentDownloadInfo {
@@ -21,6 +21,20 @@ export interface PromptConfig {
   reasoning?: boolean;
   cross_languages?: Array<string>;
   tavily_api_key?: string;
+  web_search_provider?: WebSearchProvider;
+  anysearch_api_key?: string;
+  brave_api_key?: string;
+  exa_api_key?: string;
+  firecrawl_api_key?: string;
+  keirolabs_api_key?: string;
+  linkup_api_key?: string;
+  parallel_api_key?: string;
+  perplexity_api_key?: string;
+  querit_api_key?: string;
+  search1api_api_key?: string;
+  searchapi_api_key?: string;
+  serply_api_key?: string;
+  youcom_api_key?: string;
   toc_enhance?: boolean;
   reference_metadata?: {
     include?: boolean;

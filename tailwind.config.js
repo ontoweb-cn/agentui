@@ -55,6 +55,20 @@ module.exports = {
         'colors-text-persist-light': 'var(--colors-text-persist-light)',
         'colors-text-inverse-weak': 'var(--colors-text-inverse-weak)',
 
+        /* Semantic role aliases (Intellect --colors-* naming) over the
+           design-color variables; see tailwind.css :root/.dark. */
+        'colors-background-neutral-card': 'var(--colors-background-neutral-card)',
+        'colors-background-neutral-component':
+          'var(--colors-background-neutral-component)',
+        'colors-background-neutral-input':
+          'var(--colors-background-neutral-input)',
+        'colors-background-neutral-list': 'var(--colors-background-neutral-list)',
+        'colors-text-neutral-disabled': 'var(--colors-text-neutral-disabled)',
+        'colors-text-title': 'var(--colors-text-title)',
+        'colors-text-subtitle': 'var(--colors-text-subtitle)',
+        'colors-outline-neutral-button': 'var(--colors-outline-neutral-button)',
+        'colors-outline-sentiment-accent': 'var(--colors-outline-sentiment-accent)',
+
         'background-badge': 'var(--background-badge)',
         'text-badge': 'var(--text-badge)',
         'text-title': 'var(--text-title)',

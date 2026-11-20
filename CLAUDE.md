@@ -50,6 +50,16 @@ npm run gen:api-types
 When fixing CSS/layout issues (especially flex truncation, ellipsis, or element sizing), **always inspect the full parent hierarchy** for `flex-shrink`, `min-width`, and `overflow` constraints before applying fixes like `min-w-0`. Do not repeatedly apply the same fix without verifying the root cause.
 - Before editing, explain: (1) the full flex/container hierarchy from the target element up to the nearest non-flex ancestor, (2) what constraint is actually causing the bug, and (3) how the proposed fix addresses that root cause.
 
+### Text Overflow
+
+Any element rendering **user-generated or server-returned text** (names, titles, descriptions, file names, messages) inside a bounded container (card, table cell, dialog title, list item, badge, select trigger, button) must have an explicit overflow strategy. Never assume real data is short.
+
+- Choose deliberately: single-line `truncate`, multi-line `line-clamp-N`, or intentional wrapping with `break-words`. Rendering with no strategy is a defect — long real-world data always finds it.
+- `truncate` needs a width constraint to bite: add `min-w-0` on every flex ancestor between the text and the element that actually constrains the width (flex children default to `min-width: auto` and won't shrink below content size).
+- Keep truncated text revealable: prefer the shared `TruncatedText` component (`src/components/truncated-text.tsx`), which shows a tooltip only when truncation actually occurs.
+- Long i18n strings count as long text — a label that fits in Chinese may overflow in English.
+- When overflow is suspected or the user asks, verify with extreme input (100+ characters, an unbroken no-space string, a CJK/Latin mix) rendered in a real browser or Storybook. jsdom and lint cannot measure layout.
+
 ### Scope and Boundaries
 Respect explicit boundaries from the user. If the user says **"only fix the selected line"** or **"do not touch shared types/files"**, follow that instruction exactly. Do not investigate unrelated errors, modify shared schemas (e.g., `LlmSettingFieldSchema`), or refactor other files without confirmation. If a change outside the described scope seems necessary, ask for permission first.
 

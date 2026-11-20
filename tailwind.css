@@ -58,6 +58,19 @@
     --colors-text-persist-light: rgba(255, 255, 255, 1);
     --colors-text-inverse-weak: rgba(184, 181, 203, 1);
 
+    /* Semantic role aliases: expose the design-color roles under the
+       Intellect --colors-* naming. Values reference the design-color
+       variables above, so light/dark follows automatically. */
+    --colors-background-neutral-card: var(--bg-card);
+    --colors-background-neutral-component: var(--bg-component);
+    --colors-background-neutral-input: var(--bg-input);
+    --colors-background-neutral-list: rgb(var(--bg-list));
+    --colors-text-neutral-disabled: var(--text-disabled);
+    --colors-text-title: var(--text-title);
+    --colors-text-subtitle: var(--text-sub-title);
+    --colors-outline-neutral-button: var(--border-button);
+    --colors-outline-sentiment-accent: var(--border-accent);
+
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;
@@ -205,6 +218,20 @@
     --colors-text-inverse-strong: rgba(17, 16, 23, 1);
     --colors-text-persist-light: rgba(255, 255, 255, 1);
     --colors-text-inverse-weak: rgba(84, 80, 106, 1);
+
+    /* Same role aliases re-declared under .dark so each alias re-resolves
+       against the dark design-color values (chained var() references are
+       substituted at computed-value time and do not re-evaluate across
+       the .dark override otherwise). */
+    --colors-background-neutral-card: var(--bg-card);
+    --colors-background-neutral-component: var(--bg-component);
+    --colors-background-neutral-input: var(--bg-input);
+    --colors-background-neutral-list: rgb(var(--bg-list));
+    --colors-text-neutral-disabled: var(--text-disabled);
+    --colors-text-title: var(--text-title);
+    --colors-text-subtitle: var(--text-sub-title);
+    --colors-outline-neutral-button: var(--border-button);
+    --colors-outline-sentiment-accent: var(--border-accent);
 
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
