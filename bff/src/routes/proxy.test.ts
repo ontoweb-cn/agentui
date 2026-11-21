@@ -380,3 +380,88 @@ describe('proxy 服务令牌强制与写门控 (P1-b)', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// D2 收口:read-only 模式('read-only')——仅 GET/HEAD 强制服务令牌,
+// 写请求保持成员令牌由上游鉴权(§4.4 门控不适用)。作为"仅读"回退档,
+// D2 回摆无需改代码。决策记录:docs/model-mgmt-d1-d2-decision-brief.md
+// ---------------------------------------------------------------------------
+describe('proxy 服务令牌 read-only 模式 (D2 回退档)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  function memberMe(role: string) {
+    return new Response(JSON.stringify({ id: 'mem-1', role }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  function routeFetch(upstream: Response, role = 'admin') {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).includes('/api/members/me')) return memberMe(role);
+      return upstream;
+    });
+  }
+
+  function upstreamHeaders() {
+    const call = fetchMock.mock.calls.find(
+      ([u]) => String(u).includes('rag.test') && !String(u).includes('/api/members/me'),
+    );
+    if (!call) throw new Error('upstream not called');
+    return new Headers((call as unknown as [string, { headers: Headers }])[1].headers);
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    delete process.env.BFF_ENABLE_IMT_CANVAS_AGENTS;
+    const { resetMemberIdCacheForTesting } = await import(
+      '../services/member-id-cache'
+    );
+    resetMemberIdCacheForTesting();
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    delete process.env.BFF_MODEL_MGMT_SERVICE_TOKEN;
+  });
+
+  it('read-only + GET models:服务令牌强制,身份头跳过', async () => {
+    process.env.BFF_MODEL_MGMT_SERVICE_TOKEN = 'read-only';
+    routeFetch(upstream200());
+    const app = createTestApp(createStores(), { session: true });
+    const res = await app.request('/proxy/v1/models');
+    expect(res.status).toBe(200);
+    const h = upstreamHeaders();
+    expect(h.get('Authorization')).toBe('Bearer rag-api-key');
+    expect(h.get('X-Intellect-User')).toBeNull();
+    expect(h.get('X-Intellect-Role')).toBeNull();
+  });
+
+  it('read-only + PATCH models(member 角色):不门控不强制——成员令牌透传上游', async () => {
+    process.env.BFF_MODEL_MGMT_SERVICE_TOKEN = 'read-only';
+    routeFetch(upstream200(), 'member');
+    const app = createTestApp(createStores(), { session: true });
+    const res = await app.request('/proxy/v1/models/default', {
+      method: 'PATCH',
+    });
+    expect(res.status).toBe(200);
+    const h = upstreamHeaders();
+    expect(h.get('Authorization')).toBe('Bearer imt_test_token');
+    expect(h.get('X-Intellect-Role')).toBe('member');
+  });
+
+  it('read-only + PATCH models(admin 角色):写同样走成员令牌(与 read-write 的分野)', async () => {
+    process.env.BFF_MODEL_MGMT_SERVICE_TOKEN = 'read-only';
+    routeFetch(upstream200(), 'admin');
+    const app = createTestApp(createStores(), { session: true });
+    const res = await app.request('/proxy/v1/providers', { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(upstreamHeaders().get('Authorization')).toBe('Bearer imt_test_token');
+  });
+});
