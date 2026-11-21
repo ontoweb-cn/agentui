@@ -9,4 +9,4 @@ resources:
   - agentui-pvc.yaml
 images:
   - name: hub.wust.edu.cn/intellect/agentui
-    newTag: 0.4.5
+    newTag: 0.4.6
