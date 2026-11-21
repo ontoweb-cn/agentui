@@ -55,10 +55,7 @@ describe('web-search catalog (T2.2 单一来源守卫)', () => {
     for (const provider of ALL_PROVIDERS) {
       const tip = webSearchProviderTipKey(provider);
       const placeholder = webSearchProviderPlaceholderKey(provider);
-      for (const [lang, chat] of [
-        ['en', enChat],
-        ['zh', zhChat],
-      ] as const) {
+      for (const chat of [enChat, zhChat]) {
         expect(chat[tip]).toBeTruthy();
         expect(chat[placeholder]).toBeTruthy();
       }

@@ -6,6 +6,7 @@
 > 来源:双评审(Bugbot 质量评审 / Security Review)跟进项 + 改进建议文档的 P1/P2 + 清单技术评审修正
 > **⚠ 2026-11-21 过渡期评审勘验**:T4.1 靶点有误(provider 存储/聚合位/校验在 **Rust Gateway + BFF** 层,非 intellect-rag),并发现设置保存链路存在 title-only 存量断点——详见 [p0-port-transition-impact-review.md](./p0-port-transition-impact-review.md)
 > **v3(2026-11-21 21:15)**:按 p0 过渡期评审与 [unfinished-tasks-review-20261121.md](./unfinished-tasks-review-20261121.md) 修订——**新增 T2.10(已完成,`7de6206`)**;T4.1 拆分为 **T4.1a(Gateway/BFF)/ T4.1b(intellect-rag)**;T2.4 前置决策**已解锁**(Gateway `prompt_config` 整列替换实证→短期维持整包,T4.2 收敛);T2.7 落点写死 BFF `bff-agents`;T1.1/T1.2/T1.3 完成(`22dce83`)
+> **v4(2026-11-22)**:九步交付(module: ragflow-p1-batch,报告 [REPORT-ragflow-p1-batch-20261122.md](../tests/e2e-tests/reports/REPORT-ragflow-p1-batch-20261122.md))——**T2.3/T2.9/T1.4(`ff76959`)、T2.8(`f73e588`)、T2.1/T2.2(`f70df0f`)、T2.7(`d2bc74c`)全部完成**;T2.9 裁决=移植(依据与存量影响评估见该报告);P1 代码项仅余 T2.5/T2.6(清单排定下个迭代)。另:main 合入(v0.4.6)遗留 BFF tsc 9 处类型错误(auth/backchannel-logout/jose,见受限 L-RP1-03)与 login-next 裸色值破守卫(已修 `98c921d`)
 
 ## 使用说明
 
@@ -32,7 +33,7 @@
 - **评审确认**:全仓仅 `web-search-form-field.tsx` L226 一处直读该字段,类型放宽无涟漪。
 - **验收**:type-check 绿;`web-search-api-key.test.ts` 不需改即通过;后续可逐步移除测试中的 `as unknown as` 断言(顺带做)。
 
-### T1.4 schema 接线测试(1-2 小时,移植而非新建)
+### T1.4 schema 接线测试(1-2 小时,移植而非新建)— **已完成**(`ff76959`,九步 module: ragflow-p1-batch)
 - **动作**:上游 app-settings 已有现成测试族——`use-chat-setting-schema.test.tsx`、`chat-setting-schema.test.ts`、`validate-chat-prompt.test.ts`、`use-reveal-submit-errors.test.tsx`(以及 `agentic-rag-submit.test.ts`)。**移植而非从零写**:改 import 路径、按 agentui 现状取舍后跑通。最少覆盖 3 个断言:
   1. 选 `Search1API` 且 `search1api_api_key` 为空 → parse 失败,issue path === `['prompt_config', 'search1api_api_key']`,message 为 `webSearchApiKeyRequired`;
   2. `web_search_provider: ''`(清除)→ parse 成功(不回落 Tavily);
@@ -44,19 +45,19 @@
 
 ## T2 P1:评审跟进与结构性改进(约 2-2.5 周)
 
-### T2.1 legacy Tavily 对话框预选 provider(2-4 小时)
+### T2.1 legacy Tavily 对话框预选 provider(2-4 小时)— **已完成**(`f70df0f`)
 - **动作**:在聊天设置表单的默认值装配处(grep `prompt_config` 默认值映射,位于 `use-chat-request` 或 app-settings 的 values builder)加:`web_search_provider ??= WebSearchProvider.Tavily`(**仅当值为 `undefined`**;显式 `''` 是"用户清除",不得回落)。
 - **背景**:legacy 对话(仅存 `tavily_api_key`)运行时联网开关可见(`getWebSearchProvider` 推断 Tavily),但设置页 provider/key 均不显示——UI 与运行时脱节。
 - **副作用(需知悉)**:预选后打开 legacy 对话并保存,会**首次写入** `web_search_provider: 'tavily'`(此前仅 `tavily_api_key`);与 T4.1 后端枚举无冲突(Tavily 是老字段)。
 - **验收**:仅含 `tavily_api_key` 的对话框打开设置页,Tavily 已预选且 key 输入框回填;新建空对话框不受影响;**保存后重开仍预选**。
 
-### T2.2 provider→key 映射收敛单一来源(2-3 小时)
+### T2.2 provider→key 映射收敛单一来源(2-3 小时)— **已完成**(`f70df0f`;实现:web-search-catalog.ts 仅存真实数据,字段/语言键由 `webSearchProviderBaseKey` 枚举派生,catalog 完备性守卫测试 5 例)
 - **动作**:把 `src/components/web-search-form-field.tsx` 的 `providerKeyConfig`(name/tip/placeholder/helpUrl)迁至 `src/pages/next-chats/chat/web-search-api-key.ts`(或新文件 `web-search-catalog.ts`);`webSearchApiKeyFields` 由 catalog 派生;form-field 只 import。
 - **可更薄的实现(评审补充)**:tip/placeholder 语言键与 `*_api_key` 字段名均可由**枚举值直接派生**——`anysearch` → `anysearchApiKeyTip` / `anysearchApiKeyMessage` / `anysearch_api_key`(14 个 provider 全部符合该模式,含 `search1api`/`youcom`)。catalog 只需保留 **displayName / logo / helpUrl** 三项真实数据,其余一概派生。
 - **背景**:当前两份映射并存,新增 provider 需改 5 处(枚举/catalog/映射/schema/locale),易漏。
 - **验收**:全仓仅一处映射来源;新增一个 provider 只需改 枚举 + catalog(displayName/logo/helpUrl)+ locale 三处;测试绿。
 
-### T2.3 提取 `buildChatSettingFormSchema(t)` 纯构建器 + `useMemo`(1-2 小时)
+### T2.3 提取 `buildChatSettingFormSchema(t)` 纯构建器 + `useMemo`(1-2 小时)— **已完成**(`ff76959`)
 - **动作**:`use-chat-setting-schema.tsx`(L17 `useChatSettingSchema`)重构为上游模式:导出纯函数 `buildChatSettingFormSchema(t: (k: string) => string)`,hook 内 `useMemo(() => buildChatSettingFormSchema(t), [t])`(上游 hook 即此写法,照搬)。
 - **关联**:重构时一并处理 T2.9 的 `chatPromptKbIssues` 决策。
 - **验收**:T1.4 的测试可直接调用纯构建器;行为无变化。
@@ -81,13 +82,13 @@
 - **背景**:上游已切换 oxfmt/oxlint(Rust 实现,快一个量级)。
 - **验收**:oxlint 全仓运行 < 5 秒;存量告警处理或基线化。
 
-### T2.7 agent session PATCH 校验镜像(0.5-1 天)
+### T2.7 agent session PATCH 校验镜像(0.5-1 天)— **已完成**(`d2bc74c`;`bff/src/utils/web-search-validation.ts` 纯函数 10 例 + 路由 7 例)
 - **已核实链路(v3 定案)**:PATCH 服务方 = **BFF `bff/src/routes/bff-agents.ts`**(Gateway 实证);T2.10(`7de6206`)已透传 `prompt_config`/`kb_ids`,校验在 BFF 透传前叠加。
 - **动作**:在 BFF PATCH 路由增加校验:合法 `web_search_provider` 枚举 + 需 key 的 provider 必须携带非空 key(复刻 `missingWebSearchApiKeyField` 规则,可移植为服务端纯函数);非法即 4xx。
 - **背景**:前端 `superRefine` 可被直接 HTTP 调用绕过(安全评审"中"项);agent session 是分享/嵌入场景的同一数据面,校验尤为重要。
 - **验收**:绕过表单直接发 PATCH(缺 key)返回 4xx 及明确错误信息;服务方侧有单测。
 
-### T2.8 保存错误揭示机制(P1 内靠前,建议紧随 T2.3;1-2 天)
+### T2.8 保存错误揭示机制(P1 内靠前,建议紧随 T2.3;1-2 天)— **已完成**(`f73e588`;关键配套:`collapse.tsx` 同步移植上游渲染期受控版本,旧版 useEffect 同步使内容挂载晚一 commit、布局效应扑空——插桩实证)
 - **动作**:
   1. 移植上游 `use-reveal-submit-errors`(+测试 `use-reveal-submit-errors.test.tsx`);
   2. `chat-prompt-engine.tsx` 对齐上游 `ChatPromptEngineProps` 的受控展开参数(`advancedSettingOpen` / `onAdvancedSettingOpenChange` / `naiveSettingOpen` / `agenticSettingOpen` 等),由保存失败驱动对应 Collapse 展开;
@@ -95,7 +96,7 @@
 - **背景**:`66f2f3d` 补的 `<FormMessage />` 只解决了"错误有处渲染";**高级设置面板默认折叠时用户依然看不见**——本任务是让评审 P0 修复真正对用户可见的最后一环。
 - **验收**:构造缺 key 保存 → 面板自动展开、视口滚动到该字段、FormMessage 可见;上游相关测试移植通过。
 
-### T2.9 schema 校验差异决策(0.5 天:决策 + 记录或补齐)
+### T2.9 schema 校验差异决策(0.5 天:决策 + 记录或补齐)— **已完成,裁决=移植**(`ff76959`)
 - **背景**:上游 formSchema 的 superRefine 除 missing-key 外还调用 `chatPromptKbIssues`(`validate-chat-prompt.ts`,校验 system prompt 与知识库变量引用等);agentui 自 fork 起**无此文件与校验**。
 - **动作(二选一)**:
   1. 认定为 fork 时点缺失 → 随 T2.3 一并移植 `validate-chat-prompt.ts` + 测试;
@@ -169,14 +170,14 @@ T4.1a(Gateway/BFF 枚举+聚合位)──▶ 分享页修复完整生效、T2.7/
 Phase B(事件契约)  ──▶ 画布页面对齐
 ```
 
-建议节奏(v3 修订):~~本周 T1~~ **T1.1-T1.3 已完成**;本周余 T2.2/T2.3/**T2.8**;下周 T1.4/T2.1/T2.4(决策已解锁)/T2.9;T2.5 第一步、T2.6/T2.7 排入下个迭代;**T4.1a 尽早发起(它阻塞分享页功能的实际生效)**。
+建议节奏(v4 修订):~~本周 T1~~ **T1 全部完成**;~~P1 代码项~~ **T2.1-T2.3/T2.7-T2.9 全部完成**(2026-11-22,`ff76959`/`f73e588`/`f70df0f`/`d2bc74c`);T2.5 第一步、T2.6 排入下个迭代;T2.4 无独立动作(实施并入 T4.1a/T4.2);**T4.1a 尽早发起(它阻塞分享页功能的实际生效)**。
 
 ## 工作量汇总
 
 | 分组 | 任务数 | 量级 |
 |---|---|---|
-| T1 立即可做 | 4(T1.1-T1.3 已完成) | ~1 天 → 余 T1.4 |
-| T2 P1 | 10(T2.10 已完成) | 2-2.5 周 → 余 ~2 周 |
+| T1 立即可做 | 4(**全部完成**) | ~1 天 ✓ |
+| T2 P1 | 10(**T2.1-T2.3/T2.7-T2.10 完成;余 T2.5/T2.6 下个迭代**) | 2-2.5 周 → 代码项已清 |
 | T3 P2 | 7 | 随版本 |
 | T4 跨仓库 | 2(T4.1 拆 a/b) | 2-3 天 + 设计评估 |
 | T5 Go 化 | 4 阶段 | 3-5 人 × 6-9 个月 |

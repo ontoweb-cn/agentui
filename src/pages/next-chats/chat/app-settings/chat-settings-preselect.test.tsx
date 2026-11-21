@@ -12,7 +12,16 @@ import { ChatSettings } from './chat-settings';
 
 const scrollIntoViewMock = jest.fn();
 
-const legacyTavilyChat = {
+// 夹具统一宽类型:new 对话必须允许"无 tavily_api_key"(legacy 夹具推断出的
+// 必填会误伤),字段内容仍按真实 chat 形状书写。
+type ChatFixture = {
+  id: string;
+  name: string;
+  prompt_config: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
+const legacyTavilyChat: ChatFixture = {
   id: 'e2e-chat-legacy',
   name: 'e2e legacy tavily chat',
   description: '',
@@ -38,7 +47,7 @@ const legacyTavilyChat = {
   tenant_id: '',
 };
 
-const clearedProviderChat = {
+const clearedProviderChat: ChatFixture = {
   ...legacyTavilyChat,
   id: 'e2e-chat-cleared',
   prompt_config: {
@@ -49,7 +58,7 @@ const clearedProviderChat = {
   },
 };
 
-const newChat = {
+const newChat: ChatFixture = {
   ...legacyTavilyChat,
   id: 'e2e-chat-new',
   name: 'e2e new chat',
@@ -64,9 +73,9 @@ const newChat = {
   },
 };
 
-const currentChat = { current: legacyTavilyChat };
+const currentChat = { current: legacyTavilyChat as ChatFixture };
 
-function setCurrentChat(chat: typeof legacyTavilyChat) {
+function setCurrentChat(chat: ChatFixture) {
   currentChat.current = chat;
 }
 

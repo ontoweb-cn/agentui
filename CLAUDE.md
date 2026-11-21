@@ -129,3 +129,12 @@ The folder `src/components/ui/` is the project's **shared UI library** — it co
 - **Project utilities first**: Before reaching for a third-party library, check if the project already has an existing utility or hook that covers the need.
 - **Extract and share**: If repeated logic cannot be satisfied by an existing project utility or a third-party library, extract it into an appropriate shared hook (`src/hooks/`) or utility file (`src/utils/`).
 - **Check for duplicate patterns before adding**: When asked to add logic (validation, existence checks, API calls, etc.), first search for existing hooks/functions that do the same or similar thing — especially in the same file or sibling hooks. If a hook already does X, call it instead of re-implementing X inline. This applies to mutations calling mutations, utility wrappers, and boilerplate around API calls.
+
+### Testing Infrastructure Notes（jest/vitest 陷阱备忘）
+- **jest 挂起（worker 不退出）的高频根因**：mock 的数据 hook（如 `useFetchChat`）每次渲染返回**新对象引用** → 组件 `useEffect([data, form])` 内 `form.reset` 无限触发。夹具必须提升为模块级常量（稳定引用）；jest 必要时加 `--forceExit`（仓库已有存量 open-handle 警告）。
+- **jsdom 组件测试三件套**：`Element.prototype.scrollIntoView` 需 stub（jsdom 未实现）；`ResizeObserver` 需 stub（radix use-size/ScrollArea）；`FormLabel tooltip` 的 FormTooltip 需要 `<TooltipProvider>` 包裹。
+- **`jest.config.ts` 的 moduleNameMapper**：资产/样式 mock（`\.(css|…)$`、`\.(jpg|…|webp)$`）必须排在 `^@/(.*)$` 别名**之前**（mapper 首个命中生效，别名在前会让 `@/assets/x.svg` 解析成真实文件路径）。
+- **组件 mock 面**：渲染 `ChatSettings` 需 mock `@/hooks/use-chat-request`、`use-llm-request`、`use-harness-capabilities`、`use-knowledge-request` 及展示型字段（rerank/similarity-slider/top-n/metadata-filter 等，并保留其 schema 导出为 `{}`——`z.object(undefined)` 会抛）。
+- **BFF tsc 带病基线（2026-11-22）**：main 合入（v0.4.6 SSO 批次）遗留 `bff` tsc 9 处类型错误（`auth.ts`/`auth.test.ts`/`backchannel-logout.ts`/jose 类型），vitest 1187/1187 全绿、运行时无碍；BFF 门禁采用 vitest 全绿 + tsc 错误集不新增（delta 口径），根因修复单独立项。
+- **回归口令**：前端 `npx jest --silent --forceExit`（60 套件）；BFF `cd bff; npx vitest run`（67 文件）；三守卫 `node scripts/check-hiedu-shared.mjs && node scripts/check-color-tokens.mjs && npx tsc --noEmit`。BFF vitest 必须在 `bff/` 目录内跑（根目录会扫到 127 个文件、口径错乱）。
+- **九步交付产物索引**：`tests/e2e-tests/{outline,cases,spec,reports}/<module>-*`；已有 module：wizard-sso、wizard-sso-followup、ragflow-p1-batch。
