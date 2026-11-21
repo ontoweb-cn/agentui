@@ -58,3 +58,6 @@ tests/e2e-tests/fixtures/**/backup/
 
 # 本地 WSL 包装进程日志(T1.1)
 *-wsl.log
+
+# env 备份文件（含密钥配置，勿入库）
+bff/.env.bak-*

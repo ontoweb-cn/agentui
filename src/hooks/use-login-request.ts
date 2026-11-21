@@ -198,11 +198,15 @@ export const useLogout = () => {
       // 避免登出失败后用户卡在已登录状态。
       const tenantId = localStorage.getItem(BackendId) || '0';
       let code: number | undefined;
+      // agentui-sso-logout-loop(A2)：BFF 登出响应携带 idp_logout_url 时，
+      // 本地清理后**顶层跳转**统一认证登出（清 IdP 会话）→ post_logout_redirect 回登录页。
+      let idpLogoutUrl: string | undefined;
       try {
         const { data = {} } = await logoutWithHeaders({
           'X-Backend-Id': tenantId,
         });
         code = data?.code;
+        idpLogoutUrl = data?.data?.idp_logout_url;
         if (code === 0) {
           message.success(t('message.logout'));
         }
@@ -210,6 +214,9 @@ export const useLogout = () => {
         // 无论 BFF 响应如何,用户主动登出都应清除前端登录态
         authorizationUtil.removeAll();
         redirectToLogin();
+      }
+      if (idpLogoutUrl) {
+        window.location.href = idpLogoutUrl;
       }
       return code;
     },

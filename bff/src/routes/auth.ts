@@ -27,6 +27,12 @@ import type { AuthMode } from '../types/tenant';
 import { getAuthSession, AUTH_SESSION_KEY } from '../middleware/auth-session';
 import { getRagBaseUrl } from '../utils/rag-base-url';
 import {
+  lookupImtSessions,
+  recordImtSession,
+  removeImtSessions,
+} from '../services/imt-session-map';
+import { verifyLogoutToken } from '../services/backchannel-logout';
+import {
   getSsoRedirectUri,
   isSecureCookie,
   loadSsoConfig,
@@ -160,6 +166,28 @@ export function resetOAuthConfigWarning(): void {
 }
 
 /**
+ * 解析本 BFF 的公开 origin（SSO 登出回跳/错误回跳共用；多级代理取第一跳）。
+ *
+ * 信任边界:X-Forwarded-Host 不在 nginx proxy.conf 的注入清单内,客户端可注入
+ * 任意值 —— 伪造回调会被 IdP 应用 redirectUris 白名单拒绝(fail-closed),不会产生
+ * 授权码。
+ */
+export function resolvePublicOrigin(c: {
+  req: { header(name: string): string | undefined; url: string };
+}): string {
+  // 多级代理链:X-Forwarded-* 形如 "a,b" — 取第一跳,避免拼出 "https,http://..." 非法 URL
+  const firstForwarded = (v: string | undefined) => v?.split(',')[0]?.trim() || undefined;
+  const proto =
+    firstForwarded(c.req.header('X-Forwarded-Proto')) ||
+    new URL(c.req.url).protocol.replace(/:$/, '');
+  const host =
+    firstForwarded(c.req.header('X-Forwarded-Host')) ||
+    c.req.header('Host') ||
+    new URL(c.req.url).host;
+  return `${proto}://${host}`;
+}
+
+/**
  * 解析本 BFF 的公开 OAuth 回调 URL(F-CB-01 修复)。
  *
  * intellect-team 的 GET /api/oauth/login/{provider} 仅在显式携带 `?redirect_uri=`
@@ -169,11 +197,6 @@ export function resetOAuthConfigWarning(): void {
  * 取值顺序:
  * 1. env `BFF_OAUTH_REDIRECT_URI`(完整回调 URL;生产推荐,防 Host 伪造);
  * 2. 转发头(X-Forwarded-Proto/X-Forwarded-Host)或请求自身 proto/Host 推导。
- *
- * 信任边界:X-Forwarded-Host 不在 nginx proxy.conf 的注入清单内,客户端可注入
- * 任意值 —— 伪造回调会被 IdP 应用 redirectUris 白名单拒绝(fail-closed),不会产生
- * 授权码;多级代理链的转发头为逗号分隔,取第一跳(离客户端最近的一跳由边缘代理
- * 决定,生产建议直接配 env 消除歧义)。
  */
 export function resolveOAuthRedirectUri(c: {
   req: { header(name: string): string | undefined; url: string };
@@ -191,16 +214,23 @@ export function resolveOAuthRedirectUri(c: {
     }
     return configured;
   }
-  // 多级代理链:X-Forwarded-* 形如 "a,b" — 取第一跳,避免拼出 "https,http://..." 非法 URL
-  const firstForwarded = (v: string | undefined) => v?.split(',')[0]?.trim() || undefined;
-  const proto =
-    firstForwarded(c.req.header('X-Forwarded-Proto')) ||
-    new URL(c.req.url).protocol.replace(/:$/, '');
-  const host =
-    firstForwarded(c.req.header('X-Forwarded-Host')) ||
-    c.req.header('Host') ||
-    new URL(c.req.url).host;
-  return `${proto}://${host}${BFF_OAUTH_CALLBACK_PATH}`;
+  return `${resolvePublicOrigin(c)}${BFF_OAUTH_CALLBACK_PATH}`;
+}
+
+/** 登出链 IdP（A2）/back-channel 接收端（A1）的 env 读取。 */
+const getIdpLogoutUrl = () => process.env.BFF_OAUTH_IDP_LOGOUT_URL?.trim() || '';
+const getIdpIssuer = () => process.env.BFF_OAUTH_IDP_ISSUER?.trim() || '';
+const getExpectedAud = () => process.env.BFF_OAUTH_EXPECTED_AUD?.trim() || 'ia-intellect-team';
+
+/**
+ * 登录流程失败回登录页+错误参数（B1）：浏览器导航 302，前端 login-next 读取
+ * ssoError 展示提示——替换原 502 裸 JSON（UX-01）。
+ */
+function ssoErrorRedirect(
+  c: { req: { header(name: string): string | undefined; url: string } },
+  code: string,
+) {
+  return c.redirect(`${resolvePublicOrigin(c)}/login-next?ssoError=${encodeURIComponent(code)}`, 302);
 }
 
 /**
@@ -787,14 +817,14 @@ authRoutes.post('/auth/logout', async (c) => {
   if (!enterpriseToken) {
     // 无 session 也清 cookie(防御性,允许登出已过期的会话)
     deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
-    return c.json(ok({ logged_out: true }));
+    return respondLogout(c);
   }
 
   const backend = getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
   if (!backend) {
     // backend 未配置也清 cookie(本地登出)
     deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
-    return c.json(ok({ logged_out: true }));
+    return respondLogout(c);
   }
   const { baseUrl } = backend;
 
@@ -821,8 +851,117 @@ authRoutes.post('/auth/logout', async (c) => {
     // 上游登出失败(token 已过期等),但本地 cookie 已清,返回成功(用户视角已登出)
     console.warn(`[auth] intellect-team logout returned ${resp.status}, cookie cleared anyway`);
   }
-  return c.json(ok({ logged_out: true }));
+  return respondLogout(c);
 });
+
+/**
+ * 登出最终响应(A2)：配置 BFF_OAUTH_IDP_LOGOUT_URL 时在响应中附 `idp_logout_url`
+ * （前端拿到后**顶层跳转** `window.location.href` —— 不能用 BFF 302：登出是 XHR，
+ * fetch 会跟随 302 且不带 IdP cookie，IdP 会话清不掉。IdP 以 redirectUris 前缀
+ * 白名单校验回跳，application_util.go:524）；未配置时维持旧行为（仅本地登出）。
+ */
+function respondLogout(c: {
+  req: { header(name: string): string | undefined; url: string };
+}) {
+  const idpLogoutUrl = getIdpLogoutUrl();
+  if (!idpLogoutUrl) {
+    return c.json(ok({ logged_out: true }));
+  }
+  // 回跳 origin 优先取 BFF_OAUTH_REDIRECT_URI 的 origin（env 显式；dev 代理链下
+  // 请求 Host 是 BFF 端口 9390，与浏览器可达的 9391 不一致——评审发现）。
+  const configuredCallback = process.env.BFF_OAUTH_REDIRECT_URI?.trim();
+  const origin = configuredCallback
+    ? new URL(configuredCallback).origin
+    : resolvePublicOrigin(c);
+  const redirectTarget = `${origin}/login-next`;
+  const sep = idpLogoutUrl.includes('?') ? '&' : '?';
+  const idpLogoutRedirect = `${idpLogoutUrl}${sep}post_logout_redirect_uri=${encodeURIComponent(redirectTarget)}&client_id=${encodeURIComponent(getExpectedAud())}`;
+  return c.json(ok({ logged_out: true, idp_logout_url: idpLogoutRedirect }));
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/bff/auth/backchannel-logout — OIDC Back-Channel Logout 接收端(A1)
+// ---------------------------------------------------------------------------
+
+const backchannelLogoutHandler = async (c: {
+  req: {
+    text(): Promise<string>;
+    get(name: string): string | undefined;
+  };
+  json(body: unknown, status?: number): Response;
+  get(key: string): unknown;
+}) => {
+  const idpIssuer = getIdpIssuer();
+  if (!idpIssuer) {
+    // 未启用：503（IdP outbox 按退避重试；运维未配置时明确可见）
+    return c.json(fail(503, 'back-channel logout not configured (BFF_OAUTH_IDP_ISSUER missing)'), 503);
+  }
+
+  const bodyText = await c.req.text().catch(() => '');
+  const logoutToken = new URLSearchParams(bodyText).get('logout_token') || '';
+  if (!logoutToken) {
+    return c.json(fail(400, 'missing logout_token'), 400);
+  }
+
+  let sub: string;
+  try {
+    const claims = await verifyLogoutToken(logoutToken, {
+      issuer: idpIssuer,
+      audience: getExpectedAud(),
+    });
+    sub = typeof claims.sub === 'string' ? claims.sub : '';
+  } catch (err) {
+    console.error('[auth] back-channel logout token rejected:', (err as Error).message);
+    return c.json(fail(400, 'invalid logout_token'), 400);
+  }
+  if (!sub) {
+    return c.json(fail(400, 'logout_token missing sub'), 400);
+  }
+
+  // 撤销该用户全部 imt_token（经 intellect-team 幂等吊销）。
+  // 评审 F-R1：先撤销、成功后才移除映射——撤销失败返回 503 让 IdP 重试，
+  // 映射保留（原实现先清映射、失败即丢通知 → 会话残留至 TTL）。
+  const tokens = lookupImtSessions(sub);
+  console.error(`[auth] back-channel logout: sub=${sub} tokens=${tokens.length}`);
+  const backendStore = c.get('backendStore');
+  const backend = getEnterpriseBackend(backendStore, c.get('harnessStore'), '0');
+  if (!backend) {
+    console.error('[auth] back-channel logout: enterprise backend not configured → 503 retryable');
+    return c.json(fail(503, 'enterprise backend not configured'), 503);
+  }
+
+  const failed: string[] = [];
+  for (const token of tokens) {
+    try {
+      const resp = await fetch(`${backend.baseUrl}/api/members/logout`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      // 401 = 令牌已失效（幂等成功）；其它失败进入 IdP 重试
+      if (!resp.ok && resp.status !== 401) {
+        failed.push(token);
+        console.error(`[auth] back-channel revoke failed: ${resp.status}`);
+      }
+    } catch (err) {
+      failed.push(token);
+      console.error('[auth] back-channel revoke fetch error:', (err as Error).message);
+    }
+  }
+  if (failed.length > 0) {
+    removeImtSessions(sub, tokens.filter((t) => !failed.includes(t)));
+    return c.json(fail(503, `revocation failed for ${failed.length} token(s)`), 503);
+  }
+  removeImtSessions(sub, tokens);
+  return c.json(ok({ revoked: tokens.length }));
+};
+
+// 双挂载：浏览器/代理后为 /auth/...；IdP 服务端直连 BFF 端口（不经 vite/nginx 剥
+// /api/bff 前缀）为完整登记路径（两种形态均在 authMiddleware publicPaths 白名单）。
+authRoutes.post('/auth/backchannel-logout', backchannelLogoutHandler);
+authRoutes.post('/api/bff/auth/backchannel-logout', backchannelLogoutHandler);
 
 // ---------------------------------------------------------------------------
 // GET /api/bff/auth/login/channels — OAuth 渠道列表
@@ -1034,14 +1173,15 @@ authRoutes.get('/auth/login/:channel', async (c) => {
       );
     } catch (err) {
       console.error('[auth] intellect-team /oauth/login fetch error:', (err as Error).message);
-      return c.json(fail(502, 'intellect-team unreachable'), 502);
+      // agentui-sso-logout-loop(B1):浏览器导航失败回登录页+提示（原 502 裸 JSON）
+      return ssoErrorRedirect(c, 'idp_unavailable');
     }
 
     // intellect-team 返回 302 + Location(BFF 透传)
     if (resp.status === 302 || resp.status === 301) {
       const location = resp.headers.get('location');
       if (!location) {
-        return c.json(fail(502, 'intellect-team login response missing Location header'), 502);
+        return ssoErrorRedirect(c, 'idp_invalid_response');
       }
 
       // CSRF 防护:从 Location 中提取 state,存入短期 cookie,callback 时校验
@@ -1060,18 +1200,15 @@ authRoutes.get('/auth/login/:channel', async (c) => {
       return c.redirect(location, 302);
     }
 
-    // 非 302 响应(intellect-team 返回错误 JSON)
+    // 非 302 响应(intellect-team 返回错误 JSON,如 provider 禁用)
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
       console.error(`[auth] intellect-team /oauth/login/${channel} failed: ${resp.status}`, text);
-      return c.json(
-        fail(resp.status, `intellect-team /oauth/login/${channel} failed`),
-        resp.status as 400 | 404 | 500 | 502,
-      );
+      return ssoErrorRedirect(c, 'idp_error');
     }
 
     // 200 但非 302(异常,理论上不应发生)
-    return c.json(fail(502, 'intellect-team login returned unexpected status'), 502);
+    return ssoErrorRedirect(c, 'idp_invalid_response');
   }
 
   // 社区版:302 重定向到 intellect-rag /api/v1/auth/login/{channel}
@@ -1274,6 +1411,14 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
       maxAge: AUTH_COOKIE_MAX_AGE,
       secure: process.env.NODE_ENV === 'production',
     });
+
+    // agentui-sso-logout-loop(A1+A4)：记录 idpSub → imt_token 映射，
+    // 供 back-channel 登出通知按 sub 撤销（issuer 未配置时不记录）。
+    const idpIssuer = getIdpIssuer();
+    const idpSub = typeof cbData.claims?.sub === 'string' ? cbData.claims.sub : '';
+    if (idpIssuer && idpSub) {
+      recordImtSession(idpSub, cbData.token);
+    }
 
     return c.redirect(frontendHome, 302);
   }

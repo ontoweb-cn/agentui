@@ -343,6 +343,17 @@ const Login = () => {
     }
   }, [isLogin, navigate]);
 
+  // agentui-sso-logout-loop(B1)：SSO 发起失败由 BFF 302 回登录页并携带 ssoError，
+  // 此处展示一次性提示并清理地址栏参数。
+  const [ssoNotice] = useState(
+    () => new URLSearchParams(window.location.search).get('ssoError') || '',
+  );
+  useEffect(() => {
+    if (ssoNotice) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [ssoNotice]);
+
   const handleLoginWithChannel = async (channel: string) => {
     await loginWithChannel(channel);
   };
@@ -516,6 +527,11 @@ const Login = () => {
           </h1>
         </div>
         <div className="relative z-10 flex flex-col items-center justify-center min-h-[1050px] px-4 sm:px-6 lg:px-8">
+          {ssoNotice && (
+            <p className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-600">
+              SSO provider is temporarily unavailable, please retry later
+            </p>
+          )}
           {/* Login Form */}
           <FlipCard3D isLoginPage={isLoginPage}>
             <LoginFormContent

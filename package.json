@@ -108,6 +108,7 @@
     "i18next-browser-languagedetector": "^8.0.0",
     "immer": "^10.1.1",
     "input-otp": "^1.4.1",
+    "jose": "^6.2.18",
     "js-base64": "^3.7.5",
     "jsencrypt": "^3.3.2",
     "jsoneditor": "^10.4.2",

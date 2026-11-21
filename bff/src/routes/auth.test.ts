@@ -1296,7 +1296,7 @@ describe('auth 路由 (P4b US1)', () => {
     );
   });
 
-  it('US3:企业版 login/{channel} intellect-team 返回非 302(错误)→ 透传错误状态', async () => {
+  it('US3:企业版 login/{channel} intellect-team 返回非 302(错误)→ 302 回登录页+错误参数(agentui-sso-logout-loop B1)', async () => {
     const backendStore = createMockBackendStore([enterpriseTenant]);
     const app = createApp(backendStore);
 
@@ -1310,10 +1310,46 @@ describe('auth 路由 (P4b US1)', () => {
       headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
-    expect(resp.status).toBe(400);
+    // B1:浏览器导航 302 到登录页并携带 ssoError（替换原 400 透传/裸 JSON）
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get('location')).toContain('/login-next?ssoError=idp_error');
   });
 
-  it('US3:企业版 login/{channel} 302 但缺 Location 头 → 502', async () => {
+  it('US3:企业版 logout 配置 IDP_LOGOUT_URL → 响应携带 idp_logout_url(A2)', async () => {
+    process.env.BFF_OAUTH_IDP_LOGOUT_URL = 'http://127.0.0.1:8000/api/logout';
+    process.env.BFF_OAUTH_EXPECTED_AUD = 'ia-intellect-team';
+    process.env.BFF_OAUTH_REDIRECT_URI = 'http://localhost:9391/api/bff/auth/oauth/callback';
+    try {
+      const backendStore = createMockBackendStore([enterpriseTenant]);
+      const app = createApp(backendStore, createMockHarnessStore([enterpriseBackend]));
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(null, { status: 204 }),
+      );
+
+      const resp = await app.request('/auth/logout', {
+        method: 'POST',
+        headers: {
+          'X-Backend-Id': 'tenant-enterprise',
+          Cookie: 'imt_token=imt_fake',
+        },
+      });
+
+      const body = (await resp.json()) as { data?: { logged_out?: boolean; idp_logout_url?: string } };
+      expect(body.data?.logged_out).toBe(true);
+      expect(body.data?.idp_logout_url).toContain('/api/logout');
+      expect(body.data?.idp_logout_url).toContain('post_logout_redirect_uri=');
+      expect(body.data?.idp_logout_url).toContain('client_id=ia-intellect-team');
+      // 回跳 origin 取 env 回调的 origin（9391），而非代理链下失真的请求 Host（9390）
+      expect(body.data?.idp_logout_url).toContain('post_logout_redirect_uri=http%3A%2F%2Flocalhost%3A9391%2F');
+    } finally {
+      delete process.env.BFF_OAUTH_IDP_LOGOUT_URL;
+      delete process.env.BFF_OAUTH_EXPECTED_AUD;
+      delete process.env.BFF_OAUTH_REDIRECT_URI;
+    }
+  });
+
+  it('US3:企业版 login/{channel} 302 但缺 Location 头 → 302 回登录页+错误参数(B1)', async () => {
     const backendStore = createMockBackendStore([enterpriseTenant]);
     const app = createApp(backendStore);
 
@@ -1327,10 +1363,11 @@ describe('auth 路由 (P4b US1)', () => {
       headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
-    expect(resp.status).toBe(502);
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get('location')).toContain('/login-next?ssoError=idp_invalid_response');
   });
 
-  it('US3:企业版 login/{channel} intellect-team 不可达 → 502', async () => {
+  it('US3:企业版 login/{channel} intellect-team 不可达 → 302 回登录页+错误参数(B1)', async () => {
     const backendStore = createMockBackendStore([enterpriseTenant]);
     const app = createApp(backendStore);
 
@@ -1341,7 +1378,8 @@ describe('auth 路由 (P4b US1)', () => {
       headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
-    expect(resp.status).toBe(502);
+    expect(resp.status).toBe(302);
+    expect(resp.headers.get('location')).toContain('/login-next?ssoError=idp_unavailable');
   });
 
   it('US3:社区版 login/{channel} 302 重定向到 intellect-rag', async () => {

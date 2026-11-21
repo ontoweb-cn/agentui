@@ -13,6 +13,12 @@ export async function authMiddleware(c: Context, next: Next) {
     '/auth/login/channels',
     '/auth/register',
     '/auth/config',
+    // OIDC Back-Channel Logout 接收端(A1)：IdP 服务端投递,无 imt cookie——
+    // 安全性由 logout token 验签保证(jose + IdP JWKS,强于 cookie 校验)。
+    // 两种形态：浏览器/代理后为 /auth/backchannel-logout；IdP 服务端直连(不经
+    // vite/nginx 剥前缀)为完整登记路径 /api/bff/auth/backchannel-logout。
+    '/auth/backchannel-logout',
+    '/api/bff/auth/backchannel-logout',
   ];
 
   // spec-010 v8 B-3 (B1 修复): Wizard 公开端点
