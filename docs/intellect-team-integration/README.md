@@ -52,6 +52,18 @@
 | `/api/bff/auth/login/{channel}` | GET | `GET /api/oauth/login/{provider}` | Public | intellect-team 302 重定向到 OAuth 提供方(BFF 直接透传 302) |
 | `/api/bff/auth/oauth/callback` | GET | `GET /api/oauth/callback` + `POST /api/members/{id}/token` | Public + API_SERVER_KEY | Two-step: callback → token sign → Set-Cookie → 302 |
 
+> **⚠ Known gap（2026-11-21 代码评审）**：本表假设 IdP 回调落在 BFF
+> `/api/bff/auth/oauth/callback`。但 intellect-team 的
+> `GET /api/oauth/login/{provider}` 仅在显式携带 `?redirect_uri=` 时使用传入值，
+> 默认按请求 Host 推导为**自身** `/api/oauth/callback`
+> （`intellect-gateway/src/platform/api_server.rs:10444-10456`）；BFF 当前只传
+> `usage`/`invite_code`（`bff/src/routes/auth.ts:741-745`），未传 `redirect_uri`。
+> 同时 intellect-auth 侧 `ia-intellect-team` 种子登记的
+> `https://ai.wust.edu.cn/intellect/oauth2/callback` 按路由矩阵落在 WebUI 域
+> （`/intellect` → WebUI），三仓均无该路径承接方。
+> 接入前需三方对齐回调落点（详见 intellect-auth 仓
+> `docs/AgentUI-intellect-team-三系统SSO调用链分析.md` §2/§8）。
+
 ### 2.2 Data Endpoints (BFF → intellect-team, via Adapter)
 
 | BFF Endpoint | HTTP | intellect-team Endpoint | Auth | Notes |

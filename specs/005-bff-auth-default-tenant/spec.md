@@ -123,3 +123,24 @@
 - **OAuth provider 配置在 intellect-team 侧**:BFF 不管理 OAuth provider,仅转发渠道列表和授权流程
 - **P4b 不实现前端登录页 UI 改动**:api.ts 路径迁移 + 后端路由就绪后,前端登录页字段适配(login_name vs email)留待 P4d
 - **P4b 不实现 Team/Project CRUD Admin 页面**:留待 P5
+
+## 评审补充（2026-11-21，非原始规格内容）
+
+三仓源码评审核实：本规格描述的 OAuth 回调链路（浏览器访问
+`/api/bff/auth/oauth/callback?code=x&state=y` → BFF 调 intellect-team
+`/api/oauth/callback`）与 intellect-team 当前实现不一致——
+
+- intellect-team `GET /api/oauth/login/{provider}` 的 redirect_uri **优先取显式
+  `?redirect_uri=` 参数**，否则按请求 Host 推导为自身 `/api/oauth/callback`
+  （`intellect-gateway/src/platform/api_server.rs:10444-10456`）；BFF 实现只传
+  `usage`/`invite_code`，未传 `redirect_uri`（`bff/src/routes/auth.ts:741-745`）
+  → 默认回调落 intellect-team 侧，本规格的 BFF 回调处理器在该链路下不会被触发。
+- intellect-auth 侧 `ia-intellect-team` 种子登记回调为
+  `https://ai.wust.edu.cn/intellect/oauth2/callback`，按 aiwust 路由矩阵落在
+  WebUI 域（`/intellect` → WebUI，`/intellect-gateway` → Gateway），三仓均无
+  该路径承接方。
+
+**后续动作**：BFF 发起时显式传 `redirect_uri`（指向 BFF 公开回调），并在
+intellect-auth 应用登记中补登该回调 URL；或由 intellect-team 回调后回跳 BFF。
+详细分析见 intellect-auth 仓 `docs/AgentUI-intellect-team-三系统SSO调用链分析.md`
+§2/§8。

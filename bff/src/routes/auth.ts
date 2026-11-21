@@ -148,6 +148,61 @@ export function getEnterpriseBackend(
   };
 }
 
+/** BFF 公开 OAuth 回调路径(F-CB-01;与 IdP redirectUris 白名单登记值一一对应) */
+export const BFF_OAUTH_CALLBACK_PATH = '/api/bff/auth/oauth/callback';
+
+/** 配置告警只发一次(env 读取发生在每请求,避免刷屏;测试可经 resetOAuthConfigWarning 重置) */
+let oauthConfigWarned = false;
+
+/** 重置配置告警状态(单测用) */
+export function resetOAuthConfigWarning(): void {
+  oauthConfigWarned = false;
+}
+
+/**
+ * 解析本 BFF 的公开 OAuth 回调 URL(F-CB-01 修复)。
+ *
+ * intellect-team 的 GET /api/oauth/login/{provider} 仅在显式携带 `?redirect_uri=`
+ * 时使用传入值,否则按请求 Host 推导为 intellect-team 自身回调 —— 导致 IdP 回调
+ * 落不到 BFF,/auth/oauth/callback 处理器永不触发。因此 BFF 发起时必须显式传。
+ *
+ * 取值顺序:
+ * 1. env `BFF_OAUTH_REDIRECT_URI`(完整回调 URL;生产推荐,防 Host 伪造);
+ * 2. 转发头(X-Forwarded-Proto/X-Forwarded-Host)或请求自身 proto/Host 推导。
+ *
+ * 信任边界:X-Forwarded-Host 不在 nginx proxy.conf 的注入清单内,客户端可注入
+ * 任意值 —— 伪造回调会被 IdP 应用 redirectUris 白名单拒绝(fail-closed),不会产生
+ * 授权码;多级代理链的转发头为逗号分隔,取第一跳(离客户端最近的一跳由边缘代理
+ * 决定,生产建议直接配 env 消除歧义)。
+ */
+export function resolveOAuthRedirectUri(c: {
+  req: { header(name: string): string | undefined; url: string };
+}): string {
+  const configured = process.env.BFF_OAUTH_REDIRECT_URI?.trim();
+  if (configured) {
+    // 配置形态自检(评审 F-Q4):env 应是本 BFF 的完整回调 URL;形态不符大概率是
+    // 配置错误(如填成了站点根或别的服务回调),告警提示 —— 最终仍由 IdP 白名单
+    // fail-closed,这里只做可观测性提示,不改变行为。
+    if (!configured.endsWith(BFF_OAUTH_CALLBACK_PATH) && !oauthConfigWarned) {
+      oauthConfigWarned = true;
+      console.warn(
+        `[auth] BFF_OAUTH_REDIRECT_URI 未以 ${BFF_OAUTH_CALLBACK_PATH} 结尾,请确认是否为本 BFF 公开回调: ${configured}`,
+      );
+    }
+    return configured;
+  }
+  // 多级代理链:X-Forwarded-* 形如 "a,b" — 取第一跳,避免拼出 "https,http://..." 非法 URL
+  const firstForwarded = (v: string | undefined) => v?.split(',')[0]?.trim() || undefined;
+  const proto =
+    firstForwarded(c.req.header('X-Forwarded-Proto')) ||
+    new URL(c.req.url).protocol.replace(/:$/, '');
+  const host =
+    firstForwarded(c.req.header('X-Forwarded-Host')) ||
+    c.req.header('Host') ||
+    new URL(c.req.url).host;
+  return `${proto}://${host}${BFF_OAUTH_CALLBACK_PATH}`;
+}
+
 /**
  * 向 intellect-team 后端发起请求,自动注入 Authorization header。
  * 消除各路由中重复的 header 构造和 URL 拼接。
@@ -969,9 +1024,12 @@ authRoutes.get('/auth/login/:channel', async (c) => {
       // 网关写入 state,callback 兑换注册;缺省不追加,保持 URL 干净)。
       const inviteCode = (c.req.query('invite_code') || '').trim();
       const inviteQuery = inviteCode ? `&invite_code=${encodeURIComponent(inviteCode)}` : '';
+      // F-CB-01:显式声明 BFF 公开回调,使 IdP 回调落到本服务
+      // (不传时 intellect-team 默认推导自身回调,SSO 无法闭环)。
+      const redirectUri = resolveOAuthRedirectUri(c);
       resp = await enterpriseFetch(
         backend,
-        `/api/oauth/login/${encodeURIComponent(channel)}?usage=login${inviteQuery}`,
+        `/api/oauth/login/${encodeURIComponent(channel)}?usage=login${inviteQuery}&redirect_uri=${encodeURIComponent(redirectUri)}`,
         { method: 'GET', redirect: 'manual' },
       );
     } catch (err) {

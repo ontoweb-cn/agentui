@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { Hono } from 'hono';
-import { authRoutes } from './auth';
+import { authRoutes, resetOAuthConfigWarning } from './auth';
 import type { BackendStore, HarnessStore } from '../types/stores';
 import type { HarnessBackend } from '../types/harness';
 import type { BffTenant } from '../types/tenant';
@@ -1188,9 +1188,11 @@ describe('auth 路由 (P4b US1)', () => {
       headers: { 'X-Backend-Id': 'tenant-enterprise' },
     });
 
-    // 验证调 GET /api/oauth/login/github?usage=login(redirect: manual 不跟随)
+    // 验证调 GET /api/oauth/login/github?usage=login&redirect_uri=...(redirect: manual 不跟随)
+    // F-CB-01:BFF 必须显式传公开回调,否则 intellect-team 推导自身回调、IdP 回调落不到 BFF。
+    // 无 env、无转发头时按请求推导:http://localhost/api/bff/auth/oauth/callback
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://mock-enterprise:9381/api/oauth/login/github?usage=login',
+      `http://mock-enterprise:9381/api/oauth/login/github?usage=login&redirect_uri=${encodeURIComponent('http://localhost/api/bff/auth/oauth/callback')}`,
       expect.objectContaining({
         method: 'GET',
         redirect: 'manual',
@@ -1200,6 +1202,97 @@ describe('auth 路由 (P4b US1)', () => {
     expect(resp.status).toBe(302);
     expect(resp.headers.get('location')).toBe(
       'https://github.com/login/oauth/authorize?client_id=x&state=abc',
+    );
+  });
+
+  it('US3:企业版 login/{channel} 优先使用 BFF_OAUTH_REDIRECT_URI(env 显式回调)', async () => {
+    process.env.BFF_OAUTH_REDIRECT_URI = 'https://agentui.example.edu.cn/api/bff/auth/oauth/callback';
+    try {
+      const backendStore = createMockBackendStore([enterpriseTenant]);
+      const app = createApp(backendStore);
+
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: { Location: 'https://github.com/login/oauth/authorize?client_id=x&state=abc' },
+        }),
+      );
+
+      await app.request('/auth/login/github', {
+        method: 'GET',
+        headers: { 'X-Backend-Id': 'tenant-enterprise' },
+      });
+
+      // env 显式回调优先于请求头推导(生产推荐,防 Host 伪造)
+      expect(fetchMock).toHaveBeenCalledWith(
+        `http://mock-enterprise:9381/api/oauth/login/github?usage=login&redirect_uri=${encodeURIComponent('https://agentui.example.edu.cn/api/bff/auth/oauth/callback')}`,
+        expect.objectContaining({ method: 'GET', redirect: 'manual' }),
+      );
+    } finally {
+      delete process.env.BFF_OAUTH_REDIRECT_URI;
+    }
+  });
+
+  it('US3:企业版 login/{channel} env 回调形态异常时告警一次仍按配置使用(评审 F-Q4)', async () => {
+    process.env.BFF_OAUTH_REDIRECT_URI = 'https://agentui.example.edu.cn/some/other/path';
+    resetOAuthConfigWarning();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const backendStore = createMockBackendStore([enterpriseTenant]);
+      const app = createApp(backendStore);
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(null, { status: 302, headers: { Location: 'https://x/auth?state=s' } }),
+      );
+
+      // 第一次请求:触发告警,仍按配置值使用(最终由 IdP 白名单 fail-closed)
+      await app.request('/auth/login/github', {
+        method: 'GET',
+        headers: { 'X-Backend-Id': 'tenant-enterprise' },
+      });
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(String(warnSpy.mock.calls[0]?.[0])).toContain('/api/bff/auth/oauth/callback');
+      expect(fetchMock).toHaveBeenCalledWith(
+        `http://mock-enterprise:9381/api/oauth/login/github?usage=login&redirect_uri=${encodeURIComponent('https://agentui.example.edu.cn/some/other/path')}`,
+        expect.objectContaining({ method: 'GET', redirect: 'manual' }),
+      );
+
+      // 第二次请求:告警只发一次,不刷屏
+      await app.request('/auth/login/github', {
+        method: 'GET',
+        headers: { 'X-Backend-Id': 'tenant-enterprise' },
+      });
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+      delete process.env.BFF_OAUTH_REDIRECT_URI;
+      resetOAuthConfigWarning();
+    }
+  });
+
+  it('US3:企业版 login/{channel} 多级代理转发头取第一跳(评审 F-Q1)', async () => {
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { Location: 'https://github.com/login/oauth/authorize?client_id=x&state=abc' },
+      }),
+    );
+
+    await app.request('/auth/login/github', {
+      method: 'GET',
+      headers: {
+        'X-Backend-Id': 'tenant-enterprise',
+        // 多级代理链:逗号分隔 + 夹带空白
+        'X-Forwarded-Proto': 'https, http',
+        'X-Forwarded-Host': 'ai.wust.edu.cn, inner.example:9391',
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://mock-enterprise:9381/api/oauth/login/github?usage=login&redirect_uri=${encodeURIComponent('https://ai.wust.edu.cn/api/bff/auth/oauth/callback')}`,
+      expect.objectContaining({ method: 'GET', redirect: 'manual' }),
     );
   });
 
