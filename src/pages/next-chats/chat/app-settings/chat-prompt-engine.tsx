@@ -30,9 +30,18 @@ import { DynamicVariableForm } from './dynamic-variable';
 
 interface ChatPromptEngineProps {
   prefix?: string;
+  // T2.8:受控展开参数(上游 ChatPromptEngineProps 对齐)。保存失败时由
+  // useRevealSubmitErrors 置 true,让折叠面板内的校验错误对用户可见。
+  // agentui 仅此一个 Collapse;上游的 naive/agentic section 不存在,不接线。
+  advancedSettingOpen?: boolean;
+  onAdvancedSettingOpenChange?: (open: boolean) => void;
 }
 
-export function ChatPromptEngine({ prefix = '' }: ChatPromptEngineProps) {
+export function ChatPromptEngine({
+  prefix = '',
+  advancedSettingOpen,
+  onAdvancedSettingOpenChange,
+}: ChatPromptEngineProps) {
   const { t } = useTranslation();
   const form = useFormContext();
   const systemPromptValue = form.watch(
@@ -91,7 +100,11 @@ export function ChatPromptEngine({ prefix = '' }: ChatPromptEngineProps) {
   }, [kbIds, metadataKeys, metadataKeysLoading, metadataInclude, form, prefix]);
 
   return (
-    <Collapse title={t('flow.advancedSettings')}>
+    <Collapse
+      title={t('flow.advancedSettings')}
+      open={advancedSettingOpen}
+      onOpenChange={onAdvancedSettingOpenChange}
+    >
       <div className="space-y-8">
         <FormField
           control={form.control}

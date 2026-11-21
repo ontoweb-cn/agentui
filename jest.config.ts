@@ -21,6 +21,11 @@ const config: Config = {
     ],
   },
   moduleNameMapper: {
+    // 注:资产/样式 mock 必须排在 ^@/(.*)$ 别名之前——mapper 首个命中即生效,
+    // 别名在前会把 '@/assets/x.svg' 先解析为真实文件路径,资产 mock 永远失效
+    // (chat-settings-reveal 组件级测试实测暴露)。
+    '\\.(css|less|scss|sass)$': '<rootDir>/__mocks__/styleMock.js',
+    '\\.(jpg|jpeg|png|gif|svg|webp)$': '<rootDir>/__mocks__/fileMock.js',
     // 注：原 @/features/_registry 和 @/components/svg-icon 的 mock 重定向
     // 已移除——jest-esbuild-transformer.cjs 通过 babel-plugin-import-meta-glob
     // 静态解析 import.meta.glob 调用，真实模块逻辑被执行。
@@ -28,8 +33,6 @@ const config: Config = {
     '^@agentui/plugin-sdk$': '<rootDir>/packages/plugin-sdk/src/index.ts',
     '^@agentui/plugin-sdk/host$': '<rootDir>/packages/plugin-sdk/src/host.ts',
     '^human-id$': '<rootDir>/__mocks__/human-id.js',
-    '\\.(css|less|scss|sass)$': '<rootDir>/__mocks__/styleMock.js',
-    '\\.(jpg|jpeg|png|gif|svg|webp)$': '<rootDir>/__mocks__/fileMock.js',
   },
   // setupFiles 在 transform 后、测试运行前执行
   // 注入 Vite 环境变量默认值到 process.env

@@ -21,6 +21,7 @@ import ChatBasicSetting from './chat-basic-settings';
 import { ChatPromptEngine } from './chat-prompt-engine';
 import { SavingButton } from './saving-button';
 import { useChatSettingSchema } from './use-chat-setting-schema';
+import { useRevealSubmitErrors } from './use-reveal-submit-errors';
 
 // 开合状态由页面层(chat/index.tsx)持有,齿轮 toggle 常驻 CardHeader
 type ChatSettingsProps = { visible: boolean; switchVisible: () => void };
@@ -35,6 +36,14 @@ export function ChatSettings({
   const findLlmByUuid = useFindLlmByUuid();
   const { id } = useParams();
   const { t } = useTranslation();
+
+  // T2.8:无效提交时展开全部折叠分区并滚动到首个错误字段(上游模式)。
+  const {
+    formContainerRef,
+    handleInvalidSubmit,
+    advancedSettingOpen,
+    onAdvancedSettingOpenChange,
+  } = useRevealSubmitErrors();
 
   type FormSchemaType = z.infer<typeof formSchema>;
 
@@ -113,8 +122,8 @@ export function ChatSettings({
     });
   }
 
-  function onInvalid(errors: any) {
-    void errors;
+  function onInvalid() {
+    handleInvalidSubmit();
   }
 
   useEffect(() => {
@@ -176,10 +185,17 @@ export function ChatSettings({
               className="flex-1 flex flex-col min-h-0"
             >
               <ScrollArea viewportClassName="[&>div]:!block">
-                <section className="p-5 space-y-6 overflow-auto flex-1 min-h-0">
-                  <ChatBasicSetting></ChatBasicSetting>
-                  <ChatPromptEngine></ChatPromptEngine>
-                </section>
+                <div ref={formContainerRef}>
+                  <section className="p-5 space-y-6 overflow-auto flex-1 min-h-0">
+                    <ChatBasicSetting></ChatBasicSetting>
+                    <ChatPromptEngine
+                      advancedSettingOpen={advancedSettingOpen}
+                      onAdvancedSettingOpenChange={
+                        onAdvancedSettingOpenChange
+                      }
+                    ></ChatPromptEngine>
+                  </section>
+                </div>
               </ScrollArea>
 
               <div className="p-5 pt-4 space-x-5 text-right">
