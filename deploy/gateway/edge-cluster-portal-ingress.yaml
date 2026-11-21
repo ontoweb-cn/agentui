@@ -1,0 +1,110 @@
+# 公网边缘集群（internalCluster / 10.99.24.12）Portal 恢复清单
+#
+# 拓扑（2026-11-21 实测）：
+#   公网 ai.wust.edu.cn → 边缘集群 ingress-nginx（10.99.24.12）
+#     ├─ /                      → Service ai-devops/agentui-portal（Endpoints 指向
+#     │                           ontoweb 集群节点 192.168.1.98/99/182:31390）
+#     ├─ /auth、/auth/          → Service ai-devops/ai-devops（intellect-auth）
+#     └─ /portal、/portal-api、/portal-oauth2
+#                               → Service ai-devops/hiedu-portal-gateway（Endpoints 指向
+#                                 ontoweb 集群 istio-ingressgateway 节点 :30081）
+#
+# 应用：
+#   kubectl -n ai-devops apply -f edge-cluster-portal-ingress.yaml
+# 回滚：
+#   kubectl -n ai-devops apply -f /root/cutover-backup-20261121/ai-devops-ingress.<ts>.yaml
+#   kubectl -n ai-devops delete svc,hiedu-portal-gateway endpoints/hiedu-portal-gateway
+#
+# 注意：ai-devops-ingress 为 kubectl 手工管理（无 ArgoCD tracking-id），
+# 变更后不会被 GitOps 自动回滚，但也不在 Argo 的期望状态中。
+apiVersion: v1
+kind: Service
+metadata:
+  name: hiedu-portal-gateway
+  namespace: ai-devops
+  annotations:
+    cutover: "20261121 restore /portal* -> ontoweb istio ingress (node:30081)"
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: hiedu-portal-gateway
+  namespace: ai-devops
+subsets:
+  - addresses:
+      - ip: 192.168.1.98
+      - ip: 192.168.1.99
+      - ip: 192.168.1.182
+    ports:
+      - name: http
+        port: 30081
+        protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ai-devops-ingress
+  namespace: ai-devops
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "1024m"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ai.wust.edu.cn
+      http:
+        paths:
+          - path: /portal-oauth2
+            pathType: Prefix
+            backend:
+              service:
+                name: hiedu-portal-gateway
+                port:
+                  number: 80
+          - path: /portal-api
+            pathType: Prefix
+            backend:
+              service:
+                name: hiedu-portal-gateway
+                port:
+                  number: 80
+          - path: /portal
+            pathType: Prefix
+            backend:
+              service:
+                name: hiedu-portal-gateway
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agentui-portal
+                port:
+                  number: 80
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: ai-devops
+                port:
+                  number: 80
+          - path: /auth/
+            pathType: Prefix
+            backend:
+              service:
+                name: ai-devops
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - ai.wust.edu.cn
+      secretName: wust2026

@@ -13,9 +13,36 @@
 | ConfigMap | `BFF_PUBLIC_ORIGIN=https://ai.wust.edu.cn`，SSO 仍为 `false` |
 | 集群内探针 | readiness `/api/bff/plugins`、liveness `/` 均通过 |
 
-## 2. 唯一待执行的网关变更（集群外）
+## 1.1 实际拓扑（2026-11-21 实测修正）
 
-`ai.wust.edu.cn` 由**集群外 nginx**提供，仓库/ArgoCD 无权限。需要在现有 `443 server { server_name ai.wust.edu.cn; }` 中：
+>`ai.wust.edu.cn` **不是**由集群外 nginx 承接，而是由**另一套边缘集群** `internalCluster`（master `10.99.24.12`）的 ingress-nginx 承接。仓库里的 `agentui-root.conf`（外部 nginx 方案）与当前拓扑不符，仅作历史参考。
+
+```
+公网 ai.wust.edu.cn (59.68.176.94 / 2001:da8:3019:dc01::16)
+  │
+  ▼
+边缘集群 internalCluster / ai-devops 命名空间 ingress-nginx（10.99.24.12）
+  ├─ /            → Service ai-devops/agentui-portal
+  │                  └ Endpoints: ontoweb 节点 192.168.1.98/99/182:31390（AgentUI NodePort）
+  ├─ /auth、/auth/ → Service ai-devops/ai-devops（intellect-auth）
+  └─ /portal、/portal-api、/portal-oauth2
+                   → Service ai-devops/hiedu-portal-gateway
+                     └ Endpoints: ontoweb 节点 192.168.1.98/99/182:30081
+                       （ontoweb 集群 istio-ingressgateway HTTP NodePort）
+```
+
+关键事实：
+- Portal 本体在 **ontoweb 集群**的 Istio：VirtualService `hiedu/hiedu-portal` 已正确指向 `hiedu-portal:80` 与 `hiedu-oauth2-proxy:4180`；
+- 边缘集群与 ontoweb 集群通过「ClusterIP Service + 手写 Endpoints 指向对端节点 NodePort」桥接（`agentui-portal` 已是此模式）；
+- 因此修复点在**边缘集群 Ingress**，不需要也不应该改 ontoweb 的 nginx/Istio；
+- 已应用清单：[edge-cluster-portal-ingress.yaml](./gateway/edge-cluster-portal-ingress.yaml)（备份在边缘机 `/root/cutover-backup-20261121/`）。
+
+## 2. 网关变更（历史：外部 nginx 方案）
+
+> ⚠️ 当前生产**未使用**外部 nginx。以下内容仅适用于存在独立 nginx 网关的环境；
+> 现行拓扑请直接按 §1.1 + `edge-cluster-portal-ingress.yaml` 操作。
+
+需要在现有 `443 server { server_name ai.wust.edu.cn; }` 中：
 
 ### 2.1 删除
 
@@ -49,7 +76,11 @@ location / {
 client_max_body_size 1024m;
 ```
 
-### 2.2.1 必须补齐的 HIEDU Portal 路由（放在 `location /` 之前）
+### 2.2.1 必须补齐的 HIEDU Portal 路由（外部 nginx 环境适用）
+
+> 当前生产实际按 §1.1 使用边缘集群 Ingress，对应清单为
+> [edge-cluster-portal-ingress.yaml](./gateway/edge-cluster-portal-ingress.yaml)；
+> 本节仅保留给仍有独立 nginx 的环境参考。
 
 集群内已有 Ingress `hiedu/hiedu-portal`（`/portal-oauth2`、`/portal-api` → `hiedu-oauth2-proxy:4180`，`/portal` → `hiedu-portal:80`）。外部网关需要把这三条路径交给 **ingress-nginx**，而不是 AgentUI：
 
@@ -133,7 +164,17 @@ done
 
 1. `nginx -t && nginx -s reload` 后仍是 200 HTML → 检查外部 nginx 是否命中新增的 `^~ /portal*` location（`nginx -T | grep -n portal`）。
 2. `/portal/` 正常但 `/portal-api` 返回 502 → 检查 ingress-nginx NodePort、`Host` 头、`X-Forwarded-Proto`。
-3. 全部 404 → 检查集群内 `hiedu/hiedu-portal` Ingress 是否 Synced、TLS Secret 是否存在。
+3. 全部 404 → 检查 ontoweb 集群 Istio VirtualService `hiedu/hiedu-portal` 与边缘 Ingress 的 `hiedu-portal-gateway` Endpoints 是否存在。
+
+### 3.4 修复记录（2026-11-21 23:42）
+
+| 项 | 内容 |
+|---|---|
+| 现象 | 公网 `/portal/`、`/portal-api/api/me`、`/portal-oauth2/start` 全部返回 AgentUI `index.html`（哈希 `eac21511d3de5b59`） |
+| 根因 | 边缘集群 `ai-devops-ingress` 的 `path: /` → `agentui-portal`，吞掉了 `/portal*` |
+| 修复 | 新增 `hiedu-portal-gateway` Service/Endpoints（→ ontoweb 节点 `:30081`），并在 Ingress 增加三条 `/portal*` 前缀 |
+| 修复后 | `/portal/` 200（Portal，哈希 `c41d8855071c8c6d`）、`/portal-api/api/me` 401 JSON、`/portal-oauth2/start` 302 → `/auth/login/oauth/authorize`、`/` 仍为 AgentUI |
+| 回滚 | 边缘机执行 `kubectl -n ai-devops apply -f /root/cutover-backup-20261121/ai-devops-ingress.<ts>.yaml`，并删除 `svc/endpoints hiedu-portal-gateway` |
 
 ## 4. 可选：启用 SSO（集群内）
 
@@ -170,7 +211,7 @@ curl -I "https://ai.wust.edu.cn/api/bff/auth/sso/authorize/intellect-auth?tenant
 |---|---|
 | 集群内 Deployment/Service/PVC/ConfigMap | Argo CD（已完成） |
 | 外部 nginx 根路径切换 | 网关 VM 管理员（待执行） |
-| **HIEDU Portal 三条路由（`/portal`、`/portal-api`、`/portal-oauth2`）** | 网关 VM 管理员；集群内 Ingress 由 Argo CD（已完成） |
+| **HIEDU Portal 三条路由（`/portal`、`/portal-api`、`/portal-oauth2`）** | 边缘集群 `internalCluster`（10.99.24.12）Ingress；ontoweb 集群 Istio 已就绪 |
 | DNS / 证书 | 网络管理员 |
 | IdP client / 网关 provider | 统一认证与网关管理员 |
 
@@ -180,3 +221,4 @@ curl -I "https://ai.wust.edu.cn/api/bff/auth/sso/authorize/intellect-auth?tenant
 |---|---|
 | 2026-11-21 | 初版：根路径切换到 AgentUI |
 | 2026-11-21 | 补漏：`/portal*` 被 `location /` 吞掉导致 Portal 不可用；新增 §2.2.1 与 Portal 验证清单 |
+| 2026-11-21 23:42 | 实测修正拓扑：入口为边缘集群 Ingress（非外部 nginx）；已应用 `edge-cluster-portal-ingress.yaml` 恢复 Portal |
