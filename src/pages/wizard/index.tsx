@@ -797,6 +797,21 @@ function StepDone({
           })}
         </CardDescription>
       </CardHeader>
+      {/* D-FUP-01(wizard-sso-followup/A2):envSnippet 原只渲染在第 5 步确认卡,
+          而 setup 成功即 goToStep(6) 自动跳完成页——用户永远看不到步骤 1 承诺的
+          ".env 片段"。补渲染到完成页(与确认卡同键复用)。 */}
+      {setupResult?.envSnippet && (
+        <CardContent className="space-y-1">
+          <p className="text-xs text-text-secondary">
+            {t('wizard.confirm.envSnippet', {
+              defaultValue: '.env snippet (copy to your .env file)',
+            })}
+          </p>
+          <pre className="text-xs bg-bg-muted p-3 rounded-md overflow-x-auto">
+            {setupResult.envSnippet}
+          </pre>
+        </CardContent>
+      )}
       {/* wizard-sso(P3/X-04/R13):非阻断告警展示(如 RAG 未配置的能力降级说明) */}
       {warnings.length > 0 && (
         <CardContent className="space-y-2">
