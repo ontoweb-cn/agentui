@@ -49,7 +49,16 @@ import {
   SSO_STATE_COOKIE_NAME,
 } from '../services/sso-state';
 import { getLoginProviders } from '../services/sso-providers';
-import { exchangeAuthorizationCode } from '../services/sso-exchange';
+import {
+  exchangeAuthorizationCode,
+  exchangeIdTokenForMember,
+} from '../services/sso-exchange';
+import {
+  isIdpPassthroughUsable,
+  loadIdpPassthroughConfig,
+} from '../services/idp-config';
+import { exchangeCodeForIdpTokens } from '../services/idp-client';
+import { idpSessionKey, putIdpTokens } from '../services/idp-token-store';
 
 /**
  * OAuth state cookie 名(用于 CSRF 防护,在 /auth/login/:channel 时写入,
@@ -375,9 +384,19 @@ async function handleSsoAuthorize(
   }
 
   authorizeUrl.searchParams.set('response_type', 'code');
-  authorizeUrl.searchParams.set('client_id', provider.clientId);
+  // D2 option A: BFF 作为 IdP RP 时使用自有 client（ia-agentui），
+  // 回调后自行兑换 token，再把 id_token 交给网关换 member token。
+  const idpConfig = loadIdpPassthroughConfig();
+  const useIdpPassthrough = isIdpPassthroughUsable(idpConfig);
+  authorizeUrl.searchParams.set(
+    'client_id',
+    useIdpPassthrough ? idpConfig.clientId : provider.clientId,
+  );
   authorizeUrl.searchParams.set('redirect_uri', getSsoRedirectUri(config));
-  authorizeUrl.searchParams.set('scope', provider.scopes);
+  authorizeUrl.searchParams.set(
+    'scope',
+    useIdpPassthrough ? 'openid profile' : provider.scopes,
+  );
   authorizeUrl.searchParams.set('state', transaction.state);
   authorizeUrl.searchParams.set('nonce', transaction.nonce);
   authorizeUrl.searchParams.set('code_challenge', transaction.codeChallenge);
@@ -1273,18 +1292,56 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
         return redirectToLoginError(c, 'tenant_not_found');
       }
 
-      const result = await exchangeAuthorizationCode(
-        backend.baseUrl,
-        {
-          grant: 'authorization_code',
-          provider_id: payload.provider_id,
+      // D2 option A: enabled → BFF 自行向 IdP 兑换 code，再用 id_token
+      // 调网关换取 member token；关闭 → 保持原有网关 code 兑换链路。
+      const idpConfig = loadIdpPassthroughConfig();
+      let result: Awaited<ReturnType<typeof exchangeAuthorizationCode>>;
+      if (isIdpPassthroughUsable(idpConfig)) {
+        const idp = await exchangeCodeForIdpTokens(idpConfig, {
           code,
-          code_verifier: payload.code_verifier,
-          redirect_uri: getSsoRedirectUri(ssoConfig),
-          nonce: payload.nonce,
-        },
-        ssoConfig.exchangeTimeoutMs,
-      );
+          codeVerifier: payload.code_verifier,
+          redirectUri: getSsoRedirectUri(ssoConfig),
+        });
+        if (!idp.ok || !idp.idToken) {
+          console.error(
+            `[auth] idp direct exchange failed: tenant=${payload.tenant_id} provider=${payload.provider_id} ` +
+              (idp.ok ? 'missing id_token' : `status=${idp.status} code=${idp.code}`),
+          );
+          return redirectToLoginError(c, 'sso_code_invalid');
+        }
+
+        const gateway = await exchangeIdTokenForMember(
+          backend.baseUrl,
+          {
+            id_token: idp.idToken,
+            provider_id: payload.provider_id,
+            tenant_id: payload.tenant_id,
+          },
+          ssoConfig.exchangeTimeoutMs,
+        );
+        if (!gateway.ok) {
+          console.error(
+            `[auth] id_token exchange failed: tenant=${payload.tenant_id} provider=${payload.provider_id} status=${gateway.status} code=${gateway.code}`,
+          );
+          return redirectToLoginError(c, mapExchangeError(gateway.status, gateway.code));
+        }
+        // 服务端持有 IdP access/refresh（浏览器无感），供出站用户态调用使用。
+        putIdpTokens(idpSessionKey(payload.tenant_id, idp.tokens.subject), idp.tokens);
+        result = gateway;
+      } else {
+        result = await exchangeAuthorizationCode(
+          backend.baseUrl,
+          {
+            grant: 'authorization_code',
+            provider_id: payload.provider_id,
+            code,
+            code_verifier: payload.code_verifier,
+            redirect_uri: getSsoRedirectUri(ssoConfig),
+            nonce: payload.nonce,
+          },
+          ssoConfig.exchangeTimeoutMs,
+        );
+      }
 
       if (!result.ok) {
         console.error(

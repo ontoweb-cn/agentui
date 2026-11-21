@@ -80,7 +80,11 @@ function LoginFormContent({
               className="flex flex-col gap-8 text-text-primary "
               data-testid="auth-form"
               data-active={isActiveFace ? 'true' : undefined}
-              onSubmit={form.handleSubmit(onCheck)}
+              onSubmit={
+                isActiveFace
+                  ? form.handleSubmit(onCheck)
+                  : (event) => event.preventDefault()
+              }
             >
               {isEnterprise ? (
                 <FormField
@@ -242,7 +246,8 @@ function LoginFormContent({
               )}
               <ButtonLoading
                 data-testid="auth-submit"
-                type="submit"
+                type={isActiveFace ? 'submit' : 'button'}
+                disabled={!isActiveFace}
                 loading={loading}
                 className="bg-metallic-gradient border-b-[#11C566] border-b-2 hover:bg-metallic-gradient hover:border-b-[#32F08C] w-full my-8"
               >

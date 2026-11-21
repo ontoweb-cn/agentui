@@ -10,6 +10,10 @@ import authorizationUtil, {
   getAuthorization,
   redirectToLogin,
 } from '@/utils/authorization-util';
+import {
+  isEnterpriseAuthMode,
+  revalidateEnterpriseSession,
+} from '@/utils/enterprise-session';
 import notification from '@/utils/notification';
 import {
   isRagUnavailableEnvelope,
@@ -138,17 +142,13 @@ request.interceptors.response.use(async (response: Response, options) => {
 
   // Handle HTTP 401
   if (response?.status === 401) {
-    // 企业版 cookie 模式:/proxy/v1/* 透传路由无 Authorization header 会返回 401,
-    // 但 cookie 仍有效(企业版 token 在 HttpOnly cookie 中,JS 不可读)。
-    // 此时不应清除登录态/跳登录页,否则会与 useEnterpriseCookieProbe 形成循环:
-    // 401 → removeAll → 跳登录页 → probe /auth/me 200 → 写回标记 → 跳首页 → 401 → ...
-    // 企业版登出仅由显式 /auth/logout 或 /auth/me 真实 401(由 probe 处理)触发。
-    const isEnterpriseMode =
-      localStorage.getItem('authMode') === 'intellect-enterprise';
-    if (isEnterpriseMode) {
+    // 企业版 cookie 模式：业务 401 不必然代表会话失效（如 /proxy/v1/* 透传路由
+    // 无 Authorization header 会返回 401，但 HttpOnly cookie 仍有效）。
+    // 统一交给企业版会话复验：cookie 有效则忽略本次 401；失效则静默重登或回登录页。
+    if (isEnterpriseAuthMode()) {
+      void revalidateEnterpriseSession();
       return response;
     }
-
     if (!isRedirecting) {
       isRedirecting = true;
 
@@ -187,10 +187,10 @@ request.interceptors.response.use(async (response: Response, options) => {
   if (data?.code === 100) {
     message.error(data?.message);
   } else if (data?.code === 401) {
-    // 企业版 cookie 模式同 HTTP 401 处理:跳过自动登出(避免与 probe 循环)
-    const isEnterpriseMode =
-      localStorage.getItem('authMode') === 'intellect-enterprise';
-    if (!isEnterpriseMode && !isRedirecting) {
+    // 企业版 cookie 模式：与 HTTP 401 统一口径，先复验会话再决定是否回登录页。
+    if (isEnterpriseAuthMode()) {
+      void revalidateEnterpriseSession();
+    } else if (!isRedirecting) {
       isRedirecting = true;
       notification.error({
         message: data?.message,

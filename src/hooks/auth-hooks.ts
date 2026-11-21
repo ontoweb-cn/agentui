@@ -1,36 +1,16 @@
 import message from '@/components/ui/message';
-import { AuthMode, BackendId, UserInfo } from '@/constants/authorization';
-import api from '@/utils/api';
+import { AuthMode } from '@/constants/authorization';
 import authorizationUtil from '@/utils/authorization-util';
+import {
+  attemptSilentRelogin,
+  validateEnterpriseSession,
+} from '@/utils/enterprise-session';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 
 import { useAuthMode } from './use-login-request';
-
-/** 静默重登节流：5 分钟内最多触发一次，避免探测/401 抖动造成重定向循环。 */
-const SSO_RELOGIN_THROTTLE_MS = 5 * 60 * 1000;
-const SSO_RELOGIN_STORAGE_KEY = 'sso_relogin_attempt';
-
-/**
- * 触发一次 prompt=none 静默重登（spec-014 P2）。
- * 是否真正静默由 BFF 开关与 sso_provider Cookie 决定；登出后 BFF 会直接回登录页。
- */
-const redirectToSilentRelogin = () => {
-  try {
-    const last = Number(sessionStorage.getItem(SSO_RELOGIN_STORAGE_KEY) || 0);
-    if (Date.now() - last < SSO_RELOGIN_THROTTLE_MS) return;
-    sessionStorage.setItem(SSO_RELOGIN_STORAGE_KEY, String(Date.now()));
-  } catch {
-    // sessionStorage 不可用时仍允许一次跳转（由 BFF 兜底）
-  }
-  const tenantId = localStorage.getItem(BackendId) || '0';
-  const returnTo = `${window.location.pathname}${window.location.search}`;
-  window.location.replace(
-    `/api/bff/auth/sso/relogin?tenant=${encodeURIComponent(tenantId)}&returnTo=${encodeURIComponent(returnTo)}`,
-  );
-};
 
 export const useOAuthCallback = () => {
   const { t } = useTranslation('translation', { keyPrefix: 'login.ssoError' });
@@ -108,47 +88,15 @@ const useEnterpriseCookieProbe = () => {
   return useQuery({
     queryKey: ['enterpriseCookieProbe'],
     queryFn: async () => {
-      // P2-B 修复:fetch/resp.json() 可能抛错(网络断开、非 JSON 响应),
-      // try/catch 兜底返回 false(视为未登录),避免控制台未捕获错误。
-      try {
-        const tenantId = localStorage.getItem(BackendId) || '0';
-        const resp = await fetch(api.userInfo, {
-          credentials: 'include',
-          headers: { 'X-Backend-Id': tenantId },
-        });
-        if (!resp.ok) {
-          // 401:cookie 过期或无效。优先尝试一次静默重登（spec-014 P2）；
-          // 是否真正静默由 BFF 开关与 sso_provider Cookie 决定。
-          if (resp.status === 401) {
-            redirectToSilentRelogin();
-          }
-          // 清除 localStorage 标记，使 useAuth 中 isLogin 变 false → AuthWrapper 跳转登录页。
-          localStorage.removeItem(AuthMode);
-          return false;
-        }
-        const json = await resp.json();
-        if (json?.code === 0 && json?.data) {
-          const userInfo = {
-            name: json.data.display_name,
-            email: json.data.email,
-            memberId: json.data.member_id,
-            role: json.data.role,
-          };
-          authorizationUtil.setItems({
-            [AuthMode]: 'intellect-enterprise',
-            [BackendId]: '0',
-            [UserInfo]: JSON.stringify(userInfo),
-          });
-          return true;
-        }
-        // 200 但无有效数据:清除标记
-        localStorage.removeItem(AuthMode);
-        return false;
-      } catch {
-        // 网络错误或 JSON 解析失败:不清除标记(可能是暂时性网络问题),
-        // 保持现有登录态,由后续请求的 401 拦截器处理。
-        return false;
+      // 与 401 拦截器共用同一复验口径（B3）：200 写标记；401 清标记并尝试静默重登；
+      // 网络错误返回 unknown（视为未登录，但不清除标记）。
+      const result = await validateEnterpriseSession();
+      if (result === 'invalid') {
+        // 优先尝试一次静默重登（spec-014 P2）；是否真正静默由 BFF 开关与
+        // sso_provider Cookie 决定。
+        attemptSilentRelogin();
       }
+      return result === 'valid';
     },
     enabled,
     staleTime: Infinity,

@@ -36,6 +36,15 @@ export type SsoExchangeResult =
 
 export const SSO_EXCHANGE_PATH = '/api/members/oauth/exchange';
 
+/** D2 option A: BFF 完成 IdP 兑换后，把 id_token 交给网关换取 member token。 */
+export const ID_TOKEN_EXCHANGE_PATH = '/api/oauth/exchange-id-token';
+
+export interface IdTokenExchangeRequest {
+  id_token: string;
+  provider_id: string;
+  tenant_id?: string;
+}
+
 function extractErrorCode(body: unknown, status: number): string {
   const record = (body ?? {}) as Record<string, unknown>;
   const flat = record.error;
@@ -47,16 +56,16 @@ function extractErrorCode(body: unknown, status: number): string {
   return `http_${status}`;
 }
 
-export async function exchangeAuthorizationCode(
-  baseUrl: string,
-  payload: SsoExchangeRequest,
+async function postExchange(
+  url: string,
+  payload: unknown,
   timeoutMs: number,
 ): Promise<SsoExchangeResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const resp = await fetch(`${baseUrl}${SSO_EXCHANGE_PATH}`, {
+    const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -92,4 +101,20 @@ export async function exchangeAuthorizationCode(
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function exchangeAuthorizationCode(
+  baseUrl: string,
+  payload: SsoExchangeRequest,
+  timeoutMs: number,
+): Promise<SsoExchangeResult> {
+  return postExchange(`${baseUrl}${SSO_EXCHANGE_PATH}`, payload, timeoutMs);
+}
+
+export async function exchangeIdTokenForMember(
+  baseUrl: string,
+  payload: IdTokenExchangeRequest,
+  timeoutMs: number,
+): Promise<SsoExchangeResult> {
+  return postExchange(`${baseUrl}${ID_TOKEN_EXCHANGE_PATH}`, payload, timeoutMs);
 }
