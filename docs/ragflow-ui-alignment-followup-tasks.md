@@ -1,0 +1,177 @@
+# RAGFlow UI 对齐:移植后续任务清单
+
+> 生成时间:2026-11-21 09:52;**v2(2026-11-21 09:54):按技术评审意见修正**——改写 T1.4/T2.1/T2.2/T2.4/T2.5/T2.7/T3.1/T3.6,新增 T2.8(错误揭示)/T2.9(校验差异决策)/T3.7(守卫增强)
+> 基线:`dev` 分支,`65f69b4`(P0 主提交)+ `66f2f3d`(评审 P0 修复)已推送至 `origin/dev`
+> 关联文档:[ragflow-ui-improvement-recommendations.md](./ragflow-ui-improvement-recommendations.md)(分析、勘误与 P0 实施记录)
+> 来源:双评审(Bugbot 质量评审 / Security Review)跟进项 + 改进建议文档的 P1/P2 + 清单技术评审修正
+> **⚠ 2026-11-21 过渡期评审勘验**:T4.1 靶点有误(provider 存储/聚合位/校验在 **Rust Gateway + BFF** 层,非 intellect-rag),并发现设置保存链路存在 title-only 存量断点——详见 [p0-port-transition-impact-review.md](./p0-port-transition-impact-review.md),清单待更新为 v3
+
+## 使用说明
+
+- 任务 ID 规则:`T<节>.<序号>`;状态用 `[ ]`/`[x]` 维护,完成后在行尾追加 `(commit <hash>)`。
+- **通用验收门槛**(每项任务默认适用,不再逐条重复):`npm run lint` 与 `npm run type-check`(含 `check-color-tokens` 守卫)零错误;相关 jest 测试通过;不引入新的裸色值/未翻译字符串。
+- 执行环境备忘:jest 需 `ESBUILD_BINARY_PATH=/tmp/esb025/node_modules/esbuild/bin/esbuild` 绕过存量 esbuild 错配;`npm run dev` 已修复(补装 `@rollup/rollup-linux-x64-gnu`)。
+- 预估为单人净工时。
+
+---
+
+## T1 立即可做(合计约 1 天)
+
+### T1.1 `.gitignore` 补日志条目(10 分钟)
+- **动作**:`.gitignore` 已有 `vite-dev.log`、`*storybook.log`(L23/L42),追加 `bff-wsl.log`、`vite-wsl.log`(或统一为 `*-wsl.log`)。
+- **验收**:`git status` 不再出现两个日志文件。
+
+### T1.2 删除 `TavilyFormField`(10 分钟)
+- **动作**:删除 `src/components/tavily-form-field.tsx`(已核实全仓零引用,唯一使用点已在 `65f69b4` 中替换为 `WebSearchFormField`)。
+- **注意**:语言键 `tavilyApiKeyTip`/`tavilyApiKeyMessage` **必须保留**(新组件的 Tavily provider 在用);`tavilyApiKeyHelp` 已无消费者(唯一使用者就是被删组件自身),可顺手删除(可选)。
+- **验收**:全仓 grep 无 `TavilyFormField` 残留;type-check 绿。
+
+### T1.3 `PromptConfig.web_search_provider` 类型允许 `''`(30 分钟)
+- **动作**:`src/interfaces/database/chat.ts` 中 `web_search_provider?: WebSearchProvider;` → `web_search_provider?: WebSearchProvider | '';`,与 `WebSearchKeyConfig`(`WebSearchProvider | ''`)及 schema(`.or(z.literal(''))`)对齐。
+- **评审确认**:全仓仅 `web-search-form-field.tsx` L226 一处直读该字段,类型放宽无涟漪。
+- **验收**:type-check 绿;`web-search-api-key.test.ts` 不需改即通过;后续可逐步移除测试中的 `as unknown as` 断言(顺带做)。
+
+### T1.4 schema 接线测试(1-2 小时,移植而非新建)
+- **动作**:上游 app-settings 已有现成测试族——`use-chat-setting-schema.test.tsx`、`chat-setting-schema.test.ts`、`validate-chat-prompt.test.ts`、`use-reveal-submit-errors.test.tsx`(以及 `agentic-rag-submit.test.ts`)。**移植而非从零写**:改 import 路径、按 agentui 现状取舍后跑通。最少覆盖 3 个断言:
+  1. 选 `Search1API` 且 `search1api_api_key` 为空 → parse 失败,issue path === `['prompt_config', 'search1api_api_key']`,message 为 `webSearchApiKeyRequired`;
+  2. `web_search_provider: ''`(清除)→ parse 成功(不回落 Tavily);
+  3. `AnySearch` 无 key → parse 成功(keyless)。
+- **依赖**:建议先做 T2.3(提取纯构建器后可直接调 `buildChatSettingFormSchema(t)`,免 renderHook)。
+- **验收**:移植用例绿;全量 next-chats 测试无回归。
+
+---
+
+## T2 P1:评审跟进与结构性改进(约 2-2.5 周)
+
+### T2.1 legacy Tavily 对话框预选 provider(2-4 小时)
+- **动作**:在聊天设置表单的默认值装配处(grep `prompt_config` 默认值映射,位于 `use-chat-request` 或 app-settings 的 values builder)加:`web_search_provider ??= WebSearchProvider.Tavily`(**仅当值为 `undefined`**;显式 `''` 是"用户清除",不得回落)。
+- **背景**:legacy 对话(仅存 `tavily_api_key`)运行时联网开关可见(`getWebSearchProvider` 推断 Tavily),但设置页 provider/key 均不显示——UI 与运行时脱节。
+- **副作用(需知悉)**:预选后打开 legacy 对话并保存,会**首次写入** `web_search_provider: 'tavily'`(此前仅 `tavily_api_key`);与 T4.1 后端枚举无冲突(Tavily 是老字段)。
+- **验收**:仅含 `tavily_api_key` 的对话框打开设置页,Tavily 已预选且 key 输入框回填;新建空对话框不受影响;**保存后重开仍预选**。
+
+### T2.2 provider→key 映射收敛单一来源(2-3 小时)
+- **动作**:把 `src/components/web-search-form-field.tsx` 的 `providerKeyConfig`(name/tip/placeholder/helpUrl)迁至 `src/pages/next-chats/chat/web-search-api-key.ts`(或新文件 `web-search-catalog.ts`);`webSearchApiKeyFields` 由 catalog 派生;form-field 只 import。
+- **可更薄的实现(评审补充)**:tip/placeholder 语言键与 `*_api_key` 字段名均可由**枚举值直接派生**——`anysearch` → `anysearchApiKeyTip` / `anysearchApiKeyMessage` / `anysearch_api_key`(14 个 provider 全部符合该模式,含 `search1api`/`youcom`)。catalog 只需保留 **displayName / logo / helpUrl** 三项真实数据,其余一概派生。
+- **背景**:当前两份映射并存,新增 provider 需改 5 处(枚举/catalog/映射/schema/locale),易漏。
+- **验收**:全仓仅一处映射来源;新增一个 provider 只需改 枚举 + catalog(displayName/logo/helpUrl)+ locale 三处;测试绿。
+
+### T2.3 提取 `buildChatSettingFormSchema(t)` 纯构建器 + `useMemo`(1-2 小时)
+- **动作**:`use-chat-setting-schema.tsx`(L17 `useChatSettingSchema`)重构为上游模式:导出纯函数 `buildChatSettingFormSchema(t: (k: string) => string)`,hook 内 `useMemo(() => buildChatSettingFormSchema(t), [t])`(上游 hook 即此写法,照搬)。
+- **关联**:重构时一并处理 T2.9 的 `chatPromptKbIssues` 决策。
+- **验收**:T1.4 的测试可直接调用纯构建器;行为无变化。
+
+### T2.4 处理非活动 provider 的 key 滞留(2-4 小时 + 后端确认)
+- **已核实事实**:保存链路为 `useUpdateChat`(use-chat-request.ts L266)→ `gatewayChatService.patchGatewayChat`(gateway-chat-service.ts L53)→ `api.patchAgentSession(GATEWAY_CHAT_AGENT_ID, chatId)`,patchData **整包**携带 `prompt_config`(`patchData.prompt_config = params.prompt_config`)——非当前 provider 的历史 key 均随每次保存提交(安全评审"凭证滞留"项)。
+- **前置决策(三案,先确认后端对 `prompt_config` 的 PATCH 语义:整体替换 or 合并)**:
+  1. **前端剥离**:`chat-settings.tsx` 的 `onSubmit` 按 `web_search_provider` 过滤 `prompt_config` 内的 `*_api_key`——若后端为**整体替换**语义,剥离 = 永久删除其它 provider 的 key(换回需重填),属产品决策;
+  2. **后端忽略**:后端存储侧只持久化活动 provider 的 key,前端不动——并入 T4.1 实现;
+  3. **切换即清空**:provider 切换时 `setValue` 清空旧 provider 的 key 字段——实现最简单,但误切换即丢数据,体验最差。
+- **验收**:按选定方案,PATCH payload/存储中仅含策略定义的 key 集合;`use-show-internet` 与保存后重载行为一致。
+
+### T2.5 ee overlay 化改造(分两步:骨架 + 单模块 1-2 天,全量随需)
+- **评审调整**:原"3-5 天全量迁移"低估了 `features/_registry.ts`、`routes.tsx`、i18n、BFF 路由的耦合,改为增量验证式。
+- **第一步(1-2 天)**:建立 `src/ee/` 骨架与别名(`@/ee/*` → `src/ee/*`,同步 `vite.config.ts`/`tsconfig.json`/`jest.config.ts`/`.storybook/main.ts`),迁移 **1 个低耦合模块**(`pages/wizard`)验证模式;`CLAUDE.md` 记录约定:共享代码只 import `@/ee/*`,不得内联 Intellect 专有逻辑。
+- **第二步(随需)**:`pages/tasks`、`features/aihub`、`features/applications`、BFF 专属页面逐个迁入,每次一个模块、独立提交。
+- **背景**:上游已全面 ee overlay 化(#21667/#21696/#22304);此举使后续 cherry-pick 上游时冲突面最小。
+- **验收(第一步)**:从上游 `web/` 挑 3 个近期文件试 cherry-pick,零冲突;wizard 路由/构建正常。
+
+### T2.6 引入 oxlint(0.5-1 天)
+- **动作**:安装 `oxlint`,先与 eslint 并行(`lint` 脚本追加 `&& oxlint src`),按需生成 `.oxlintrc.json`;稳定一轮后再决定是否替换 eslint。
+- **背景**:上游已切换 oxfmt/oxlint(Rust 实现,快一个量级)。
+- **验收**:oxlint 全仓运行 < 5 秒;存量告警处理或基线化。
+
+### T2.7 agent session PATCH 校验镜像(0.5-1 天)
+- **已核实链路**:`useUpdateChat`(use-chat-request.ts L266)→ `gatewayChatService.patchGatewayChat`(gateway-chat-service.ts L53)→ `api.patchAgentSession(GATEWAY_CHAT_AGENT_ID, chatId)`,即 **agent session PATCH**(`/api/sessions/{id}` 族);该 API 的实际服务方(BFF `bff/src/routes/bff-agents.ts` 一族或 harness API)在实施首步确认。
+- **动作**:在该 PATCH 的服务方增加校验:合法 `web_search_provider` 枚举 + 需 key 的 provider 必须携带非空 key(复刻 `missingWebSearchApiKeyField` 规则,可移植为服务端纯函数);非法即 4xx。若服务方为 intellect-rag 后端而非 BFF,则并入 T4.1 实施。
+- **背景**:前端 `superRefine` 可被直接 HTTP 调用绕过(安全评审"中"项);agent session 是分享/嵌入场景的同一数据面,校验尤为重要。
+- **验收**:绕过表单直接发 PATCH(缺 key)返回 4xx 及明确错误信息;服务方侧有单测。
+
+### T2.8 保存错误揭示机制(P1 内靠前,建议紧随 T2.3;1-2 天)
+- **动作**:
+  1. 移植上游 `use-reveal-submit-errors`(+测试 `use-reveal-submit-errors.test.tsx`);
+  2. `chat-prompt-engine.tsx` 对齐上游 `ChatPromptEngineProps` 的受控展开参数(`advancedSettingOpen` / `onAdvancedSettingOpenChange` / `naiveSettingOpen` / `agenticSettingOpen` 等),由保存失败驱动对应 Collapse 展开;
+  3. 滚动/聚焦到首个出错字段。
+- **背景**:`66f2f3d` 补的 `<FormMessage />` 只解决了"错误有处渲染";**高级设置面板默认折叠时用户依然看不见**——本任务是让评审 P0 修复真正对用户可见的最后一环。
+- **验收**:构造缺 key 保存 → 面板自动展开、视口滚动到该字段、FormMessage 可见;上游相关测试移植通过。
+
+### T2.9 schema 校验差异决策(0.5 天:决策 + 记录或补齐)
+- **背景**:上游 formSchema 的 superRefine 除 missing-key 外还调用 `chatPromptKbIssues`(`validate-chat-prompt.ts`,校验 system prompt 与知识库变量引用等);agentui 自 fork 起**无此文件与校验**。
+- **动作(二选一)**:
+  1. 认定为 fork 时点缺失 → 随 T2.3 一并移植 `validate-chat-prompt.ts` + 测试;
+  2. 认定为 agentui 有意去除 → 在本清单/CLAUDE.md 记录原因,防止后续同步时误判为缺陷。
+- **验收**:决策记录在案;若选移植,`chatPromptKbIssues` 相关测试绿且存量对话保存不回归。
+
+---
+
+## T3 P2:体验与架构(随版本迭代)
+
+### T3.1 虚拟滚动(1-2 天)
+- **动作**:**新增依赖 `@tanstack/react-virtual`(当前未安装,版本对齐上游 #19621 所用)**;CSV 查看器与 chunk 列表接入虚拟化。
+- **验收**:万行 CSV/千条 chunk 滚动帧率稳定,内存不随行数线性增长。
+
+### T3.2 分块引用图预览源文档(1-2 天)
+chunk 引用图片可点击预览源文档(上游 #20895 模式);依赖 `IFileService`/文档查看路由已有能力。
+
+### T3.3 `builtin-pipeline` 只读展示页(2-3 天)
+后端暴露 builtin pipelines 列表后新增 `src/pages/builtin-pipeline`(上游 #20656 模式:agents 列表中只读展示)。**依赖澄清:该 API 属上游 Go 后端能力,agentui 当前对接的 intellect-rag Python fork(v0.26.1)没有——实际阻塞于 T4.1/Phase C,不应在 Python 侧实现。**
+
+### T3.4 i18n overlay 拆分(1 天)
+私有词条拆至 `src/locales/config.ts` 的 merge 链(上游 `ee-stub/locales/<lang>-private.ts` 模式),共享语言文件保持可 cherry-pick;先做 zh/en,其余语言按需。依赖 T2.5 第一步。
+
+### T3.5 字体 token 化(0.5 天)
+Outfit/JetBrains Mono 的字号/行高纳入语义 token,与既有 token 体系对齐;清理组件内散落的任意 `text-*` 值。
+
+### T3.6 上游子树同步机制(1 天,首步为机制选型)
+- **第一步(选型,两案并试)**:`git subtree pull --prefix . <upstream-remote> main --squash` 是否支持根目录前缀存疑(subtree 通常要求子目录);备选方案 `git fetch upstream` + `git archive upstream/main web | tar -x` 至临时目录后 rsync 对比再提交。以试运行结果定案。
+- **第二步**:定案机制固化为 `scripts/sync-upstream-web.mjs` + `CLAUDE.md` 说明每月节奏与冲突处理约定。
+- **依赖**:T2.5 第一步(overlay 骨架)完成后收益最大。
+
+### T3.7 `check-color-tokens` 增强(0.5 天)
+- **动作**:`total` 与 per-file 之和不交叉校验(可手工漂移);文件删净后基线条目残留直到下次 `--update`——增加一致性校验、检测到收缩时提示 `--update`、可选 `--prune` 自动清理。
+- **来源**:Bugbot 评审指出的守卫局限。
+
+---
+
+## T4 跨仓库配套
+
+### T4.1 intellect-rag 后端 provider 枚举同步(1-2 天,Python)
+- **范围**:①对话 `prompt_config` 接受并存储 14 个 provider 的 key 字段与 `web_search_provider`;②`chatbot info`/external chat 接口返回 `has_web_search_provider`(聚合位:任一可用 provider 配置即 true)——**这是已合入的分享页修复(`66f2f3d`)生效的后端前提**;③联网搜索执行链路按 provider 分发(未支持的 provider 保存后静默失效是当前最大风险);④若 T2.7 确认 PATCH 服务方为后端,则 provider↔key 校验在此一并实现。
+- **注意**:若执行时 intellect-rag 已在 Go 化(Phase C),直接在 Go 侧实现,不在 Python 上投入。
+
+### T4.2 密钥存储架构评估(设计任务,随 Phase A/B)
+现状:14 个第三方 API Key 明文存于 `prompt_config` 并在拉取/保存间往返(安全评审"高"项;保存链路 = agent session PATCH 整包提交)。方向:密钥独立存储 + 配置里存引用、响应不回传明文、审计日志脱敏。建议作为 intellect-rag Go 化(Phase A/B)的数据模型设计输入,避免 Python 侧一次性投入。
+
+---
+
+## T5 Go 化主线(既定,详见 intellect-rag/docs/go-migration-feasibility-and-repo-strategy.md)
+
+| 阶段 | 内容 | 量级 | 并行前端任务 |
+|---|---|---|---|
+| Phase A | intellect-mem → Go(复用上游 memory,作 Go 服务化样板) | 2-4 人周 | — |
+| Phase B | intellect-dsl → Go(`agent-go-port-design.md`:eino + 5-tier + Redis checkpoint + OTel) | 3-6 人月 | **画布页面对齐**:`pages/agents` 消费 Go 事件契约(workflow_started/message/user_inputs/interrupt/两段式 cancel),canvas-plugin 的 DSL API 对齐 `NormalizeForCanvas` |
+| Phase C | intellect-rag:上游 Go 基座 + 回植多租户 scope/deepdoc 定制/chunk 过滤;`cmd/` 多入口 | 3-6 人月 | dev proxy 切 Go API;T3.3 的 pipeline API 在此到位 |
+| Phase D | 删 Python、CI 全面切 Go、docs 去迁移化表述 | ~1 个月 | 全量前端回归 |
+
+---
+
+## 依赖关系与建议节奏
+
+```text
+T2.3(提取纯构建器) ──▶ T1.4(schema 测试)、T2.9(校验差异决策)
+T2.8(错误揭示)     ──▶ 使 66f2f3d 的 FormMessage 对用户真正可见(高优先)
+T2.5 第一步(ee 骨架)──▶ T3.4(i18n overlay)、T3.6(子树同步)
+T4.1(后端枚举+聚合位)──▶ 分享页修复完整生效、T2.7 落地
+Phase B(事件契约)  ──▶ 画布页面对齐
+```
+
+建议节奏:本周做 T1 全部 + T2.2/T2.3/**T2.8**;下周 T1.4/T2.1/T2.4(含后端 PATCH 语义确认)/T2.9;T2.5 第一步、T2.6/T2.7 排入下个迭代;T4.1 尽早发起(它阻塞分享页功能的实际生效)。
+
+## 工作量汇总
+
+| 分组 | 任务数 | 量级 |
+|---|---|---|
+| T1 立即可做 | 4 | ~1 天 |
+| T2 P1 | 9 | 2-2.5 周 |
+| T3 P2 | 7 | 随版本 |
+| T4 跨仓库 | 2 | 2-3 天 + 设计评估 |
+| T5 Go 化 | 4 阶段 | 3-5 人 × 6-9 个月 |

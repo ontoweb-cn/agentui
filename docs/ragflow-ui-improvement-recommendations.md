@@ -129,3 +129,5 @@ agentui 的插件化画布 + BFF 是值得保留的差异化;真正的债是**�
 2. `node_modules` 缺 `@rollup/rollup-linux-x64-gnu`(此前为 Windows 侧安装)——已 `npm i --no-save` 补装,`npm run dev` 恢复;正式修复建议重装依赖或补 optionalDependencies 说明。
 
 **已知边界**:intellect-rag 后端(v0.26.1 fork)对新增 provider(Perplexity/Serply/SearchApi/Search1API/AnySearch 等)的枚举可能未同步,后端侧支持属 intellect-rag 仓库事项;前端表单与保存校验已就绪。
+
+> **后续任务清单**(T1-T5 细化版,含验收标准与依赖关系)见:[ragflow-ui-alignment-followup-tasks.md](./ragflow-ui-alignment-followup-tasks.md)。
