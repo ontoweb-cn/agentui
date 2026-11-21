@@ -21,7 +21,7 @@ export interface PromptConfig {
   reasoning?: boolean;
   cross_languages?: Array<string>;
   tavily_api_key?: string;
-  web_search_provider?: WebSearchProvider;
+  web_search_provider?: WebSearchProvider | '';
   anysearch_api_key?: string;
   brave_api_key?: string;
   exa_api_key?: string;

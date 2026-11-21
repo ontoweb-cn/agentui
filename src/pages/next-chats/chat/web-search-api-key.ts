@@ -1,3 +1,7 @@
+/**
+ * Provenance: verbatim port from upstream RAGFlow web/ (base 91c702e),零漂移。
+ * 同步策略见 docs/ragflow-ui-improvement-recommendations.md;T3.6 子树同步机制落地后随上游自动跟进。
+ */
 import {
   KEYLESS_WEB_SEARCH_PROVIDERS,
   WebSearchProvider,

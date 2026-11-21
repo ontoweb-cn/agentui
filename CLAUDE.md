@@ -21,7 +21,7 @@ This project was split from the Intellect RAG monorepo. It consists of:
 2. **BFF** (`bff/`) - Node.js/Hono backend-for-frontend layer
 3. **Nginx** (`nginx/`) - Reverse proxy serving SPA + proxying to intellect-rag backend
 
-API communication flows: Browser → Nginx → (intellect-rag Python backend OR BFF)
+API communication flows: Browser → Nginx → BFF(adapter-registry 多后端:chat 会话存储于 intellect-team Rust Gateway /api/sessions/*;RAG/数据集/检索经 intellect-rag Python fork,Go 化 Phase C 替换)
 
 ## Common Commands
 

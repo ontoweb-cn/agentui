@@ -1,3 +1,9 @@
+/**
+ * Provenance(ported from upstream RAGFlow web/, base 91c702e):
+ * 结构性适配点——shadcn 表单原语(FormItem/FormMessage)+ agentui 语言键约定;
+ * 上游每次演进本文件需手工重适配(见 docs/ragflow-ui-improvement-recommendations.md 同步漂移面)。
+ * provider/tip/placeholder 映射见本文件 providerKeyConfig,T2.2 计划收敛至单一 catalog。
+ */
 import anysearchLogo from '@/assets/anysearch.webp';
 import braveLogo from '@/assets/svg/brave.svg';
 import exaLogo from '@/assets/exa.png';

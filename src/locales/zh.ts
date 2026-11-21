@@ -1060,7 +1060,6 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
       tavilyApiKeyTip:
         '如果 API 密钥设置正确，它将利用 Tavily 进行网络搜索作为知识库的补充。',
       tavilyApiKeyMessage: '请输入你的 Tavily API Key',
-      tavilyApiKeyHelp: '如何获取？',
       webSearch: '网络搜索',
       webSearchProvider: '网络搜索服务',
       webSearchProviderTip: '选择启用联网搜索时使用的搜索服务。',

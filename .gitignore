@@ -55,3 +55,6 @@ tests/e2e-tests/results/**/backup*/
 tests/e2e-tests/results/**/data-backup*/
 tests/e2e-tests/fixtures/**/data-backup-*/
 tests/e2e-tests/fixtures/**/backup/
+
+# 本地 WSL 包装进程日志(T1.1)
+*-wsl.log

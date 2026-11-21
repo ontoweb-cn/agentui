@@ -60,7 +60,8 @@
 
     /* Semantic role aliases: expose the design-color roles under the
        Intellect --colors-* naming. Values reference the design-color
-       variables above, so light/dark follows automatically. */
+       variables above, so light/dark follows automatically.
+       [agentui-only] 上游 RAGFlow 无此别名块——子树同步时按块保留本段。 */
     --colors-background-neutral-card: var(--bg-card);
     --colors-background-neutral-component: var(--bg-component);
     --colors-background-neutral-input: var(--bg-input);
@@ -222,7 +223,8 @@
     /* Same role aliases re-declared under .dark so each alias re-resolves
        against the dark design-color values (chained var() references are
        substituted at computed-value time and do not re-evaluate across
-       the .dark override otherwise). */
+       the .dark override otherwise).
+       [agentui-only] 同上,子树同步时按块保留本段。 */
     --colors-background-neutral-card: var(--bg-card);
     --colors-background-neutral-component: var(--bg-component);
     --colors-background-neutral-input: var(--bg-input);
