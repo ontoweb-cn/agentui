@@ -4,7 +4,8 @@
 > 基线:`dev` 分支,`65f69b4`(P0 主提交)+ `66f2f3d`(评审 P0 修复)已推送至 `origin/dev`
 > 关联文档:[ragflow-ui-improvement-recommendations.md](./ragflow-ui-improvement-recommendations.md)(分析、勘误与 P0 实施记录)
 > 来源:双评审(Bugbot 质量评审 / Security Review)跟进项 + 改进建议文档的 P1/P2 + 清单技术评审修正
-> **⚠ 2026-11-21 过渡期评审勘验**:T4.1 靶点有误(provider 存储/聚合位/校验在 **Rust Gateway + BFF** 层,非 intellect-rag),并发现设置保存链路存在 title-only 存量断点——详见 [p0-port-transition-impact-review.md](./p0-port-transition-impact-review.md),清单待更新为 v3
+> **⚠ 2026-11-21 过渡期评审勘验**:T4.1 靶点有误(provider 存储/聚合位/校验在 **Rust Gateway + BFF** 层,非 intellect-rag),并发现设置保存链路存在 title-only 存量断点——详见 [p0-port-transition-impact-review.md](./p0-port-transition-impact-review.md)
+> **v3(2026-11-21 21:15)**:按 p0 过渡期评审与 [unfinished-tasks-review-20261121.md](./unfinished-tasks-review-20261121.md) 修订——**新增 T2.10(已完成,`7de6206`)**;T4.1 拆分为 **T4.1a(Gateway/BFF)/ T4.1b(intellect-rag)**;T2.4 前置决策**已解锁**(Gateway `prompt_config` 整列替换实证→短期维持整包,T4.2 收敛);T2.7 落点写死 BFF `bff-agents`;T1.1/T1.2/T1.3 完成(`22dce83`)
 
 ## 使用说明
 
@@ -17,16 +18,16 @@
 
 ## T1 立即可做(合计约 1 天)
 
-### T1.1 `.gitignore` 补日志条目(10 分钟)
+### T1.1 `.gitignore` 补日志条目(10 分钟)— **已完成**(`22dce83`,统一为 `*-wsl.log`)
 - **动作**:`.gitignore` 已有 `vite-dev.log`、`*storybook.log`(L23/L42),追加 `bff-wsl.log`、`vite-wsl.log`(或统一为 `*-wsl.log`)。
 - **验收**:`git status` 不再出现两个日志文件。
 
-### T1.2 删除 `TavilyFormField`(10 分钟)
+### T1.2 删除 `TavilyFormField`(10 分钟)— **已完成**(`22dce83`)
 - **动作**:删除 `src/components/tavily-form-field.tsx`(已核实全仓零引用,唯一使用点已在 `65f69b4` 中替换为 `WebSearchFormField`)。
-- **注意**:语言键 `tavilyApiKeyTip`/`tavilyApiKeyMessage` **必须保留**(新组件的 Tavily provider 在用);`tavilyApiKeyHelp` 已无消费者(唯一使用者就是被删组件自身),可顺手删除(可选)。
-- **验收**:全仓 grep 无 `TavilyFormField` 残留;type-check 绿。
+- **注意**:语言键 `tavilyApiKeyTip`/`tavilyApiKeyMessage` **必须保留**(新组件的 Tavily provider 在用);`tavilyApiKeyHelp` 已无消费者(唯一使用者就是被删组件自身),可顺手删除(可选)。**v3 执行记录:zh/en 的 Help 键已删;ar/bg/fr 等其余语言为死键,留待语言文件专项清理。**
+- **验收**:全仓 grep 无 `TavilyFormField` 残留;type-check 绿。✅
 
-### T1.3 `PromptConfig.web_search_provider` 类型允许 `''`(30 分钟)
+### T1.3 `PromptConfig.web_search_provider` 类型允许 `''`(30 分钟)— **已完成**(`22dce83`)
 - **动作**:`src/interfaces/database/chat.ts` 中 `web_search_provider?: WebSearchProvider;` → `web_search_provider?: WebSearchProvider | '';`,与 `WebSearchKeyConfig`(`WebSearchProvider | ''`)及 schema(`.or(z.literal(''))`)对齐。
 - **评审确认**:全仓仅 `web-search-form-field.tsx` L226 一处直读该字段,类型放宽无涟漪。
 - **验收**:type-check 绿;`web-search-api-key.test.ts` 不需改即通过;后续可逐步移除测试中的 `as unknown as` 断言(顺带做)。
@@ -61,11 +62,11 @@
 - **验收**:T1.4 的测试可直接调用纯构建器;行为无变化。
 
 ### T2.4 处理非活动 provider 的 key 滞留(2-4 小时 + 后端确认)
-- **已核实事实**:保存链路为 `useUpdateChat`(use-chat-request.ts L266)→ `gatewayChatService.patchGatewayChat`(gateway-chat-service.ts L53)→ `api.patchAgentSession(GATEWAY_CHAT_AGENT_ID, chatId)`,patchData **整包**携带 `prompt_config`(`patchData.prompt_config = params.prompt_config`)——非当前 provider 的历史 key 均随每次保存提交(安全评审"凭证滞留"项)。
-- **前置决策(三案,先确认后端对 `prompt_config` 的 PATCH 语义:整体替换 or 合并)**:
-  1. **前端剥离**:`chat-settings.tsx` 的 `onSubmit` 按 `web_search_provider` 过滤 `prompt_config` 内的 `*_api_key`——若后端为**整体替换**语义,剥离 = 永久删除其它 provider 的 key(换回需重填),属产品决策;
-  2. **后端忽略**:后端存储侧只持久化活动 provider 的 key,前端不动——并入 T4.1 实现;
-  3. **切换即清空**:provider 切换时 `setValue` 清空旧 provider 的 key 字段——实现最简单,但误切换即丢数据,体验最差。
+- **已核实事实**:保存链路为 `useUpdateChat`(use-chat-request.ts L266)→ `gatewayChatService.patchGatewayChat`(gateway-chat-service.ts L53)→ `api.patchAgentSession(GATEWAY_CHAT_AGENT_ID, chatId)`,patchData **整包**携带 `prompt_config`(`patchData.prompt_config = params.prompt_config`)——非当前 provider 的历史 key 均随每次保存提交(安全评审"凭证滞留"项)。**且保存链路 title-only 断点已由 T2.10 修复(`7de6206`),保存真正生效,本任务的前提成立。**
+- **前置决策:v3 已解锁**——p0 过渡期评审实证 Gateway `PATCH prompt_config` 为**整列替换**(`UPDATE sessions SET prompt_config=$1`)。原三案裁决:
+  1. ~~前端剥离~~ **排除**(整列替换语义下剥离 = 永久删除,换回需重填);
+  2. **后端忽略(选定)**:短期维持前端整包(换回 provider 不丢 key,体验优先),存储侧按活动 provider 过滤并入 **T4.1a / T4.2**(密钥独立存储),避免过渡期一次性投入;
+  3. ~~切换即清空~~ **排除**(误切换即丢数据)。
 - **验收**:按选定方案,PATCH payload/存储中仅含策略定义的 key 集合;`use-show-internet` 与保存后重载行为一致。
 
 ### T2.5 ee overlay 化改造(分两步:骨架 + 单模块 1-2 天,全量随需)
@@ -81,8 +82,8 @@
 - **验收**:oxlint 全仓运行 < 5 秒;存量告警处理或基线化。
 
 ### T2.7 agent session PATCH 校验镜像(0.5-1 天)
-- **已核实链路**:`useUpdateChat`(use-chat-request.ts L266)→ `gatewayChatService.patchGatewayChat`(gateway-chat-service.ts L53)→ `api.patchAgentSession(GATEWAY_CHAT_AGENT_ID, chatId)`,即 **agent session PATCH**(`/api/sessions/{id}` 族);该 API 的实际服务方(BFF `bff/src/routes/bff-agents.ts` 一族或 harness API)在实施首步确认。
-- **动作**:在该 PATCH 的服务方增加校验:合法 `web_search_provider` 枚举 + 需 key 的 provider 必须携带非空 key(复刻 `missingWebSearchApiKeyField` 规则,可移植为服务端纯函数);非法即 4xx。若服务方为 intellect-rag 后端而非 BFF,则并入 T4.1 实施。
+- **已核实链路(v3 定案)**:PATCH 服务方 = **BFF `bff/src/routes/bff-agents.ts`**(Gateway 实证);T2.10(`7de6206`)已透传 `prompt_config`/`kb_ids`,校验在 BFF 透传前叠加。
+- **动作**:在 BFF PATCH 路由增加校验:合法 `web_search_provider` 枚举 + 需 key 的 provider 必须携带非空 key(复刻 `missingWebSearchApiKeyField` 规则,可移植为服务端纯函数);非法即 4xx。
 - **背景**:前端 `superRefine` 可被直接 HTTP 调用绕过(安全评审"中"项);agent session 是分享/嵌入场景的同一数据面,校验尤为重要。
 - **验收**:绕过表单直接发 PATCH(缺 key)返回 4xx 及明确错误信息;服务方侧有单测。
 
@@ -100,6 +101,10 @@
   1. 认定为 fork 时点缺失 → 随 T2.3 一并移植 `validate-chat-prompt.ts` + 测试;
   2. 认定为 agentui 有意去除 → 在本清单/CLAUDE.md 记录原因,防止后续同步时误判为缺陷。
 - **验收**:决策记录在案;若选移植,`chatPromptKbIssues` 相关测试绿且存量对话保存不回归。
+
+### T2.10 设置保存链路修复(v3 新增,**已完成** `7de6206`,0.5-1 天 → 实际 ~0.5 天)
+- **动作(已实施)**:①`bff-agents.ts` PATCH 路由透传 `prompt_config`/`kb_ids`(移除 title-only 提取与 400 拦截,snake/camel 键名兼容);②四个 adapter(intellect-enterprise/intellect-rag/mcp-base/openai-base)的 `updateSession` 签名扩展 `{ title?, kbIds?, promptConfig? }` 并透传;③前端 `use-chat-request.ts` 附带修复 kb_ids 空数组放行(清空知识库绑定可保存);④新增 PATCH 透传/空数组/camelCase/非法值 4 组用例。
+- **遗留**:端到端 F1 验证(改 system prompt → 保存 → `GET /api/sessions/{id}` 观察)与"存量对话首次保存真正生效"的发布说明,见 wizard-sso-followup A2 收尾。
 
 ---
 
@@ -134,9 +139,9 @@ Outfit/JetBrains Mono 的字号/行高纳入语义 token,与既有 token 体系�
 
 ## T4 跨仓库配套
 
-### T4.1 intellect-rag 后端 provider 枚举同步(1-2 天,Python)
-- **范围**:①对话 `prompt_config` 接受并存储 14 个 provider 的 key 字段与 `web_search_provider`;②`chatbot info`/external chat 接口返回 `has_web_search_provider`(聚合位:任一可用 provider 配置即 true)——**这是已合入的分享页修复(`66f2f3d`)生效的后端前提**;③联网搜索执行链路按 provider 分发(未支持的 provider 保存后静默失效是当前最大风险);④若 T2.7 确认 PATCH 服务方为后端,则 provider↔key 校验在此一并实现。
-- **注意**:若执行时 intellect-rag 已在 Go 化(Phase C),直接在 Go 侧实现,不在 Python 上投入。
+### T4.1 后端 provider 枚举同步(v3 拆分,原单条靶点有误)
+- **T4.1a Rust Gateway/BFF(1-2 天)**:①确认 Gateway `prompt_config` 存储透传性(T2.10 已打通,复核字段白名单不裁剪 provider key 字段);②external chat/`chatbot info` 聚合位返回 `has_web_search_provider`(任一可用 provider 配置即 true)——**这是分享页修复(`66f2f3d`)实际生效的前提**;③T2.7 的 provider↔key 校验落地(BFF 层);④存储侧按活动 provider 过滤 key(T2.4 选定方案,与 T4.2 协同)。
+- **T4.1b intellect-rag(随 Phase C 评估)**:仅检索执行联动——联网搜索执行链路按 provider 分发(未支持的 provider 保存后静默失效是当前最大风险)。**不在 Python fork 上做一次性投入**,Go 化后实现。
 
 ### T4.2 密钥存储架构评估(设计任务,随 Phase A/B)
 现状:14 个第三方 API Key 明文存于 `prompt_config` 并在拉取/保存间往返(安全评审"高"项;保存链路 = agent session PATCH 整包提交)。方向:密钥独立存储 + 配置里存引用、响应不回传明文、审计日志脱敏。建议作为 intellect-rag Go 化(Phase A/B)的数据模型设计输入,避免 Python 侧一次性投入。
@@ -160,18 +165,18 @@ Outfit/JetBrains Mono 的字号/行高纳入语义 token,与既有 token 体系�
 T2.3(提取纯构建器) ──▶ T1.4(schema 测试)、T2.9(校验差异决策)
 T2.8(错误揭示)     ──▶ 使 66f2f3d 的 FormMessage 对用户真正可见(高优先)
 T2.5 第一步(ee 骨架)──▶ T3.4(i18n overlay)、T3.6(子树同步)
-T4.1(后端枚举+聚合位)──▶ 分享页修复完整生效、T2.7 落地
+T4.1a(Gateway/BFF 枚举+聚合位)──▶ 分享页修复完整生效、T2.7/T2.4 存储侧落地
 Phase B(事件契约)  ──▶ 画布页面对齐
 ```
 
-建议节奏:本周做 T1 全部 + T2.2/T2.3/**T2.8**;下周 T1.4/T2.1/T2.4(含后端 PATCH 语义确认)/T2.9;T2.5 第一步、T2.6/T2.7 排入下个迭代;T4.1 尽早发起(它阻塞分享页功能的实际生效)。
+建议节奏(v3 修订):~~本周 T1~~ **T1.1-T1.3 已完成**;本周余 T2.2/T2.3/**T2.8**;下周 T1.4/T2.1/T2.4(决策已解锁)/T2.9;T2.5 第一步、T2.6/T2.7 排入下个迭代;**T4.1a 尽早发起(它阻塞分享页功能的实际生效)**。
 
 ## 工作量汇总
 
 | 分组 | 任务数 | 量级 |
 |---|---|---|
-| T1 立即可做 | 4 | ~1 天 |
-| T2 P1 | 9 | 2-2.5 周 |
+| T1 立即可做 | 4(T1.1-T1.3 已完成) | ~1 天 → 余 T1.4 |
+| T2 P1 | 10(T2.10 已完成) | 2-2.5 周 → 余 ~2 周 |
 | T3 P2 | 7 | 随版本 |
-| T4 跨仓库 | 2 | 2-3 天 + 设计评估 |
+| T4 跨仓库 | 2(T4.1 拆 a/b) | 2-3 天 + 设计评估 |
 | T5 Go 化 | 4 阶段 | 3-5 人 × 6-9 个月 |
