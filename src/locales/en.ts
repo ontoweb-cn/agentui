@@ -1023,6 +1023,8 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       emptyResponse: 'Empty response',
       emptyResponseTip: `Set this as a response if no results are retrieved from the datasets for your query, or leave this field blank to allow the LLM to improvise when nothing is found.`,
       emptyResponseMessage: `Empty response will be triggered when nothing relevant is retrieved from datasets. You must clear the 'Empty response' field if no dataset is selected.`,
+      knowledgePlaceholderMessage: `The system prompt must include the {knowledge} placeholder when datasets are bound; retrieved chunks fill it at runtime.`,
+      variableKeyMessage: 'Variable key is required',
       emptyResponsePlaceholder:
         'The answer you are looking for is not found in the dataset!',
       setAnOpener: 'Opening greeting',

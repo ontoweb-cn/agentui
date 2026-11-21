@@ -927,6 +927,8 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
       emptyResponsePlaceholder: '在知识库中未找到您要寻找的答案！',
       emptyResponseTip: `如果在知识库中没有检索到用户的问题，它将使用它作为答案。 如果您希望 LLM 在未检索到任何内容时提出自己的意见，请将此留空。`,
       emptyResponseMessage: `当知识库中未检索到任何相关信息时，将触发空响应。由于未选择任何知识库，因此请清除“空响应”。`,
+      knowledgePlaceholderMessage: `已绑定知识库，系统提示词需包含 {knowledge} 占位符，召回内容将填充到该位置。`,
+      variableKeyMessage: '变量名不可为空',
       setAnOpener: '设置开场白',
       setAnOpenerInitial: `你好！ 我是你的助理，有什么可以帮到你的吗？`,
       setAnOpenerTip: '您想如何欢迎您的客户？',
