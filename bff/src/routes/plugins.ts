@@ -46,6 +46,11 @@ import {
   readPluginState,
   writePluginState,
 } from '../services/plugin-store';
+import {
+  copySwapFallback,
+  isRetriableFsError,
+  renameWithWindowsRetry,
+} from '../services/fs-windows-retry';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -552,6 +557,10 @@ async function installPluginFromDirectory(
   // 要么是旧版要么是新版(拷贝失败不动旧装;换入失败回滚旧装),
   // 不再有「先删后拷」的缺失窗口。staging/retired 以 '.' 开头,
   // 列表路由本就跳过,瞬态目录永不外显。
+  // Windows install bug 修复:目录内有进程持句柄(杀毒/索引/files 路由泄漏 fd)
+  // 时 rename 抛 EPERM→500(确定性复现,Linux 不受影响)。策略 = EPERM/EBUSY
+  // 短退避重试,穷尽后 copy-swap 兜底;兜底删源失败即回滚副本并上抛,
+  // dest 保持旧装原位,不变式不破。
   const staging = join(PLUGINS_DIR, `.staging-${meta.id}`);
   const retired = join(PLUGINS_DIR, `.retired-${meta.id}`);
   await rm(staging, { recursive: true, force: true });
@@ -565,22 +574,33 @@ async function installPluginFromDirectory(
     });
     let hadPrevious: boolean;
     try {
-      await rename(dest, retired);
+      await renameWithWindowsRetry(dest, retired);
       hadPrevious = true;
     } catch (error) {
-      // 首次安装无旧装(ENOENT)属正常形态;其余错误照常上抛
-      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+      // 首次安装无旧装(ENOENT)属正常形态
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+        hadPrevious = false;
+      } else if (isRetriableFsError(error)) {
+        // rename 重试穷尽仍 EPERM:拷贝旧装到 retired 再删 dest;
+        // 删 dest 失败会由 copySwapFallback 回滚副本并上抛(旧装原位)
+        await copySwapFallback(dest, retired);
+        hadPrevious = true;
+      } else {
         throw error;
       }
-      hadPrevious = false;
     }
     try {
-      await rename(staging, dest);
+      await renameWithWindowsRetry(staging, dest);
     } catch (error) {
-      if (hadPrevious) {
-        await rename(retired, dest).catch(() => {});
+      if (isRetriableFsError(error)) {
+        // dest 此时已空位(旧装已移走):copy-swap 即换入,dest 全程非空
+        await copySwapFallback(staging, dest);
+      } else {
+        if (hadPrevious) {
+          await rename(retired, dest).catch(() => {});
+        }
+        throw error;
       }
-      throw error;
     }
     await rm(retired, { recursive: true, force: true });
   } finally {
