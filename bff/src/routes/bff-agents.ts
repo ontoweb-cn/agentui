@@ -250,17 +250,44 @@ bffAgentRoutes.patch('/agents/:agentId/sessions/:sessionId', async (c) => {
   const agentId = c.req.param('agentId');
   const sessionId = c.req.param('sessionId');
   const body = await c.req.json().catch(() => ({}));
+  // 字段体积上限(quality-security-review-20261121 #9):Gateway 有字段白名单
+  // 但体积约束未证实,BFF 先行兜底,防认证成员提交超大 title/prompt_config 落库。
+  const MAX_TITLE_LENGTH = 200;
+  const MAX_KB_IDS = 100;
+  const MAX_PROMPT_CONFIG_BYTES = 256 * 1024;
   const params: { title?: string; kbIds?: string[]; promptConfig?: unknown } = {};
   const rawTitle = typeof body?.title === 'string' ? body.title : body?.name;
   if (typeof rawTitle === 'string') {
+    if (rawTitle.length > MAX_TITLE_LENGTH) {
+      return c.json(
+        { code: 400, message: `title too long (max ${MAX_TITLE_LENGTH} chars)` },
+        400,
+      );
+    }
     params.title = rawTitle;
   }
   const rawKbIds = body?.kb_ids ?? body?.kbIds;
   if (Array.isArray(rawKbIds)) {
-    params.kbIds = rawKbIds.filter((v: unknown): v is string => typeof v === 'string');
+    const kbIds = rawKbIds.filter((v: unknown): v is string => typeof v === 'string');
+    if (kbIds.length > MAX_KB_IDS) {
+      return c.json(
+        { code: 400, message: `kb_ids too many (max ${MAX_KB_IDS} items)` },
+        400,
+      );
+    }
+    params.kbIds = kbIds;
   }
   const rawPromptConfig = body?.prompt_config ?? body?.promptConfig;
   if (rawPromptConfig !== undefined && rawPromptConfig !== null && typeof rawPromptConfig === 'object') {
+    if (JSON.stringify(rawPromptConfig).length > MAX_PROMPT_CONFIG_BYTES) {
+      return c.json(
+        {
+          code: 400,
+          message: `prompt_config too large (max ${MAX_PROMPT_CONFIG_BYTES} bytes serialized)`,
+        },
+        400,
+      );
+    }
     params.promptConfig = rawPromptConfig;
   }
   if (Object.keys(params).length === 0) {

@@ -1351,3 +1351,68 @@ describe('POST /agents/:agentId/sessions/:sessionId/stop', () => {
     expect(JSON.stringify(body)).not.toContain('10.0.0.1');
   });
 });
+
+// ---------------------------------------------------------------------------
+// 字段体积上限(quality-security-review-20261121 #9):
+// Gateway 有字段白名单但体积约束未证实,BFF 先行兜底。
+// ---------------------------------------------------------------------------
+describe('PATCH 字段体积上限', () => {
+  let mocks: MockSetup;
+  let app: Hono<{ Variables: TestVariables }>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks = createMocks();
+    app = createApp(mocks);
+  });
+
+  it('title 超长(>200 字符)→ 400', async () => {
+    const res = await app.request('/agents/agent-1/sessions/sess-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Backend-Id': 'tenant-1' },
+      body: JSON.stringify({ title: 'x'.repeat(201) }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toContain('title too long');
+  });
+
+  it('kb_ids 超量(>100 项)→ 400', async () => {
+    const res = await app.request('/agents/agent-1/sessions/sess-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Backend-Id': 'tenant-1' },
+      body: JSON.stringify({
+        kb_ids: Array.from({ length: 101 }, (_, i) => `kb-${i}`),
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toContain('kb_ids too many');
+  });
+
+  it('prompt_config 序列化超 256KB → 400', async () => {
+    const res = await app.request('/agents/agent-1/sessions/sess-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Backend-Id': 'tenant-1' },
+      body: JSON.stringify({
+        prompt_config: { system: 'y'.repeat(256 * 1024) },
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toContain('prompt_config too large');
+  });
+
+  it('上限边界内(200 字符/100 项)正常放行', async () => {
+    (mocks.adapter.updateSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'sess-1',
+    });
+    const res = await app.request('/agents/agent-1/sessions/sess-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Backend-Id': 'tenant-1' },
+      body: JSON.stringify({
+        title: 'x'.repeat(200),
+        kb_ids: Array.from({ length: 100 }, (_, i) => `kb-${i}`),
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(mocks.adapter.updateSession).toHaveBeenCalled();
+  });
+});

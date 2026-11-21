@@ -176,10 +176,12 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
   // fail-closed:role 解析失败(resolver 对缺失 role 兜底 'member'/undefined)
   // 一律 403——不允许无法确权者以服务身份改租户配置。60s 角色缓存缓解 TEAM 抖动。
   // flag 关闭时门控整体不生效,写请求由上游按成员令牌鉴权,与现状完全一致。
+  // 评审 #5:读语义 = GET/HEAD;其余按写对待(OPTIONS 同源部署无 preflight 实际到达)。
+  const isReadMethod = method === 'GET' || method === 'HEAD';
   const ADMIN_ROLES = new Set(['admin', 'owner']); // 与 llm-auth.ts、MemberRole(domain.ts) 口径一致
   if (
     forceServiceToken &&
-    method !== 'GET' &&
+    !isReadMethod &&
     !ADMIN_ROLES.has(intellectRole ?? '')
   ) {
     return c.json(
@@ -239,6 +241,9 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
       `[proxy] upstream 401 ${method} ${fullPath}: ${bodyText.slice(0, 500)}`,
     );
     if (sessionToken && isModelMgmtPath) {
+      // 注(评审 #8):P1-b 强制服务令牌时,上游 401(ragAdminToken 失效)同样
+      // 走此透传——企业模式前端拦截器对 401 静默,错误由模型页呈现,方向与
+      // P1-a 错误可见化一致;社区模式(sessionToken 无)保持改写,无登出循环。
       return streamResponse(upstream);
     }
     // 返回 null data,前端 hooks 通过 data?.data ?? fallback 自动使用默认值

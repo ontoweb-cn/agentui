@@ -11,6 +11,8 @@
  * (dest 任一时刻要么旧版要么新版)由调用方按下方注释维护。
  */
 
+import { cp, rename, rm } from 'node:fs/promises';
+
 const RETRYABLE_CODES = new Set(['EPERM', 'EBUSY']);
 
 export function isRetriableFsError(err: unknown): boolean {
@@ -30,7 +32,6 @@ export async function renameWithWindowsRetry(
 ): Promise<void> {
   const attempts = opts.attempts ?? 5;
   const baseDelayMs = opts.baseDelayMs ?? 50;
-  const { rename } = await import('node:fs/promises');
   for (let i = 0; ; i++) {
     try {
       await rename(src, dest);
@@ -54,7 +55,6 @@ export async function copySwapFallback(
   dest: string,
   opts: { attempts?: number; baseDelayMs?: number } = {},
 ): Promise<void> {
-  const { cp, rm } = await import('node:fs/promises');
   await cp(src, dest, { recursive: true, force: true });
   try {
     await rm(src, {

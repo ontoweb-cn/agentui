@@ -582,9 +582,15 @@ async function installPluginFromDirectory(
         hadPrevious = false;
       } else if (isRetriableFsError(error)) {
         // rename 重试穷尽仍 EPERM:拷贝旧装到 retired 再删 dest;
-        // 删 dest 失败会由 copySwapFallback 回滚副本并上抛(旧装原位)
-        await copySwapFallback(dest, retired);
-        hadPrevious = true;
+        // 删 dest 失败会由 copySwapFallback 回滚副本并上抛(旧装原位)。
+        // cp 中途失败会在 retired 残留部分副本——此处主动清理(评审 #2)。
+        try {
+          await copySwapFallback(dest, retired);
+          hadPrevious = true;
+        } catch (swapErr) {
+          await rm(retired, { recursive: true, force: true }).catch(() => {});
+          throw swapErr;
+        }
       } else {
         throw error;
       }
@@ -593,8 +599,17 @@ async function installPluginFromDirectory(
       await renameWithWindowsRetry(staging, dest);
     } catch (error) {
       if (isRetriableFsError(error)) {
-        // dest 此时已空位(旧装已移走):copy-swap 即换入,dest 全程非空
-        await copySwapFallback(staging, dest);
+        // dest 此时已空位(旧装已移走):copy-swap 即换入,dest 全程非空。
+        // 兜底自身失败(ENOSPC/rm 失败)时必须回滚旧装,否则 dest 缺失
+        // 打破"任一时刻非空"不变式(评审 P2 #1)。
+        try {
+          await copySwapFallback(staging, dest);
+        } catch (swapErr) {
+          if (hadPrevious) {
+            await rename(retired, dest).catch(() => {});
+          }
+          throw swapErr;
+        }
       } else {
         if (hadPrevious) {
           await rename(retired, dest).catch(() => {});
@@ -602,7 +617,12 @@ async function installPluginFromDirectory(
         throw error;
       }
     }
-    await rm(retired, { recursive: true, force: true });
+    try {
+      await rm(retired, { recursive: true, force: true });
+    } catch {
+      // 换入已成功;retired 清理失败不使请求失败(评审 #3),
+      // 瞬态 '.' 目录不外显,下次 install 预 rm 兜住。
+    }
   } finally {
     await rm(staging, { recursive: true, force: true });
   }

@@ -114,6 +114,9 @@ export async function proxy(path: string, req: ProxyRequest): Promise<Response> 
   } else if (req.ragAdminToken) {
     // P1-b(§4.1): 服务令牌显式 Authorization,走 fetchWithRagToken 的既有
     // explicit 分支(不覆盖、不重试,见 rag-fetch.ts token 优先级)。
+    // 调用方不变式(评审 #4):forceServiceToken=true 必须伴随 ragAdminToken
+    // (proxy.ts 以 !!ragAdminToken 保证)。若未来调用方违反,此处静默回落
+    // session 分支会造成"成员令牌+身份头已剥离"的半态——改前先读本注释。
     headers.set('Authorization', `Bearer ${req.ragAdminToken}`);
   }
 
