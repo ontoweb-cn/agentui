@@ -32,6 +32,7 @@ import type { IAdapterRegistry } from '../services/adapter-registry-types';
 import { getBackendContext, resolveBackendContext } from '../middleware/backend-context';
 import type { IHarnessAdapter } from '../types/adapter';
 import { safeJsonSerialize } from '../utils/serialize';
+import { validateWebSearchPromptConfig } from '../utils/web-search-validation';
 import { registerRun, verifyRunOwnership } from '../services/run-registry';
 
 // Hono context variables for BFF agent routes
@@ -287,6 +288,12 @@ bffAgentRoutes.patch('/agents/:agentId/sessions/:sessionId', async (c) => {
         },
         400,
       );
+    }
+    // T2.7:联网搜索配置校验(服务端镜像)——前端 superRefine 可被直接
+    // HTTP 调用绕过,此处按同一规则拒绝非法 provider/缺失 key。
+    const webSearchCheck = validateWebSearchPromptConfig(rawPromptConfig);
+    if (!webSearchCheck.ok) {
+      return c.json({ code: 400, message: webSearchCheck.message }, 400);
     }
     params.promptConfig = rawPromptConfig;
   }
