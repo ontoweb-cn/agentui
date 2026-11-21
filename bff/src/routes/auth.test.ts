@@ -1321,7 +1321,7 @@ describe('auth 路由 (P4b US1)', () => {
     process.env.BFF_OAUTH_REDIRECT_URI = 'http://localhost:9391/api/bff/auth/oauth/callback';
     try {
       const backendStore = createMockBackendStore([enterpriseTenant]);
-      const app = createApp(backendStore, createMockHarnessStore([enterpriseBackend]));
+      const app = createApp(backendStore, undefined, createMockHarnessStore([enterpriseBackend]));
 
       vi.spyOn(globalThis, 'fetch').mockResolvedValue(
         new Response(null, { status: 204 }),
