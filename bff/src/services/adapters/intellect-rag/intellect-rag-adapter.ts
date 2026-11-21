@@ -135,7 +135,10 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
     const data = await this.request<unknown>(
       'PATCH',
       `/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}`,
-      params,
+      // 评审修复(Bugbot High):此前误传 camelCase 的 params,构造好的
+      // snake_case body 成了死代码——intellect-rag 后端上 kb_ids/prompt_config
+      // 静默丢失(保存"成功"但未落库)。title 恰好双形态同名,故未被发现。
+      body,
       _ctx,
     );
     return data as unknown as Session;
