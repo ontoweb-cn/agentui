@@ -306,7 +306,12 @@ app.use('/admin/wizard/*', async (c, next) => {
   c.set('bootstrapTokenManager' as never, bootstrapTokenManager as never);
   // 注入 TokenVault 供 setup 端点存储凭据(setCredentials)
   c.set('tokenVault' as never, tokenVault as never);
-  await authMiddleware(c, next);
+  // D-04 修复(wizard-sso):必须转发 authMiddleware 的返回值。
+  // authMiddleware 对非公开路径会短路返回 401 Response;此前的裸 `await` 丢弃了它,
+  // 包装中间件自身无返回 → Hono 判定 "Context is not finalized" → 500。
+  // 既有 wizard 路径全部位于 publicPrefixes,该分支从未被触达,故隐患潜伏至今;
+  // /admin/wizard/sso/providers 上线后首次触达暴露。
+  return await authMiddleware(c, next);
 });
 app.route('/', wizardRoutes);
 

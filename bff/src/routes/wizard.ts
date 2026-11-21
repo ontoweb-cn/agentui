@@ -26,7 +26,9 @@ import type { ITokenVault } from '../services/token-vault';
 import { safeFetch, isUrlSafe, SSRF_PRIVATE_IP_HINT } from '../services/ssrf-guard';
 import { validateTenantConfigs, fetchTenantInfo } from '../services/tenant-validator';
 import { BootstrapTokenManager } from '../services/bootstrap-token';
-import { buildCompanionRagConfig } from '../services/rag-plugin-backend';
+// wizard-sso(P2):渠道拉取与 SSO 配置加载(仅结构校验用;https 强制仍由 sso-config 启动 fail-fast 裁决)
+import { getLoginProviders } from '../services/sso-providers';
+import { loadSsoConfig } from '../services/sso-config';
 import { checkImtSession } from '../middleware/imt-session-guard';
 import { isImtCanvasAgentsEnabled } from '../utils/feature-flags';
 import type { HarnessStoreListConfigs } from '../types/harness-admin';
@@ -41,6 +43,7 @@ import type {
   WizardProbeResponse,
   WizardSetupRequest,
   WizardSetupResponse,
+  WizardSsoProvidersResponse,
 } from '../types/wizard';
 
 interface WizardVariables {
@@ -62,16 +65,8 @@ const DEFAULT_BOOTSTRAP_MANAGER = new BootstrapTokenManager();
 // ---------------------------------------------------------------------------
 
 const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
-  {
-    type: 'kag',
-    label: 'KAG',
-    description: 'Knowledge-Augmented Generation',
-    // spec-010 v8.3:默认 endpoint 与 spec.md §9.2 对齐(MCP SSE 默认 :3000)
-    defaultEndpoint: 'http://localhost:3000',
-    // spec-010 v8.3 修订:knowledgeBase true→false, mcp false→true(基于 research.md R2)
-    capabilities: { canvas: false, knowledgeBase: false, memory: false, mcp: true, multiTenant: false, modelManagement: false },
-    credentialKind: 'bearer-token',
-  },
+  // D-02/X-01(P1):kag 已从向导选项下架(设计 docs/wizard-kag-to-sso-design.md §3.3)。
+  // 类型联合与 Adapter 保留:存量配置兼容 + 管理端仍可手工配置;仅向导入口不再提供。
   {
     type: 'intellect-enterprise',
     label: 'Intellect Enterprise',
@@ -114,74 +109,13 @@ const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
   },
 ];
 
-/** 伴生 RAG 插件元数据。不出现在 /backend-types,供 probe 与未来 enterprise setup 使用。 */
-const RAG_PLUGIN_OPTION: WizardBackendTypeOption = {
-  type: 'intellect-rag',
-  label: 'Intellect RAG',
-  description: 'Canvas engine + knowledge base (plugin of intellect-enterprise)',
-  defaultEndpoint: 'http://localhost:9380',
-  // 与 RAG_PLUGIN_CAPABILITIES 保持一致(模型管理为 RAG 自生能力,默认开)
-  capabilities: { canvas: true, knowledgeBase: true, memory: true, mcp: false, multiTenant: false, modelManagement: true },
-  credentialKind: 'bearer-token',
-};
+// P3(wizard-sso):RAG 不再以"伴生插件"形态在向导创建。RAG 与登录链路解耦,
+// 不阻塞首装;enterprise 首装后由管理端(PUT /admin/harness-backends/:id needsCreate
+// 分支)补配,capabilities 端点对未绑定 RAG 的租户自动降级(capabilities.ts L119-129)。
+// intellect-rag 仍不是独立向导类型(setup 保留显式拒绝,给出可读文案)。
 
 function getOptionForType(type: BackendType): WizardBackendTypeOption | undefined {
-  if (type === 'intellect-rag') return RAG_PLUGIN_OPTION;
   return BACKEND_TYPE_OPTIONS.find((o) => o.type === type);
-}
-
-/**
- * RAG 探测候选路径(Bug2 修复):与 IntellectRagAdapter 的调用约定对齐。
- * adapter 实际请求 `endpoint + /api/v1/*`——探测必须用同一前缀,
- * 否则子路径部署(如 …/intellect-kb)不存在能同时通过探测且被 adapter
- * 正确调用的 endpoint 值;`/v1/models` 作为旧根挂载形态的兼容回退。
- * 导出供单测。
- */
-export function ragProbePaths(ragEndpoint: string): string[] {
-  const base = ragEndpoint.replace(/\/$/, '');
-  return [`${base}/api/v1/models`, `${base}/v1/models`];
-}
-
-async function probeRagPlugin(
-  ragEndpoint: string,
-  ragApiKey?: string,
-): Promise<{ ragHealthy: boolean; ragError?: string }> {
-  const endpoint = ragEndpoint.replace(/\/$/, '');
-  const safe = await isUrlSafe(endpoint);
-  if (!safe) {
-    return { ragHealthy: false, ragError: `RAG URL 不安全(可能指向私有 IP)。${SSRF_PRIVATE_IP_HINT}` };
-  }
-  const headers: Record<string, string> = {};
-  if (ragApiKey) {
-    headers['Authorization'] = `Bearer ${ragApiKey}`;
-  }
-  const candidates = ragProbePaths(endpoint);
-  for (let i = 0; i < candidates.length; i++) {
-    try {
-      const resp = await safeFetch(candidates[i], {
-        headers,
-        timeoutMs: 5000,
-      });
-      if (resp.ok) {
-        return { ragHealthy: true };
-      }
-      // 401/403:已命中服务(路径正确),是凭证问题——不回退,
-      // 避免回退路径的 404 掩盖"key 错误"这一真实原因
-      if (resp.status === 401 || resp.status === 403) {
-        return {
-          ragHealthy: false,
-          ragError: `RAG 可达但鉴权失败(${resp.status}):检查 ragApiKey`,
-        };
-      }
-      // 404 等:该前缀不存在,尝试下一候选;最后一个候选的错误作为结果
-      if (i === candidates.length - 1) {
-        return { ragHealthy: false, ragError: `RAG 上游返回 ${resp.status}` };
-      }
-    } catch (err) {
-      return { ragHealthy: false, ragError: (err as Error).message };
-    }
-  }
-  return { ragHealthy: false, ragError: 'RAG 探测无候选路径' };
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +151,61 @@ wizardRoutes.get('/admin/wizard/status', (c) => {
 
 wizardRoutes.get('/admin/wizard/backend-types', (c) => {
   return c.json({ options: BACKEND_TYPE_OPTIONS } satisfies WizardBackendTypesResponse);
+});
+
+// ---------------------------------------------------------------------------
+// GET /admin/wizard/sso/providers — 拉取网关已配置的 SSO 登录渠道(wizard-sso P2)
+// 公开端点(与 probe 同级防护):SSRF 预校验 + IP 限流 + 超时控制。
+// 评审 R2:响应字段裁剪为 id/displayName/icon —— clientId/authorizeUrl/scopes
+// 仅由 BFF 内部构造授权 URL 使用,不向浏览器透出。
+// ---------------------------------------------------------------------------
+wizardRoutes.get('/admin/wizard/sso/providers', async (c) => {
+  const endpoint = (c.req.query('endpoint') ?? '').trim();
+  if (!endpoint) {
+    return c.json(
+      { providers: [], misconfigured: [], error: 'endpoint is required' } satisfies WizardSsoProvidersResponse,
+      400,
+    );
+  }
+
+  const clientIp = getClientIp(c);
+  if (!checkProbeRateLimit(clientIp)) {
+    return c.json(
+      { providers: [], misconfigured: [], error: '请求过于频繁,请稍后再试' } satisfies WizardSsoProvidersResponse,
+      429,
+    );
+  }
+
+  const safe = await isUrlSafe(endpoint);
+  if (!safe) {
+    return c.json(
+      {
+        providers: [],
+        misconfigured: [],
+        error: `URL 不安全(可能指向私有 IP)。${SSRF_PRIVATE_IP_HINT}`,
+      } satisfies WizardSsoProvidersResponse,
+      400,
+    );
+  }
+
+  try {
+    // tenantId 仅作 sso-providers 缓存键;向导探测态与具体租户无关
+    const selection = await getLoginProviders(endpoint.replace(/\/$/, ''), 'wizard-probe', loadSsoConfig());
+    return c.json({
+      providers: selection.providers.map((p) => ({
+        id: p.id,
+        displayName: p.displayName,
+        icon: p.icon,
+      })),
+      misconfigured: selection.misconfigured,
+    } satisfies WizardSsoProvidersResponse);
+  } catch (err) {
+    console.error('[wizard] sso providers fetch failed:', (err as Error).message);
+    return c.json(
+      { providers: [], misconfigured: [], error: '统一认证服务不可达,请稍后再试' } satisfies WizardSsoProvidersResponse,
+      502,
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -293,6 +282,14 @@ wizardRoutes.post('/admin/wizard/probe', async (c) => {
 
   const endpoint = body.endpoint.replace(/\/$/, '');
   const option = getOptionForType(body.type);
+  // D-02 修复(P1):未知/已下架类型(如 kag)显式拒绝,不再误走 /v1/models 探测。
+  // 此前 option 仅用于回填 capabilities,未知 type 仍会探测并可"假成功"。
+  if (!option) {
+    return c.json(
+      { healthy: false, error: `Unsupported backend type: ${body.type}` } satisfies WizardProbeResponse,
+      400,
+    );
+  }
 
   try {
     // M4 修复:intellect-enterprise 类型优先探测 /api/tenant/info(spec-011 端点)
@@ -316,18 +313,10 @@ wizardRoutes.post('/admin/wizard/probe', async (c) => {
           { healthy: false, error: '/api/tenant/info 返回空 tenant_id' } satisfies WizardProbeResponse,
         );
       }
-      let ragHealthy: boolean | undefined;
-      let ragError: string | undefined;
-      if (body.ragEndpoint) {
-        const rag = await probeRagPlugin(body.ragEndpoint, body.ragApiKey);
-        ragHealthy = rag.ragHealthy;
-        ragError = rag.ragError;
-      }
+      // P3(wizard-sso):RAG 插件探测随向导 RAG 区块一并移除——RAG 由管理端补配,不阻塞首装。
       return c.json({
         healthy: true,
         capabilities: option?.capabilities,
-        ragHealthy,
-        ragError,
       } satisfies WizardProbeResponse);
     }
 
@@ -472,12 +461,19 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   // 兼容前端 request 拦截器的 snake_case 转换(next-request.ts convertTheKeysOfTheObjectToSnake)。
   // 前端向导经共享 axios 实例发送请求,键名会被转为 snake_case(credentialKind → credential_kind 等)。
   // BFF wizard 契约为 camelCase,此处做归一化,同时接受 camelCase 和 snake_case。
+  // wizard-sso(P2):嵌套对象(如 sso.public_origin)同样需要归一化,故改为深度转换。
   const toCamel = (s: string): string =>
     s.replace(/_([a-z])/g, (_, ch: string) => ch.toUpperCase());
-  const body = {} as Record<string, unknown>;
-  for (const [key, value] of Object.entries(rawBody)) {
-    body[toCamel(key)] = value;
-  }
+  const toCamelDeep = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(toCamelDeep);
+    if (value !== null && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([k, v]) => [toCamel(k), toCamelDeep(v)]),
+      );
+    }
+    return value;
+  };
+  const body = toCamelDeep(rawBody) as Record<string, unknown>;
   const req = body as unknown as WizardSetupRequest;
 
   // 基本校验
@@ -501,6 +497,7 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   }
 
   // m4 修复(P3):intellect-enterprise 的 intellectTenantId 校验(32 位 hex)
+  // P3(wizard-sso):RAG 插件必填校验移除——RAG 由管理端补配,不再阻塞首装向导。
   if (req.type === 'intellect-enterprise') {
     if (!req.intellectTenantId) {
       return c.json(
@@ -511,25 +508,6 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
     if (!/^[0-9a-fA-F]{32}$/.test(req.intellectTenantId)) {
       return c.json(
         { success: false, error: 'intellectTenantId 必须为 32 位 hex(Rust 版本要求)' } satisfies WizardSetupResponse,
-        400,
-      );
-    }
-    if (!req.ragEndpoint?.trim()) {
-      return c.json(
-        { success: false, error: 'intellect-enterprise 类型必须提供 ragEndpoint' } satisfies WizardSetupResponse,
-        400,
-      );
-    }
-    if (!req.ragApiKey?.trim()) {
-      return c.json(
-        { success: false, error: 'intellect-enterprise 类型必须提供 ragApiKey' } satisfies WizardSetupResponse,
-        400,
-      );
-    }
-    const ragEndpointSafe = await isUrlSafe(req.ragEndpoint);
-    if (!ragEndpointSafe) {
-      return c.json(
-        { success: false, error: `RAG URL 不安全(可能指向私有 IP)。${SSRF_PRIVATE_IP_HINT}` } satisfies WizardSetupResponse,
         400,
       );
     }
@@ -553,6 +531,72 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
       { success: false, error: `Unsupported backend type: ${req.type}` } satisfies WizardSetupResponse,
       400,
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // wizard-sso(P2):SSO 配置校验(仅 intellect-enterprise;结构校验,https 强制
+  // 由 sso-config.ts 启动 fail-fast 裁决,向导保持非阻塞 —— 设计 §4.3/§4.4)
+  // ---------------------------------------------------------------------------
+  const ssoWarnings: string[] = [];
+  if (req.sso?.enabled) {
+    // X-10/评审 R1:非 enterprise 类型携带 sso → 400 明确拒绝,避免"静默忽略被误以为已启用"
+    if (req.type !== 'intellect-enterprise') {
+      return c.json(
+        { success: false, error: 'sso 配置仅支持 intellect-enterprise 类型' } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+    const publicOrigin = (req.sso.publicOrigin ?? '').trim();
+    if (!publicOrigin) {
+      return c.json(
+        { success: false, error: '启用 sso 时 sso.publicOrigin 必填' } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+    try {
+      const origin = new URL(publicOrigin);
+      if (origin.protocol !== 'http:' && origin.protocol !== 'https:') {
+        return c.json(
+          { success: false, error: 'sso.publicOrigin 必须为 http(s) URL' } satisfies WizardSetupResponse,
+          400,
+        );
+      }
+    } catch {
+      return c.json(
+        { success: false, error: `sso.publicOrigin 不是合法 URL: ${publicOrigin}` } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+    if (!req.sso.stateSecret || req.sso.stateSecret.length < 32) {
+      return c.json(
+        {
+          success: false,
+          error: 'sso.stateSecret 至少 32 字符(与 BFF_SSO_STATE_SECRET 启动校验一致)',
+        } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+    // X-09:白名单 Best-effort 校验,网关不可达时降级为警告(不阻断首装)
+    const providerIds = Array.isArray(req.sso.providers)
+      ? req.sso.providers.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
+      : null;
+    if (providerIds && providerIds.length > 0) {
+      try {
+        const selection = await getLoginProviders(req.endpoint.replace(/\/$/, ''), 'wizard-probe', loadSsoConfig());
+        const known = new Set(selection.providers.map((p) => p.id));
+        const unknown = providerIds.filter((id) => !known.has(id));
+        if (unknown.length > 0) {
+          ssoWarnings.push(
+            `sso 渠道白名单包含未知或不可用渠道: ${unknown.join(', ')};` +
+              '运行期将仅展示白名单内渠道,若全部未知则登录页不展示任何 SSO 渠道(密码登录不受影响)。',
+          );
+        }
+      } catch (err) {
+        ssoWarnings.push(
+          `sso 渠道白名单校验跳过(统一认证服务不可达): ${(err as Error).message}`,
+        );
+      }
+    }
   }
 
   const store = getStore(c);
@@ -659,26 +703,12 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
     ...(req.defaultForTenant !== undefined ? { defaultForTenant: req.defaultForTenant } : {}),
   };
 
-  let ragConfig: HarnessBackendConfig | undefined;
-  if (req.type === 'intellect-enterprise' && req.ragEndpoint && req.ragApiKey) {
-    if (!vault) {
-      return c.json(
-        { success: false, error: 'RAG plugin API key 需要 Token Vault 支持,当前环境未配置 vault' } satisfies WizardSetupResponse,
-        500,
-      );
-    }
-    ragConfig = buildCompanionRagConfig({
-      enterpriseId: backendId,
-      enterpriseName: req.name,
-      ragEndpoint: req.ragEndpoint,
-    });
-    newConfig.ragBackendId = ragConfig.id;
-    await vault.setCredentials(ragConfig.id, { kind: 'bearer-token', token: req.ragApiKey });
-  }
+  // P3(wizard-sso):移除向导内伴生 RAG 创建。RAG 由管理端补配(PUT needsCreate 分支),
+  // capabilities 端点对未绑定 RAG 的租户自动降级;setup 响应以 warnings 非阻断提示。
 
   // 6. 持久化 + 热加载 + 缓存失效
   //    若 existingConfig 存在(重新 setup 场景),用 newConfig 覆盖;否则追加。
-  const configsToUpsert = ragConfig ? [newConfig, ragConfig] : [newConfig];
+  const configsToUpsert = [newConfig];
   const byId = new Map(existing.map((cfg) => [cfg.id, cfg]));
   for (const cfg of configsToUpsert) {
     byId.set(cfg.id, cfg);
@@ -697,9 +727,6 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
     );
   }
   registry.invalidate(backendId);
-  if (ragConfig) {
-    registry.invalidate(ragConfig.id);
-  }
 
   // 7. spec-010 v8 修改 3:持久化后再触发一次 validateTenantConfigs(确保 load() 后状态正确)
   //    若校验失败,执行回滚:删除刚创建的 config(防止脏状态导致下次启动 fail-fast)
@@ -711,12 +738,8 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
         await store.saveConfig(existing);
         await store.load();
         registry.invalidate(backendId);
-        // 凭据一并回收:634/640 行已写入 vault 的企业版凭据不能遗留为孤儿条目
+        // 凭据一并回收:vault 已写入的企业版凭据不能遗留为孤儿条目
         await vault?.deleteCredentials(backendId);
-        if (ragConfig) {
-          registry.invalidate(ragConfig.id);
-          await vault?.deleteCredentials(ragConfig.id);
-        }
       } catch (rollbackErr) {
         console.error(
           `[wizard] Rollback failed after tenant validation failure: ${(rollbackErr as Error).message}`,
@@ -780,8 +803,12 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
       );
     }
   }
-  if (ragConfig) {
-    await bStore.setCanvasBinding(defaultTenantId, ragConfig.id);
+  // P3(wizard-sso/X-04):RAG 未随向导配置 → 非阻断提示能力降级与补配路径。
+  // capabilities 端点对未绑定 RAG 的租户自动置 false(前端隐藏入口),此提示告知恢复路径。
+  if (req.type === 'intellect-enterprise') {
+    warnings.push(
+      'RAG 插件未配置:画布/知识库/记忆/模型管理在管理端补配 RAG 前不可用(Admin → Harness Backends)。',
+    );
   }
 
   // 8. 首个 backend 创建成功后,失效 bootstrap token(spec §9.4)
@@ -790,14 +817,33 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
 
   // 9. 生成 env snippet(展示 .env 片段,用户手动设置或作为 vault 回退参考)
   // P1-3 修复:响应不含 token 明文,始终使用占位符
-  const envSnippet = ragConfig
-    ? `# 添加到 .env 文件\n${adminTokenEnvVar}=<your-token>\n${ragConfig.adminTokenEnvVar}=<your-rag-api-key>`
-    : `# 添加到 .env 文件\n${adminTokenEnvVar}=<your-token>`;
+  // wizard-sso(P2/X-08):启用 SSO 时追加统一认证配置;stateSecret 永以占位符输出,
+  // 真实密钥仅存在于向导 UI(用户复制到 .env),任何响应/落盘均不含明文。
+  // P3(wizard-sso):RAG 不再随向导配置,snippet 无 RAG key 行。
+  const baseSnippet = `# 添加到 .env 文件\n${adminTokenEnvVar}=<your-token>`;
+  const ssoSnippetLines: string[] = [];
+  if (req.sso?.enabled && req.type === 'intellect-enterprise') {
+    const providerIds = Array.isArray(req.sso.providers)
+      ? req.sso.providers.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
+      : [];
+    ssoSnippetLines.push('# 统一认证(SSO)');
+    ssoSnippetLines.push('BFF_SSO_ENABLED=true');
+    ssoSnippetLines.push(`BFF_PUBLIC_ORIGIN=${(req.sso.publicOrigin ?? '').trim()}`);
+    ssoSnippetLines.push('BFF_SSO_STATE_SECRET=<your-secret>');
+    ssoSnippetLines.push(
+      providerIds.length > 0
+        ? `BFF_SSO_PROVIDERS=${providerIds.join(',')}`
+        : '# BFF_SSO_PROVIDERS= 渠道白名单(留空=不过滤)',
+    );
+    ssoSnippetLines.push(`BFF_SSO_SILENT_RELOGIN=${req.sso.silentRelogin === false ? 'false' : 'true'}`);
+  }
+  const envSnippet = ssoSnippetLines.length > 0 ? `${baseSnippet}\n${ssoSnippetLines.join('\n')}` : baseSnippet;
 
+  const allWarnings = [...warnings, ...ssoWarnings];
   return c.json({
     success: true,
     backendId,
     envSnippet,
-    ...(warnings.length > 0 ? { warnings } : {}),
+    ...(allWarnings.length > 0 ? { warnings: allWarnings } : {}),
   } satisfies WizardSetupResponse);
 });

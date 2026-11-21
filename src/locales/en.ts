@@ -3621,12 +3621,51 @@ Important structured information may include: names, dates, locations, events, k
         envSnippet: '.env snippet (copy to your .env file)',
         error: 'Error',
         submit: 'Create Backend',
+        // wizard-sso (P2): SSO summary row
+        sso: 'Unified authentication (SSO)',
+        ssoEnabled: 'Enabled',
+        ssoAllChannels: 'All channels (unfiltered)',
       },
       done: {
         title: 'Setup Complete',
         description:
           'Backend has been configured successfully. You can now start using the platform.',
         goHome: 'Go to Home',
+        warnings: 'Notes',
+      },
+      // wizard-sso (P2): unified authentication (SSO) configuration block
+      sso: {
+        enable: 'Enable unified authentication (SSO) login',
+        skipHint:
+          'You can skip this and configure it later in system settings. Once enabled, end users can sign in via unified authentication without a password.',
+        channels: 'Login channels',
+        fetchChannels: 'Fetch login channels',
+        needEndpoint:
+          'Enter the enterprise gateway endpoint first, then fetch login channels.',
+        fetchFailed:
+          'Failed to fetch login channels. Retry later or skip SSO.',
+        noChannels:
+          'No login channels are available yet from the unified authentication service. Configure later or skip SSO.',
+        misconfigured: 'Misconfigured, unavailable',
+        whitelistHint:
+          'Select channels to show on the login page. Select none to show all available channels.',
+        publicOrigin: 'Public origin',
+        httpWarning:
+          'Currently http://: production requires https or BFF startup validation will fail (intranet debugging may set BFF_ALLOW_INSECURE_SSO=true).',
+        secret: 'Bootstrap secret',
+        secretPlaceholder:
+          'Not generated yet. Copy it to the deployment config after generating',
+        generate: 'Generate',
+        regenerate: 'Regenerate',
+        copy: 'Copy',
+        secretCopied:
+          'Secret copied. Paste it into BFF_SSO_STATE_SECRET in your .env file',
+        copyFailed: 'Copy failed. Please select and copy manually',
+        secretHint:
+          'The secret is visible only in this session and never appears in config files or API responses. Regenerate it after a page refresh.',
+        silentRelogin: 'Silent re-login after session expiry',
+        fetching: 'Fetching...',
+        refetch: 'Refresh',
       },
       toast: {
         success: 'Backend created successfully',

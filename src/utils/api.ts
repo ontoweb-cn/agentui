@@ -479,6 +479,8 @@ export default {
     backendTypes: `${bffWizard}/backend-types`,
     probe: `${bffWizard}/probe`,
     setup: `${bffWizard}/setup`,
+    // wizard-sso(P2):拉取网关已配置的 SSO 登录渠道(字段裁剪视图)
+    ssoProviders: `${bffWizard}/sso/providers`,
   },
 
   // Sandbox settings

@@ -336,7 +336,7 @@ describe('getProtocolFamily', () => {
   it('OpenAI 兼容后端 → openai-compatible', () => {
     expect(getProtocolFamily('intellect-community')).toBe('openai-compatible');
     expect(getProtocolFamily('hermes')).toBe('openai-compatible');
-    expect(getProtocolFamily('kag')).toBe('openai-compatible');
+    expect(getProtocolFamily('kag')).toBe('mcp-protocol');
     expect(getProtocolFamily('agent-scope')).toBe('openai-compatible');
   });
 

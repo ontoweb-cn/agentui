@@ -19,11 +19,13 @@ export type BackendType =
   | 'kag'
   | 'agent-scope';
 
-// spec-010 v8 D-1: 协议族(供 Admin 列表页展示列使用)
+// spec-010 v8 D-1: 协议族(供 Admin 列表展示列使用)
+// D6 修复(wizard-sso):补 'mcp-protocol' 族,对齐 BFF adapter.ts/spec-012(KAG 走 MCP)
 export type ProtocolFamily =
   | 'canvas-workflow'
   | 'intellect-enterprise'
-  | 'openai-compatible';
+  | 'openai-compatible'
+  | 'mcp-protocol';
 
 export interface HarnessCapabilities {
   canvas: boolean;
@@ -45,7 +47,8 @@ const PROTOCOL_FAMILY_BY_TYPE: Record<BackendType, ProtocolFamily> = {
   'intellect-llm': 'openai-compatible',
   'intellect-community': 'openai-compatible',
   hermes: 'openai-compatible',
-  kag: 'openai-compatible',
+  // D6 修复(wizard-sso):KAG 为 MCP 协议族(spec-012),此前误标 openai-compatible
+  kag: 'mcp-protocol',
   'agent-scope': 'openai-compatible',
 };
 

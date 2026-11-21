@@ -1280,6 +1280,8 @@ interface BffTenant {
 interface HarnessBackend {
   id: string;
   name: string;
+  // wizard-sso(P1, 2026-11):'kag' 已从安装向导选项下架(docs/wizard-kag-to-sso-design.md);
+  // 类型联合保留 —— 存量配置兼容,管理端仍可手工配置;协议族为 mcp-protocol(spec-012)。
   type: 'intellect-rag' | 'intellect-enterprise' | 'intellect-llm' | 'intellect-community' | 'hermes' | 'kag' | 'agent-scope';
   endpoint: string;                // http://localhost:9380 / http://localhost:9091
   adminTokenEnvVar: string;        // token 引用(环境变量名,不存明文)

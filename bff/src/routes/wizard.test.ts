@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import { Hono } from 'hono';
-import { wizardRoutes, ragProbePaths } from './wizard';
+import { wizardRoutes } from './wizard';
 import { clearImtSessionCache } from '../middleware/imt-session-guard';
 import { AUTH_COOKIE_NAME } from '../types/auth';
 import type { BootstrapTokenManager } from '../services/bootstrap-token';
@@ -28,9 +28,14 @@ vi.mock('../services/tenant-validator', () => ({
   // P3-m4 / B2 修复:fetchTenantInfo 默认返回 null(降级放行)
   fetchTenantInfo: vi.fn().mockResolvedValue(null),
 }));
+// wizard-sso(P2):渠道拉取客户端 mock(路由层只关心选择结果)
+vi.mock('../services/sso-providers', () => ({
+  getLoginProviders: vi.fn(),
+}));
 
 import { safeFetch, isUrlSafe } from '../services/ssrf-guard';
 import { validateTenantConfigs, fetchTenantInfo } from '../services/tenant-validator';
+import { getLoginProviders } from '../services/sso-providers';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -224,23 +229,24 @@ describe('wizard 路由 (B-3)', () => {
   // -------------------------------------------------------------------------
 
   describe('GET /admin/wizard/backend-types', () => {
-    it('返回 5 个后端类型选项(不含独立 intellect-rag)', async () => {
+    it('返回 4 个后端类型选项(不含独立 intellect-rag 与已下架 kag)', async () => {
       const res = await app.request('/admin/wizard/backend-types', {
         headers: { Authorization: 'Bearer test' },
       });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.options).toHaveLength(5);
+      expect(body.options).toHaveLength(4);
 
       const types = body.options.map((o: { type: string }) => o.type);
       expect(types).toEqual([
-        'kag',
         'intellect-enterprise',
         'intellect-community',
         'hermes',
         'agent-scope',
       ]);
       expect(types).not.toContain('intellect-rag');
+      // P1: kag 已从向导选项下架(仍保留在 BackendType 联合与 Adapter,管理端可手工配置)
+      expect(types).not.toContain('kag');
     });
 
     it('每个选项含 capabilities + credentialKind', async () => {
@@ -258,63 +264,258 @@ describe('wizard 路由 (B-3)', () => {
   });
 
   // -------------------------------------------------------------------------
+  // 已下架类型 kag(P1/D-02):probe 与 setup 均显式拒绝
+  // -------------------------------------------------------------------------
+
+  describe('已下架类型 kag(X-02/D-02)', () => {
+    it('probe type=kag 返回 400(不再误走 /v1/models 探测)', async () => {
+      vi.mocked(isUrlSafe).mockResolvedValue(true);
+      const res = await app.request('/admin/wizard/probe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'kag',
+          endpoint: 'http://localhost:3000',
+          token: 'test-token',
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.healthy).toBe(false);
+      expect(body.error).toContain('Unsupported backend type: kag');
+      // 不应发起任何上游请求
+      expect(vi.mocked(safeFetch).mock.calls.length).toBe(0);
+    });
+
+    it('setup type=kag 返回 400(选项表已移除)', async () => {
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'e2e-kag',
+          type: 'kag',
+          endpoint: 'http://localhost:3000',
+          credentialKind: 'bearer-token',
+          token: 'test-token',
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(body.error).toContain('Unsupported backend type: kag');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // wizard-sso(P2):setup sso 扩展 + GET /admin/wizard/sso/providers
+  // -------------------------------------------------------------------------
+
+  describe('wizard-sso(P2)', () => {
+    const SECRET = 's'.repeat(48);
+    const enterpriseSetupBody = {
+      name: 'e2e-sso-ent',
+      type: 'intellect-enterprise',
+      endpoint: 'http://localhost:9091',
+      credentialKind: 'bearer-token',
+      token: 'ent-token',
+      intellectTenantId: '0123456789abcdef0123456789abcdef',
+      sso: {
+        enabled: true,
+        publicOrigin: 'https://wizard.example.com',
+        stateSecret: SECRET,
+        providers: ['intellect-auth'],
+        silentRelogin: true,
+      },
+    };
+
+    it('U-07: enterprise + 合法 sso → envSnippet 追加 SSO 配置,明文密钥不回显', async () => {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+      vi.mocked(getLoginProviders).mockResolvedValue({
+        providers: [
+          { id: 'intellect-auth', displayName: '统一认证', icon: 'sso', clientId: 'c', authorizeUrl: 'u', scopes: 's' },
+        ],
+        misconfigured: [],
+      });
+
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify(enterpriseSetupBody),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.envSnippet).toContain('BFF_SSO_ENABLED=true');
+      expect(body.envSnippet).toContain('BFF_PUBLIC_ORIGIN=https://wizard.example.com');
+      expect(body.envSnippet).toContain('BFF_SSO_STATE_SECRET=<your-secret>');
+      expect(body.envSnippet).toContain('BFF_SSO_PROVIDERS=intellect-auth');
+      expect(body.envSnippet).toContain('BFF_SSO_SILENT_RELOGIN=true');
+      // Token Security:整个响应(含 envSnippet)不得出现明文密钥
+      expect(JSON.stringify(body)).not.toContain(SECRET);
+    });
+
+    it('U-08: stateSecret 少于 32 字符 → 400', async () => {
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...enterpriseSetupBody, sso: { ...enterpriseSetupBody.sso, stateSecret: 'short' } }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('32');
+    });
+
+    it('U-09: publicOrigin 非法 URL → 400', async () => {
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...enterpriseSetupBody,
+          sso: { ...enterpriseSetupBody.sso, publicOrigin: 'not-a-url' },
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('publicOrigin');
+    });
+
+    it('U-10: 非 enterprise 类型携带 sso.enabled=true → 400(R1)', async () => {
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...enterpriseSetupBody,
+          type: 'hermes',
+          sso: { ...enterpriseSetupBody.sso },
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('intellect-enterprise');
+    });
+
+    it('U-11: 白名单含未知渠道 → 200 + warnings 非阻断', async () => {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+      vi.mocked(getLoginProviders).mockResolvedValue({
+        providers: [
+          { id: 'intellect-auth', displayName: '统一认证', icon: 'sso', clientId: 'c', authorizeUrl: 'u', scopes: 's' },
+        ],
+        misconfigured: [],
+      });
+
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...enterpriseSetupBody,
+          sso: { ...enterpriseSetupBody.sso, providers: ['ghost-channel'] },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.warnings.some((w: string) => w.includes('未知或不可用渠道'))).toBe(true);
+    });
+
+    it('U-12: 嵌套 snake_case(sso.public_origin 等)归一化生效', async () => {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'e2e-sso-ent',
+          type: 'intellect-enterprise',
+          endpoint: 'http://localhost:9091',
+          credential_kind: 'bearer-token',
+          token: 'ent-token',
+          intellect_tenant_id: '0123456789abcdef0123456789abcdef',
+          sso: {
+            enabled: true,
+            public_origin: 'https://wizard.example.com',
+            state_secret: SECRET,
+            silent_relogin: false,
+          },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.envSnippet).toContain('BFF_PUBLIC_ORIGIN=https://wizard.example.com');
+      expect(body.envSnippet).toContain('BFF_SSO_SILENT_RELOGIN=false');
+      expect(body.envSnippet).toContain('# BFF_SSO_PROVIDERS=');
+    });
+
+    it('U-13: GET sso/providers 字段裁剪(不透出 clientId/authorizeUrl/scopes)', async () => {
+      vi.mocked(getLoginProviders).mockResolvedValue({
+        providers: [
+          { id: 'intellect-auth', displayName: '统一认证', icon: 'sso', clientId: 'secret-c', authorizeUrl: 'https://idp', scopes: 'openid' },
+        ],
+        misconfigured: ['broken-provider'],
+      });
+
+      // 独立 forwarded-for 键:该端点与 probe 共享限流器,避免挤占 probe 用例的 'unknown' 额度
+      vi.stubEnv('BFF_TRUST_PROXY', 'true');
+      const res = await app.request('/admin/wizard/sso/providers?endpoint=http://x.example:9091', {
+        headers: { 'x-forwarded-for': 'e2e-providers-u13' },
+      });
+      vi.unstubAllEnvs();
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.providers).toHaveLength(1);
+      expect(Object.keys(body.providers[0]).sort()).toEqual(['displayName', 'icon', 'id']);
+      expect(body.misconfigured).toEqual(['broken-provider']);
+      expect(JSON.stringify(body)).not.toContain('secret-c');
+      expect(JSON.stringify(body)).not.toContain('authorizeUrl');
+    });
+
+    it('U-14: GET sso/providers SSRF 拦截 → 400', async () => {
+      vi.mocked(isUrlSafe).mockResolvedValue(false);
+      vi.stubEnv('BFF_TRUST_PROXY', 'true');
+      const res = await app.request('/admin/wizard/sso/providers?endpoint=http://127.0.0.1:9091', {
+        headers: { 'x-forwarded-for': 'e2e-providers-u14' },
+      });
+      vi.unstubAllEnvs();
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('不安全');
+    });
+
+    it('U-15: GET sso/providers 上游失败 → 502', async () => {
+      vi.mocked(getLoginProviders).mockRejectedValue(new Error('provider list returned 500'));
+      vi.stubEnv('BFF_TRUST_PROXY', 'true');
+      const res = await app.request('/admin/wizard/sso/providers?endpoint=http://x.example:9091', {
+        headers: { 'x-forwarded-for': 'e2e-providers-u15' },
+      });
+      vi.unstubAllEnvs();
+      expect(res.status).toBe(502);
+      const body = await res.json();
+      expect(body.providers).toHaveLength(0);
+    });
+
+    it('U-16: GET sso/providers 限流 → 429(独立 forwarded-for 键,不干扰其他用例)', async () => {
+      vi.stubEnv('BFF_TRUST_PROXY', 'true');
+      try {
+        let last: Response | undefined;
+        for (let i = 0; i < 11; i++) {
+          last = await app.request('/admin/wizard/sso/providers?endpoint=http://x.example:9091', {
+            headers: { 'x-forwarded-for': 'e2e-rate-limited' },
+          });
+        }
+        expect(last?.status).toBe(429);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // POST /admin/wizard/probe
   // -------------------------------------------------------------------------
 
-  describe('ragProbePaths(Bug2:探测前缀与 adapter 对齐)', () => {
-    it('候选顺序为 adapter 约定(/api/v1)优先,/v1 兼容回退;剥离尾斜杠', () => {
-      expect(ragProbePaths('https://x.example/kb')).toEqual([
-        'https://x.example/kb/api/v1/models',
-        'https://x.example/kb/v1/models',
-      ]);
-      expect(ragProbePaths('http://localhost:9380/')).toEqual([
-        'http://localhost:9380/api/v1/models',
-        'http://localhost:9380/v1/models',
-      ]);
-    });
-
-    it('子路径部署:/api/v1 404 时回退 /v1;401(鉴权失败)不回退', async () => {
-      const stores = createMockStores();
-      const app = createApp(stores);
-      (isUrlSafe as Mock).mockResolvedValue(true);
-      (fetchTenantInfo as Mock).mockResolvedValue({ tenant_id: 't1' });
-
-      // 前缀 /api/v1 404 → 回退 /v1 200 → healthy
-      (safeFetch as Mock)
-        .mockResolvedValueOnce({ ok: false, status: 404 })
-        .mockResolvedValueOnce({ ok: true, status: 200 });
-      const res1 = await app.request('/admin/wizard/probe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'intellect-enterprise',
-          endpoint: 'https://x.example/gw',
-          ragEndpoint: 'https://x.example/kb',
-        }),
-      });
-      const b1 = await res1.json();
-      expect(b1.healthy).toBe(true);
-      expect(b1.ragHealthy).toBe(true);
-      expect((safeFetch as Mock).mock.calls[0][0]).toBe('https://x.example/kb/api/v1/models');
-      expect((safeFetch as Mock).mock.calls[1][0]).toBe('https://x.example/kb/v1/models');
-
-      // /api/v1 401 → 服务已命中,直接报鉴权失败,不再请求 /v1
-      (safeFetch as Mock).mockReset().mockResolvedValueOnce({ ok: false, status: 401 });
-      const res2 = await app.request('/admin/wizard/probe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'intellect-enterprise',
-          endpoint: 'https://x.example/gw',
-          ragEndpoint: 'https://x.example/kb',
-        }),
-      });
-      const b2 = await res2.json();
-      expect(b2.ragHealthy).toBe(false);
-      expect(b2.ragError).toContain('鉴权失败');
-      expect((safeFetch as Mock).mock.calls.length).toBe(1);
-    });
-  });
+  // -------------------------------------------------------------------------
+  // P3(wizard-sso):ragProbePaths/probeRagPlugin 已随向导 RAG 区块移除,
+  // 原"探测前缀对齐"用例一并删除;enterprise 探测仅校验网关基址。
+  // -------------------------------------------------------------------------
 
   describe('POST /admin/wizard/probe', () => {
     it('无 Authorization header 时 probe 正常返回(公开端点)', async () => {
@@ -607,33 +808,7 @@ describe('wizard 路由 (B-3)', () => {
       expect(body.success).toBe(false);
     });
 
-    it('intellect-enterprise 缺少 ragEndpoint 或 ragApiKey 返回 400', async () => {
-      const base = {
-        name: 'Enterprise',
-        type: 'intellect-enterprise',
-        endpoint: 'http://localhost:9091',
-        credentialKind: 'bearer-token',
-        token: 'ent-token',
-        intellectTenantId: '0123456789abcdef0123456789abcdef',
-      };
-      const missingEndpoint = await app.request('/admin/wizard/setup', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...base, ragApiKey: 'rag-key' }),
-      });
-      expect(missingEndpoint.status).toBe(400);
-      expect((await missingEndpoint.json()).error).toContain('ragEndpoint');
-
-      const missingKey = await app.request('/admin/wizard/setup', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...base, ragEndpoint: 'http://localhost:9380' }),
-      });
-      expect(missingKey.status).toBe(400);
-      expect((await missingKey.json()).error).toContain('ragApiKey');
-    });
-
-    it('intellect-enterprise 创建伴生 RAG backend + vault API Key + canvas 绑定', async () => {
+    it('U-05/U-06: enterprise 无 RAG 字段成功;不创建伴生 RAG,warnings 含 RAG 提示(P3)', async () => {
       vi.mocked(validateTenantConfigs).mockResolvedValue(true);
       vi.mocked(fetchTenantInfo).mockResolvedValue(null);
 
@@ -647,35 +822,33 @@ describe('wizard 路由 (B-3)', () => {
           credentialKind: 'bearer-token',
           token: 'ent-token',
           intellectTenantId: '0123456789abcdef0123456789abcdef',
-          ragEndpoint: 'http://localhost:9380',
-          ragApiKey: 'rag-api-key-secret',
         }),
       });
       expect(res.status).toBe(200);
       expect(validateTenantConfigs).toHaveBeenCalledTimes(1);
 
       const savedConfigs = stores.saveConfigMock.mock.calls[0][0] as HarnessBackendConfig[];
-      expect(savedConfigs).toHaveLength(2);
+      expect(savedConfigs).toHaveLength(1);
       const enterprise = savedConfigs.find((c) => c.type === 'intellect-enterprise');
-      const rag = savedConfigs.find((c) => c.type === 'intellect-rag');
       expect(enterprise?.intellectTenantId).toBe('0123456789abcdef0123456789abcdef');
-      expect(enterprise?.ragBackendId).toBe('enterprise-rag');
-      expect(rag?.id).toBe('enterprise-rag');
-      expect(rag?.endpoint).toBe('http://localhost:9380');
-      expect(JSON.stringify(savedConfigs)).not.toContain('rag-api-key-secret');
-
-      expect(stores.setCredentialsMock).toHaveBeenCalledTimes(2);
+      // 不再创建伴生 RAG:无 ragBackendId、无 intellect-rag 条目
+      expect(enterprise?.ragBackendId).toBeUndefined();
+      expect(savedConfigs.some((c) => c.type === 'intellect-rag')).toBe(false);
+      // 凭据仅企业版一条
+      expect(stores.setCredentialsMock).toHaveBeenCalledTimes(1);
       expect(stores.setCredentialsMock).toHaveBeenCalledWith('enterprise', {
         kind: 'bearer-token',
         token: 'ent-token',
       });
-      expect(stores.setCredentialsMock).toHaveBeenCalledWith('enterprise-rag', {
-        kind: 'bearer-token',
-        token: 'rag-api-key-secret',
-      });
-
-      expect(stores.backendStore.createBackend).toHaveBeenCalled();
-      expect(stores.backendStore.setCanvasBinding).toHaveBeenCalledWith('0', 'enterprise-rag');
+      // 不再绑定 canvas(无 RAG)
+      expect(stores.backendStore.setCanvasBinding).not.toHaveBeenCalled();
+      // envSnippet 无 RAG 行
+      const body = await res.json();
+      expect(body.envSnippet).not.toContain('rag');
+      // warnings 含 RAG 延后提示(X-04)
+      expect(
+        (body.warnings as string[]).some((w) => w.includes('RAG 插件未配置')),
+      ).toBe(true);
     });
 
     it('validateTenantConfigs 失败时返回 400 + 回滚', async () => {
@@ -694,8 +867,6 @@ describe('wizard 路由 (B-3)', () => {
           token: 'ent-token',
           // P3-m4 修复:32 位 hex 格式
           intellectTenantId: '0123456789abcdef0123456789abcdef',
-          ragEndpoint: 'http://localhost:9380',
-          ragApiKey: 'rag-api-key-secret',
         }),
       });
       expect(res.status).toBe(400);
@@ -1172,7 +1343,7 @@ describe('POST /admin/wizard/setup bootstrap 消费时机 + 租户门控(方案A
     const bad = await app.request('/admin/wizard/setup', {
       method: 'POST',
       headers: { Authorization: `Bearer ${BOOT_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'kag' }), // 缺 name/endpoint/credentialKind → 400
+      body: JSON.stringify({ type: 'hermes' }), // 缺 name/endpoint/credentialKind → 400(P1:kag 已下架,换用 hermes)
     });
     expect(bad.status).toBe(400);
     // 非消耗式 matches:400 不得作废 token(修复前 verify-on-match 即烧掉)

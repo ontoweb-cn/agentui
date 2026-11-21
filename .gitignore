@@ -50,3 +50,8 @@ packages/plugin-template/node_modules/
 
 # canvas Tier B 插件构建产物(镜像构建时生成,不入 git)
 packages/canvas-plugin/ui/
+
+tests/e2e-tests/results/**/backup*/
+tests/e2e-tests/results/**/data-backup*/
+tests/e2e-tests/fixtures/**/data-backup-*/
+tests/e2e-tests/fixtures/**/backup/

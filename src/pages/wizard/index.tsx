@@ -53,6 +53,7 @@ import {
   type WizardProbeResponse,
   type WizardSetupResponse,
 } from '@/services/wizard-service';
+import { SsoSection, INITIAL_WIZARD_DRAFT_SSO, type WizardDraftSso } from './sso-section';
 
 // ---------------------------------------------------------------------------
 // Local types & constants
@@ -71,8 +72,8 @@ interface WizardDraft {
   password: string;
   intellectTenantId: string;
   defaultForTenant: boolean;
-  ragEndpoint: string;
-  ragApiKey: string;
+  /** wizard-sso(P2): SSO 配置(stateSecret 除外 —— 密钥仅内存态,不进 localStorage) */
+  sso: WizardDraftSso;
 }
 
 const INITIAL_DRAFT: WizardDraft = {
@@ -85,8 +86,7 @@ const INITIAL_DRAFT: WizardDraft = {
   password: '',
   intellectTenantId: '',
   defaultForTenant: true,
-  ragEndpoint: 'http://localhost:9380',
-  ragApiKey: '',
+  sso: INITIAL_WIZARD_DRAFT_SSO,
 };
 
 // ---------------------------------------------------------------------------
@@ -324,12 +324,19 @@ function StepSelectType({
 function StepConnectionForm({
   draft,
   option,
+  ssoSecret,
+  onSsoChange,
+  onSsoSecretChange,
   update,
   onNext,
   onBack,
 }: {
   draft: WizardDraft;
   option: WizardBackendTypeOption | undefined;
+  /** wizard-sso(P2): 引导密钥仅内存态 */
+  ssoSecret: string;
+  onSsoChange: (patch: Partial<WizardDraftSso>) => void;
+  onSsoSecretChange: (secret: string) => void;
   update: (patch: Partial<WizardDraft>) => void;
   onNext: () => void;
   onBack: () => void;
@@ -365,13 +372,22 @@ function StepConnectionForm({
       const tenantId = draft.intellectTenantId.trim();
       if (!tenantId) return false;
       if (!/^[0-9a-fA-F]{32}$/.test(tenantId)) return false;
-      if (!draft.ragEndpoint.trim() || !/^https?:\/\//.test(draft.ragEndpoint.trim())) {
-        return false;
+    }
+    // wizard-sso(P2):SSO 开启时需合法 publicOrigin + ≥32 字符密钥(P3:RAG 字段已移除)
+    if (isEnterprise && draft.sso.enabled) {
+      const origin = draft.sso.publicOrigin.trim();
+      let originOk = false;
+      try {
+        const u = new URL(origin);
+        originOk = u.protocol === 'http:' || u.protocol === 'https:';
+      } catch {
+        originOk = false;
       }
-      if (!draft.ragApiKey.trim()) return false;
+      if (!originOk) return false;
+      if (!ssoSecret || ssoSecret.length < 32) return false;
     }
     return true;
-  }, [draft, isEnterprise]);
+  }, [draft, isEnterprise, ssoSecret]);
 
   return (
     <Card className="max-w-2xl mx-auto">
@@ -498,41 +514,13 @@ function StepConnectionForm({
         )}
 
         {isEnterprise && (
-          <>
-            <div className="space-y-2">
-              <Label htmlFor="wizard-rag-endpoint">
-                {t('wizard.connection.ragEndpoint', {
-                  defaultValue: 'RAG plugin endpoint',
-                })}
-              </Label>
-              <Input
-                id="wizard-rag-endpoint"
-                value={draft.ragEndpoint}
-                onChange={(e) => update({ ragEndpoint: e.target.value })}
-                placeholder="http://localhost:9380"
-              />
-              <p className="text-xs text-text-secondary">
-                {t('wizard.connection.ragEndpointHint', {
-                  defaultValue:
-                    'Intellect RAG plugin URL (canvas + knowledge base). Default http://localhost:9380',
-                })}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="wizard-rag-api-key">
-                {t('wizard.connection.ragApiKey', {
-                  defaultValue: 'RAG API key',
-                })}
-              </Label>
-              <Input
-                id="wizard-rag-api-key"
-                type="password"
-                value={draft.ragApiKey}
-                onChange={(e) => update({ ragApiKey: e.target.value })}
-                placeholder="rag-..."
-              />
-            </div>
-          </>
+          <SsoSection
+            value={draft.sso}
+            secret={ssoSecret}
+            endpoint={draft.endpoint}
+            onChange={onSsoChange}
+            onSecretChange={onSsoSecretChange}
+          />
         )}
       </CardContent>
       <CardFooter className="justify-between">
@@ -592,25 +580,7 @@ function StepProbeResult({
                 })}
               </span>
             </div>
-            {probeResult.ragHealthy === false && (
-              <p className="text-sm text-amber-600">
-                {t('wizard.probe.ragWarning', {
-                  defaultValue:
-                    'TEAM is reachable, but the RAG plugin probe failed. You can continue; canvas/KB will work after RAG starts.',
-                })}
-                {probeResult.ragError ? ` (${probeResult.ragError})` : ''}
-              </p>
-            )}
-            {probeResult.ragHealthy === true && (
-              <div className="flex items-center gap-2 text-sm">
-                <LucideCheck className="size-4 text-accent-primary-text" />
-                <span>
-                  {t('wizard.probe.ragHealthy', {
-                    defaultValue: 'RAG plugin is reachable',
-                  })}
-                </span>
-              </div>
-            )}
+            {/* P3(wizard-sso):RAG 插件探测随向导 RAG 区块移除,相关提示删除 */}
             {probeResult.capabilities && (
               <div className="space-y-2">
                 <p className="text-xs text-text-secondary">
@@ -711,12 +681,15 @@ function StepConfirm({
             value={draft.intellectTenantId}
           />
         )}
-        {draft.ragEndpoint && draft.selectedType === 'intellect-enterprise' && (
+        {/* P3(wizard-sso):RAG endpoint 摘要行移除;wizard-sso(P2):SSO 摘要行 */}
+        {draft.selectedType === 'intellect-enterprise' && draft.sso.enabled && (
           <Row
-            label={t('wizard.confirm.ragEndpoint', {
-              defaultValue: 'RAG plugin endpoint',
-            })}
-            value={draft.ragEndpoint}
+            label={t('wizard.confirm.sso', { defaultValue: 'SSO(统一认证)' })}
+            value={`${t('wizard.confirm.ssoEnabled', { defaultValue: '已启用' })} · ${
+              draft.sso.providers.length > 0
+                ? draft.sso.providers.join(',')
+                : t('wizard.confirm.ssoAllChannels', { defaultValue: '全部渠道' })
+            } · ${draft.sso.publicOrigin}`}
           />
         )}
         {setupResult?.envSnippet && (
@@ -762,8 +735,15 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StepDone({ onDone }: { onDone: () => void }) {
+function StepDone({
+  setupResult,
+  onDone,
+}: {
+  setupResult: WizardSetupResponse | null;
+  onDone: () => void;
+}) {
   const { t } = useTranslation();
+  const warnings = setupResult?.warnings ?? [];
   return (
     <Card className="max-w-2xl mx-auto">
       <CardHeader>
@@ -777,6 +757,21 @@ function StepDone({ onDone }: { onDone: () => void }) {
           })}
         </CardDescription>
       </CardHeader>
+      {/* wizard-sso(P3/X-04/R13):非阻断告警展示(如 RAG 未配置的能力降级说明) */}
+      {warnings.length > 0 && (
+        <CardContent className="space-y-2">
+          <p className="text-sm font-medium">
+            {t('wizard.done.warnings', { defaultValue: '提示' })}
+          </p>
+          <ul className="space-y-1.5">
+            {warnings.map((w, i) => (
+              <li key={i} className="text-xs text-state-warning break-words">
+                • {w}
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      )}
       <CardFooter>
         <Button onClick={onDone}>
           {t('wizard.done.goHome', { defaultValue: 'Go to Home' })}
@@ -819,6 +814,8 @@ function WizardPage() {
   const [setupResult, setSetupResult] = useState<WizardSetupResponse | null>(
     null,
   );
+  // wizard-sso(P2/R3):引导密钥仅内存态,不进 localStorage 草稿;刷新丢失需重新生成
+  const [ssoSecret, setSsoSecret] = useState('');
 
   // ----- Queries -----
   // 列表:可用后端类型
@@ -923,12 +920,7 @@ function WizardPage() {
               endpoint: draft.endpoint,
               token: draft.token,
             };
-      if (draft.selectedType === 'intellect-enterprise') {
-        Object.assign(req, {
-          ragEndpoint: draft.ragEndpoint,
-          ragApiKey: draft.ragApiKey,
-        });
-      }
+      // P3(wizard-sso):RAG 插件探测随向导 RAG 区块移除
       return (await probeWizardBackend(req)).data;
     },
     onSuccess: (resp) => {
@@ -970,8 +962,19 @@ function WizardPage() {
         ...(draft.intellectTenantId
           ? { intellectTenantId: draft.intellectTenantId }
           : {}),
-        ...(draft.selectedType === 'intellect-enterprise'
-          ? { ragEndpoint: draft.ragEndpoint, ragApiKey: draft.ragApiKey }
+        // P3(wizard-sso):RAG 插件字段移除——RAG 由管理端补配
+        // wizard-sso(P2/X-08):仅 enterprise 且启用时携带 sso;白名单空 = null(不过滤)
+        ...(draft.selectedType === 'intellect-enterprise' && draft.sso.enabled
+          ? {
+              sso: {
+                enabled: true,
+                publicOrigin: draft.sso.publicOrigin.trim(),
+                stateSecret: ssoSecret,
+                providers:
+                  draft.sso.providers.length > 0 ? draft.sso.providers : null,
+                silentRelogin: draft.sso.silentRelogin,
+              },
+            }
           : {}),
         defaultForTenant: draft.defaultForTenant,
       };
@@ -1025,7 +1028,10 @@ function WizardPage() {
       email: '',
       password: '',
       intellectTenantId: '',
+      // wizard-sso(P2):切换类型时重置 SSO 配置与内存态密钥
+      sso: { ...INITIAL_WIZARD_DRAFT_SSO },
     });
+    setSsoSecret('');
   };
 
   const handleProbeRetry = () => {
@@ -1074,6 +1080,9 @@ function WizardPage() {
             <StepConnectionForm
               draft={draft}
               option={selectedOption}
+              ssoSecret={ssoSecret}
+              onSsoChange={(patch) => updateDraft({ sso: { ...draft.sso, ...patch } })}
+              onSsoSecretChange={setSsoSecret}
               update={updateDraft}
               onNext={() => {
                 setProbeResult(null);
@@ -1103,7 +1112,7 @@ function WizardPage() {
             />
           )}
 
-          {step === 6 && <StepDone onDone={handleDone} />}
+          {step === 6 && <StepDone setupResult={setupResult} onDone={handleDone} />}
         </div>
       </div>
       <Toaster />

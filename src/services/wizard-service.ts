@@ -3,6 +3,9 @@
 // Token Security: 请求可含 token 明文(经 HTTPS),响应不含 token 明文,只含 envSnippet 引用。
 //
 // 类型与 bff/src/types/wizard.ts 同步。
+// wizard-sso(P2/P3, 2026-11):
+// - 新增 WizardSsoSettings / sso 渠道端点;
+// - RAG 插件字段移除(RAG 由管理端补配,不随向导收集/探测,见 docs/wizard-kag-to-sso-design.md)。
 
 import api from '@/utils/api';
 import request from '@/utils/next-request';
@@ -17,6 +20,8 @@ export type BackendType =
   | 'intellect-llm'
   | 'intellect-community'
   | 'hermes'
+  // P1(wizard-sso):kag 已从向导选项下架;类型联合保留 —— 与 admin 管理端/存量配置同源,
+  // 仅向导不再提供该选项(docs/wizard-kag-to-sso-design.md §3.3)。
   | 'kag'
   | 'agent-scope';
 
@@ -56,16 +61,28 @@ export interface WizardProbeRequest {
   token?: string;
   email?: string;
   password?: string;
-  ragEndpoint?: string;
-  ragApiKey?: string;
 }
 
 export interface WizardProbeResponse {
   healthy: boolean;
   capabilities?: HarnessCapabilities;
   error?: string;
-  ragHealthy?: boolean;
-  ragError?: string;
+}
+
+/**
+ * wizard-sso(P2): 向导 SSO 配置。
+ * 评审取舍:setup 不复刻生产 https 强制——运行时以 BFF sso-config 启动 fail-fast
+ * 为单一裁决点,向导保持非阻塞;此处仅做结构校验。
+ */
+export interface WizardSsoSettings {
+  enabled: boolean;
+  publicOrigin: string;
+  /** 客户端生成的随机密钥(≥32 字符);响应 envSnippet 永以 <your-secret> 占位 */
+  stateSecret?: string;
+  /** 登录渠道白名单;缺省/null/空 = 不过滤(与 BFF_SSO_PROVIDERS 语义一致) */
+  providers?: string[] | null;
+  /** 静默重登(默认 true) */
+  silentRelogin?: boolean;
 }
 
 export interface WizardSetupRequest {
@@ -79,14 +96,31 @@ export interface WizardSetupRequest {
   adminTokenEnvVar?: string;
   intellectTenantId?: string;
   defaultForTenant?: boolean;
-  ragEndpoint?: string;
-  ragApiKey?: string;
+  /** wizard-sso(P2): 统一认证配置(仅 intellect-enterprise;明文 secret 仅存在于请求期,不落盘) */
+  sso?: WizardSsoSettings;
 }
 
 export interface WizardSetupResponse {
   success: boolean;
   backendId?: string;
   envSnippet?: string;
+  error?: string;
+  /** 非阻断告警(如新后端未就绪、RAG 未配置、SSO 白名单含未知渠道),前端展示于 Done 步骤 */
+  warnings?: string[];
+}
+
+/** wizard-sso(P2): 渠道视图(评审 R2:字段裁剪,不透出 clientId/authorizeUrl/scopes) */
+export interface WizardSsoProviderView {
+  id: string;
+  displayName: string;
+  icon: string;
+}
+
+/** wizard-sso(P2): GET /admin/wizard/sso/providers 响应 */
+export interface WizardSsoProvidersResponse {
+  providers: WizardSsoProviderView[];
+  /** 因字段缺失/PKCE 不支持被排除的渠道 id */
+  misconfigured: string[];
   error?: string;
 }
 
@@ -126,3 +160,12 @@ export const probeWizardBackend = (req: WizardProbeRequest) =>
  */
 export const setupWizardBackend = (req: WizardSetupRequest) =>
   request.post<WizardSetupResponse>(api.wizard.setup, req);
+
+/**
+ * wizard-sso(P2): 拉取网关已配置的 SSO 登录渠道(公开端点,IP 限流 + SSRF 防护)。
+ * GET /api/bff/admin/wizard/sso/providers?endpoint=...
+ */
+export const fetchWizardSsoProviders = (endpoint: string) =>
+  request.get<WizardSsoProvidersResponse>(api.wizard.ssoProviders, {
+    params: { endpoint },
+  });
