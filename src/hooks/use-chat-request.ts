@@ -273,6 +273,15 @@ export const useUpdateChat = () => {
     mutateAsync,
   } = useMutation({
     mutationKey: [ChatApiAction.UpdateChat],
+    onError: (error) => {
+      // 评审修复(Bugbot Medium):BFF 400(如 T2.7 校验拒绝)此前无任何用户
+      // 提示(next-request 全局 errorHandler 被注释),复现"点保存没反应"的
+      // 静默失败。展示服务端可读 detail,无 detail 时回落通用文案。
+      const detail = (
+        error as { response?: { data?: { message?: string } } | undefined }
+      )?.response?.data?.message;
+      message.error(detail || t('message.modifyFailed'));
+    },
     mutationFn: async ({
       chatId,
       params,

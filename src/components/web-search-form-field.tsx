@@ -93,6 +93,9 @@ export function WebSearchFormField({ prefix = '' }: IProps) {
                 optionTestIdPrefix="web-search-provider-option"
               />
             </FormControl>
+            {/* 评审补齐(Bugbot Low):与 key 字段一致,为该字段保留 schema
+                错误的渲染位(当前 schema 不对该字段产错,前瞻对齐)。 */}
+            <FormMessage />
           </FormItem>
         )}
       />

@@ -113,6 +113,9 @@ export default {
         tenant_not_found: '所选工作区不可用。',
         sso_pkce_unsupported: '暂不支持该登录渠道。',
         sso_misconfigured: '该登录渠道配置有误，请联系管理员。',
+        idp_unavailable: '认证服务暂时不可用，请稍后重试。',
+        idp_invalid_response: '认证服务返回异常，请稍后重试。',
+        idp_error: '登录过程中发生错误，请稍后重试。',
       },
     },
     header: {
@@ -1633,6 +1636,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
       logged: '登录成功',
       pleaseSelectChunk: '请选择解析块',
       modified: '更新成功',
+      modifyFailed: '更新失败',
       created: '创建成功',
       deleted: '删除成功',
       renamed: '重命名成功',
