@@ -18,6 +18,7 @@ import {
   FormField,
   FormItem,
   FormLabel,
+  FormMessage,
 } from '@/components/ui/form';
 import PasswordInput from '@/components/originui/password-input';
 import { SelectWithSearch } from '@/components/originui/select-with-search';
@@ -295,6 +296,7 @@ export function WebSearchFormField({ prefix = '' }: IProps) {
                   {t('webSearchApiKeyHelp')}
                 </a>
               </FormDescription>
+              <FormMessage />
             </FormItem>
           )}
         />

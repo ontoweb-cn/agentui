@@ -223,6 +223,7 @@ export interface IExternalChatInfo {
   title: string;
   prologue?: string;
   has_tavily_key?: boolean;
+  has_web_search_provider?: boolean;
   llm_id?: string;
 }
 
