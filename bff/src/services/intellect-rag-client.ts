@@ -59,6 +59,13 @@ export interface ProxyRequest {
   ragBaseUrl?: string;
   /** 伴生 RAG backend 的 API Key / adminToken */
   ragAdminToken?: string;
+  /**
+   * P1-b(§4.1): 强制以 ragAdminToken(服务账号)鉴权——跳过会话/动态令牌注入
+   * 与全部 X-Intellect-* 身份头(服务令牌本身就是身份,混入成员身份头会让 RAG
+   * 归属判断混乱)。仅模型管理路径 + flag 开 + ragAdminToken 存在时由 proxy.ts
+   * 置 true(三条件缺一不可,ragAdminToken 缺失自动退回成员令牌)。
+   */
+  forceServiceToken?: boolean;
 }
 
 /**
@@ -86,20 +93,28 @@ export async function proxy(path: string, req: ProxyRequest): Promise<Response> 
 
   // BFF-P0-1 / D1.2 B / 方案 B: 注入服务端解析的 member_id / team_id / project_id / tenant_id
   // (intellect-rag-app 据此设置 KB ownership 字段,避免静默降级为 private)
-  if (req.intellectUserId) {
-    headers.set('X-Intellect-User', req.intellectUserId);
-  }
-  if (req.intellectRole) {
-    headers.set('X-Intellect-Role', req.intellectRole);
-  }
-  if (req.intellectTeamId) {
-    headers.set('X-Intellect-Team', req.intellectTeamId);
-  }
-  if (req.intellectProjectId) {
-    headers.set('X-Intellect-Project', req.intellectProjectId);
-  }
-  if (req.intellectTenantId) {
-    headers.set('X-Intellect-Tenant', req.intellectTenantId);
+  // P1-b(§4.1): 强制服务令牌时跳过全部身份注入——租户/团队隔离由服务令牌
+  // 自己的上下文决定,成员身份头与令牌身份不一致会让 RAG 归属判断混乱。
+  if (!req.forceServiceToken) {
+    if (req.intellectUserId) {
+      headers.set('X-Intellect-User', req.intellectUserId);
+    }
+    if (req.intellectRole) {
+      headers.set('X-Intellect-Role', req.intellectRole);
+    }
+    if (req.intellectTeamId) {
+      headers.set('X-Intellect-Team', req.intellectTeamId);
+    }
+    if (req.intellectProjectId) {
+      headers.set('X-Intellect-Project', req.intellectProjectId);
+    }
+    if (req.intellectTenantId) {
+      headers.set('X-Intellect-Tenant', req.intellectTenantId);
+    }
+  } else if (req.ragAdminToken) {
+    // P1-b(§4.1): 服务令牌显式 Authorization,走 fetchWithRagToken 的既有
+    // explicit 分支(不覆盖、不重试,见 rag-fetch.ts token 优先级)。
+    headers.set('Authorization', `Bearer ${req.ragAdminToken}`);
   }
 
   // fetchWithRagToken 处理:token 注入(会话优先,降级动态/env var)+ 401 重试 + body 缓冲

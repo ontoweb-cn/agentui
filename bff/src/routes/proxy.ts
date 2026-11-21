@@ -5,7 +5,10 @@ import { resolveMemberInfoFromContext } from '../services/member-id-resolver';
 import { getAuthSession } from '../middleware/auth-session';
 import type { BackendStore, HarnessStore } from '../types';
 import { resolveRagBackendId } from '../services/rag-plugin-backend';
-import { isImtCanvasAgentsEnabled } from '../utils/feature-flags';
+import {
+  isImtCanvasAgentsEnabled,
+  isModelMgmtServiceTokenEnabled,
+} from '../utils/feature-flags';
 
 interface ProxyVariables {
   backendStore: BackendStore;
@@ -163,6 +166,28 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
     );
   }
 
+  // P1-b(§4.1): 模型管理路径在 flag 开启且服务令牌可用时,强制以 ragAdminToken 鉴权。
+  // 三条件缺一不可;ragAdminToken 缺失时自动退回成员令牌,不阻断(设计 §4.1)。
+  // flag 默认关(BFF_MODEL_MGMT_SERVICE_TOKEN≠'true')时本批零行为变化。
+  const forceServiceToken =
+    isModelMgmtPath && isModelMgmtServiceTokenEnabled() && !!ragAdminToken;
+
+  // P1-b(§4.4): 写权限门控(仅强制服务令牌时生效)。
+  // fail-closed:role 解析失败(resolver 对缺失 role 兜底 'member'/undefined)
+  // 一律 403——不允许无法确权者以服务身份改租户配置。60s 角色缓存缓解 TEAM 抖动。
+  // flag 关闭时门控整体不生效,写请求由上游按成员令牌鉴权,与现状完全一致。
+  const ADMIN_ROLES = new Set(['admin', 'owner']); // 与 llm-auth.ts、MemberRole(domain.ts) 口径一致
+  if (
+    forceServiceToken &&
+    method !== 'GET' &&
+    !ADMIN_ROLES.has(intellectRole ?? '')
+  ) {
+    return c.json(
+      { code: 403, message: 'Model management write requires admin role' },
+      403,
+    );
+  }
+
   // 构造透传请求
   const proxyReq: ProxyRequest = {
     method,
@@ -175,6 +200,7 @@ proxyRoutes.all('/proxy/v1/*', async (c) => {
     intellectProjectId,
     intellectTenantId: injectableTenantId,
     sessionToken,
+    forceServiceToken,
     ragBaseUrl,
     ragAdminToken,
   };
