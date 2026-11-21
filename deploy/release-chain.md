@@ -49,7 +49,9 @@ kubectl apply -f deploy/argocd/application.yaml
 
 外部 nginx（ai.wust.edu.cn 所在网关）引用 [agentui-root.conf](../gateway/agentui-root.conf)：
 - 在现有 `ai.wust.edu.cn` 443 server 中新增 `location /`，反代 `<cluster-node-ip>:31390`；
-- **删除**原有 `location = / { return 301 /frontend/; }` 及 `/frontend/` 相关 location（门户下线）；
+- **只删除**旧门户入口 `location = / { return 301 /frontend/; }` 及 `/frontend/` 相关 location；
+- **必须保留并显式路由** `/portal`（hiedu-portal）、`/portal-api` 与 `/portal-oauth2`（hiedu-oauth2-proxy），
+  建议交给 ingress-nginx；否则会被 `location /` 吞掉，Portal 表现为返回 AgentUI 的 index.html（2026-11-21 故障）；
 - `/auth/`、`/intellect-gateway`、`/intellect-kb`、`/wargame/` 等更具体 location 保持不变；
 - 关闭代理缓冲（SSE）、超时 3600s、`client_max_body_size 1024m`。
 
