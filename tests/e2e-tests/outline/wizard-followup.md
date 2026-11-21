@@ -10,7 +10,8 @@
 | A3 | 真网关渠道取证 + IdP 人工联调清单 |
 | A4 | 依赖治理(根 npm install 重链 shims + 平台原生依赖) |
 | A5 | 草稿凭据迁出 localStorage(sessionStorage 会话级) |
-| A6 | babel-plugin-import-meta-glob Windows 修复(**已完成**,9/9) |
+| A6 | babel-plugin-import-meta-glob Windows 修复(**已完成**,750/750) |
+| **交付状态(v2,2026-11-21 终检)** | **A2/A3/A4/A5/A6/A7/A8 全部完成**;报告 [REPORT-wizard-sso-followup-20261121.md](../reports/REPORT-wizard-sso-followup-20261121.md);受限 L-01~L-08 |
 | A7 | SsoStore(runtime>env 合并)+ GET/PUT /admin/sso/config + 管理端设置页 |
 | A8 | 管理端 kag 类型说明文案 |
 
