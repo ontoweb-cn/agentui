@@ -17,6 +17,7 @@ import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 import { z } from 'zod';
+import { getWebSearchProvider } from '../web-search-api-key';
 import ChatBasicSetting from './chat-basic-settings';
 import { ChatPromptEngine } from './chat-prompt-engine';
 import { SavingButton } from './saving-button';
@@ -143,6 +144,11 @@ export function ChatSettings({
       prompt_config: {
         ...data.prompt_config,
         reference_metadata: normalizedReferenceMetadata,
+        // T2.1:legacy 对话(仅存 tavily_api_key,无 provider 字段)打开设置页
+        // 时回显 Tavily 预选,与运行时联网开关(getWebSearchProvider 推断)对齐;
+        // 显式 '' 是"用户清除",不得回落;新对话(undefined)归一为 ''。
+        // 副作用(上游同款):legacy 对话保存会首次写入 web_search_provider: 'tavily'。
+        web_search_provider: getWebSearchProvider(data.prompt_config) ?? '',
       },
       ...llmSettingEnabledValues,
     };
