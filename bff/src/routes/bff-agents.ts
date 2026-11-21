@@ -237,7 +237,11 @@ bffAgentRoutes.delete('/agents/:agentId/sessions/:sessionId', async (c) => {
   }
 });
 
-// PATCH /agents/:agentId/sessions/:sessionId — 重命名 session(Gateway PATCH /api/sessions/{id})
+// PATCH /agents/:agentId/sessions/:sessionId — 更新 session(T2.10 修复)
+// Gateway PATCH /api/sessions/{id} 完整支持 title/end_reason/kb_ids/prompt_config;
+// 此前本路由仅提取 title 并 400 拦截,前端整包发送的 prompt_config/kb_ids 被丢弃,
+// 设置页保存"静默失败"。现按字段透传;同时兼容 camelCase/snake_case 键名
+// (前端 axios 拦截器将 camelCase 转 snake_case,故以 snake_case 为主形态)。
 bffAgentRoutes.patch('/agents/:agentId/sessions/:sessionId', async (c) => {
   const adapter = getAdapter(c);
   if (!adapter) {
@@ -246,14 +250,21 @@ bffAgentRoutes.patch('/agents/:agentId/sessions/:sessionId', async (c) => {
   const agentId = c.req.param('agentId');
   const sessionId = c.req.param('sessionId');
   const body = await c.req.json().catch(() => ({}));
-  const params: { title?: string } = {};
-  if (typeof body?.name === 'string') {
-    params.title = body.name;
-  } else if (typeof body?.title === 'string') {
-    params.title = body.title;
+  const params: { title?: string; kbIds?: string[]; promptConfig?: unknown } = {};
+  const rawTitle = typeof body?.title === 'string' ? body.title : body?.name;
+  if (typeof rawTitle === 'string') {
+    params.title = rawTitle;
   }
-  if (params.title === undefined) {
-    return c.json({ code: 400, message: 'title is required' }, 400);
+  const rawKbIds = body?.kb_ids ?? body?.kbIds;
+  if (Array.isArray(rawKbIds)) {
+    params.kbIds = rawKbIds.filter((v: unknown): v is string => typeof v === 'string');
+  }
+  const rawPromptConfig = body?.prompt_config ?? body?.promptConfig;
+  if (rawPromptConfig !== undefined && rawPromptConfig !== null && typeof rawPromptConfig === 'object') {
+    params.promptConfig = rawPromptConfig;
+  }
+  if (Object.keys(params).length === 0) {
+    return c.json({ code: 400, message: 'title, kb_ids or prompt_config is required' }, 400);
   }
   try {
     const session = await adapter.updateSession(

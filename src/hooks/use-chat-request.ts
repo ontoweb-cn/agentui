@@ -281,8 +281,10 @@ export const useUpdateChat = () => {
       params: Record<string, any>;
     }) => {
       // Gateway session 支持 title + kb_ids + prompt_config 字段更新。
+      // T2.10 附带修复:kb_ids 为空数组时也必须发送——此前仅非空才发送,
+      // 导致"清空知识库绑定"无法保存(Gateway kb_ids 为整列替换语义)。
       const patchData: Record<string, any> = { name: params.name, title: params.name };
-      if (params.dataset_ids?.length) {
+      if (params.dataset_ids) {
         patchData.kb_ids = params.dataset_ids;
       }
       if (params.prompt_config) {

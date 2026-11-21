@@ -545,6 +545,120 @@ describe('streamChunksAsSSE: tool_* filtering after approval_request', () => {
 });
 
 // ---------------------------------------------------------------------------
+// PATCH /agents/:agentId/sessions/:sessionId 路由测试(T2.10:保存链路透传修复)
+// ---------------------------------------------------------------------------
+describe('PATCH /agents/:agentId/sessions/:sessionId (T2.10)', () => {
+  let mocks: MockSetup;
+  let app: Hono<{ Variables: TestVariables }>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks = createMocks();
+    app = createApp(mocks);
+  });
+
+  it('整包保存:name/kb_ids/prompt_config → 透传为 title/kbIds/promptConfig', async () => {
+    (mocks.adapter.updateSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'sess-1',
+      agentId: 'agent-1',
+      title: '新标题',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const res = await app.request('/agents/agent-1/sessions/sess-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Backend-Id': 'tenant-1' },
+      body: JSON.stringify({
+        name: '新标题',
+        kb_ids: ['kb-1', 'kb-2'],
+        prompt_config: { system: 'you are a tester', web_search: { provider: 'tavily' } },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.adapter.updateSession).toHaveBeenCalledWith(
+      expect.anything(),
+      'agent-1',
+      'sess-1',
+      {
+        title: '新标题',
+        kbIds: ['kb-1', 'kb-2'],
+        promptConfig: { system: 'you are a tester', web_search: { provider: 'tavily' } },
+      },
+    );
+  });
+
+  it('仅 kb_ids 空数组(清空绑定)也放行,不再要求 title', async () => {
+    const res = await app.request('/agents/agent-1/sessions/sess-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Backend-Id': 'tenant-1' },
+      body: JSON.stringify({ kb_ids: [] }),
+    });
+    expect(res.status).toBe(200);
+    expect(mocks.adapter.updateSession).toHaveBeenCalledWith(
+      expect.anything(),
+      'agent-1',
+      'sess-1',
+      { kbIds: [] },
+    );
+  });
+
+  it('camelCase 键名(kbIds/promptConfig)同样接受', async () => {
+    const res = await app.request('/agents/agent-1/sessions/sess-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Backend-Id': 'tenant-1' },
+      body: JSON.stringify({ title: 't', kbIds: ['k'], promptConfig: { a: 1 } }),
+    });
+    expect(res.status).toBe(200);
+    expect(mocks.adapter.updateSession).toHaveBeenCalledWith(
+      expect.anything(),
+      'agent-1',
+      'sess-1',
+      { title: 't', kbIds: ['k'], promptConfig: { a: 1 } },
+    );
+  });
+
+  it('非法 kb_ids(含非字符串项)被过滤;全空 body → 400', async () => {
+    const res1 = await app.request('/agents/agent-1/sessions/sess-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Backend-Id': 'tenant-1' },
+      body: JSON.stringify({ kb_ids: ['ok', 42, null] }),
+    });
+    expect(res1.status).toBe(200);
+    expect(mocks.adapter.updateSession).toHaveBeenCalledWith(
+      expect.anything(),
+      'agent-1',
+      'sess-1',
+      { kbIds: ['ok'] },
+    );
+
+    const res2 = await app.request('/agents/agent-1/sessions/sess-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Backend-Id': 'tenant-1' },
+      body: JSON.stringify({}),
+    });
+    expect(res2.status).toBe(400);
+    expect((await res2.json()).message).toContain('title, kb_ids or prompt_config');
+  });
+
+  it('prompt_config 非 JSON 对象(字符串)不透传', async () => {
+    const res = await app.request('/agents/agent-1/sessions/sess-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Backend-Id': 'tenant-1' },
+      body: JSON.stringify({ title: 't', prompt_config: 'not-an-object' }),
+    });
+    expect(res.status).toBe(200);
+    expect(mocks.adapter.updateSession).toHaveBeenCalledWith(
+      expect.anything(),
+      'agent-1',
+      'sess-1',
+      { title: 't' },
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // POST /agents/:agentId/runs/:runId/approval 路由测试
 // ---------------------------------------------------------------------------
 

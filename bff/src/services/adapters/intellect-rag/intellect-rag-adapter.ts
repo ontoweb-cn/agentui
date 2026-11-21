@@ -119,8 +119,19 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
     _ctx: BackendContext,
     agentId: string,
     sessionId: string,
-    params: { title?: string },
+    params: { title?: string; kbIds?: string[]; promptConfig?: unknown },
   ): Promise<Session> {
+    // T2.10:透传扩展字段(kb_ids/prompt_config),由上游裁决支持范围
+    const body: Record<string, unknown> = {};
+    if (params.title !== undefined) {
+      body.title = params.title;
+    }
+    if (params.kbIds !== undefined) {
+      body.kb_ids = params.kbIds;
+    }
+    if (params.promptConfig !== undefined) {
+      body.prompt_config = params.promptConfig;
+    }
     const data = await this.request<unknown>(
       'PATCH',
       `/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}`,

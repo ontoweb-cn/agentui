@@ -127,17 +127,22 @@ export interface IHarnessAdapter {
   deleteSession(ctx: BackendContext, agentId: string, sessionId: string): Promise<void>;
 
   /**
-   * 更新会话(目前仅支持 title 重命名,对应 Gateway PATCH /api/sessions/{id})。
+   * 更新会话(对应 Gateway PATCH /api/sessions/{id})。
+   * T2.10(p0-port-transition-impact-review §六):Gateway PATCH 完整支持
+   * title/end_reason/kb_ids/prompt_config;此前 BFF 签名窄化为 title-only,
+   * 导致设置页保存链路(prompt_config/kb_ids)静默失败。
+   * 注意:promptConfig 为整列替换语义(Gateway UPDATE sessions SET prompt_config=$1),
+   * 调用方必须传完整对象,而非增量字段。
    * @param ctx 租户上下文
    * @param agentId 关联 Agent ID
    * @param sessionId Session ID
-   * @param params 更新字段 { title? }
+   * @param params 更新字段 { title?, kbIds?, promptConfig? }
    */
   updateSession(
     ctx: BackendContext,
     agentId: string,
     sessionId: string,
-    params: { title?: string },
+    params: { title?: string; kbIds?: string[]; promptConfig?: unknown },
   ): Promise<Session>;
 
   /**

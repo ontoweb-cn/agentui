@@ -377,6 +377,18 @@ describe('IntellectEnterpriseAdapter', () => {
       const [, , , body] = httpClientMock.request.mock.calls[0];
       expect(body).toEqual({});
     });
+
+    it('T2.10:kbIds/promptConfig → 透传为 snake_case kb_ids/prompt_config', async () => {
+      httpClientMock.request.mockResolvedValueOnce({ id: 'sess-1', title: 't' });
+      await adapter.updateSession(ctx, 'agent-1', 'sess-1', {
+        kbIds: ['kb-1'],
+        promptConfig: { system: 'sys', web_search: { provider: 'tavily' } },
+      });
+      expect(httpClientMock.request).toHaveBeenCalledWith('PATCH', '/api/sessions/sess-1', ctx, {
+        kb_ids: ['kb-1'],
+        prompt_config: { system: 'sys', web_search: { provider: 'tavily' } },
+      });
+    });
   });
 
   describe('listSessions', () => {

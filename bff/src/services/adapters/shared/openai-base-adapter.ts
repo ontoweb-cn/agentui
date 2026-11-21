@@ -126,12 +126,22 @@ export abstract class OpenAICompatibleBaseAdapter implements IHarnessAdapter {
     _ctx: BackendContext,
     _agentId: string,
     sessionId: string,
-    params: { title?: string },
+    params: { title?: string; kbIds?: string[]; promptConfig?: unknown },
   ): Promise<Session> {
     const s = this.sessions.get(sessionId);
     if (!s) throw new Error(`Session not found: ${sessionId}`);
     if (params.title !== undefined) {
       s.title = params.title;
+    }
+    // T2.10:OpenAI 兼容后端无上游会话存储,扩展字段暂存 metadata(前端内存会话语义)
+    if (params.kbIds !== undefined || params.promptConfig !== undefined) {
+      s.metadata = { ...(s.metadata ?? {}) };
+      if (params.kbIds !== undefined) {
+        s.metadata.kbIds = params.kbIds;
+      }
+      if (params.promptConfig !== undefined) {
+        s.metadata.promptConfig = params.promptConfig;
+      }
     }
     s.updatedAt = new Date().toISOString();
     return s;

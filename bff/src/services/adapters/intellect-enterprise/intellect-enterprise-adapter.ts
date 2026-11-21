@@ -241,11 +241,18 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
     ctx: BackendContext,
     agentId: string,
     sessionId: string,
-    params: { title?: string },
+    params: { title?: string; kbIds?: string[]; promptConfig?: unknown },
   ): Promise<Session> {
+    // T2.10:Gateway PATCH 完整支持 title/end_reason/kb_ids/prompt_config(snake_case)
     const body: Record<string, unknown> = {};
     if (params.title !== undefined) {
       body.title = params.title;
+    }
+    if (params.kbIds !== undefined) {
+      body.kb_ids = params.kbIds;
+    }
+    if (params.promptConfig !== undefined) {
+      body.prompt_config = params.promptConfig;
     }
     const data = await this.httpClient.request<unknown>(
       'PATCH',
