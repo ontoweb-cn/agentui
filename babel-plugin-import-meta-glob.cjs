@@ -111,22 +111,31 @@ function resolveAlias(pattern, aliases, rootDir) {
 }
 
 /**
+ * D-01 修复（wizard-sso-followup）：Windows 下 path.resolve/join 产生反斜杠，
+ * fast-glob 把 `\` 当转义符处理导致零匹配 → import.meta.glob 静默返回空对象 →
+ * enabledModules 为空（feature-registry 基线失败根因）。统一转正斜杠。
+ */
+function toPosix(p) {
+  return p.replace(/\\/g, '/');
+}
+
+/**
  * 将 glob pattern 解析为绝对路径 pattern（供 fast-glob 使用）。
  */
 function resolvePattern(pattern, sourceFile, aliases, rootDir) {
   // 别名 pattern（如 @/foo/*.ts）
   const aliased = resolveAlias(pattern, aliases, rootDir);
-  if (aliased) return aliased;
+  if (aliased) return toPosix(aliased);
   // 相对 pattern
   if (pattern.startsWith('./') || pattern.startsWith('../')) {
-    return path.resolve(path.dirname(sourceFile), pattern);
+    return toPosix(path.resolve(path.dirname(sourceFile), pattern));
   }
   // 绝对-from-root pattern（如 /src/foo/*.ts）
   if (pattern.startsWith('/')) {
-    return path.join(rootDir, pattern.slice(1));
+    return toPosix(path.join(rootDir, pattern.slice(1)));
   }
   // 裸 pattern，按相对处理
-  return path.resolve(path.dirname(sourceFile), pattern);
+  return toPosix(path.resolve(path.dirname(sourceFile), pattern));
 }
 
 /**

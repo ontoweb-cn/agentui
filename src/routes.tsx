@@ -319,6 +319,11 @@ const routeConfigOptions = [
                 path: Routes.AdminHarnessBackends,
                 Component: () => import('@/pages/admin/harness-backends'),
               },
+              // wizard-sso-followup(A7):统一认证运行时配置设置页(所有部署可用)。
+              {
+                path: Routes.AdminSsoSettings,
+                Component: () => import('@/pages/admin/sso-settings'),
+              },
               // Multi-Harness P5 (US1/US2/US3):Team/Project/Tenant-binding Admin 页面。
               {
                 path: Routes.AdminTeams,

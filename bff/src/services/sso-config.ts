@@ -4,6 +4,9 @@
  * 每次调用按需读取 env，便于测试注入；启动时由 assertSsoConfigAtStartup 做 fail-fast。
  */
 
+// A7(wizard-sso-followup):运行时配置存储(状态密钥永不入 store)
+import { readSsoRuntimeConfig } from './sso-store';
+
 export const SSO_CALLBACK_PATH = '/api/bff/auth/oauth/callback';
 
 export interface SsoConfig {
@@ -29,6 +32,22 @@ function readPositiveInt(raw: string | undefined, fallback: number): number {
 }
 
 export function loadSsoConfig(env: NodeJS.ProcessEnv = process.env): SsoConfig {
+  const envConfig: SsoConfig = buildEnvConfig(env);
+  // A7(wizard-sso-followup):runtime 文件整体优先(逐字段)于 env;
+  // 文件缺失/损坏 → 纯 env(向后兼容,删除文件即回滚)。见 services/sso-store.ts。
+  const runtime = readSsoRuntimeConfig();
+  if (!runtime) return envConfig;
+  return {
+    ...envConfig,
+    enabled: runtime.enabled,
+    publicOrigin: runtime.publicOrigin || envConfig.publicOrigin,
+    // runtime null = 显式"不过滤",覆盖 env 应急名单
+    providers: runtime.providers,
+    silentRelogin: runtime.silentRelogin,
+  };
+}
+
+function buildEnvConfig(env: NodeJS.ProcessEnv): SsoConfig {
   const allowlist = (env.BFF_SSO_PROVIDERS ?? '')
     .split(',')
     .map((item) => item.trim())

@@ -472,6 +472,9 @@ export default {
   adminTenantBinding: (tenantId: string) =>
     `${bffAdmin}/tenants/${tenantId}/binding`,
 
+  // wizard-sso-followup(A7):统一认证运行时配置管理(管理员)
+  ssoAdminConfig: `${bffAdmin}/sso/config`,
+
   // spec-010 v8 B-7: Wizard — 首次安装向导
   // Constitution Principle I: 前端经 BFF Wizard 路由完成首次配置。
   wizard: {

@@ -615,6 +615,15 @@ function AdminHarnessBackends() {
                   <SelectItem value="agent-scope">agent-scope</SelectItem>
                 </SelectContent>
               </Select>
+              {/* A8(wizard-sso-followup):kag 已从向导下架,补充协议族与接入方式说明 */}
+              {field.value === 'kag' && (
+                <FormDescription>
+                  {t('admin.harnessBackends.kagHint', {
+                    defaultValue:
+                      'KAG 走 MCP 协议族(spec-012),仅支持在此手工配置,不在安装向导中提供。',
+                  })}
+                </FormDescription>
+              )}
               <FormMessage />
             </FormItem>
           )}

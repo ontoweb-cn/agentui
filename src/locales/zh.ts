@@ -3062,4 +3062,40 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       canvas: '画布',
     },
   },
+  // A8(wizard-sso-followup):zh.ts 此前无 admin 段(admin 页依赖 defaultValue),
+  // 仅补本次新增键;其余 admin 词条缺失属存量缺口,另行立项。
+  admin: {
+    harnessBackends: {
+      kagHint:
+        'KAG 走 MCP 协议族(spec-012),仅支持在此手工配置,不在安装向导中提供。',
+    },
+    // A7(wizard-sso-followup):统一认证运行时配置设置页
+    ssoSettings: {
+      title: '统一认证设置',
+      subtitle: '统一认证(SSO)登录的运行时配置;保存后即时生效,无需重启。',
+      cardTitle: '生效配置',
+      updatedAt: '运行时配置更新于 {{time}}',
+      noRuntime: '当前无运行时配置,以下生效值来自部署环境变量。',
+      secretMissing:
+        '已启用统一认证,但部署配置缺少 BFF_SSO_STATE_SECRET:重启后 BFF 将启动失败,请先在 .env 设置(至少 32 字符)。',
+      enable: '启用统一认证登录',
+      enableHint: '登录页展示 SSO 渠道按钮;仅企业版租户生效。',
+      publicOrigin: '公开来源地址',
+      httpWarning:
+        '当前为 http://:生产环境必须 https,否则 BFF 启动校验将失败(内网调试可设 BFF_ALLOW_INSECURE_SSO=true)。',
+      providers: '渠道白名单',
+      providersHint: '逗号分隔的渠道 ID;留空 = 不过滤(以网关 enabled/用途为准)。',
+      silentRelogin: '静默重登',
+      silentReloginHint: '会话过期后自动尝试免密恢复;主动登出后不自动重登。',
+      secretNote:
+        '引导密钥(BFF_SSO_STATE_SECRET)属部署级敏感配置,不在本页展示或修改,由部署配置文件管理。',
+      save: '保存',
+      saved: '统一认证配置已保存并即时生效',
+      saveFailed: '保存失败',
+      reset: '回落环境变量',
+      resetDone: '已清除运行时配置,回落到部署环境变量',
+      sourceRuntime: '运行时配置',
+      sourceEnv: '环境变量',
+    },
+  },
 };

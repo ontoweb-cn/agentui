@@ -6,6 +6,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 
 import {
   LucideFolderKanban,
+  LucideKeyRound,
   LucideLink,
   LucideMonitor,
   LucideServerCrash,
@@ -70,6 +71,12 @@ const AdminNavigationLayout = () => {
         path: Routes.AdminTenantBindings,
         name: t('admin.tenantBinding.title'),
         icon: <LucideLink className="size-[1em]" />,
+      },
+      // wizard-sso-followup(A7):统一认证设置
+      {
+        path: Routes.AdminSsoSettings,
+        name: t('admin.ssoSettings.title'),
+        icon: <LucideKeyRound className="size-[1em]" />,
       },
       ...(IS_ENTERPRISE
         ? [

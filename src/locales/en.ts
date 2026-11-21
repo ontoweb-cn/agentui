@@ -3198,6 +3198,44 @@ Important structured information may include: names, dates, locations, events, k
       serviceStatus: 'Service status',
       userManagement: 'User management',
       sandboxSettings: 'Sandbox settings',
+      // A8(wizard-sso-followup):kag 已从向导下架(D6),补协议族与接入方式说明
+      harnessBackends: {
+        kagHint:
+          'KAG uses the MCP protocol family (spec-012). It is configured manually here only and is not offered in the setup wizard.',
+      },
+      // A7(wizard-sso-followup): SSO runtime config settings page
+      ssoSettings: {
+        title: 'Unified authentication settings',
+        subtitle:
+          'Runtime configuration for SSO login. Changes take effect immediately without a restart.',
+        cardTitle: 'Effective configuration',
+        updatedAt: 'Runtime config updated at {{time}}',
+        noRuntime:
+          'No runtime config yet. The values below come from deployment env vars.',
+        secretMissing:
+          'SSO is enabled but BFF_SSO_STATE_SECRET is missing from the deployment config: BFF will fail to start after a restart. Set it in .env first (at least 32 characters).',
+        enable: 'Enable unified authentication login',
+        enableHint:
+          'Shows SSO channel buttons on the login page; effective for enterprise tenants only.',
+        publicOrigin: 'Public origin',
+        httpWarning:
+          'Currently http://: production requires https or BFF startup validation will fail (intranet debugging may set BFF_ALLOW_INSECURE_SSO=true).',
+        providers: 'Channel allowlist',
+        providersHint:
+          'Comma-separated channel IDs. Leave empty to disable filtering (gateway enabled/usage wins).',
+        silentRelogin: 'Silent re-login',
+        silentReloginHint:
+          'Automatically restores the session without prompting when it expires; explicit logout is not auto-relogged.',
+        secretNote:
+          'The bootstrap secret (BFF_SSO_STATE_SECRET) is deployment-level sensitive configuration. It is never shown or edited here and stays in the deployment config file.',
+        save: 'Save',
+        saved: 'SSO configuration saved and effective immediately',
+        saveFailed: 'Save failed',
+        reset: 'Fall back to env vars',
+        resetDone: 'Runtime config cleared; falling back to deployment env vars',
+        sourceRuntime: 'Runtime config',
+        sourceEnv: 'Env var',
+      },
       registrationWhitelist: 'Registration whitelist',
       inviteCodes: 'Invite codes',
       inviteEmailOptional: 'Restricted email (optional)',

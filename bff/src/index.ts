@@ -44,6 +44,8 @@ import { canvasRoutes } from './routes/canvas';
 import { pluginsRoutes } from './routes/plugins';
 import { pluginsChatRoutes } from './routes/plugins-chat';
 import { wizardRoutes } from './routes/wizard';
+// wizard-sso-followup(A7):统一认证运行时配置管理
+import { ssoAdminRoutes } from './routes/sso-admin';
 // spec-010 v8 B-1 (B1 修复): BootstrapTokenManager 单例,供 wizard setup 鉴权
 import { BootstrapTokenManager } from './services/bootstrap-token';
 import { assertSsoConfigAtStartup } from './services/sso-config';
@@ -314,6 +316,16 @@ app.use('/admin/wizard/*', async (c, next) => {
   return await authMiddleware(c, next);
 });
 app.route('/', wizardRoutes);
+
+// wizard-sso-followup(A7):统一认证运行时配置管理 /admin/sso/config
+// 鉴权:authMiddleware + requireValidImtSession 双层(同 harness-backends 模式)。
+// 评审补强:authMiddleware 仅凭据存在性检查(任意非空 cookie/header 即放行),
+// 而本路由是全局运维变更面(PUT 后即时生效,影响全员登录链路),必须叠加
+// 后端实校——企业模式实校 imt_token(60s 缓存,401/502/503 fail-closed);
+// 社区模式直通(与既有 /admin/* 一致,鉴权由上游/部署面承担)。
+app.use('/admin/sso/*', authMiddleware);
+app.use('/admin/sso/*', requireValidImtSession);
+app.route('/', ssoAdminRoutes);
 
 const port = Number(process.env.BFF_PORT) || 9390;
 

@@ -60,6 +60,15 @@ import { SsoSection, INITIAL_WIZARD_DRAFT_SSO, type WizardDraftSso } from './sso
 // ---------------------------------------------------------------------------
 
 const DRAFT_STORAGE_KEY = 'wizard-draft';
+// A5(wizard-sso-followup/R8):凭据不进 localStorage —— 另存 sessionStorage
+// (标签页生命周期:刷新保留、关标签即清、不长期落盘)。
+const DRAFT_CREDENTIALS_STORAGE_KEY = 'wizard-draft-credentials';
+
+interface WizardDraftCredentials {
+  token: string;
+  email: string;
+  password: string;
+}
 const WIZARD_STEPS = 6;
 
 interface WizardDraft {
@@ -96,8 +105,30 @@ const INITIAL_DRAFT: WizardDraft = {
 function loadDraft(): WizardDraft {
   try {
     const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
-    if (!raw) return INITIAL_DRAFT;
-    return { ...INITIAL_DRAFT, ...JSON.parse(raw) };
+    let base = INITIAL_DRAFT;
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<WizardDraft>;
+      // A5:历史草稿中的凭据字段不再从 localStorage 恢复(防长期残留)
+      delete parsed.token;
+      delete parsed.email;
+      delete parsed.password;
+      base = { ...INITIAL_DRAFT, ...parsed };
+    }
+    try {
+      const credRaw = sessionStorage.getItem(DRAFT_CREDENTIALS_STORAGE_KEY);
+      if (credRaw) {
+        const cred = JSON.parse(credRaw) as Partial<WizardDraftCredentials>;
+        return {
+          ...base,
+          token: cred.token ?? base.token,
+          email: cred.email ?? base.email,
+          password: cred.password ?? base.password,
+        };
+      }
+    } catch {
+      // sessionStorage 不可用时静默降级(仅丢凭据,其余草稿保留)
+    }
+    return base;
   } catch {
     return INITIAL_DRAFT;
   }
@@ -105,15 +136,24 @@ function loadDraft(): WizardDraft {
 
 function saveDraft(draft: WizardDraft): void {
   try {
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    // A5:凭据剥离到 sessionStorage,localStorage 只存非敏感配置
+    const { token, email, password, ...rest } = draft;
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(rest));
+    const credentials: WizardDraftCredentials = { token, email, password };
+    sessionStorage.setItem(
+      DRAFT_CREDENTIALS_STORAGE_KEY,
+      JSON.stringify(credentials),
+    );
   } catch {
-    // localStorage 不可用时静默忽略(隐私模式等)
+    // 存储不可用时静默忽略(隐私模式等)
   }
 }
 
 function clearDraft(): void {
   try {
     localStorage.removeItem(DRAFT_STORAGE_KEY);
+    // A5:凭据随草稿一并清理
+    sessionStorage.removeItem(DRAFT_CREDENTIALS_STORAGE_KEY);
   } catch {
     // ignore
   }
