@@ -533,7 +533,7 @@ const Login = () => {
         </div>
         <div className="relative z-10 flex flex-col items-center justify-center min-h-[1050px] px-4 sm:px-6 lg:px-8">
           {ssoNotice && (
-            <p className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-600">
+            <p className="mb-4 rounded-lg border border-state-error/20 bg-state-error/10 px-4 py-2 text-sm text-state-error">
               SSO provider is temporarily unavailable, please retry later
             </p>
           )}
