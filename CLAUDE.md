@@ -123,9 +123,11 @@ The folder `src/components/ui/` is the project's **shared UI library** — it co
 - Avoid duplicating component structures in JSX; favor render props or reusable components.
 
 ### ee Overlay 约定（T2.5）
-- **`src/ee/`** 承载 agentui 私有内容（已迁：wizard、tasks；后续 aihub/applications/BFF 专属页面），对齐上游 ee overlay 化：共享层保持与上游 web/ 同构，后续同步上游子树时冲突面最小。
+- **`src/ee/`** 承载 agentui 私有内容（已迁：wizard、tasks、aihub、applications、BFF 专属 admin：harness-backends / sso-settings / tenant-bindings），对齐上游 ee overlay 化：共享层保持与上游 web/ 同构，后续同步上游子树时冲突面最小。
 - 共享代码**只允许 import `@/ee/*`**（别名显式声明于 vite.config.ts / tsconfig.json / .storybook/main.ts；jest 经 `^@/(.*)$` 继承）；不得把 Intellect 专有逻辑内联进共享层，也不得反向（ee 之外的代码 import ee 内容仅限路由挂载点）。
 - 迁移以"一次一个模块、独立提交"推进；ee 内新增模块需在迁移验证（构建 + 路由 + 既有测试）通过后合入。
+- **T3.4 i18n overlay**：私有词条在 `src/ee/locales/{en,zh}-private.ts`，由 `src/locales/config.ts` merge；共享 `en.ts`/`zh.ts` 保持可 cherry-pick。
+- **T3.6 上游同步**：`node scripts/sync-upstream-web.mjs --dry-run`（定案 archive+rsync，非根前缀 subtree）；`--apply` 写入后 `git diff` + 人工/安全审阅再提交；**永不覆盖** `src/ee/`、`locales/config.ts`、鉴权/请求层；默认**不** `--delete`，清理上游已删文件需显式 `--prune-deletes`；建议每月一次。
 
 ### Utility Libraries and Reuse
 - **Time/date handling**: Use `dayjs` for all date/time formatting, parsing, and manipulation.

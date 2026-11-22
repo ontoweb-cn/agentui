@@ -200,7 +200,7 @@ function useCreateUserForm(props?: {
       email: '',
       password: '',
       confirmPassword: '',
-      ...(props?.defaultValues ?? {}),
+      ...props?.defaultValues,
     },
     resolver: zodResolver(schema),
   });

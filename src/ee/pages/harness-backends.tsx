@@ -87,7 +87,7 @@ import {
   type HarnessCapabilities,
   type ProtocolFamily,
 } from '@/services/harness-admin-service';
-import { createFuzzySearchFn } from './utils';
+import { createFuzzySearchFn } from '@/pages/admin/utils';
 import { Routes } from '@/routes';
 
 // ---------------------------------------------------------------------------

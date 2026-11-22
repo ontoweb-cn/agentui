@@ -4,14 +4,23 @@ import storage from '@/utils/authorization-util';
 import dayjs from 'dayjs';
 import i18n from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
-import { upperFirst } from 'lodash';
+import { merge, upperFirst } from 'lodash';
 import { initReactI18next } from 'react-i18next';
 import translation_en from './en';
+import translation_en_private from '@/ee/locales/en-private';
 
 // 语言选择优先级:localStorage(用户已选)> 浏览器 navigator.language(手动映射)>
 // VITE_DEFAULT_LANGUAGE_CODE(默认 'en')。
 // 浏览器语言映射在 initLanguage() 中处理,因 i18next 默认不做 'zh-CN' → 'zh-Hans'
 // 的模糊匹配,会导致中文浏览器 fallback 到 'en'。
+
+/** T3.4:ee 私有词条 overlay(仅 zh/en;共享语言文件保持可 cherry-pick)。 */
+const eePrivateImports: Partial<
+  Record<string, () => Promise<{ default: any }>>
+> = {
+  [LanguageAbbreviation.En]: () => import('@/ee/locales/en-private'),
+  [LanguageAbbreviation.Zh]: () => import('@/ee/locales/zh-private'),
+};
 
 const languageImports: Record<string, () => Promise<{ default: any }>> = {
   [LanguageAbbreviation.En]: () => import('./en'),
@@ -74,7 +83,14 @@ export const DEFAULT_LANGUAGE_CODE =
   import.meta.env.VITE_DEFAULT_LANGUAGE_CODE || LanguageAbbreviation.En;
 
 const resources = {
-  [LanguageAbbreviation.En]: translation_en,
+  // en 启动即注入共享包 + ee overlay(lodash deep merge,后写覆盖嵌套键如 admin.*)。
+  [LanguageAbbreviation.En]: {
+    translation: merge(
+      {},
+      translation_en.translation,
+      translation_en_private.translation,
+    ),
+  },
 };
 
 // dayjs locale 与 BCP-47 代码映射(dayjs 使用 POSIX 风格命名)
@@ -164,6 +180,18 @@ export const loadLanguageAsync = async (lng: string): Promise<void> => {
     } catch (error) {
       console.error(`Failed to load language ${lng}:`, error);
       return;
+    }
+  }
+
+  // T3.4:合并 ee 私有 overlay(zh/en)。deep=true 以合并 admin 等嵌套对象。
+  const eePrivateImport = eePrivateImports[lng] ?? eePrivateImports[lng.split('-')[0]];
+  if (eePrivateImport) {
+    try {
+      const eeModule = await eePrivateImport();
+      const eeData = eeModule.default?.translation || eeModule.default || {};
+      i18n.addResourceBundle(lng, 'translation', eeData, true, true);
+    } catch (error) {
+      console.error(`Failed to load ee private i18n for ${lng}:`, error);
     }
   }
 

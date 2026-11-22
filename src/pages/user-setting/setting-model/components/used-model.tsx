@@ -265,11 +265,11 @@ function InstanceModelList({
               </span>
             ))}
           </div>
-          {false && (
+          {onEditInstance ? (
             <Button size="icon" variant="ghost" onClick={handleSettingsClick}>
               <Settings size={12} />
             </Button>
-          )}
+          ) : null}
         </div>
       )}
 

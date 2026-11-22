@@ -446,6 +446,8 @@ export function useFetchSessionManually() {
             GATEWAY_CHAT_AGENT_ID,
             chatId || sessionId,
           ),
+          // L-CSL-02:会话加载失败由 chat 页 loadError 呈现,跳过全局 toast。
+          skipErrorNotification: true,
         },
         true,
       );

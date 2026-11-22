@@ -169,8 +169,11 @@ request.interceptors.response.use(
     return response;
   },
   function (error) {
-    // Handle HTTP 401 (token expired / invalid)
     const status = error?.response?.status;
+    const skipToast = Boolean(error?.config?.skipErrorNotification);
+
+    // Handle HTTP 401 (token expired / invalid) — 始终执行,不受 skipErrorNotification 影响。
+    // skip 仅抑制 errorHandler 全局 toast,避免与页面 loadError 双弹(L-CSL-02 / 评审加固)。
     if (status === 401) {
       // 企业版 cookie 模式：业务 401 不必然代表会话失效（/proxy/v1/* 透传路由
       // 无 Authorization header 即返回 401，但 cookie 仍有效）→ 统一复验后决定。
@@ -182,6 +185,7 @@ request.interceptors.response.use(
         isRedirecting = true;
         const messageText =
           error?.response?.data?.message || RetcodeMessage[401];
+        // 401 登出提示仍展示(鉴权态必须揭示);页面层可另渲染 loadError。
         notification.error({
           message: messageText,
           description: messageText,
@@ -197,13 +201,15 @@ request.interceptors.response.use(
     // RAG 后端未绑定的 503:刻意的能力状态信号,静默(不弹全局 toast)。
     // 前端已按 capability 门控跳过大部分调用,此处仅兜底长尾请求。
     if (
-      error?.response?.status === 503 &&
+      status === 503 &&
       isRagUnavailableEnvelope(error?.response?.data)
     ) {
       return Promise.reject(error);
     }
 
-    errorHandler(error);
+    if (!skipToast) {
+      errorHandler(error);
+    }
     return Promise.reject(error);
   },
 );

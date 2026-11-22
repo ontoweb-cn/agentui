@@ -9,6 +9,7 @@ module.exports = {
     './src/components/**/*.tsx',
     './src/layouts/**/*.tsx',
     './src/features/**/*.{ts,tsx}',
+    './src/ee/**/*.{ts,tsx}',
     './packages/canvas-plugin/src/**/*.{ts,tsx}',
   ],
   theme: {
@@ -284,8 +285,9 @@ module.exports = {
       fontFamily: {
         sans: ['var(--font-sans)', ...fontFamily.sans],
         // spec-013 P0-2: TRAE Work 字体映射
-        display: ['var(--trae-font-display)', ...fontFamily.sans],
-        mono: ['var(--trae-font-mono)', 'ui-monospace', 'monospace'],
+        // T3.5:经 --font-display/--font-mono 语义别名(global.less)→ TRAE 变量
+        display: ['var(--font-display)', ...fontFamily.sans],
+        mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
       },
       // spec-013 P0-2: TRAE Work 字间距映射
       letterSpacing: {

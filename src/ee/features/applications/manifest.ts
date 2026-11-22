@@ -1,6 +1,6 @@
 import { LucideLayoutGrid } from 'lucide-react';
 
-import type { ModuleDefinition } from '../_types';
+import type { ModuleDefinition } from '@/features/_types';
 import { ApplicationsRoutes } from './routes';
 
 const definition: ModuleDefinition = {

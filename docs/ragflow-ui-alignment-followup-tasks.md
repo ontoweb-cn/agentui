@@ -110,7 +110,7 @@
 
 ### T2.10 设置保存链路修复(v3 新增,**已完成** `7de6206`,0.5-1 天 → 实际 ~0.5 天)
 - **动作(已实施)**:①`bff-agents.ts` PATCH 路由透传 `prompt_config`/`kb_ids`(移除 title-only 提取与 400 拦截,snake/camel 键名兼容);②四个 adapter(intellect-enterprise/intellect-rag/mcp-base/openai-base)的 `updateSession` 签名扩展 `{ title?, kbIds?, promptConfig? }` 并透传;③前端 `use-chat-request.ts` 附带修复 kb_ids 空数组放行(清空知识库绑定可保存);④新增 PATCH 透传/空数组/camelCase/非法值 4 组用例。
-- **遗留**:端到端 F1 验证(改 system prompt → 保存 → `GET /api/sessions/{id}` 观察)与"存量对话首次保存真正生效"的发布说明,见 wizard-sso-followup A2 收尾。
+- **遗留收口**:见 [chat-settings-save-f1-release-notes.md](./chat-settings-save-f1-release-notes.md);生产实网 F1 仍受限 L-09。
 
 ---
 
@@ -120,22 +120,20 @@
 - **动作(已实施)**:依赖 `@tanstack/react-virtual`;`csv-preview.tsx` 行虚拟化;knowledge-chunk / dataflow `chunker` 列表虚拟化(+measureElement)。
 - **验收**:万行 CSV/千条 chunk 滚动帧率稳定,内存不随行数线性增长。
 
-### T3.2 分块引用图预览源文档(1-2 天)
-chunk 引用图片可点击预览源文档(上游 #20895 模式);依赖 `IFileService`/文档查看路由已有能力。
+### T3.2 分块引用图预览源文档(1-2 天)— **已完成**(九步 remaining-backlog)
+引用图悬停「查看源文档」→ `navigateToChunkParsedResult(document_id, dataset_id)`。
 
 ### T3.3 `builtin-pipeline` 只读展示页(2-3 天)
 后端暴露 builtin pipelines 列表后新增 `src/pages/builtin-pipeline`(上游 #20656 模式:agents 列表中只读展示)。**依赖澄清:该 API 属上游 Go 后端能力,agentui 当前对接的 intellect-rag Python fork(v0.26.1)没有——实际阻塞于 T4.1/Phase C,不应在 Python 侧实现。**
 
-### T3.4 i18n overlay 拆分(1 天)
-私有词条拆至 `src/locales/config.ts` 的 merge 链(上游 `ee-stub/locales/<lang>-private.ts` 模式),共享语言文件保持可 cherry-pick;先做 zh/en,其余语言按需。依赖 T2.5 第一步。
+### T3.4 i18n overlay 拆分(1 天)— **已完成**(zh/en)
+私有词条 → `src/ee/locales/{en,zh}-private.ts`,由 `locales/config.ts` merge。
 
-### T3.5 字体 token 化(0.5 天)
-Outfit/JetBrains Mono 的字号/行高纳入语义 token,与既有 token 体系对齐;清理组件内散落的任意 `text-*` 值。
+### T3.5 字体 token 化(0.5 天)— **已完成**
+`--font-display` / `--font-mono` 语义别名 → TRAE;tailwind `font-display`/`font-mono` 走别名。
 
-### T3.6 上游子树同步机制(1 天,首步为机制选型)
-- **第一步(选型,两案并试)**:`git subtree pull --prefix . <upstream-remote> main --squash` 是否支持根目录前缀存疑(subtree 通常要求子目录);备选方案 `git fetch upstream` + `git archive upstream/main web | tar -x` 至临时目录后 rsync 对比再提交。以试运行结果定案。
-- **第二步**:定案机制固化为 `scripts/sync-upstream-web.mjs` + `CLAUDE.md` 说明每月节奏与冲突处理约定。
-- **依赖**:T2.5 第一步(overlay 骨架)完成后收益最大。
+### T3.6 上游子树同步机制(1 天)— **已完成**(定案 archive+rsync)
+`scripts/sync-upstream-web.mjs`;CLAUDE.md 每月节奏;不覆盖 `src/ee/`。
 
 ### T3.7 `check-color-tokens` 增强(0.5 天)— **已完成**(v8)
 - **动作(已实施)**:`total`↔sum(files) 交叉校验失败即退出;改进文件提示 `--prune`;`--prune`/`--update` 重写基线并剔干净文件。基线收缩 299→298。

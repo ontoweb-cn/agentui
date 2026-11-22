@@ -81,9 +81,9 @@ const ParserContainer = (props: IProps) => {
         obj: {
           ...data.value.obj,
           params: {
-            ...(data.value?.obj?.params || {}),
+            ...data.value?.obj?.params,
             outputs: {
-              ...(data.value?.obj?.params?.outputs || {}),
+              ...data.value?.obj?.params?.outputs,
               [initialText.key]: {
                 type: initialText.type,
                 value: initialText.value,

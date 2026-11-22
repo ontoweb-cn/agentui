@@ -24,4 +24,4 @@ const mcpServerService = {
 export default mcpServerService;
 
 export const listMcpServers = (params?: IPaginationRequestBody, body?: any) =>
-  request.get(api.listMcpServer, { params: { ...params, ...(body || {}) } });
+  request.get(api.listMcpServer, { params: { ...params, ...body } });

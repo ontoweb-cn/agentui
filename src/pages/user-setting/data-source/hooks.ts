@@ -213,8 +213,8 @@ export const useUpdateDataSourceStatus = () => {
           queryClient.setQueryData(
             ['data-source-detail', id],
             (previous?: IDataSource) => ({
-              ...(previous || {}),
-              ...(data.data || {}),
+              ...previous,
+              ...data.data,
               status: data.data?.status ?? status,
             }),
           );
