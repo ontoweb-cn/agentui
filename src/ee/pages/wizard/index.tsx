@@ -43,7 +43,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 
-import { Routes } from '@/routes';
+import { Routes } from '@/constants/routes';
 import {
   fetchWizardBackendTypes,
   fetchWizardStatus,

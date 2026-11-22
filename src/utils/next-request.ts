@@ -15,6 +15,7 @@ import { convertTheKeysOfTheObjectToSnake, isFormData } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
 import { isRagUnavailableEnvelope } from './rag-unavailable';
+import { resolveHttpErrorDescription } from './resolve-http-error-description';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
 
@@ -55,25 +56,31 @@ export type ResultCode =
   | 504;
 
 const errorHandler = (error: {
-  response: Response;
+  response: {
+    status?: number;
+    statusText?: string;
+    data?: { message?: string };
+    config?: { url?: string };
+  };
   message: string;
-}): Response => {
+}) => {
   const { response } = error;
   if (error.message === FAILED_TO_FETCH) {
     notification.error({
       description: i18n.t('message.networkAnomalyDescription'),
       message: i18n.t('message.networkAnomaly'),
     });
-  } else {
-    if (response && response.status) {
-      const errorText =
-        RetcodeMessage[response.status as ResultCode] || response.statusText;
-      const { status, url } = response;
-      notification.error({
-        message: `${i18n.t('message.requestError')} ${status}: ${url}`,
-        description: errorText,
-      });
-    }
+  } else if (response?.status) {
+    // 评审修复(双 toast):优先展示服务端 detail,mutation 层不再重复 message.error。
+    const errorText = resolveHttpErrorDescription(error, (status) =>
+      RetcodeMessage[status as ResultCode],
+    );
+    const status = response.status;
+    const url = response.config?.url;
+    notification.error({
+      message: `${i18n.t('message.requestError')} ${status}${url ? `: ${url}` : ''}`,
+      description: errorText,
+    });
   }
   return response ?? { data: { code: 1999 } };
 };

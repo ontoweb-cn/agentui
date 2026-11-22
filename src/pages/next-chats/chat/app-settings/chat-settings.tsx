@@ -105,7 +105,9 @@ export function ChatSettings({
       };
     }
 
-    updateChat({
+    // await 避免 mutateAsync 拒绝时出现未处理的 Promise rejection;
+    // 失败 toast 由 next-request 全局 errorHandler 统一弹出。
+    await updateChat({
       chatId: id!,
       params: {
         ...omit(data, [

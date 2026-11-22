@@ -27,6 +27,7 @@ import { has } from 'lodash';
 import { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useSearchParams } from 'react-router';
+import { buildUpdateChatPatch } from './build-update-chat-patch';
 import {
   useGetPaginationWithRouter,
   useHandleSearchChange,
@@ -273,15 +274,8 @@ export const useUpdateChat = () => {
     mutateAsync,
   } = useMutation({
     mutationKey: [ChatApiAction.UpdateChat],
-    onError: (error) => {
-      // 评审修复(Bugbot Medium):BFF 400(如 T2.7 校验拒绝)此前无任何用户
-      // 提示(next-request 全局 errorHandler 被注释),复现"点保存没反应"的
-      // 静默失败。展示服务端可读 detail,无 detail 时回落通用文案。
-      const detail = (
-        error as { response?: { data?: { message?: string } } | undefined }
-      )?.response?.data?.message;
-      message.error(detail || t('message.modifyFailed'));
-    },
+    // 失败 toast 由 next-request 全局 errorHandler 统一负责(含服务端 detail);
+    // 此处不再 onError message.error,避免与拦截器双弹。
     mutationFn: async ({
       chatId,
       params,
@@ -290,15 +284,8 @@ export const useUpdateChat = () => {
       params: Record<string, any>;
     }) => {
       // Gateway session 支持 title + kb_ids + prompt_config 字段更新。
-      // T2.10 附带修复:kb_ids 为空数组时也必须发送——此前仅非空才发送,
-      // 导致"清空知识库绑定"无法保存(Gateway kb_ids 为整列替换语义)。
-      const patchData: Record<string, any> = { name: params.name, title: params.name };
-      if (params.dataset_ids) {
-        patchData.kb_ids = params.dataset_ids;
-      }
-      if (params.prompt_config) {
-        patchData.prompt_config = params.prompt_config;
-      }
+      // T2.10:kb_ids 为空数组也必须发送(清空绑定;Gateway 整列替换语义)。
+      const patchData = buildUpdateChatPatch(params);
       const { data } = await gatewayChatService.patchGatewayChat(
         {
           url: api.patchAgentSession(GATEWAY_CHAT_AGENT_ID, chatId),

@@ -7,6 +7,7 @@
 > **⚠ 2026-11-21 过渡期评审勘验**:T4.1 靶点有误(provider 存储/聚合位/校验在 **Rust Gateway + BFF** 层,非 intellect-rag),并发现设置保存链路存在 title-only 存量断点——详见 [p0-port-transition-impact-review.md](./p0-port-transition-impact-review.md)
 > **v3(2026-11-21 21:15)**:按 p0 过渡期评审与 [unfinished-tasks-review-20261121.md](./unfinished-tasks-review-20261121.md) 修订——**新增 T2.10(已完成,`7de6206`)**;T4.1 拆分为 **T4.1a(Gateway/BFF)/ T4.1b(intellect-rag)**;T2.4 前置决策**已解锁**(Gateway `prompt_config` 整列替换实证→短期维持整包,T4.2 收敛);T2.7 落点写死 BFF `bff-agents`;T1.1/T1.2/T1.3 完成(`22dce83`)
 > **v4(2026-11-22)**:九步交付(module: ragflow-p1-batch,报告 [REPORT-ragflow-p1-batch-20261122.md](../tests/e2e-tests/reports/REPORT-ragflow-p1-batch-20261122.md))——**T2.3/T2.9/T1.4(`ff76959`)、T2.8(`f73e588`)、T2.1/T2.2(`f70df0f`)、T2.7(`d2bc74c`)全部完成**;T2.9 裁决=移植(依据与存量影响评估见该报告);P1 代码项仅余 T2.5/T2.6(清单排定下个迭代)。另:main 合入(v0.4.6)遗留 BFF tsc 9 处类型错误(auth/backchannel-logout/jose,见受限 L-RP1-03)与 login-next 裸色值破守卫(已修 `98c921d`)
+> **v5(2026-11-22)**:质量/安全复评([quality-security-review-20261122.md](./quality-security-review-20261122.md))——安全 0 发现;质量 2 Medium+2 Low 已闭环(wizard `Routes`→`@/constants/routes`;保存失败双 toast 收敛到全局 `errorHandler`+服务端 detail;`dataset_ids !== undefined`;`await updateChat`)。T2.5 第一步(`9dadf97`)已合入 ee overlay。
 
 ## 使用说明
 
@@ -95,6 +96,7 @@
   3. 滚动/聚焦到首个出错字段。
 - **背景**:`66f2f3d` 补的 `<FormMessage />` 只解决了"错误有处渲染";**高级设置面板默认折叠时用户依然看不见**——本任务是让评审 P0 修复真正对用户可见的最后一环。
 - **验收**:构造缺 key 保存 → 面板自动展开、视口滚动到该字段、FormMessage 可见;上游相关测试移植通过。
+- **v5 补强**:HTTP 层保存失败改为仅由 `next-request` `errorHandler` 弹一次 toast,且优先展示 BFF `data.message`(去掉 `useUpdateChat.onError` 双弹);见 [quality-security-review-20261122.md](./quality-security-review-20261122.md)。
 
 ### T2.9 schema 校验差异决策(0.5 天:决策 + 记录或补齐)— **已完成,裁决=移植**(`ff76959`)
 - **背景**:上游 formSchema 的 superRefine 除 missing-key 外还调用 `chatPromptKbIssues`(`validate-chat-prompt.ts`,校验 system prompt 与知识库变量引用等);agentui 自 fork 起**无此文件与校验**。
