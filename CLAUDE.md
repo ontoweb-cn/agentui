@@ -30,7 +30,7 @@ API communication flows: Browser → Nginx → BFF(adapter-registry 多后端:ch
 npm install
 npm run dev          # Dev server (port 9391)
 npm run build        # Production build
-npm run lint         # ESLint
+npm run lint         # ESLint + oxlint(T2.6 并行;快捷 npm run lint:oxlint)
 npm run test         # Jest tests
 npm run type-check   # TypeScript check
 
@@ -123,7 +123,7 @@ The folder `src/components/ui/` is the project's **shared UI library** — it co
 - Avoid duplicating component structures in JSX; favor render props or reusable components.
 
 ### ee Overlay 约定（T2.5）
-- **`src/ee/`** 承载 agentui 私有内容（wizard、后续 tasks/aihub/applications/BFF 专属页面），对齐上游 ee overlay 化：共享层保持与上游 web/ 同构，后续同步上游子树时冲突面最小。
+- **`src/ee/`** 承载 agentui 私有内容（已迁：wizard、tasks；后续 aihub/applications/BFF 专属页面），对齐上游 ee overlay 化：共享层保持与上游 web/ 同构，后续同步上游子树时冲突面最小。
 - 共享代码**只允许 import `@/ee/*`**（别名显式声明于 vite.config.ts / tsconfig.json / .storybook/main.ts；jest 经 `^@/(.*)$` 继承）；不得把 Intellect 专有逻辑内联进共享层，也不得反向（ee 之外的代码 import ee 内容仅限路由挂载点）。
 - 迁移以"一次一个模块、独立提交"推进；ee 内新增模块需在迁移验证（构建 + 路由 + 既有测试）通过后合入。
 

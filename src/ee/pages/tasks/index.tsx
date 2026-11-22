@@ -1,3 +1,5 @@
+// T2.5 ee overlay:agentui 私有页面迁入 src/ee/pages/tasks——共享层
+// 不再承载 Intellect 专有 hub 布局;约定见 CLAUDE.md(只 import '@/ee/*')。
 import { HubLayout } from '@/layouts/components/hub-layout';
 import { Routes } from '@/constants/routes';
 import { LucideBot, LucideListTodo, LucideMessageCircle } from 'lucide-react';

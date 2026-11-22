@@ -8,6 +8,8 @@
 > **v3(2026-11-21 21:15)**:按 p0 过渡期评审与 [unfinished-tasks-review-20261121.md](./unfinished-tasks-review-20261121.md) 修订——**新增 T2.10(已完成,`7de6206`)**;T4.1 拆分为 **T4.1a(Gateway/BFF)/ T4.1b(intellect-rag)**;T2.4 前置决策**已解锁**(Gateway `prompt_config` 整列替换实证→短期维持整包,T4.2 收敛);T2.7 落点写死 BFF `bff-agents`;T1.1/T1.2/T1.3 完成(`22dce83`)
 > **v4(2026-11-22)**:九步交付(module: ragflow-p1-batch,报告 [REPORT-ragflow-p1-batch-20261122.md](../tests/e2e-tests/reports/REPORT-ragflow-p1-batch-20261122.md))——**T2.3/T2.9/T1.4(`ff76959`)、T2.8(`f73e588`)、T2.1/T2.2(`f70df0f`)、T2.7(`d2bc74c`)全部完成**;T2.9 裁决=移植(依据与存量影响评估见该报告);P1 代码项仅余 T2.5/T2.6(清单排定下个迭代)。另:main 合入(v0.4.6)遗留 BFF tsc 9 处类型错误(auth/backchannel-logout/jose,见受限 L-RP1-03)与 login-next 裸色值破守卫(已修 `98c921d`)
 > **v5(2026-11-22)**:质量/安全复评([quality-security-review-20261122.md](./quality-security-review-20261122.md))——安全 0 发现;质量 2 Medium+2 Low 已闭环(wizard `Routes`→`@/constants/routes`;保存失败双 toast 收敛到全局 `errorHandler`+服务端 detail;`dataset_ids !== undefined`;`await updateChat`)。T2.5 第一步(`9dadf97`)已合入 ee overlay。
+> **v6(2026-11-22)**:九步交付(module: ragflow-t41a)——**T4.1a ①③ 复核 + ② BFF `external-info` 聚合 + GET metadata 透传已完成**;④ 写侧 prune **延期 T4.2**(与 T2.4「换回不丢 key」冲突)。报告 [REPORT-ragflow-t41a-20261122.md](../tests/e2e-tests/reports/REPORT-ragflow-t41a-20261122.md)。
+> **v7(2026-11-22)**:九步交付(module: ragflow-next-iter)——**T2.6 oxlint 并行接入**;**T2.5 第二步 `pages/tasks`→`ee/pages/tasks`**;**T4.2 设计文档** [web-search-secret-storage-design.md](./web-search-secret-storage-design.md)。报告 [REPORT-ragflow-next-iter-20261122.md](../tests/e2e-tests/reports/REPORT-ragflow-next-iter-20261122.md)。
 
 ## 使用说明
 
@@ -73,15 +75,15 @@
 
 ### T2.5 ee overlay 化改造(分两步:骨架 + 单模块 1-2 天,全量随需)
 - **评审调整**:原"3-5 天全量迁移"低估了 `features/_registry.ts`、`routes.tsx`、i18n、BFF 路由的耦合,改为增量验证式。
-- **第一步(1-2 天)**:建立 `src/ee/` 骨架与别名(`@/ee/*` → `src/ee/*`,同步 `vite.config.ts`/`tsconfig.json`/`jest.config.ts`/`.storybook/main.ts`),迁移 **1 个低耦合模块**(`pages/wizard`)验证模式;`CLAUDE.md` 记录约定:共享代码只 import `@/ee/*`,不得内联 Intellect 专有逻辑。
-- **第二步(随需)**:`pages/tasks`、`features/aihub`、`features/applications`、BFF 专属页面逐个迁入,每次一个模块、独立提交。
+- **第一步(1-2 天)— 已完成**(`9dadf97`):建立 `src/ee/` 骨架与别名,迁移 `pages/wizard`。
+- **第二步— 本批完成 tasks**(`ragflow-next-iter`):`pages/tasks` → `src/ee/pages/tasks`;挂载改 `features/tasks/manifest.ts`。**仍待**:`features/aihub`、`features/applications`、BFF 专属页面逐个迁入。
 - **背景**:上游已全面 ee overlay 化(#21667/#21696/#22304);此举使后续 cherry-pick 上游时冲突面最小。
 - **验收(第一步)**:从上游 `web/` 挑 3 个近期文件试 cherry-pick,零冲突;wizard 路由/构建正常。
 
-### T2.6 引入 oxlint(0.5-1 天)
-- **动作**:安装 `oxlint`,先与 eslint 并行(`lint` 脚本追加 `&& oxlint src`),按需生成 `.oxlintrc.json`;稳定一轮后再决定是否替换 eslint。
-- **背景**:上游已切换 oxfmt/oxlint(Rust 实现,快一个量级)。
-- **验收**:oxlint 全仓运行 < 5 秒;存量告警处理或基线化。
+### T2.6 引入 oxlint(0.5-1 天)— **已完成**(v7,`ragflow-next-iter`)
+- **动作(已实施)**:安装 `oxlint@1.94`;`.oxlintrc.json`;`lint` 串行 `eslint && oxlint src`;`lint:oxlint` 快捷脚本;修复 `custom.d.ts` TS(2309) 阻断错误。
+- **基线**:全仓 ~0.8s;exit 0;**23 条 warning 基线化**(未 `--deny-warnings`);稳定一轮后再考虑替换 eslint。
+- **验收**:oxlint 全仓 < 5 秒 ✅;存量告警基线化 ✅。
 
 ### T2.7 agent session PATCH 校验镜像(0.5-1 天)— **已完成**(`d2bc74c`;`bff/src/utils/web-search-validation.ts` 纯函数 10 例 + 路由 7 例)
 - **已核实链路(v3 定案)**:PATCH 服务方 = **BFF `bff/src/routes/bff-agents.ts`**(Gateway 实证);T2.10(`7de6206`)已透传 `prompt_config`/`kb_ids`,校验在 BFF 透传前叠加。
@@ -143,11 +145,11 @@ Outfit/JetBrains Mono 的字号/行高纳入语义 token,与既有 token 体系�
 ## T4 跨仓库配套
 
 ### T4.1 后端 provider 枚举同步(v3 拆分,原单条靶点有误)
-- **T4.1a Rust Gateway/BFF(1-2 天)**:①确认 Gateway `prompt_config` 存储透传性(T2.10 已打通,复核字段白名单不裁剪 provider key 字段);②external chat/`chatbot info` 聚合位返回 `has_web_search_provider`(任一可用 provider 配置即 true)——**这是分享页修复(`66f2f3d`)实际生效的前提**;③T2.7 的 provider↔key 校验落地(BFF 层);④存储侧按活动 provider 过滤 key(T2.4 选定方案,与 T4.2 协同)。
+- **T4.1a Rust Gateway/BFF(1-2 天)— 代码项已完成(v6,九步 ragflow-t41a)**:①透传复核(多 key 共存 PATCH 用例);②`GET /api/bff/agents/chat/sessions/:id/external-info` 聚合 `has_web_search_provider`(+`has_tavily_key`),前端 chat 分享改打该路径;enterprise `normalizeSession` 经 metadata 透传 `prompt_config`/`kb_ids`;③T2.7 既有;④**写侧 prune 延期 T4.2**(短期整包保「换回不丢 key」;external-info 响应侧永不回传 key)。
 - **T4.1b intellect-rag(随 Phase C 评估)**:仅检索执行联动——联网搜索执行链路按 provider 分发(未支持的 provider 保存后静默失效是当前最大风险)。**不在 Python fork 上做一次性投入**,Go 化后实现。
 
-### T4.2 密钥存储架构评估(设计任务,随 Phase A/B)
-现状:14 个第三方 API Key 明文存于 `prompt_config` 并在拉取/保存间往返(安全评审"高"项;保存链路 = agent session PATCH 整包提交)。方向:密钥独立存储 + 配置里存引用、响应不回传明文、审计日志脱敏。建议作为 intellect-rag Go 化(Phase A/B)的数据模型设计输入,避免 Python 侧一次性投入。
+### T4.2 密钥存储架构评估(设计任务,随 Phase A/B)— **设计已完成**(v7)
+现状与方案见 [web-search-secret-storage-design.md](./web-search-secret-storage-design.md):**推荐 Gateway `web_search_secrets` 表 + PC 去明文**(方案 C);迁移 M0–M4;承接 T4.1a ④ 于 M1/M2。**本批无生产代码变更**;落地待 Gateway secrets API 契约。
 
 ---
 
@@ -172,14 +174,14 @@ T4.1a(Gateway/BFF 枚举+聚合位)──▶ 分享页修复完整生效、T2.7/
 Phase B(事件契约)  ──▶ 画布页面对齐
 ```
 
-建议节奏(v4 修订):~~本周 T1~~ **T1 全部完成**;~~P1 代码项~~ **T2.1-T2.3/T2.7-T2.9 全部完成**(2026-11-22,`ff76959`/`f73e588`/`f70df0f`/`d2bc74c`);T2.5 第一步、T2.6 排入下个迭代;T2.4 无独立动作(实施并入 T4.1a/T4.2);**T4.1a 尽早发起(它阻塞分享页功能的实际生效)**。
+建议节奏(v7 修订):~~T1 / T2.1-T2.3/T2.6-T2.10 / T4.1a 代码 / T4.2 设计~~ **已完成**;余 **T2.5 续迁(aihub/applications)**、T3.*、T4.1b/Phase C、T4.2 M1+ 落地、D1 生产执行。
 
 ## 工作量汇总
 
 | 分组 | 任务数 | 量级 |
 |---|---|---|
 | T1 立即可做 | 4(**全部完成**) | ~1 天 ✓ |
-| T2 P1 | 10(**T2.1-T2.3/T2.7-T2.10 完成;余 T2.5/T2.6 下个迭代**) | 2-2.5 周 → 代码项已清 |
+| T2 P1 | 10(**T2.1-T2.3/T2.6-T2.10 完成;T2.5 余 aihub/applications**) | 余增量迁入 |
 | T3 P2 | 7 | 随版本 |
-| T4 跨仓库 | 2(T4.1 拆 a/b) | 2-3 天 + 设计评估 |
+| T4 跨仓库 | T4.1a✓ / T4.2 设计✓ / T4.1b→Phase C / T4.2 M1+ | 实现待 Gateway |
 | T5 Go 化 | 4 阶段 | 3-5 人 × 6-9 个月 |
