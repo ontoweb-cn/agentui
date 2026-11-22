@@ -134,8 +134,11 @@ export function handleAdapterError(
   const msg = err instanceof Error ? err.message : String(err);
   // 详细错误信息记入服务端日志(含 stack 便于排查)
   console.error(`[bff-agents] ${route} adapter error:`, err);
-  // 404 检测:基于 err.message 包含 "404"(adapter 抛出的上游 404)
-  if (/404/.test(msg)) {
+  // 404 检测:优先使用结构化 status;兼容旧 adapter 的 "(404)" 文案。
+  // 注意不能用裸 /404/ —— session id 可能包含 "404"(如 ...b40467),
+  // 会把上游 500 误判成 404。
+  const status = (err as { status?: unknown })?.status;
+  if (Number(status) === 404 || /\b404\b/.test(msg)) {
     return c.json({ code: 404, message: 'Not found' }, 404);
   }
   // 其他错误:返回通用文案,不透传 err.message

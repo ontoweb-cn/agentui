@@ -904,6 +904,11 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
       applyModelConfigs: '应用模型配置',
       conversations: '会话',
       chatApps: '聊天',
+      loadFailed: '会话加载失败',
+      loadFailedDescription:
+        '会话可能已被删除,或后端返回了错误。可以重试,或返回聊天列表。',
+      retryLoad: '重试',
+      backToChats: '返回聊天列表',
       groupToday: '今天',
       groupYesterday: '昨天',
       groupEarlier: '更早',

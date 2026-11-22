@@ -545,6 +545,82 @@ describe('streamChunksAsSSE: tool_* filtering after approval_request', () => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /agents/:agentId/sessions/:sessionId — chat 加载 404 误判回归
+// ---------------------------------------------------------------------------
+describe('GET /agents/:agentId/sessions/:sessionId (chat-session-load)', () => {
+  let mocks: MockSetup;
+  let app: Hono<{ Variables: TestVariables }>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks = createMocks();
+    app = createApp(mocks);
+  });
+
+  it('session id 含 404 但上游为 500 时不得误判为 404', async () => {
+    const sessionId = 'api_1788432157_7ba582f9d051bc3d6bed2fa599b40467';
+    (mocks.adapter.getSession as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      Object.assign(
+        new Error(
+          `GET /api/sessions/${sessionId} → 500: {"error":{"message":"internal server error"}}`,
+        ),
+        { status: 500 },
+      ),
+    );
+
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await app.request(`/agents/agent-1/sessions/${sessionId}`, {
+      headers: {
+        'X-Backend-Id': 'tenant-1',
+        'X-User-Id': 'user-1',
+      },
+    });
+
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.code).toBe(502);
+    expect(body.message).toBe('Adapter error');
+    warnSpy.mockRestore();
+  });
+
+  it('结构化 status=404 仍映射为 404', async () => {
+    (mocks.adapter.getSession as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      Object.assign(new Error('session missing'), { status: 404 }),
+    );
+
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await app.request('/agents/agent-1/sessions/missing', {
+      headers: {
+        'X-Backend-Id': 'tenant-1',
+        'X-User-Id': 'user-1',
+      },
+    });
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.code).toBe(404);
+    warnSpy.mockRestore();
+  });
+
+  it('仅文案含词边界 404 时兼容映射为 404', async () => {
+    (mocks.adapter.getSession as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('upstream responded (404) Not Found'),
+    );
+
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await app.request('/agents/agent-1/sessions/gone', {
+      headers: {
+        'X-Backend-Id': 'tenant-1',
+        'X-User-Id': 'user-1',
+      },
+    });
+
+    expect(res.status).toBe(404);
+    warnSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // PATCH /agents/:agentId/sessions/:sessionId 路由测试(T2.10:保存链路透传修复)
 // ---------------------------------------------------------------------------
 describe('PATCH /agents/:agentId/sessions/:sessionId (T2.10)', () => {

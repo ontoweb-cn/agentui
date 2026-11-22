@@ -1002,6 +1002,11 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       applyModelConfigs: 'Apply model configs',
       conversations: 'Conversations',
       chatApps: 'Chat apps',
+      loadFailed: 'Failed to load chat',
+      loadFailedDescription:
+        'The session may have been deleted, or the backend returned an error. You can retry or return to the chat list.',
+      retryLoad: 'Retry',
+      backToChats: 'Back to chats',
       groupToday: 'Today',
       groupYesterday: 'Yesterday',
       groupEarlier: 'Earlier',

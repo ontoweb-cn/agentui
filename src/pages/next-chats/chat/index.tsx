@@ -25,6 +25,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useHandleClickConversationCard } from '../hooks/use-click-card';
+import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { ChatSettings } from './app-settings/chat-settings';
 import { MultipleChatBox } from './chat-box/next-multiple-chat-box';
 import { SingleChatBox } from './chat-box/single-chat-box';
@@ -39,6 +40,8 @@ export default function Chat() {
     useState<IClientConversation>({} as IClientConversation);
 
   const { fetchSessionManually } = useFetchSessionManually();
+  const { navigateToChatList } = useNavigatePage();
+  const [loadError, setLoadError] = useState(false);
 
   const { handleConversationCardClick, controller, stopOutputMessage } =
     useHandleClickConversationCard();
@@ -90,6 +93,7 @@ export default function Chat() {
       const isGatewayChat =
         !!effectiveConversationId && effectiveConversationId === chatId;
       if (effectiveConversationId && (!isNew || isGatewayChat)) {
+        setLoadError(false);
         try {
           const conversation =
             await fetchSessionManually(effectiveConversationId);
@@ -97,8 +101,10 @@ export default function Chat() {
             setCurrentConversation(conversation);
           }
         } catch (err) {
-          // 新建 Gateway session 首次进入可能 404,静默处理。
+          // 新建 Gateway session 首次进入可能 404,静默处理;已有会话加载失败要显式提示,
+          // 避免 404/502 被伪装成“新会话 + 空消息”。
           console.debug('[chat] fetchSessionManually failed:', err);
+          if (!isNew) setLoadError(true);
         }
       }
     },
@@ -173,7 +179,9 @@ export default function Chat() {
                 })}
               >
               <CardTitle className="flex justify-between items-center text-base gap-2">
-                <div className="truncate">{currentConversationName}</div>
+                <div className="truncate">
+                  {loadError ? t('chat.loadFailed') : currentConversationName}
+                </div>
 
                 {/* 按钮组:justify-between 下若直接追加第三个子元素,
                     "多模型"会被挤到行中间而非最右 */}
@@ -228,13 +236,42 @@ export default function Chat() {
               </CardTitle>
               </CardHeader>
               <CardContent className="flex-1 p-0 min-h-0">
-                <SingleChatBox
-                  controller={controller}
-                  stopOutputMessage={stopOutputMessage}
-                  conversation={currentConversation}
-                  workspaceOpen={workspaceOpen}
-                  onMessagesChange={setWorkspaceMessages}
-                />
+                {loadError ? (
+                  <div
+                    role="alert"
+                    className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center"
+                  >
+                    <p className="text-base font-semibold text-trae-ink">
+                      {t('chat.loadFailed')}
+                    </p>
+                    <p className="max-w-md text-sm text-text-secondary">
+                      {t('chat.loadFailedDescription')}
+                    </p>
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        onClick={() =>
+                          fetchConversation(conversationId, isNew === 'true')
+                        }
+                      >
+                        {t('chat.retryLoad')}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={navigateToChatList}
+                      >
+                        {t('chat.backToChats')}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <SingleChatBox
+                    controller={controller}
+                    stopOutputMessage={stopOutputMessage}
+                    conversation={currentConversation}
+                    workspaceOpen={workspaceOpen}
+                    onMessagesChange={setWorkspaceMessages}
+                  />
+                )}
               </CardContent>
             </Card>
 
