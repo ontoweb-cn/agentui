@@ -33,6 +33,7 @@ import { getBackendContext, resolveBackendContext } from '../middleware/backend-
 import type { IHarnessAdapter } from '../types/adapter';
 import { safeJsonSerialize } from '../utils/serialize';
 import { validateWebSearchPromptConfig } from '../utils/web-search-validation';
+import { buildExternalChatInfoFromSession } from '../utils/web-search-capability';
 import { registerRun, verifyRunOwnership } from '../services/run-registry';
 
 // Hono context variables for BFF agent routes
@@ -222,6 +223,58 @@ bffAgentRoutes.get('/agents/:agentId/sessions/:sessionId', async (c) => {
     return handleAdapterError(c, err, 'GET /agents/:agentId/sessions/:sessionId');
   }
 });
+
+// GET /agents/:agentId/sessions/:sessionId/external-info — T4.1a 分享页能力位投影
+// 替代 RAG `GET /api/v1/chatbots/{id}/info` 对 Gateway session 的缺口:
+// 从 session.metadata.prompt_config 计算 has_web_search_provider / has_tavily_key,
+// 响应信封对齐 RAG `{code,data}` 以便前端 hook 的 `data?.data` 解包;永不回传 Key。
+//
+// 鉴权(评审加固):挂载于 /agents/* → authMiddleware(+企业态 requireValidImtSession),
+// **不在** authMiddleware publicPaths。命名含「公开能力位」指响应字段不含密钥,
+// 并非匿名可访问;勿将该路径加入 publicPaths,除非另立 share-token 专用契约。
+bffAgentRoutes.get(
+  '/agents/:agentId/sessions/:sessionId/external-info',
+  async (c) => {
+    const adapter = getAdapter(c);
+    if (!adapter) {
+      return c.json({ code: 503, message: 'No backend configured' }, 503);
+    }
+    const agentId = c.req.param('agentId');
+    const sessionId = c.req.param('sessionId');
+    try {
+      const session = await adapter.getSession(
+        resolveBackendContext(c),
+        agentId,
+        sessionId,
+      );
+      const meta = session.metadata ?? {};
+      const promptConfig = meta.prompt_config ?? meta.promptConfig;
+      const info = buildExternalChatInfoFromSession({
+        title: session.title,
+        promptConfig,
+        avatar:
+          typeof meta.avatar === 'string'
+            ? meta.avatar
+            : typeof meta.icon === 'string'
+              ? meta.icon
+              : undefined,
+        llmId:
+          typeof meta.llm_id === 'string'
+            ? meta.llm_id
+            : typeof meta.llmId === 'string'
+              ? meta.llmId
+              : undefined,
+      });
+      return c.json({ code: 0, data: info });
+    } catch (err) {
+      return handleAdapterError(
+        c,
+        err,
+        'GET /agents/:agentId/sessions/:sessionId/external-info',
+      );
+    }
+  },
+);
 
 bffAgentRoutes.delete('/agents/:agentId/sessions/:sessionId', async (c) => {
   const adapter = getAdapter(c);

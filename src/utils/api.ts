@@ -255,8 +255,10 @@ export default {
   chatsMindmap: `${restAPIv1}/chat/mindmap`,
   chatsRelatedQuestions: `${restAPIv1}/chat/recommendation`,
 
-  // next chat
+  // next chat — T4.1a:chat 分享走 Gateway session 聚合;agent 仍走 RAG chatbots
   fetchExternalChatInfo: (id: string) => `${restAPIv1}/chatbots/${id}/info`,
+  fetchExternalChatSessionInfo: (id: string) =>
+    `${bffAgents}/chat/sessions/${id}/external-info`,
 
   // file manager
   listFile: `${restAPIv1}/files`,

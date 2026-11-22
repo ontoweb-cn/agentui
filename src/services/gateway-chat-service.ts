@@ -25,6 +25,7 @@ const {
   patchAgentSession,
   fetchAgentSessionMessages,
   agentChatCompletion,
+  fetchExternalChatSessionInfo,
 } = api;
 
 const methods = {
@@ -63,6 +64,11 @@ const methods = {
   sendGatewayMessage: {
     url: agentChatCompletion,
     method: 'post',
+  },
+  // T4.1a:分享页公开能力位(has_web_search_provider)。URL 含 sessionId。
+  fetchExternalChatSessionInfo: {
+    url: fetchExternalChatSessionInfo,
+    method: 'get',
   },
 } as const;
 

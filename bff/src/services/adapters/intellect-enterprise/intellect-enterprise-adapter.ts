@@ -34,6 +34,7 @@ import {
   IntellectBackendError,
 } from './http-client';
 import { parseIntellectEnterpriseRunEventsSSE } from './parse-intellect-enterprise-run-events-sse';
+import { redactWebSearchSecretsFromPromptConfig } from '../../../utils/web-search-capability';
 
 /**
  * 企业版默认能力(当 /v1/capabilities 端点不存在时降级返回)。
@@ -206,7 +207,10 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
     const arr = Array.isArray(data)
       ? data
       : data?.sessions ?? data?.data ?? [];
-    return arr.map((s) => this.normalizeSession(s, agentId));
+    // 评审加固:列表宽面脱敏联网搜索 Key;详情 getSession 仍保留供设置页回填
+    return arr.map((s) =>
+      this.normalizeSession(s, agentId, { redactWebSearchSecrets: true }),
+    );
   }
 
   async getSession(
@@ -590,7 +594,11 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
    * 时间字段:Gateway 使用 started_at/ended_at(Unix 秒,float),
    * 兼容 created_at/updated_at(ISO 字符串)与 createdAt/updatedAt(camelCase)。
    */
-  private normalizeSession(raw: unknown, agentId: string): Session {
+  private normalizeSession(
+    raw: unknown,
+    agentId: string,
+    opts?: { redactWebSearchSecrets?: boolean },
+  ): Session {
     const s = raw as Record<string, unknown>;
     // X-T1: 兼容 {session: {...}} 嵌套格式(GET /{id} 响应)
     const sessionObj = (s.session && typeof s.session === 'object'
@@ -604,12 +612,27 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
     );
     const startedAt = sessionObj.started_at ?? sessionObj.created_at ?? sessionObj.createdAt;
     const endedAt = sessionObj.ended_at ?? sessionObj.updated_at ?? sessionObj.updatedAt ?? startedAt;
+    // T4.1a:prompt_config/kb_ids 经 metadata 透传(Constitution Layer 3),供
+    // external-info 聚合与设置页回填;不纳入统一 Session schema 顶栏。
+    const metadata: Record<string, unknown> = {};
+    let promptConfig = sessionObj.prompt_config ?? sessionObj.promptConfig;
+    if (promptConfig !== undefined && opts?.redactWebSearchSecrets) {
+      promptConfig = redactWebSearchSecretsFromPromptConfig(promptConfig);
+    }
+    if (promptConfig !== undefined) {
+      metadata.prompt_config = promptConfig;
+    }
+    const kbIds = sessionObj.kb_ids ?? sessionObj.kbIds;
+    if (kbIds !== undefined) {
+      metadata.kb_ids = kbIds;
+    }
     return {
       id,
       agentId,
       title: sessionObj.title ? String(sessionObj.title) : (sessionObj.name as string | undefined),
       createdAt: toIsoString(startedAt),
       updatedAt: toIsoString(endedAt),
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     };
   }
 }

@@ -303,6 +303,38 @@ describe('IntellectEnterpriseAdapter', () => {
       expect(res.updatedAt).toBe('2026-07-28T14:32:28.000Z');
     });
 
+    it('T4.1a TC-T41A-06:prompt_config/kb_ids 经 metadata 透传', async () => {
+      httpClientMock.request.mockResolvedValueOnce({
+        object: 'intellect.session',
+        session: {
+          id: 'sess-pc',
+          title: 'with-pc',
+          started_at: 1785241917.0,
+          ended_at: 1785241917.0,
+          prompt_config: {
+            web_search_provider: 'anysearch',
+            tavily_api_key: 'keep-me',
+          },
+          kb_ids: ['kb-a'],
+        },
+      });
+      const res = await adapter.getSession(ctx, 'chat', 'sess-pc');
+      expect(res.metadata?.prompt_config).toEqual({
+        web_search_provider: 'anysearch',
+        tavily_api_key: 'keep-me',
+      });
+      expect(res.metadata?.kb_ids).toEqual(['kb-a']);
+    });
+
+    it('评审加固:跨用户/不存在 session → 404 且不泄漏 prompt_config', async () => {
+      httpClientMock.request.mockRejectedValueOnce(
+        new IntellectNotFoundError('/api/sessions/other-user'),
+      );
+      await expect(
+        adapter.getSession(ctx, 'chat', 'other-user'),
+      ).rejects.toThrow(IntellectNotFoundError);
+    });
+
     it('404 抛 IntellectNotFoundError(不降级,与 listMessages 不同)', async () => {
       httpClientMock.request.mockRejectedValueOnce(
         new IntellectNotFoundError('/api/sessions/x'),
@@ -429,6 +461,29 @@ describe('IntellectEnterpriseAdapter', () => {
       const res = await adapter.listSessions(ctx, 'agent-1');
       expect(res).toHaveLength(1);
       expect(res[0].id).toBe('s1');
+    });
+
+    it('评审加固:listSessions 脱敏 *_api_key,保留 provider', async () => {
+      httpClientMock.request.mockResolvedValueOnce({
+        sessions: [
+          {
+            id: 's1',
+            title: 't1',
+            started_at: 1785241917.0,
+            prompt_config: {
+              web_search_provider: 'exa',
+              exa_api_key: 'secret-exa',
+              system: 'keep-me',
+            },
+          },
+        ],
+      });
+      const res = await adapter.listSessions(ctx, 'chat');
+      expect(res[0].metadata?.prompt_config).toEqual({
+        web_search_provider: 'exa',
+        system: 'keep-me',
+      });
+      expect(JSON.stringify(res)).not.toContain('secret');
     });
   });
 

@@ -1,6 +1,6 @@
 import { FileUploadProps } from '@/components/file-upload';
 import message from '@/components/ui/message';
-import { ChatSearchParams } from '@/constants/chat';
+import { ChatSearchParams, SharedFrom } from '@/constants/chat';
 import { MessageType } from '@/constants/chat';
 import {
   IClientConversation,
@@ -28,6 +28,7 @@ import { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useSearchParams } from 'react-router';
 import { buildUpdateChatPatch } from './build-update-chat-patch';
+import { mapGatewaySessionToDialog } from './map-gateway-session-to-dialog';
 import {
   useGetPaginationWithRouter,
   useHandleSearchChange,
@@ -66,48 +67,6 @@ export const useGetChatSearchParams = () => {
     isNew: currentQueryParameters.get(ChatSearchParams.isNew) || '',
   };
 };
-
-/**
- * 将 Gateway Session 响应映射为 IDialog 形状。
- * Gateway session 模型只有 6 个字段(id/agentId/title/createdAt/updatedAt),
- * 其余字段用默认值填充以满足 IDialog 类型约束。
- */
-function mapGatewaySessionToDialog(s: any): IDialog {
-  return {
-    id: String(s.id ?? ''),
-    name: s.title || s.name || 'New Chat',
-    description: '',
-    icon: '',
-    dataset_ids: Array.isArray(s.kb_ids) ? s.kb_ids : (() => { try { return JSON.parse(s.kb_ids || '[]'); } catch { return []; } })(),
-    kb_names: [],
-    language: 'English',
-    llm_id: '',
-    llm_setting: {},
-    prompt_config: s.prompt_config || {
-      empty_response: '',
-      parameters: [],
-      prologue: '',
-      system: '',
-      quote: false,
-      keyword: false,
-      refine_multiturn: false,
-      use_kg: false,
-    },
-    prompt_type: 'simple',
-    status: 'VALID',
-    tenant_id: '',
-    create_date: s.createdAt || s.created_at || '',
-    update_date: s.updatedAt || s.updated_at || '',
-    create_time: 0,
-    update_time: 0,
-    vector_similarity_weight: 0,
-    similarity_threshold: 0,
-    top_k: 0,
-    top_n: 0,
-    meta_data_filter: { manual: [], method: '' },
-    source: 'gateway' as const,
-  };
-}
 
 export const useFetchChatList = () => {
   const { searchString, handleInputChange } = useHandleSearchChange();
@@ -866,21 +825,30 @@ export function useUploadAndParseFile() {
 }
 
 export const useFetchExternalChatInfo = () => {
-  const { sharedId: id } = useGetSharedChatSearchParams();
+  const { sharedId: id, from } = useGetSharedChatSearchParams();
+  // T4.1a:chat 嵌入的 shared_id 是 Gateway session id → BFF external-info
+  // 聚合 has_web_search_provider;agent 嵌入仍走 RAG chatbots/{id}/info。
+  const useGatewaySessionInfo = from !== SharedFrom.Agent;
 
   const {
     data,
     isFetching: loading,
     refetch,
   } = useQuery<IExternalChatInfo>({
-    queryKey: [ChatApiAction.FetchExternalChatInfo, id],
+    queryKey: [ChatApiAction.FetchExternalChatInfo, id, useGatewaySessionInfo],
     gcTime: 0,
     initialData: {} as IExternalChatInfo,
     enabled: !!id,
     refetchOnWindowFocus: false,
     queryFn: async () => {
+      if (useGatewaySessionInfo) {
+        const { data } = await gatewayChatService.fetchExternalChatSessionInfo(
+          { url: api.fetchExternalChatSessionInfo(id!) },
+          true,
+        );
+        return data?.data ?? data;
+      }
       const { data } = await chatService.fetchExternalChatInfo(id!);
-
       return data?.data;
     },
   });
