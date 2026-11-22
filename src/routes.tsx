@@ -63,8 +63,9 @@ const routeConfigOptions = [
   },
   {
     // spec-010 v8 B-6: Wizard 首次安装向导(不经过 AuthWrapper,首次安装无 admin token)。
+    // T2.5:向导属 agentui 私有内容,迁入 ee overlay(src/ee/pages/wizard)。
     path: Routes.Wizard,
-    Component: () => import('@/pages/wizard'),
+    Component: () => import('@/ee/pages/wizard'),
     layout: false,
   },
   {

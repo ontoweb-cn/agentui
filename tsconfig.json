@@ -24,6 +24,9 @@
 
     "baseUrl": ".",
     "paths": {
+      // ee overlay 边界别名(T2.5):agentui 私有内容(@/ee/*)显式声明,
+      // 须排在 @/* 之前(TS paths 按序首匹配)。
+      "@/ee/*": ["src/ee/*"],
       "@/*": ["src/*"],
       "@agentui/canvas-plugin": ["./packages/canvas-plugin/src"],
       "@agentui/canvas-plugin/*": ["./packages/canvas-plugin/src/*"],

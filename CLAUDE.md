@@ -122,6 +122,11 @@ The folder `src/components/ui/` is the project's **shared UI library** — it co
 - Use `PascalCase` for constants and component names.
 - Avoid duplicating component structures in JSX; favor render props or reusable components.
 
+### ee Overlay 约定（T2.5）
+- **`src/ee/`** 承载 agentui 私有内容（wizard、后续 tasks/aihub/applications/BFF 专属页面），对齐上游 ee overlay 化：共享层保持与上游 web/ 同构，后续同步上游子树时冲突面最小。
+- 共享代码**只允许 import `@/ee/*`**（别名显式声明于 vite.config.ts / tsconfig.json / .storybook/main.ts；jest 经 `^@/(.*)$` 继承）；不得把 Intellect 专有逻辑内联进共享层，也不得反向（ee 之外的代码 import ee 内容仅限路由挂载点）。
+- 迁移以"一次一个模块、独立提交"推进；ee 内新增模块需在迁移验证（构建 + 路由 + 既有测试）通过后合入。
+
 ### Utility Libraries and Reuse
 - **Time/date handling**: Use `dayjs` for all date/time formatting, parsing, and manipulation.
 - **Utility hooks**: Prefer `ahooks` for common reusable hooks (e.g., `useDebounce`, `useSetState`).
@@ -135,6 +140,6 @@ The folder `src/components/ui/` is the project's **shared UI library** — it co
 - **jsdom 组件测试三件套**：`Element.prototype.scrollIntoView` 需 stub（jsdom 未实现）；`ResizeObserver` 需 stub（radix use-size/ScrollArea）；`FormLabel tooltip` 的 FormTooltip 需要 `<TooltipProvider>` 包裹。
 - **`jest.config.ts` 的 moduleNameMapper**：资产/样式 mock（`\.(css|…)$`、`\.(jpg|…|webp)$`）必须排在 `^@/(.*)$` 别名**之前**（mapper 首个命中生效，别名在前会让 `@/assets/x.svg` 解析成真实文件路径）。
 - **组件 mock 面**：渲染 `ChatSettings` 需 mock `@/hooks/use-chat-request`、`use-llm-request`、`use-harness-capabilities`、`use-knowledge-request` 及展示型字段（rerank/similarity-slider/top-n/metadata-filter 等，并保留其 schema 导出为 `{}`——`z.object(undefined)` 会抛）。
-- **BFF tsc 带病基线（2026-11-22）**：main 合入（v0.4.6 SSO 批次）遗留 `bff` tsc 9 处类型错误（`auth.ts`/`auth.test.ts`/`backchannel-logout.ts`/jose 类型），vitest 1187/1187 全绿、运行时无碍；BFF 门禁采用 vitest 全绿 + tsc 错误集不新增（delta 口径），根因修复单独立项。
+- **BFF tsc**：曾因 main 合入（v0.4.6 SSO 批次）带 9 处类型错误，已于 2026-11-22 清偿归零（jose v6 类型 + auth.ts Context 泛型）；BFF 门禁 = vitest 全绿 + tsc 零错误。
 - **回归口令**：前端 `npx jest --silent --forceExit`（60 套件）；BFF `cd bff; npx vitest run`（67 文件）；三守卫 `node scripts/check-hiedu-shared.mjs && node scripts/check-color-tokens.mjs && npx tsc --noEmit`。BFF vitest 必须在 `bff/` 目录内跑（根目录会扫到 127 个文件、口径错乱）。
 - **九步交付产物索引**：`tests/e2e-tests/{outline,cases,spec,reports}/<module>-*`；已有 module：wizard-sso、wizard-sso-followup、ragflow-p1-batch。

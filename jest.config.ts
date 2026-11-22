@@ -29,6 +29,8 @@ const config: Config = {
     // 注：原 @/features/_registry 和 @/components/svg-icon 的 mock 重定向
     // 已移除——jest-esbuild-transformer.cjs 通过 babel-plugin-import-meta-glob
     // 静态解析 import.meta.glob 调用，真实模块逻辑被执行。
+        // 注:ee overlay 的 @/ee/* 无需独立映射——'^@/(.*)$' 已覆盖
+    // (@/ee/pages/wizard → src/ee/pages/wizard);显式别名在 vite/tsconfig/storybook。
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@agentui/plugin-sdk$': '<rootDir>/packages/plugin-sdk/src/index.ts',
     '^@agentui/plugin-sdk/host$': '<rootDir>/packages/plugin-sdk/src/host.ts',

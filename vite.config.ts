@@ -214,7 +214,9 @@ export default defineConfig(({ mode }) => {
     ],
     resolve: {
       alias: {
+        // ee overlay 边界别名(T2.5):'@' 的前缀语义已覆盖 '@/ee/*',显式声明仅作文档化边界
         '@': path.resolve(__dirname, './src'),
+        '@/ee': path.resolve(__dirname, './src/ee'),
         '@agentui/canvas-plugin': path.resolve(__dirname, 'packages/canvas-plugin/src'),
         '@agentui/plugin-sdk': path.resolve(__dirname, 'packages/plugin-sdk/src'),
         '@agentui/plugin-sdk/host': path.resolve(__dirname, 'packages/plugin-sdk/src/host.ts'),

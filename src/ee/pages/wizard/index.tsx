@@ -1,4 +1,7 @@
 // spec-010 v8 B-6: Wizard 首次安装向导(6 步状态机)。
+// T2.5 ee overlay:agentui 私有页面迁入 src/ee/pages/wizard——共享层
+// (src/pages 之外的可 cherry-pick 面)不再承载 Intellect 专有逻辑;
+// 约定:共享代码只 import '@/ee/*',不得反向内联(见 CLAUDE.md)。
 // Constitution Principle I (BFF-Mediated Frontend): 前端经 BFF Wizard 路由完成首次配置。
 //
 // 状态机(m7):
