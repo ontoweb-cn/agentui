@@ -10,8 +10,8 @@ import {
   createRemoteJWKSet,
   jwtVerify,
   type JWTPayload,
-  type KeyLike,
-  type VerifyKeyGetter,
+  type LocalJWKSet,
+  type RemoteJWKSet,
 } from 'jose';
 
 export const BACKCHANNEL_LOGOUT_EVENT = 'http://schemas.openid.net/event/backchannel-logout';
@@ -21,8 +21,13 @@ export class LogoutTokenVerifyError extends Error {}
 export interface VerifyLogoutTokenOptions {
   issuer: string;
   audience: string;
-  /** 单测注入：默认按 issuer 发现文档拉取远程 JWKS（缓存）。 */
-  jwks?: VerifyKeyGetter | ((protectedHeader: any, token: string) => Promise<KeyLike>);
+  /**
+   * 单测注入：默认按 issuer 发现文档拉取远程 JWKS（缓存）。
+   * 评审修复(L-RP1-03):jose v6 无 KeyLike/VerifyKeyGetter 导出(原写法
+   * 疑为 v5 记忆/杜撰,tsc 从未通过)——实际注入面是 createLocalJWKSet/
+   * createRemoteJWKSet 的返回,按 v6 导出类型收窄。
+   */
+  jwks?: LocalJWKSet | RemoteJWKSet;
 }
 
 const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();

@@ -236,7 +236,9 @@ const getExpectedAud = () => process.env.BFF_OAUTH_EXPECTED_AUD?.trim() || 'ia-i
  * ssoError 展示提示——替换原 502 裸 JSON（UX-01）。
  */
 function ssoErrorRedirect(
-  c: { req: { header(name: string): string | undefined; url: string } },
+  // 评审修复(L-RP1-03):结构桩类型缺 redirect——改用既有 Hono Context 泛型
+  // (与 L269/L290/L325 的既有口径一致)。
+  c: Context<{ Variables: AuthVariables }>,
   code: string,
 ) {
   return c.redirect(`${resolvePublicOrigin(c)}/login-next?ssoError=${encodeURIComponent(code)}`, 302);
@@ -879,9 +881,7 @@ authRoutes.post('/auth/logout', async (c) => {
  * fetch 会跟随 302 且不带 IdP cookie，IdP 会话清不掉。IdP 以 redirectUris 前缀
  * 白名单校验回跳，application_util.go:524）；未配置时维持旧行为（仅本地登出）。
  */
-function respondLogout(c: {
-  req: { header(name: string): string | undefined; url: string };
-}) {
+function respondLogout(c: Context<{ Variables: AuthVariables }>) {
   const idpLogoutUrl = getIdpLogoutUrl();
   if (!idpLogoutUrl) {
     return c.json(ok({ logged_out: true }));
@@ -902,14 +902,11 @@ function respondLogout(c: {
 // POST /api/bff/auth/backchannel-logout — OIDC Back-Channel Logout 接收端(A1)
 // ---------------------------------------------------------------------------
 
-const backchannelLogoutHandler = async (c: {
-  req: {
-    text(): Promise<string>;
-    get(name: string): string | undefined;
-  };
-  json(body: unknown, status?: number): Response;
-  get(key: string): unknown;
-}) => {
+const backchannelLogoutHandler = async (
+  // 评审修复(L-RP1-03):结构桩缺 req.get/json 与类型化 Variables——改用
+  // Hono Context 泛型;双挂载路径(Context 默认 P=string)对具体路径参数可赋值。
+  c: Context<{ Variables: AuthVariables }>,
+) => {
   const idpIssuer = getIdpIssuer();
   if (!idpIssuer) {
     // 未启用：503（IdP outbox 按退避重试；运维未配置时明确可见）
