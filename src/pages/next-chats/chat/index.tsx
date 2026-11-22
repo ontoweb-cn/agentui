@@ -101,10 +101,10 @@ export default function Chat() {
             setCurrentConversation(conversation);
           }
         } catch (err) {
-          // 新建 Gateway session 首次进入可能 404,静默处理;已有会话加载失败要显式提示,
-          // 避免 404/502 被伪装成“新会话 + 空消息”。
+          // 进入本分支即意味着需要加载会话(!isNew 或 Gateway)。Gateway URL 可能残留
+          // isNew=true(对 Gateway 无效),失败时仍须展示错误态,不能静默成空聊天。
           console.debug('[chat] fetchSessionManually failed:', err);
-          if (!isNew) setLoadError(true);
+          setLoadError(true);
         }
       }
     },

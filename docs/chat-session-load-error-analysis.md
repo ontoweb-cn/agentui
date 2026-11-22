@@ -91,7 +91,7 @@ catch (err) {
 - 增加 `loadError` 状态;
 - 会话加载失败时显示“会话加载失败”与说明;
 - 提供“重试 / 返回聊天列表”;
-- 新建会话仍保留静默容错,不误报。
+- 仅当未进入加载分支时才静默(intellect-rag `isNew`);Gateway 即使 URL 残留 `isNew=true` 也在失败时展示错误态(质量评审 medium 闭环)。
 
 截图验证:页面显示 `role=alert` 的错误卡片,而不是空聊天框。
 
