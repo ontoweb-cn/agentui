@@ -10,6 +10,7 @@
 > **v5(2026-11-22)**:质量/安全复评([quality-security-review-20261122.md](./quality-security-review-20261122.md))——安全 0 发现;质量 2 Medium+2 Low 已闭环(wizard `Routes`→`@/constants/routes`;保存失败双 toast 收敛到全局 `errorHandler`+服务端 detail;`dataset_ids !== undefined`;`await updateChat`)。T2.5 第一步(`9dadf97`)已合入 ee overlay。
 > **v6(2026-11-22)**:九步交付(module: ragflow-t41a)——**T4.1a ①③ 复核 + ② BFF `external-info` 聚合 + GET metadata 透传已完成**;④ 写侧 prune **延期 T4.2**(与 T2.4「换回不丢 key」冲突)。报告 [REPORT-ragflow-t41a-20261122.md](../tests/e2e-tests/reports/REPORT-ragflow-t41a-20261122.md)。
 > **v7(2026-11-22)**:九步交付(module: ragflow-next-iter)——**T2.6 oxlint 并行接入**;**T2.5 第二步 `pages/tasks`→`ee/pages/tasks`**;**T4.2 设计文档** [web-search-secret-storage-design.md](./web-search-secret-storage-design.md)。报告 [REPORT-ragflow-next-iter-20261122.md](../tests/e2e-tests/reports/REPORT-ragflow-next-iter-20261122.md)。
+> **v8(2026-11-22)**:九步 next-iter-aihub-t3——**T2.5 aihub→`ee/features/aihub`**;**T3.1 虚拟滚动(CSV+chunk)**;**T3.7 color-tokens `--prune`/交叉校验**;T4.2 落地仍等 Gateway(L-T42-01)。报告 [REPORT-next-iter-aihub-t3-20261122.md](../tests/e2e-tests/reports/REPORT-next-iter-aihub-t3-20261122.md)。
 
 ## 使用说明
 
@@ -76,7 +77,7 @@
 ### T2.5 ee overlay 化改造(分两步:骨架 + 单模块 1-2 天,全量随需)
 - **评审调整**:原"3-5 天全量迁移"低估了 `features/_registry.ts`、`routes.tsx`、i18n、BFF 路由的耦合,改为增量验证式。
 - **第一步(1-2 天)— 已完成**(`9dadf97`):建立 `src/ee/` 骨架与别名,迁移 `pages/wizard`。
-- **第二步— 本批完成 tasks**(`ragflow-next-iter`):`pages/tasks` → `src/ee/pages/tasks`;挂载改 `features/tasks/manifest.ts`。**仍待**:`features/aihub`、`features/applications`、BFF 专属页面逐个迁入。
+- **第二步— tasks 已完成**(`ragflow-next-iter`);**aihub 已迁入** `src/ee/features/aihub`(v8,`_registry` 双 glob)。**仍待**:`features/applications`、BFF 专属页面逐个迁入。
 - **背景**:上游已全面 ee overlay 化(#21667/#21696/#22304);此举使后续 cherry-pick 上游时冲突面最小。
 - **验收(第一步)**:从上游 `web/` 挑 3 个近期文件试 cherry-pick,零冲突;wizard 路由/构建正常。
 
@@ -115,8 +116,8 @@
 
 ## T3 P2:体验与架构(随版本迭代)
 
-### T3.1 虚拟滚动(1-2 天)
-- **动作**:**新增依赖 `@tanstack/react-virtual`(当前未安装,版本对齐上游 #19621 所用)**;CSV 查看器与 chunk 列表接入虚拟化。
+### T3.1 虚拟滚动(1-2 天)— **已完成**(v8)
+- **动作(已实施)**:依赖 `@tanstack/react-virtual`;`csv-preview.tsx` 行虚拟化;knowledge-chunk / dataflow `chunker` 列表虚拟化(+measureElement)。
 - **验收**:万行 CSV/千条 chunk 滚动帧率稳定,内存不随行数线性增长。
 
 ### T3.2 分块引用图预览源文档(1-2 天)
@@ -136,8 +137,8 @@ Outfit/JetBrains Mono 的字号/行高纳入语义 token,与既有 token 体系�
 - **第二步**:定案机制固化为 `scripts/sync-upstream-web.mjs` + `CLAUDE.md` 说明每月节奏与冲突处理约定。
 - **依赖**:T2.5 第一步(overlay 骨架)完成后收益最大。
 
-### T3.7 `check-color-tokens` 增强(0.5 天)
-- **动作**:`total` 与 per-file 之和不交叉校验(可手工漂移);文件删净后基线条目残留直到下次 `--update`——增加一致性校验、检测到收缩时提示 `--update`、可选 `--prune` 自动清理。
+### T3.7 `check-color-tokens` 增强(0.5 天)— **已完成**(v8)
+- **动作(已实施)**:`total`↔sum(files) 交叉校验失败即退出;改进文件提示 `--prune`;`--prune`/`--update` 重写基线并剔干净文件。基线收缩 299→298。
 - **来源**:Bugbot 评审指出的守卫局限。
 
 ---
@@ -174,7 +175,7 @@ T4.1a(Gateway/BFF 枚举+聚合位)──▶ 分享页修复完整生效、T2.7/
 Phase B(事件契约)  ──▶ 画布页面对齐
 ```
 
-建议节奏(v7 修订):~~T1 / T2.1-T2.3/T2.6-T2.10 / T4.1a 代码 / T4.2 设计~~ **已完成**;余 **T2.5 续迁(aihub/applications)**、T3.*、T4.1b/Phase C、T4.2 M1+ 落地、D1 生产执行。
+建议节奏(v8 修订):~~T1 / T2.1–T2.3/T2.6–T2.10 / T4.1a 代码 / T4.2 设计 / T2.5 aihub / T3.1 / T3.7~~ **已完成**;余 **T2.5 applications**、T3.2/T3.4–T3.6、T4.1b/Phase C、T4.2 M1+(等 Gateway)、D1 生产执行。
 
 ## 工作量汇总
 
