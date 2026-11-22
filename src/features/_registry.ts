@@ -6,8 +6,9 @@ import type {
   NavItem,
 } from './_types';
 
+// T2.5:共享 features 与 ee overlay 私有模块一并注册(aihub 等迁入 src/ee/features)。
 const moduleGlob = import.meta.glob<{ default: ModuleDefinition }>(
-  './*/manifest.ts',
+  ['./*/manifest.ts', '../ee/features/*/manifest.ts'],
   { eager: true },
 );
 

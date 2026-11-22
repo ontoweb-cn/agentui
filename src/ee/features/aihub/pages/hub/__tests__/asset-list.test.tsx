@@ -16,11 +16,11 @@ import {
   type MarketAsset,
   type MarketPage,
   type Taxonomies,
-} from '@/features/aihub/api';
+} from '@/ee/features/aihub/api';
 
 import AssetListRoute from '../asset-list';
 
-jest.mock('@/features/aihub/api', () => ({
+jest.mock('@/ee/features/aihub/api', () => ({
   fetchAsset: jest.fn(),
   fetchMarketPage: jest.fn(),
   fetchTaxonomies: jest.fn(),

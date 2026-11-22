@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
-import { fetchMarkets } from '@/features/aihub/api';
+import { fetchMarkets } from '@/ee/features/aihub/api';
 import { useFeatureFlags } from '@/hooks/use-feature-flags';
 
 import AihubHubPage from '../index';
@@ -11,7 +11,7 @@ jest.mock('@/hooks/use-feature-flags', () => ({
   useFeatureFlags: jest.fn(),
 }));
 
-jest.mock('@/features/aihub/api', () => ({
+jest.mock('@/ee/features/aihub/api', () => ({
   fetchMarkets: jest.fn(),
 }));
 

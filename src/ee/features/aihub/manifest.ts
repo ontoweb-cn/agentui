@@ -1,9 +1,12 @@
+// T2.5 ee overlay:aihub 编译期 feature 迁入 src/ee/features/aihub。
+// 由 features/_registry 双 glob 挂载;共享层不得内联 AIHub 专有逻辑。
+
 import { LucideLibrary } from 'lucide-react';
 import { redirect } from 'react-router';
 
 import { Routes } from '@/constants/routes';
 
-import type { ModuleDefinition } from '../_types';
+import type { ModuleDefinition } from '@/features/_types';
 import { DEFAULT_RESOURCE_TYPE } from './resource-types';
 
 /**
