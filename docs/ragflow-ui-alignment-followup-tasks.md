@@ -145,7 +145,7 @@ Outfit/JetBrains Mono 的字号/行高纳入语义 token,与既有 token 体系�
 ## T4 跨仓库配套
 
 ### T4.1 后端 provider 枚举同步(v3 拆分,原单条靶点有误)
-- **T4.1a Rust Gateway/BFF(1-2 天)— 代码项已完成(v6,九步 ragflow-t41a)**:①透传复核(多 key 共存 PATCH 用例);②`GET /api/bff/agents/chat/sessions/:id/external-info` 聚合 `has_web_search_provider`(+`has_tavily_key`),前端 chat 分享改打该路径;enterprise `normalizeSession` 经 metadata 透传 `prompt_config`/`kb_ids`;③T2.7 既有;④**写侧 prune 延期 T4.2**(短期整包保「换回不丢 key」;external-info 响应侧永不回传 key)。
+- **T4.1a Rust Gateway/BFF(1-2 天)— 代码项已完成(v6,九步 ragflow-t41a)**:①透传复核(多 key 共存 PATCH 用例);②`GET /api/bff/agents/chat/sessions/:id/external-info` 聚合 `has_web_search_provider`(+`has_tavily_key`),前端 chat 分享改打该路径;enterprise `normalizeSession` 经 metadata 透传 `prompt_config`/`kb_ids`;③T2.7 既有;④**写侧 prune 延期 T4.2**(短期整包保「换回不丢 key」;external-info 响应侧永不回传 key)。`sanitizePromptConfigWebSearchKeys` 已在 BFF utils 就绪,待 T4.2 接线。
 - **T4.1b intellect-rag(随 Phase C 评估)**:仅检索执行联动——联网搜索执行链路按 provider 分发(未支持的 provider 保存后静默失效是当前最大风险)。**不在 Python fork 上做一次性投入**,Go 化后实现。
 
 ### T4.2 密钥存储架构评估(设计任务,随 Phase A/B)— **设计已完成**(v7)

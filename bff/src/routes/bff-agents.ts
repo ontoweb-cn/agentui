@@ -351,6 +351,8 @@ bffAgentRoutes.patch('/agents/:agentId/sessions/:sessionId', async (c) => {
     if (!webSearchCheck.ok) {
       return c.json({ code: 400, message: webSearchCheck.message }, 400);
     }
+    // T4.1a ④ 写侧 prune 按 origin/dev 定案延期 T4.2(与「换回不丢 key」冲突);
+    // 短期维持整包透传。sanitizePromptConfigWebSearchKeys 留在 utils 供 T4.2 复用。
     params.promptConfig = rawPromptConfig;
   }
   if (Object.keys(params).length === 0) {
