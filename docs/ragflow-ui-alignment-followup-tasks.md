@@ -11,6 +11,8 @@
 > **v6(2026-11-22)**:九步交付(module: ragflow-t41a)——**T4.1a ①③ 复核 + ② BFF `external-info` 聚合 + GET metadata 透传已完成**;④ 写侧 prune **延期 T4.2**(与 T2.4「换回不丢 key」冲突)。报告 [REPORT-ragflow-t41a-20261122.md](../tests/e2e-tests/reports/REPORT-ragflow-t41a-20261122.md)。
 > **v7(2026-11-22)**:九步交付(module: ragflow-next-iter)——**T2.6 oxlint 并行接入**;**T2.5 第二步 `pages/tasks`→`ee/pages/tasks`**;**T4.2 设计文档** [web-search-secret-storage-design.md](./web-search-secret-storage-design.md)。报告 [REPORT-ragflow-next-iter-20261122.md](../tests/e2e-tests/reports/REPORT-ragflow-next-iter-20261122.md)。
 > **v8(2026-11-22)**:九步 next-iter-aihub-t3——**T2.5 aihub→`ee/features/aihub`**;**T3.1 虚拟滚动(CSV+chunk)**;**T3.7 color-tokens `--prune`/交叉校验**;T4.2 落地仍等 Gateway(L-T42-01)。报告 [REPORT-next-iter-aihub-t3-20261122.md](../tests/e2e-tests/reports/REPORT-next-iter-aihub-t3-20261122.md)。
+> **v9(2026-11-23)**:对齐 HEAD `642d643` remaining-backlog——**T2.5 applications→`ee/features/applications` + admin 三页→`ee/pages/*`**;**T3.2/T3.4/T3.5/T3.6 完成**;九步 `t42-phasebc-prep` 交付 [Gateway secrets API 契约草案](./web-search-secrets-gateway-api-contract.md)+ [Phase B/C 前端对齐准备](./phase-bc-frontend-alignment-prep.md)。**T4.2 M1/M2 仍无 Gateway 实现(L-T42-01)**;D1 仍 L-09/L-10。报告 [REPORT-t42-phasebc-prep-20261123.md](../tests/e2e-tests/reports/REPORT-t42-phasebc-prep-20261123.md)。
+> **v9.1(2026-11-23)**:质量/安全评审跟进——BFF `resolveWebSearchProvider` 与前端对齐(非法 provider 不回落 Tavily);补齐 `redactSessionWebSearchSecrets` 供 rag/mcp/openai-base `listSessions`;设计 §10 明确 GET 详情明文为 T4.2 过渡债与缓解面。
 
 ## 使用说明
 
@@ -66,20 +68,21 @@
 - **关联**:重构时一并处理 T2.9 的 `chatPromptKbIssues` 决策。
 - **验收**:T1.4 的测试可直接调用纯构建器;行为无变化。
 
-### T2.4 处理非活动 provider 的 key 滞留(2-4 小时 + 后端确认)
+### T2.4 处理非活动 provider 的 key 滞留(2-4 小时 + 后端确认)— **短期方案维持;收口并入 T4.2**
 - **已核实事实**:保存链路为 `useUpdateChat`(use-chat-request.ts L266)→ `gatewayChatService.patchGatewayChat`(gateway-chat-service.ts L53)→ `api.patchAgentSession(GATEWAY_CHAT_AGENT_ID, chatId)`,patchData **整包**携带 `prompt_config`(`patchData.prompt_config = params.prompt_config`)——非当前 provider 的历史 key 均随每次保存提交(安全评审"凭证滞留"项)。**且保存链路 title-only 断点已由 T2.10 修复(`7de6206`),保存真正生效,本任务的前提成立。**
 - **前置决策:v3 已解锁**——p0 过渡期评审实证 Gateway `PATCH prompt_config` 为**整列替换**(`UPDATE sessions SET prompt_config=$1`)。原三案裁决:
   1. ~~前端剥离~~ **排除**(整列替换语义下剥离 = 永久删除,换回需重填);
   2. **后端忽略(选定)**:短期维持前端整包(换回 provider 不丢 key,体验优先),存储侧按活动 provider 过滤并入 **T4.1a / T4.2**(密钥独立存储),避免过渡期一次性投入;
   3. ~~切换即清空~~ **排除**(误切换即丢数据)。
+- **v9**:Gateway secrets **未实现**;禁止在无表时接线 `sanitizePromptConfigWebSearchKeys`。契约见 [web-search-secrets-gateway-api-contract.md](./web-search-secrets-gateway-api-contract.md)。
 - **验收**:按选定方案,PATCH payload/存储中仅含策略定义的 key 集合;`use-show-internet` 与保存后重载行为一致。
 
-### T2.5 ee overlay 化改造(分两步:骨架 + 单模块 1-2 天,全量随需)
+### T2.5 ee overlay 化改造— **本仓目标模块已完成**(v9)
 - **评审调整**:原"3-5 天全量迁移"低估了 `features/_registry.ts`、`routes.tsx`、i18n、BFF 路由的耦合,改为增量验证式。
 - **第一步(1-2 天)— 已完成**(`9dadf97`):建立 `src/ee/` 骨架与别名,迁移 `pages/wizard`。
-- **第二步— tasks 已完成**(`ragflow-next-iter`);**aihub 已迁入** `src/ee/features/aihub`(v8,`_registry` 双 glob)。**仍待**:`features/applications`、BFF 专属页面逐个迁入。
+- **第二步— 已完成**:tasks→`ee/pages/tasks`;aihub→`ee/features/aihub`;**applications→`ee/features/applications`**;BFF 专属 admin(`harness-backends`/`sso-settings`/`tenant-bindings`)→`ee/pages/*`(`642d643` remaining-backlog)。
 - **背景**:上游已全面 ee overlay 化(#21667/#21696/#22304);此举使后续 cherry-pick 上游时冲突面最小。
-- **验收(第一步)**:从上游 `web/` 挑 3 个近期文件试 cherry-pick,零冲突;wizard 路由/构建正常。
+- **验收**:ee 模块路由/构建正常;共享层仅 `@/ee/*` import。
 
 ### T2.6 引入 oxlint(0.5-1 天)— **已完成**(v7,`ragflow-next-iter`)
 - **动作(已实施)**:安装 `oxlint@1.94`;`.oxlintrc.json`;`lint` 串行 `eslint && oxlint src`;`lint:oxlint` 快捷脚本;修复 `custom.d.ts` TS(2309) 阻断错误。
@@ -147,8 +150,11 @@
 - **T4.1a Rust Gateway/BFF(1-2 天)— 代码项已完成(v6,九步 ragflow-t41a)**:①透传复核(多 key 共存 PATCH 用例);②`GET /api/bff/agents/chat/sessions/:id/external-info` 聚合 `has_web_search_provider`(+`has_tavily_key`),前端 chat 分享改打该路径;enterprise `normalizeSession` 经 metadata 透传 `prompt_config`/`kb_ids`;③T2.7 既有;④**写侧 prune 延期 T4.2**(短期整包保「换回不丢 key」;external-info 响应侧永不回传 key)。`sanitizePromptConfigWebSearchKeys` 已在 BFF utils 就绪,待 T4.2 接线。
 - **T4.1b intellect-rag(随 Phase C 评估)**:仅检索执行联动——联网搜索执行链路按 provider 分发(未支持的 provider 保存后静默失效是当前最大风险)。**不在 Python fork 上做一次性投入**,Go 化后实现。
 
-### T4.2 密钥存储架构评估(设计任务,随 Phase A/B)— **设计已完成**(v7)
-现状与方案见 [web-search-secret-storage-design.md](./web-search-secret-storage-design.md):**推荐 Gateway `web_search_secrets` 表 + PC 去明文**(方案 C);迁移 M0–M4;承接 T4.1a ④ 于 M1/M2。**本批无生产代码变更**;落地待 Gateway secrets API 契约。
+### T4.2 密钥存储架构评估— **设计✓ + 契约草案✓;M1+ 等 Gateway**(v9)
+- 设计:[web-search-secret-storage-design.md](./web-search-secret-storage-design.md) 方案 C,M0–M4。
+- **v9 契约草案**:[web-search-secrets-gateway-api-contract.md](./web-search-secrets-gateway-api-contract.md)(PUT/GET/DELETE secrets、PC 剥离时机、禁止无表 prune)。
+- **M1/M2 接线**:Gateway 实现可探测后开 module `t42-m1-wire`;此前保持 **L-T42-01**。
+- Phase B/C 前端准备:[phase-bc-frontend-alignment-prep.md](./phase-bc-frontend-alignment-prep.md)。
 
 ---
 
@@ -157,7 +163,7 @@
 | 阶段 | 内容 | 量级 | 并行前端任务 |
 |---|---|---|---|
 | Phase A | intellect-mem → Go(复用上游 memory,作 Go 服务化样板) | 2-4 人周 | — |
-| Phase B | intellect-dsl → Go(`agent-go-port-design.md`:eino + 5-tier + Redis checkpoint + OTel) | 3-6 人月 | **画布页面对齐**:`pages/agents` 消费 Go 事件契约(workflow_started/message/user_inputs/interrupt/两段式 cancel),canvas-plugin 的 DSL API 对齐 `NormalizeForCanvas` |
+| Phase B | intellect-dsl → Go(`agent-go-port-design.md`:eino + 5-tier + Redis checkpoint + OTel) | 3-6 人月 | **画布页面对齐**:事件适配 + `NormalizeForCanvas`(准备文档已出,实现等 Go 联调) |
 | Phase C | intellect-rag:上游 Go 基座 + 回植多租户 scope/deepdoc 定制/chunk 过滤;`cmd/` 多入口 | 3-6 人月 | dev proxy 切 Go API;T3.3 的 pipeline API 在此到位 |
 | Phase D | 删 Python、CI 全面切 Go、docs 去迁移化表述 | ~1 个月 | 全量前端回归 |
 
@@ -166,21 +172,19 @@
 ## 依赖关系与建议节奏
 
 ```text
-T2.3(提取纯构建器) ──▶ T1.4(schema 测试)、T2.9(校验差异决策)
-T2.8(错误揭示)     ──▶ 使 66f2f3d 的 FormMessage 对用户真正可见(高优先)
-T2.5 第一步(ee 骨架)──▶ T3.4(i18n overlay)、T3.6(子树同步)
-T4.1a(Gateway/BFF 枚举+聚合位)──▶ 分享页修复完整生效、T2.7/T2.4 存储侧落地
-Phase B(事件契约)  ──▶ 画布页面对齐
+T4.2 契约草案 ──▶ Gateway 实现 ──▶ t42-m1-wire(BFF sanitize + GET 标志)
+Phase B 准备文档 ──▶ Go SSE 稳定 ──▶ phase-b-sse-adapter
+D1 手册 ──▶ 持权 kubeconfig ──▶ prod-d1-exec
 ```
 
-建议节奏(v8 修订):~~T1 / T2.1–T2.3/T2.6–T2.10 / T4.1a 代码 / T4.2 设计 / T2.5 aihub / T3.1 / T3.7~~ **已完成**;余 **T2.5 applications**、T3.2/T3.4–T3.6、T4.1b/Phase C、T4.2 M1+(等 Gateway)、D1 生产执行。
+建议节奏(**v9**):~~T1–T3.2/T3.4–T3.7 / T2.5 全目标模块 / T4.1a 代码 / T4.2 设计+契约~~ **已完成**;余 **T2.4/T4.1a④→T4.2 M1+**、**T3.3**、**T4.1b/Phase C**、**T5**、**D1 生产执行(L-09/10)**。
 
 ## 工作量汇总
 
 | 分组 | 任务数 | 量级 |
 |---|---|---|
 | T1 立即可做 | 4(**全部完成**) | ~1 天 ✓ |
-| T2 P1 | 10(**T2.1-T2.3/T2.6-T2.10 完成;T2.5 余 aihub/applications**) | 余增量迁入 |
-| T3 P2 | 7 | 随版本 |
-| T4 跨仓库 | T4.1a✓ / T4.2 设计✓ / T4.1b→Phase C / T4.2 M1+ | 实现待 Gateway |
+| T2 P1 | 10(**T2.1–T2.3/T2.5–T2.10 完成;T2.4 收口→T4.2**) | 余 T4.2 接线 |
+| T3 P2 | 7(**T3.1/2/4/5/6/7✓;T3.3 等 Go**) | 随 Phase C |
+| T4 跨仓库 | T4.1a✓ / T4.2 设计+契约✓ / T4.1b→Phase C / T4.2 M1+ | **L-T42-01** |
 | T5 Go 化 | 4 阶段 | 3-5 人 × 6-9 个月 |

@@ -4,8 +4,8 @@
  * 语义对齐前端 `hasWebSearchProvider`(web-search-api-key.ts):
  * - keyless provider(anysearch/youcom)选中即可用;
  * - 其余需非空对应 `*_api_key`;
- * - legacy:无 provider 字段但有非空 tavily_api_key → 视为 Tavily 可用;
- * - 显式 `web_search_provider: ''` 为清除态,不回落 Tavily。
+ * - legacy:**仅当 provider 字段缺省(undefined)** 且有非空 tavily_api_key → Tavily;
+ * - 显式 `''` 或非法/非允许列表值均不回落 Tavily(与前端 getWebSearchProvider 一致)。
  *
  * 本模块只产出布尔与公开元数据,绝不回传任何 API Key。
  */
@@ -48,7 +48,11 @@ function readString(
   return undefined;
 }
 
-/** Resolve active provider (mirrors frontend getWebSearchProvider). */
+/**
+ * Resolve active provider (mirrors frontend `getWebSearchProvider`).
+ * Legacy Tavily fallback **only** when the field is absent (`undefined`).
+ * Explicit `''` = cleared; non-empty unknown values are not Tavily.
+ */
 export function resolveWebSearchProvider(
   promptConfig: unknown,
 ): string | undefined {
@@ -57,8 +61,8 @@ export function resolveWebSearchProvider(
   if (raw !== undefined && raw !== '' && WEB_SEARCH_PROVIDERS.has(raw)) {
     return raw;
   }
-  // Explicit clear: do not fall back to legacy Tavily.
-  if (raw === '') {
+  // Explicit clear or invalid/non-allowlist value: do not fall back.
+  if (raw !== undefined) {
     return undefined;
   }
   const tavilyKey = readString(pc, ['tavily_api_key', 'tavilyApiKey']);
@@ -141,4 +145,42 @@ export function redactWebSearchSecretsFromPromptConfig(
     out[key] = value;
   }
   return out;
+}
+
+/**
+ * listSessions 宽面脱敏:剥顶层与 metadata 内 prompt_config / promptConfig 的密钥。
+ * 不修改入参;getSession 详情路径不要调用(设置页仍需明文回填,见 T4.2)。
+ */
+export function redactSessionWebSearchSecrets<T extends object>(session: T): T {
+  const src = session as Record<string, unknown>;
+  const next: Record<string, unknown> = { ...src };
+
+  if ('prompt_config' in next) {
+    next.prompt_config = redactWebSearchSecretsFromPromptConfig(
+      next.prompt_config,
+    );
+  }
+  if ('promptConfig' in next) {
+    next.promptConfig = redactWebSearchSecretsFromPromptConfig(
+      next.promptConfig,
+    );
+  }
+
+  const meta = asRecord(next.metadata);
+  if (meta) {
+    const metaOut: Record<string, unknown> = { ...meta };
+    if ('prompt_config' in metaOut) {
+      metaOut.prompt_config = redactWebSearchSecretsFromPromptConfig(
+        metaOut.prompt_config,
+      );
+    }
+    if ('promptConfig' in metaOut) {
+      metaOut.promptConfig = redactWebSearchSecretsFromPromptConfig(
+        metaOut.promptConfig,
+      );
+    }
+    next.metadata = metaOut;
+  }
+
+  return next as T;
 }

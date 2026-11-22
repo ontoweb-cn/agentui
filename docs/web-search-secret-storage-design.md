@@ -117,3 +117,20 @@ T2.4 短期选择整包保体验。终态两种产品选项(需业务拍板,记�
 ## 8. 结论
 
 采纳 **方案 C(Gateway secrets + 引用)**,分 M0–M4 演进;T4.1a ④ 写侧过滤在 M1/M2 与多行 secrets 策略一并落地。agentui 侧下一代码批优先配合 Gateway secrets API 契约评审,而非先行 prune。
+
+## 9. 后续(v9 / 2026-11-23)
+
+- **契约草案已出**:[web-search-secrets-gateway-api-contract.md](./web-search-secrets-gateway-api-contract.md)— 供 Gateway 评审实现。
+- **取证**:intellect-gateway / agentui 仍无 `web_search_secrets` 路由 → **L-T42-01** 延续;BFF **未**接线 `sanitizePromptConfigWebSearchKeys`。
+- Gateway 可探测实现后开九步 module `t42-m1-wire`。
+
+## 10. 过渡期读路径风险与缓解(评审加固 2026-11-23)
+
+| 路径 | 密钥面 | 过渡策略 |
+|---|---|---|
+| `GET .../external-info` | 无明文 | 已上线(M0) |
+| `listSessions`(enterprise / rag / mcp / openai-base) | 无明文 | `redactSessionWebSearchSecrets` / normalize 脱敏 |
+| `GET .../sessions/:id` | **仍含明文** `*_api_key` | **有意保留**:设置页整包回填与「换回不丢 key」(T2.4)依赖;须认证且同会话所有者。**禁止**在无 secrets 表时对详情脱敏(会破坏保存回写)。终态见契约 §4.5 → `web_search_key_configured` + 无明文 |
+| PATCH 写侧 prune | 未启用 | 无表 prune = 永久丢非活动 key;见 §7 |
+
+残余 Medium(安全评审):详情 GET 暴露活动+非活动 key——接受为 **L-T42-01 / M1–M3** 债;缓解=鉴权边界 + 列表/分享已脱敏 + 契约已冻结。

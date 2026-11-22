@@ -235,6 +235,32 @@ describe('IntellectRagAdapter', () => {
       expect(init.method).toBe('GET');
       expect(result).toEqual(sessions);
     });
+
+    it('listSessions 脱敏顶层与 metadata 中的 *_api_key', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse([
+          {
+            id: 's1',
+            agentId: 'a1',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            prompt_config: {
+              web_search_provider: 'exa',
+              exa_api_key: 'secret-exa',
+              system: 'keep',
+            },
+            metadata: { promptConfig: { tavilyApiKey: 'secret-tvly' } },
+          },
+        ]),
+      );
+
+      const result = await adapter.listSessions(ctx, 'a1');
+      expect(result[0]).toMatchObject({
+        prompt_config: { web_search_provider: 'exa', system: 'keep' },
+        metadata: { promptConfig: {} },
+      });
+      expect(JSON.stringify(result)).not.toContain('secret');
+    });
   });
 
   describe('getSession', () => {

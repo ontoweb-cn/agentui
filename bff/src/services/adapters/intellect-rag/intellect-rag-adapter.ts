@@ -26,6 +26,7 @@ import type { BackendContext } from '../../../types/tenant';
 import type { CanvasAgent, CreateCanvasBody, SaveCanvasBody } from '../../../types/canvas';
 import { fetchWithRagToken } from '../../rag-fetch';
 import { parseCanvasWorkflowSSE } from './parse-canvas-workflow-sse';
+import { redactSessionWebSearchSecrets } from '../../../utils/web-search-capability';
 
 /**
  * Intellect RAG Adapter 实现。
@@ -81,12 +82,15 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
   }
 
   async listSessions(_ctx: BackendContext, agentId: string): Promise<Session[]> {
-    return this.request<Session[]>(
+    const raw = await this.request<Session[]>(
       'GET',
       `/api/v1/agents/${encodeURIComponent(agentId)}/sessions`,
       undefined,
       _ctx,
     );
+    // 列表宽面脱敏;详情 getSession 仍回明文(设置页整包回写,见设计文档 §9)
+    if (!Array.isArray(raw)) return raw;
+    return raw.map((item) => redactSessionWebSearchSecrets(item));
   }
 
   async getSession(

@@ -3,6 +3,7 @@ import {
   buildExternalChatInfoFromSession,
   hasTavilyKeyConfig,
   hasWebSearchProviderConfig,
+  redactSessionWebSearchSecrets,
   redactWebSearchSecretsFromPromptConfig,
   resolveWebSearchProvider,
 } from './web-search-capability';
@@ -48,6 +49,21 @@ describe('hasWebSearchProviderConfig (TC-T41A-01)', () => {
     expect(
       hasWebSearchProviderConfig({
         web_search_provider: '',
+        tavily_api_key: 'still-there',
+      }),
+    ).toBe(false);
+  });
+
+  it('invalid/non-allowlist provider does not fall back to tavily (align frontend)', () => {
+    expect(
+      resolveWebSearchProvider({
+        web_search_provider: 'typo',
+        tavily_api_key: 'still-there',
+      }),
+    ).toBeUndefined();
+    expect(
+      hasWebSearchProviderConfig({
+        web_search_provider: 'unsupported',
         tavily_api_key: 'still-there',
       }),
     ).toBe(false);
@@ -123,5 +139,36 @@ describe('redactWebSearchSecretsFromPromptConfig (review hardening)', () => {
       prologue: 'hi',
     });
     expect(input.exa_api_key).toBe('secret'); // 不修改入参
+  });
+});
+
+describe('redactSessionWebSearchSecrets (list path)', () => {
+  it('redacts top-level and metadata prompt_config / promptConfig', () => {
+    const input = {
+      id: 's1',
+      agentId: 'a1',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      prompt_config: {
+        web_search_provider: 'exa',
+        exa_api_key: 'secret-exa',
+        system: 'keep',
+      },
+      metadata: {
+        promptConfig: { tavilyApiKey: 'secret-tvly', prologue: 'hi' },
+        prompt_config: { brave_api_key: 'secret-brave' },
+      },
+    };
+    const out = redactSessionWebSearchSecrets(input);
+    expect(out.prompt_config).toEqual({
+      web_search_provider: 'exa',
+      system: 'keep',
+    });
+    expect(out.metadata).toEqual({
+      promptConfig: { prologue: 'hi' },
+      prompt_config: {},
+    });
+    expect(JSON.stringify(out)).not.toContain('secret');
+    expect(input.prompt_config.exa_api_key).toBe('secret-exa');
   });
 });

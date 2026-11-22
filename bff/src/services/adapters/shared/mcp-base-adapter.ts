@@ -23,6 +23,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { redactSessionWebSearchSecrets } from '../../../utils/web-search-capability';
 import type { IHarnessAdapter } from '../../../types/adapter';
 import type { AgentSummary, Session, SendMessageRequest } from '../../../types/domain';
 import type { StreamChunk, StreamIterable } from '../../../types/stream';
@@ -188,7 +189,9 @@ export abstract class MCPBaseAdapter implements IHarnessAdapter {
   }
 
   async listSessions(_ctx: BackendContext, agentId: string): Promise<Session[]> {
-    return Array.from(this.sessions.values()).filter((s) => s.agentId === agentId);
+    return Array.from(this.sessions.values())
+      .filter((s) => s.agentId === agentId)
+      .map((s) => redactSessionWebSearchSecrets(s));
   }
 
   async getSession(_ctx: BackendContext, _agentId: string, sessionId: string): Promise<Session> {
