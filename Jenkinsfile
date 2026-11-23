@@ -31,8 +31,8 @@ pipeline {
   parameters {
     booleanParam(name: 'RELEASE', defaultValue: false,
       description: '勾选则构建并推送正式镜像到 Harbor(否则仅验证)')
-    string(name: 'IMAGE_TAG', defaultValue: '0.4.5',
-      description: '镜像 tag(手动构建时使用;tag 触发时自动取 TAG_NAME 去 v 前缀)')
+    string(name: 'IMAGE_TAG', defaultValue: '',
+      description: '镜像 tag(手动构建时使用;留空=取 package.json 版本;tag 触发时自动取 TAG_NAME 去 v 前缀)')
     string(name: 'PLUGIN_BUNDLE_IMAGE', defaultValue: '',
       description: '插件 bundle 镜像(cognitive-wargame CI 发布,如 hub.wust.edu.cn/intellect/wargame-plugin-bundle:0d8b07d);留空=纯宿主镜像')
     string(name: 'PLUGIN_BUNDLE_ARTIFACT_URL', defaultValue: '',
@@ -78,8 +78,14 @@ pipeline {
       steps {
         script {
           // tag 触发优先: v0.4.2 -> 0.4.2；tag 构建自动进入发版
+          // 手动构建未填 IMAGE_TAG 时跟随 package.json，避免默认值滞后导致误发旧版本
           def rawTag = env.TAG_NAME?.trim()
-          def effective = rawTag ? rawTag.replaceFirst('^v', '') : params.IMAGE_TAG
+          def manual = params.IMAGE_TAG?.trim()
+          def pkgVersion = readJSON(file: 'package.json').version?.trim()
+          def effective = rawTag ? rawTag.replaceFirst('^v', '') : (manual ?: pkgVersion)
+          if (!effective) {
+            error('无法确定镜像 tag：请填写 IMAGE_TAG，或确保 package.json 含 version')
+          }
           if (!(effective ==~ /^[A-Za-z0-9._-]+$/)) {
             error("镜像 tag 非法(仅允许字母数字与 . _ -,不得为空): '${effective}'")
           }
