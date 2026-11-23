@@ -63,8 +63,9 @@ const routeConfigOptions = [
   },
   {
     // spec-010 v8 B-6: Wizard 首次安装向导(不经过 AuthWrapper,首次安装无 admin token)。
+    // T2.5:向导属 agentui 私有内容,迁入 ee overlay(src/ee/pages/wizard)。
     path: Routes.Wizard,
-    Component: () => import('@/pages/wizard'),
+    Component: () => import('@/ee/pages/wizard'),
     layout: false,
   },
   {
@@ -314,15 +315,15 @@ const routeConfigOptions = [
                 path: Routes.AdminSandboxSettings,
                 Component: () => import('@/pages/admin/sandbox-settings'),
               },
-              // Multi-Harness P2 (US3):Harness 后端配置 Admin 页面(非企业版独占,所有部署都可用)。
+              // Multi-Harness P2 (US3):Harness 后端配置 Admin 页面 → ee overlay(T2.5)。
               {
                 path: Routes.AdminHarnessBackends,
-                Component: () => import('@/pages/admin/harness-backends'),
+                Component: () => import('@/ee/pages/harness-backends'),
               },
-              // wizard-sso-followup(A7):统一认证运行时配置设置页(所有部署可用)。
+              // wizard-sso-followup(A7):统一认证运行时配置 → ee overlay(T2.5)。
               {
                 path: Routes.AdminSsoSettings,
-                Component: () => import('@/pages/admin/sso-settings'),
+                Component: () => import('@/ee/pages/sso-settings'),
               },
               // Multi-Harness P5 (US1/US2/US3):Team/Project/Tenant-binding Admin 页面。
               {
@@ -335,8 +336,7 @@ const routeConfigOptions = [
               },
               {
                 path: Routes.AdminTenantBindings,
-                Component: () =>
-                  import('@/pages/admin/tenant-bindings'),
+                Component: () => import('@/ee/pages/tenant-bindings'),
               },
               ...(IS_ENTERPRISE
                 ? [

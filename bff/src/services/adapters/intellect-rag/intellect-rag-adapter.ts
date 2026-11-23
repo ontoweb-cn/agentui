@@ -26,6 +26,7 @@ import type { BackendContext } from '../../../types/tenant';
 import type { CanvasAgent, CreateCanvasBody, SaveCanvasBody } from '../../../types/canvas';
 import { fetchWithRagToken } from '../../rag-fetch';
 import { parseCanvasWorkflowSSE } from './parse-canvas-workflow-sse';
+import { redactSessionWebSearchSecrets } from '../../../utils/web-search-capability';
 
 /**
  * Intellect RAG Adapter 实现。
@@ -81,11 +82,16 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
   }
 
   async listSessions(_ctx: BackendContext, agentId: string): Promise<Session[]> {
-    return this.request<Session[]>(
+    const raw = await this.request<unknown>(
       'GET',
       `/api/v1/agents/${encodeURIComponent(agentId)}/sessions`,
       undefined,
       _ctx,
+    );
+    // 列表宽面脱敏;详情 getSession 仍回明文(设置页整包回写,见设计文档 §9)。
+    // 兼容裸数组与 { data|sessions|items: [] } 包装,避免非数组形状跳过脱敏。
+    return unwrapSessionList(raw).map((item) =>
+      redactSessionWebSearchSecrets(item),
     );
   }
 
@@ -135,7 +141,10 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
     const data = await this.request<unknown>(
       'PATCH',
       `/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}`,
-      params,
+      // 评审修复(Bugbot High):此前误传 camelCase 的 params,构造好的
+      // snake_case body 成了死代码——intellect-rag 后端上 kb_ids/prompt_config
+      // 静默丢失(保存"成功"但未落库)。title 恰好双形态同名,故未被发现。
+      body,
       _ctx,
     );
     return data as unknown as Session;
@@ -529,4 +538,21 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
  */
 async function* errorStream(message: string): StreamIterable {
   yield { type: 'error' as const, message } as StreamChunk;
+}
+
+/** Normalize listSessions payloads; unknown shapes → [] (never skip redaction). */
+export function unwrapSessionList(raw: unknown): Session[] {
+  if (Array.isArray(raw)) {
+    return raw as Session[];
+  }
+  if (raw && typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    for (const key of ['data', 'sessions', 'items'] as const) {
+      const nested = obj[key];
+      if (Array.isArray(nested)) {
+        return nested as Session[];
+      }
+    }
+  }
+  return [];
 }

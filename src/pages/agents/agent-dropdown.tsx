@@ -20,7 +20,7 @@ import { useRenameAgent } from './use-rename-agent';
 export function AgentDropdown({
   children,
   showAgentRenameModal,
-  agent: agent,
+  agent,
 }: PropsWithChildren &
   Pick<ReturnType<typeof useRenameAgent>, 'showAgentRenameModal'> & {
     agent: IFlow;

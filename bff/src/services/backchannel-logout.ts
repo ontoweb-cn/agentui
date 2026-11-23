@@ -10,10 +10,9 @@ import {
   createRemoteJWKSet,
   jwtVerify,
   type JWTPayload,
-  // jose v6:KeyLike/VerifyKeyGetter 已更名(CryptoKey / JWTVerifyGetKey),
-  // 旧名不再导出——构建在 tsc 阶段直接失败(v0.4.6 回归)
-  type CryptoKey,
-  type JWTVerifyGetKey,
+  // jose v6:注入面为 createLocalJWKSet / createRemoteJWKSet 返回类型
+  type LocalJWKSet,
+  type RemoteJWKSet,
 } from 'jose';
 
 export const BACKCHANNEL_LOGOUT_EVENT = 'http://schemas.openid.net/event/backchannel-logout';
@@ -23,8 +22,11 @@ export class LogoutTokenVerifyError extends Error {}
 export interface VerifyLogoutTokenOptions {
   issuer: string;
   audience: string;
-  /** 单测注入：默认按 issuer 发现文档拉取远程 JWKS（缓存）。 */
-  jwks?: JWTVerifyGetKey | ((protectedHeader: any, token: any) => Promise<CryptoKey>);
+  /**
+   * 单测注入：默认按 issuer 发现文档拉取远程 JWKS（缓存）。
+   * 评审修复(L-RP1-03):jose v6 注入面为 createLocalJWKSet/createRemoteJWKSet 返回类型。
+   */
+  jwks?: LocalJWKSet | RemoteJWKSet;
 }
 
 const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();

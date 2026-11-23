@@ -15,7 +15,8 @@
     "dev": "vite --host",
     "dev:bff": "tsx watch --env-file=bff/.env bff/src/index.ts",
     "dev:all": "concurrently \"npm:dev\" \"npm:dev:bff\"",
-    "lint": "eslint src --ext .ts,.tsx --report-unused-disable-directives",
+    "lint": "eslint src --ext .ts,.tsx --report-unused-disable-directives && oxlint src",
+    "lint:oxlint": "oxlint src",
     "prepare": "husky install",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
@@ -24,6 +25,7 @@
     "sync:hiedu-shared": "node scripts/sync-hiedu-shared.mjs",
     "check:hiedu-shared": "node scripts/check-hiedu-shared.mjs",
     "check:color-tokens": "node scripts/check-color-tokens.mjs",
+    "check:exec-gates": "node scripts/check-exec-gates.mjs",
     "gen:api-types": "tsx scripts/gen-api-types.ts",
     "check:plugin-tailwind": "node scripts/check-plugin-tailwind-drift.mjs",
     "chromatic": "chromatic --build-script-name=build-storybook"
@@ -165,6 +167,7 @@
     "@storybook/addon-webpack5-compiler-swc": "^4.0.1",
     "@storybook/react-webpack5": "^9.1.4",
     "@tailwindcss/container-queries": "^0.1.1",
+    "@tanstack/react-virtual": "^3.14.27",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^15.0.7",
     "@types/dompurify": "^3.0.5",
@@ -201,6 +204,7 @@
     "less-loader": "^12.2.0",
     "lint-staged": "^15.2.7",
     "openapi-typescript": "^7.0.0",
+    "oxlint": "^1.94.0",
     "postcss": "^8.5.6",
     "postcss-loader": "^8.2.0",
     "prettier": "^3.2.4",
@@ -221,6 +225,6 @@
     "vite-svg-loader": "^5.1.0"
   },
   "engines": {
-    "node": ">=18.20.4"
+    "node": "^20.19.0 || >=22.12.0"
   }
 }

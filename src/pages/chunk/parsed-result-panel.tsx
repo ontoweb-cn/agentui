@@ -1,7 +1,7 @@
 import { ParsedPageCard } from './chunk-card';
 import { ChunkToolbar } from './chunk-toolbar';
 
-const list = new Array(10).fill({
+const list = Array.from({ length: 10 }, () => ({
   page: 'page 1',
   content: `Word并不像 TeX／LaTeX为我们提供了合适的定理环境，因此需要我们另想办法。
   
@@ -15,7 +15,7 @@ const list = new Array(10).fill({
   定理1.2．三边对应相等的三角形全等。
   
   我们将这个过程也定义成了宏，在工具栏Theorem里面。书写过程如下：先写好定理本身，然后在该段落处放置光标，打开Theorem工具栏，点SetTheorem，即可见到效果。请尝试下面一个例子：`,
-});
+}));
 
 export default function ParsedResultPanel() {
   return (

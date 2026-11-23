@@ -32,6 +32,8 @@ import type { IAdapterRegistry } from '../services/adapter-registry-types';
 import { getBackendContext, resolveBackendContext } from '../middleware/backend-context';
 import type { IHarnessAdapter } from '../types/adapter';
 import { safeJsonSerialize } from '../utils/serialize';
+import { validateWebSearchPromptConfig } from '../utils/web-search-validation';
+import { buildExternalChatInfoFromSession } from '../utils/web-search-capability';
 import { registerRun, verifyRunOwnership } from '../services/run-registry';
 
 // Hono context variables for BFF agent routes
@@ -132,8 +134,11 @@ export function handleAdapterError(
   const msg = err instanceof Error ? err.message : String(err);
   // 详细错误信息记入服务端日志(含 stack 便于排查)
   console.error(`[bff-agents] ${route} adapter error:`, err);
-  // 404 检测:基于 err.message 包含 "404"(adapter 抛出的上游 404)
-  if (/404/.test(msg)) {
+  // 404 检测:优先使用结构化 status;兼容旧 adapter 的 "(404)" 文案。
+  // 注意不能用裸 /404/ —— session id 可能包含 "404"(如 ...b40467),
+  // 会把上游 500 误判成 404。
+  const status = (err as { status?: unknown })?.status;
+  if (Number(status) === 404 || /\b404\b/.test(msg)) {
     return c.json({ code: 404, message: 'Not found' }, 404);
   }
   // 其他错误:返回通用文案,不透传 err.message
@@ -222,6 +227,58 @@ bffAgentRoutes.get('/agents/:agentId/sessions/:sessionId', async (c) => {
   }
 });
 
+// GET /agents/:agentId/sessions/:sessionId/external-info — T4.1a 分享页能力位投影
+// 替代 RAG `GET /api/v1/chatbots/{id}/info` 对 Gateway session 的缺口:
+// 从 session.metadata.prompt_config 计算 has_web_search_provider / has_tavily_key,
+// 响应信封对齐 RAG `{code,data}` 以便前端 hook 的 `data?.data` 解包;永不回传 Key。
+//
+// 鉴权(评审加固):挂载于 /agents/* → authMiddleware(+企业态 requireValidImtSession),
+// **不在** authMiddleware publicPaths。命名含「公开能力位」指响应字段不含密钥,
+// 并非匿名可访问;勿将该路径加入 publicPaths,除非另立 share-token 专用契约。
+bffAgentRoutes.get(
+  '/agents/:agentId/sessions/:sessionId/external-info',
+  async (c) => {
+    const adapter = getAdapter(c);
+    if (!adapter) {
+      return c.json({ code: 503, message: 'No backend configured' }, 503);
+    }
+    const agentId = c.req.param('agentId');
+    const sessionId = c.req.param('sessionId');
+    try {
+      const session = await adapter.getSession(
+        resolveBackendContext(c),
+        agentId,
+        sessionId,
+      );
+      const meta = session.metadata ?? {};
+      const promptConfig = meta.prompt_config ?? meta.promptConfig;
+      const info = buildExternalChatInfoFromSession({
+        title: session.title,
+        promptConfig,
+        avatar:
+          typeof meta.avatar === 'string'
+            ? meta.avatar
+            : typeof meta.icon === 'string'
+              ? meta.icon
+              : undefined,
+        llmId:
+          typeof meta.llm_id === 'string'
+            ? meta.llm_id
+            : typeof meta.llmId === 'string'
+              ? meta.llmId
+              : undefined,
+      });
+      return c.json({ code: 0, data: info });
+    } catch (err) {
+      return handleAdapterError(
+        c,
+        err,
+        'GET /agents/:agentId/sessions/:sessionId/external-info',
+      );
+    }
+  },
+);
+
 bffAgentRoutes.delete('/agents/:agentId/sessions/:sessionId', async (c) => {
   const adapter = getAdapter(c);
   if (!adapter) {
@@ -288,6 +345,14 @@ bffAgentRoutes.patch('/agents/:agentId/sessions/:sessionId', async (c) => {
         400,
       );
     }
+    // T2.7:联网搜索配置校验(服务端镜像)——前端 superRefine 可被直接
+    // HTTP 调用绕过,此处按同一规则拒绝非法 provider/缺失 key。
+    const webSearchCheck = validateWebSearchPromptConfig(rawPromptConfig);
+    if (!webSearchCheck.ok) {
+      return c.json({ code: 400, message: webSearchCheck.message }, 400);
+    }
+    // T4.1a ④ 写侧 prune 按 origin/dev 定案延期 T4.2(与「换回不丢 key」冲突);
+    // 短期维持整包透传。sanitizePromptConfigWebSearchKeys 留在 utils 供 T4.2 复用。
     params.promptConfig = rawPromptConfig;
   }
   if (Object.keys(params).length === 0) {

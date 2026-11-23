@@ -27,7 +27,7 @@ export interface Iknowledge {
   };
 }
 export const useSaveKnowledge = () => {
-  const { visible: visible, hideModal, showModal } = useSetModalState();
+  const { visible, hideModal, showModal } = useSetModalState();
   const { loading, createKnowledge } = useCreateKnowledge();
   const { navigateToDataset } = useNavigatePage();
 

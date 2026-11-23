@@ -11,12 +11,16 @@ import {
 import { topnSchema } from '@/components/top-n-item';
 import { useTranslate } from '@/hooks/common-hooks';
 import { WebSearchProvider } from '@/constants/chat';
+import { useMemo } from 'react';
 import { z, ZodIssueCode } from 'zod';
 import { missingWebSearchApiKeyField } from '../web-search-api-key';
+import { chatPromptKbIssues } from './validate-chat-prompt';
 
-export function useChatSettingSchema() {
-  const { t } = useTranslate('chat');
-
+// Pure builder so the schema can be unit-tested without rendering a form
+// (upstream pattern; T2.3). agentui 字段差异(相对上游):保留 tts/use_kg/
+// reference_metadata/toc_enhance,使用 vectorSimilarityWeightSchema,无
+// agentic_rag/decision_id/rerank-candidates(agentui 无对应组件)。
+export function buildChatSettingFormSchema(t: (key: string) => string) {
   const promptConfigSchema = z.object({
     quote: z.boolean(),
     keyword: z.boolean(),
@@ -29,7 +33,7 @@ export function useChatSettingSchema() {
     parameters: z
       .array(
         z.object({
-          key: z.string(),
+          key: z.string().min(1, { message: t('variableKeyMessage') }),
           optional: z.boolean(),
         }),
       )
@@ -78,36 +82,58 @@ export function useChatSettingSchema() {
       .optional(),
   });
 
-  const formSchema = z.object({
-    name: z.string().min(1, { message: t('assistantNameMessage') }),
-    icon: z.string(),
-    description: z.string().optional(),
-    dataset_ids: z.array(z.string()).min(0, {
-      message: t('knowledgeBasesMessage'),
-    }),
-    prompt_config: promptConfigSchema,
-    ...rerankFormSchema,
-    llm_setting: z.object(LlmSettingFieldSchema),
-    ...LlmSettingEnabledSchema,
-    llm_id: z.string().optional(),
-    ...vectorSimilarityWeightSchema,
-    ...similarityThresholdSchema,
-    ...topnSchema,
-    ...MetadataFilterSchema,
-  });
+  const formSchema = z
+    .object({
+      name: z.string().min(1, { message: t('assistantNameMessage') }),
+      icon: z.string(),
+      description: z.string().optional(),
+      dataset_ids: z.array(z.string()).min(0, {
+        message: t('knowledgeBasesMessage'),
+      }),
+      prompt_config: promptConfigSchema,
+      ...rerankFormSchema,
+      llm_setting: z.object(LlmSettingFieldSchema),
+      ...LlmSettingEnabledSchema,
+      llm_id: z.string().optional(),
+      ...vectorSimilarityWeightSchema,
+      ...similarityThresholdSchema,
+      ...topnSchema,
+      ...MetadataFilterSchema,
+    })
+    .superRefine((value, ctx) => {
+      // Upstream parity (T2.9): KB-bound prompts must keep the {knowledge}
+      // placeholder and empty_response requires at least one dataset. See
+      // validate-chat-prompt.ts for the rules and the decision record.
+      for (const issue of chatPromptKbIssues(value, t)) {
+        ctx.addIssue({
+          code: ZodIssueCode.custom,
+          path: issue.path,
+          message: issue.message,
+        });
+      }
 
-  return formSchema.superRefine((value, ctx) => {
-    // A keyed provider selected without its key fails SILENTLY at runtime —
-    // the Internet switch never appears in the chat box — so block the save
-    // here instead. Keyless providers are exempt. The rule lives in
-    // missingWebSearchApiKeyField so it can be unit-tested without the form.
-    const missingKeyField = missingWebSearchApiKeyField(value?.prompt_config);
-    if (missingKeyField) {
-      ctx.addIssue({
-        code: ZodIssueCode.custom,
-        path: ['prompt_config', missingKeyField],
-        message: t('webSearchApiKeyRequired'),
-      });
-    }
-  });
+      // A keyed provider selected without its key fails SILENTLY at runtime —
+      // the Internet switch never appears in the chat box — so block the save
+      // here instead. Keyless providers are exempt. The rule lives in
+      // missingWebSearchApiKeyField so it can be unit-tested without the form.
+      const missingKeyField = missingWebSearchApiKeyField(value?.prompt_config);
+      if (missingKeyField) {
+        ctx.addIssue({
+          code: ZodIssueCode.custom,
+          path: ['prompt_config', missingKeyField],
+          message: t('webSearchApiKeyRequired'),
+        });
+      }
+    });
+
+  return formSchema;
+}
+
+export function useChatSettingSchema() {
+  const { t } = useTranslate('chat');
+
+  return useMemo(
+    () => buildChatSettingFormSchema((key: string) => t(key)),
+    [t],
+  );
 }

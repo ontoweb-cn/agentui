@@ -21,11 +21,12 @@ const definition: ModuleDefinition = {
       children: [
         {
           path: Routes.Tasks,
-          Component: () => import('@/pages/tasks'),
+          // T2.5 第二步:tasks hub 页迁入 ee overlay
+          Component: () => import('@/ee/pages/tasks'),
           children: [
             {
               index: true,
-              Component: () => import('@/pages/tasks/task-list'),
+              Component: () => import('@/ee/pages/tasks/task-list'),
             },
             {
               path: Routes.TasksChat,

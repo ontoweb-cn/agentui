@@ -22,6 +22,7 @@
  */
 
 import type { IHarnessAdapter } from '../../../types/adapter';
+import { redactSessionWebSearchSecrets } from '../../../utils/web-search-capability';
 import type { AgentSummary, Session, SendMessageRequest } from '../../../types/domain';
 import type { StreamIterable } from '../../../types/stream';
 import type { HarnessCapabilities, HarnessBackend } from '../../../types/harness';
@@ -109,7 +110,9 @@ export abstract class OpenAICompatibleBaseAdapter implements IHarnessAdapter {
   }
 
   async listSessions(_ctx: BackendContext, agentId: string): Promise<Session[]> {
-    return Array.from(this.sessions.values()).filter((s) => s.agentId === agentId);
+    return Array.from(this.sessions.values())
+      .filter((s) => s.agentId === agentId)
+      .map((s) => redactSessionWebSearchSecrets(s));
   }
 
   async getSession(_ctx: BackendContext, _agentId: string, sessionId: string): Promise<Session> {

@@ -63,6 +63,8 @@ const config: StorybookConfig = {
       config.resolve.alias = {
         ...config.resolve.alias,
         '@': path.resolve(__dirname, '../src'),
+        // ee overlay 边界别名(T2.5):显式声明,继承 '@' 语义之外的文档化边界
+        '@/ee': path.resolve(__dirname, '../src/ee'),
       };
     }
     // 视觉回归产物上传 Chromatic;生产构建关闭 sourcemap,避免源码随静态产物外传。

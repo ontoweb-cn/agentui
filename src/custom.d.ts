@@ -6,7 +6,7 @@ declare module '*.md' {
 }
 
 declare module 'jsoneditor' {
+  // oxlint/TS(2309):不能同时 export default 与 export=
   const JSONEditor: any;
-  export default JSONEditor;
   export = JSONEditor;
 }

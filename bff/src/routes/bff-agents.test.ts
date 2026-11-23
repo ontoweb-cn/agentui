@@ -545,6 +545,82 @@ describe('streamChunksAsSSE: tool_* filtering after approval_request', () => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /agents/:agentId/sessions/:sessionId — chat 加载 404 误判回归
+// ---------------------------------------------------------------------------
+describe('GET /agents/:agentId/sessions/:sessionId (chat-session-load)', () => {
+  let mocks: MockSetup;
+  let app: Hono<{ Variables: TestVariables }>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks = createMocks();
+    app = createApp(mocks);
+  });
+
+  it('session id 含 404 但上游为 500 时不得误判为 404', async () => {
+    const sessionId = 'api_1788432157_7ba582f9d051bc3d6bed2fa599b40467';
+    (mocks.adapter.getSession as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      Object.assign(
+        new Error(
+          `GET /api/sessions/${sessionId} → 500: {"error":{"message":"internal server error"}}`,
+        ),
+        { status: 500 },
+      ),
+    );
+
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await app.request(`/agents/agent-1/sessions/${sessionId}`, {
+      headers: {
+        'X-Backend-Id': 'tenant-1',
+        'X-User-Id': 'user-1',
+      },
+    });
+
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.code).toBe(502);
+    expect(body.message).toBe('Adapter error');
+    warnSpy.mockRestore();
+  });
+
+  it('结构化 status=404 仍映射为 404', async () => {
+    (mocks.adapter.getSession as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      Object.assign(new Error('session missing'), { status: 404 }),
+    );
+
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await app.request('/agents/agent-1/sessions/missing', {
+      headers: {
+        'X-Backend-Id': 'tenant-1',
+        'X-User-Id': 'user-1',
+      },
+    });
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.code).toBe(404);
+    warnSpy.mockRestore();
+  });
+
+  it('仅文案含词边界 404 时兼容映射为 404', async () => {
+    (mocks.adapter.getSession as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('upstream responded (404) Not Found'),
+    );
+
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await app.request('/agents/agent-1/sessions/gone', {
+      headers: {
+        'X-Backend-Id': 'tenant-1',
+        'X-User-Id': 'user-1',
+      },
+    });
+
+    expect(res.status).toBe(404);
+    warnSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // PATCH /agents/:agentId/sessions/:sessionId 路由测试(T2.10:保存链路透传修复)
 // ---------------------------------------------------------------------------
 describe('PATCH /agents/:agentId/sessions/:sessionId (T2.10)', () => {
@@ -1414,5 +1490,224 @@ describe('PATCH 字段体积上限', () => {
     });
     expect(res.status).toBe(200);
     expect(mocks.adapter.updateSession).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH prompt_config 联网搜索校验(T2.7:服务端镜像,防 superRefine 被直调绕过)
+// ---------------------------------------------------------------------------
+
+describe('PATCH prompt_config 联网搜索校验 (T2.7)', () => {
+  let mocks: MockSetup;
+  let app: Hono<{ Variables: TestVariables }>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks = createMocks();
+    app = createApp(mocks);
+  });
+
+  function patchSession(body: Record<string, unknown>) {
+    return app.request('/agents/agent-1/sessions/sess-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Backend-Id': 'tenant-1' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('合法配置(需 key provider 带非空 key)→ 200 且透传不变', async () => {
+    (mocks.adapter.updateSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'sess-1',
+    });
+    const promptConfig = {
+      system: 'x',
+      web_search_provider: 'tavily',
+      tavily_api_key: 'tvly-x',
+    };
+    const res = await patchSession({ prompt_config: promptConfig });
+    expect(res.status).toBe(200);
+    expect(mocks.adapter.updateSession).toHaveBeenCalledWith(
+      expect.anything(),
+      'agent-1',
+      'sess-1',
+      { promptConfig },
+    );
+  });
+
+  it('需 key provider 缺 key → 400,message 含字段名', async () => {
+    const res = await patchSession({
+      prompt_config: {
+        system: 'x',
+        web_search_provider: 'search1api',
+        tavily_api_key: 'other-key',
+      },
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toContain('search1api_api_key');
+  });
+
+  it('未知 provider → 400', async () => {
+    const res = await patchSession({
+      prompt_config: {
+        web_search_provider: 'not-a-provider',
+        tavily_api_key: 'tvly-x',
+      },
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toContain('unknown web_search_provider');
+  });
+
+  it('keyless provider 无 key → 200', async () => {
+    (mocks.adapter.updateSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'sess-1',
+    });
+    const res = await patchSession({
+      prompt_config: { web_search_provider: 'anysearch' },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('清除态(provider 空串)与 legacy 数据(仅 tavily key)→ 200', async () => {
+    (mocks.adapter.updateSession as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ id: 'sess-1' })
+      .mockResolvedValueOnce({ id: 'sess-1' });
+    const res1 = await patchSession({
+      prompt_config: { web_search_provider: '', anysearch_api_key: 'k' },
+    });
+    expect(res1.status).toBe(200);
+    const res2 = await patchSession({
+      prompt_config: { tavily_api_key: 'tvly-x' },
+    });
+    expect(res2.status).toBe(200);
+  });
+
+  it('无 prompt_config(仅 title/kb_ids)→ 200,校验不误伤', async () => {
+    (mocks.adapter.updateSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'sess-1',
+    });
+    const res = await patchSession({ title: 't', kb_ids: [] });
+    expect(res.status).toBe(200);
+  });
+
+  it('camelCase 键名同样校验(webSearchProvider 缺 key → 400)', async () => {
+    const res = await patchSession({
+      promptConfig: { webSearchProvider: 'search1api' },
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toContain('search1api_api_key');
+  });
+
+  it('T4.1a ①:多 provider key 共存整包透传(写侧不 prune)', async () => {
+    (mocks.adapter.updateSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'sess-1',
+    });
+    const prompt_config = {
+      web_search_provider: 'exa',
+      exa_api_key: 'exa-1',
+      tavily_api_key: 'tvly-kept',
+      brave_api_key: 'brave-kept',
+    };
+    const res = await patchSession({ prompt_config });
+    expect(res.status).toBe(200);
+    expect(mocks.adapter.updateSession).toHaveBeenCalledWith(
+      expect.anything(),
+      'agent-1',
+      'sess-1',
+      { promptConfig: prompt_config },
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET external-info (T4.1a 分享页聚合)
+// ---------------------------------------------------------------------------
+describe('GET /agents/:agentId/sessions/:sessionId/external-info (T4.1a)', () => {
+  let mocks: MockSetup;
+  let app: Hono<{ Variables: TestVariables }>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks = createMocks();
+    app = createApp(mocks);
+  });
+
+  it('TC-T41A-03:Gateway session 含 exa+key → has_web_search_provider true', async () => {
+    (mocks.adapter.getSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'sess-1',
+      agentId: 'chat',
+      title: '分享助手',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      metadata: {
+        prompt_config: {
+          web_search_provider: 'exa',
+          exa_api_key: 'secret-exa',
+          tavily_api_key: 'secret-tavily',
+        },
+      },
+    });
+
+    const res = await app.request(
+      '/agents/chat/sessions/sess-1/external-info',
+      { headers: { 'X-Backend-Id': 'tenant-1' } },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.code).toBe(0);
+    expect(body.data).toEqual({
+      title: '分享助手',
+      avatar: undefined,
+      prologue: '',
+      llm_id: '',
+      has_tavily_key: true,
+      has_web_search_provider: true,
+    });
+    // TC-T41A-05:无 key 泄漏
+    expect(JSON.stringify(body)).not.toMatch(/_api_key/);
+    expect(JSON.stringify(body)).not.toContain('secret');
+  });
+
+  it('TC-T41A-04:无 prompt_config → flags false(不伪造可用)', async () => {
+    (mocks.adapter.getSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'sess-1',
+      agentId: 'chat',
+      title: '空配置',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const res = await app.request(
+      '/agents/chat/sessions/sess-1/external-info',
+      { headers: { 'X-Backend-Id': 'tenant-1' } },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.has_web_search_provider).toBe(false);
+    expect(body.data.has_tavily_key).toBe(false);
+  });
+
+  it('session 404 → 404', async () => {
+    (mocks.adapter.getSession as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('upstream 404 Not Found'),
+    );
+    const res = await app.request(
+      '/agents/chat/sessions/missing/external-info',
+      { headers: { 'X-Backend-Id': 'tenant-1' } },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('评审加固:跨用户/无权 session → 404 且响应体无 prompt_config/密钥', async () => {
+    (mocks.adapter.getSession as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('upstream 404 Not Found'),
+    );
+    const res = await app.request(
+      '/agents/chat/sessions/other-user-sess/external-info',
+      { headers: { 'X-Backend-Id': 'tenant-1' } },
+    );
+    expect(res.status).toBe(404);
+    const bodyText = await res.text();
+    expect(bodyText).not.toMatch(/prompt_config/);
+    expect(bodyText).not.toMatch(/_api_key/);
+    expect(bodyText).not.toContain('secret');
   });
 });

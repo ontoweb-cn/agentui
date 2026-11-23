@@ -204,7 +204,7 @@ export const useExportMcpServer = () => {
           (acc, result) => ({
             mcpServers: {
               ...acc.mcpServers,
-              ...(result.data?.data?.mcpServers ?? {}),
+              ...result.data?.data?.mcpServers,
             },
           }),
           { mcpServers: {} },

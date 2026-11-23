@@ -1,8 +1,8 @@
 import { collectApps, collectNav, enabledModules } from './_registry';
 import mainEn from '@/locales/en';
 import mainZh from '@/locales/zh';
-import appEn from './applications/locales/en';
-import appZh from './applications/locales/zh';
+import appEn from '@/ee/features/applications/locales/en';
+import appZh from '@/ee/features/applications/locales/zh';
 
 // 菜单需求(首页为导航栏静态项,不在 collectNav 范围内):
 // 任务(聊天/智能体)、知识(知识库/记忆/文件管理/搜索)→应用→资源。

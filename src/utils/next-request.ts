@@ -15,6 +15,7 @@ import { convertTheKeysOfTheObjectToSnake, isFormData } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
 import { isRagUnavailableEnvelope } from './rag-unavailable';
+import { resolveHttpErrorDescription } from './resolve-http-error-description';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
 
@@ -55,25 +56,31 @@ export type ResultCode =
   | 504;
 
 const errorHandler = (error: {
-  response: Response;
+  response: {
+    status?: number;
+    statusText?: string;
+    data?: { message?: string };
+    config?: { url?: string };
+  };
   message: string;
-}): Response => {
+}) => {
   const { response } = error;
   if (error.message === FAILED_TO_FETCH) {
     notification.error({
       description: i18n.t('message.networkAnomalyDescription'),
       message: i18n.t('message.networkAnomaly'),
     });
-  } else {
-    if (response && response.status) {
-      const errorText =
-        RetcodeMessage[response.status as ResultCode] || response.statusText;
-      const { status, url } = response;
-      notification.error({
-        message: `${i18n.t('message.requestError')} ${status}: ${url}`,
-        description: errorText,
-      });
-    }
+  } else if (response?.status) {
+    // 评审修复(双 toast):优先展示服务端 detail,mutation 层不再重复 message.error。
+    const errorText = resolveHttpErrorDescription(error, (status) =>
+      RetcodeMessage[status as ResultCode],
+    );
+    const status = response.status;
+    const url = response.config?.url;
+    notification.error({
+      message: `${i18n.t('message.requestError')} ${status}${url ? `: ${url}` : ''}`,
+      description: errorText,
+    });
   }
   return response ?? { data: { code: 1999 } };
 };
@@ -162,8 +169,11 @@ request.interceptors.response.use(
     return response;
   },
   function (error) {
-    // Handle HTTP 401 (token expired / invalid)
     const status = error?.response?.status;
+    const skipToast = Boolean(error?.config?.skipErrorNotification);
+
+    // Handle HTTP 401 (token expired / invalid) — 始终执行,不受 skipErrorNotification 影响。
+    // skip 仅抑制 errorHandler 全局 toast,避免与页面 loadError 双弹(L-CSL-02 / 评审加固)。
     if (status === 401) {
       // 企业版 cookie 模式：业务 401 不必然代表会话失效（/proxy/v1/* 透传路由
       // 无 Authorization header 即返回 401，但 cookie 仍有效）→ 统一复验后决定。
@@ -175,6 +185,7 @@ request.interceptors.response.use(
         isRedirecting = true;
         const messageText =
           error?.response?.data?.message || RetcodeMessage[401];
+        // 401 登出提示仍展示(鉴权态必须揭示);页面层可另渲染 loadError。
         notification.error({
           message: messageText,
           description: messageText,
@@ -190,13 +201,15 @@ request.interceptors.response.use(
     // RAG 后端未绑定的 503:刻意的能力状态信号,静默(不弹全局 toast)。
     // 前端已按 capability 门控跳过大部分调用,此处仅兜底长尾请求。
     if (
-      error?.response?.status === 503 &&
+      status === 503 &&
       isRagUnavailableEnvelope(error?.response?.data)
     ) {
       return Promise.reject(error);
     }
 
-    errorHandler(error);
+    if (!skipToast) {
+      errorHandler(error);
+    }
     return Promise.reject(error);
   },
 );

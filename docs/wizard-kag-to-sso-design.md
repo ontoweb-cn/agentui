@@ -2,11 +2,15 @@
 
 | 项 | 值 |
 |---|---|
-| 文档版本 | v1.2(含评审修订,见 §9) |
-| 日期 | 2026-11-21 |
-| 状态 | 设计定稿,待实施 |
+| 文档版本 | v1.3(选型形态修订指针,见下方「修订」) |
+| 日期 | 2026-11-21(修订 2026-11-23) |
+| 状态 | 部分被 supersede:**SSO 挂载形态见新设计** |
 | 关联 spec | spec-010(向导)/ spec-012(KAG Adapter)/ spec-014(SSO Token Exchange,P1/P2 已交付) |
 | 改动范围 | 本仓(BFF `bff/` + 前端 `src/`),无跨仓顺序约束 |
+
+> **修订(2026-11-23)**:D2 / §4.1–4.2「SSO 作为 `intellect-enterprise` Connection 内嵌可选区块」**已废止**。  
+> 新定稿:**SelectType 双企业卡**——首卡「企业版（SSO模式）」、次卡「企业版（非SSO模式）」;两卡均落地 `type=intellect-enterprise`,以 `setupProfile` 区分。  
+> 真源:`docs/wizard-enterprise-sso-mode-design.md` **v1.2**（§8 选型 + **§9 质量/安全**:公网前须 S1 SSRF/`safeFetch`、S2 envSnippet 消毒、Q1 Switch import）。下文 KAG 下架、RAG 延后、envSnippet 仍有效;凡写「仅 enterprise 渲染可跳过 SSO」处一律以新设计为准。
 
 ---
 
@@ -23,7 +27,7 @@
 | 编号 | 目标 |
 |---|---|
 | G1 | 向导不再提供 KAG 后端类型(仅向导范围,管理端与 BFF Adapter 不动) |
-| G2 | 向导在选定 `intellect-enterprise` 后提供"统一认证(SSO)"配置区块:拉取网关已配置的登录渠道、启用开关、生成 env 配置 |
+| G2 | ~~向导在选定 `intellect-enterprise` 后提供内嵌 SSO 区块~~ → **改为** SelectType 首卡「企业版（SSO模式）」强制配置 SSO(见 `wizard-enterprise-sso-mode-design.md`) |
 | G3 | SSO 配置通过向导产出 `.env` 片段落地(envSnippet 引导),不在 BFF 新增持久化面 |
 | G4 | 向导移除 RAG 插件区块;enterprise 首装后画布/知识库等 RAG 依赖能力降级隐藏,后续经管理端(Harness Backends)补配即自动恢复 |
 | G5 | 不破坏现有 env-only 部署与存量 kag 配置 |
@@ -43,7 +47,7 @@
 | # | 决策点 | 结论 |
 |---|---|---|
 | D1 | KAG 下架范围 | **仅向导**(管理端下拉/zod enum、BFF Adapter、`BackendType` 类型联合均保留) |
-| D2 | SSO 步骤形态 | **Connection(Step 3)内嵌区块**,保持 6 步状态机 |
+| D2 | SSO 步骤形态 | ~~Connection 内嵌可选区块~~ → **SelectType 独立首卡「企业版（SSO模式）」**(见新设计 D1–D7);仍保持 6 步状态机 |
 | D3 | `BFF_SSO_STATE_SECRET` 处理 | **envSnippet 引导**(客户端生成随机值,运维复制到 `.env`;不落盘) |
 | D4 | SSO 渠道白名单 | **进向导**(多选,映射 `BFF_SSO_PROVIDERS`;不选 = 不过滤) |
 | D5 | RAG 插件区块 | **从向导移除**;管理端后续补配(PUT 已支持),运行时自动降级/恢复 |

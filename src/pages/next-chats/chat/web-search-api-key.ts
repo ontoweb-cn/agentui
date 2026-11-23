@@ -1,5 +1,7 @@
 /**
- * Provenance: verbatim port from upstream RAGFlow web/ (base 91c702e),零漂移。
+ * Provenance: ported from upstream RAGFlow web/ (base 91c702e)。
+ * T2.2 适配:字段映射由手写字面量改为枚举派生(webSearchProviderBaseKey),
+ * 与表单语言键同源;其余逻辑与上游零漂移。
  * 同步策略见 docs/ragflow-ui-improvement-recommendations.md;T3.6 子树同步机制落地后随上游自动跟进。
  */
 import {
@@ -52,26 +54,24 @@ export function getWebSearchProvider(promptConfig?: WebSearchKeyConfig) {
   return undefined;
 }
 
-// The prompt_config field each provider reads its key from. Kept as the single
-// source of truth: the form uses it for the required marker, the schema uses it
-// for validation, and the reader below uses it to fetch the value — three
-// callers that used to each spell the mapping out again.
-const webSearchApiKeyFields: Record<WebSearchProvider, string> = {
-  [WebSearchProvider.AnySearch]: 'anysearch_api_key',
-  [WebSearchProvider.Brave]: 'brave_api_key',
-  [WebSearchProvider.Exa]: 'exa_api_key',
-  [WebSearchProvider.Firecrawl]: 'firecrawl_api_key',
-  [WebSearchProvider.Keirolabs]: 'keirolabs_api_key',
-  [WebSearchProvider.Linkup]: 'linkup_api_key',
-  [WebSearchProvider.Parallel]: 'parallel_api_key',
-  [WebSearchProvider.Perplexity]: 'perplexity_api_key',
-  [WebSearchProvider.Querit]: 'querit_api_key',
-  [WebSearchProvider.Search1API]: 'search1api_api_key',
-  [WebSearchProvider.SearchApi]: 'searchapi_api_key',
-  [WebSearchProvider.Serply]: 'serply_api_key',
-  [WebSearchProvider.Tavily]: 'tavily_api_key',
-  [WebSearchProvider.YouCom]: 'youcom_api_key',
-};
+// Enum value → 键基元:首字母小写化。14 个 provider 全部符合该模式——
+// Search1API→search1api、SearchApi→searchapi、YouCom→youcom(T2.2 派生规律,
+// 上游 catalog/语言键均按此命名,故可用派生替代三份手写映射)。
+export function webSearchProviderBaseKey(provider: WebSearchProvider): string {
+  return provider.charAt(0).toLowerCase() + provider.slice(1);
+}
+
+// The prompt_config field each provider reads its key from. T2.2 单一来源:
+// 字段名不再手写——由枚举值派生(base key + '_api_key'),与表单语言键共用
+// 同一派生规律;新增 provider 只需改 枚举 + web-search-catalog + locale 三处。
+// 消费方:表单字段名/必填标记/读取器三处此前各自手写,现同源于此。
+const webSearchApiKeyFields: Record<WebSearchProvider, string> =
+  Object.fromEntries(
+    Object.values(WebSearchProvider).map((provider) => [
+      provider,
+      `${webSearchProviderBaseKey(provider)}_api_key`,
+    ]),
+  ) as Record<WebSearchProvider, string>;
 
 // A cleared SelectWithSearch emits '' rather than undefined (the schema accepts
 // both), so normalise it here: the field lookup and the required marker have to

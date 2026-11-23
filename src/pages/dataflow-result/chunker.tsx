@@ -9,8 +9,9 @@ import {
   useFetchNextChunkList,
   useSwitchChunk,
 } from '@/hooks/use-chunk-request';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import classNames from 'classnames';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ChunkCard from './components/chunk-card';
 import CreatingModal from './components/chunk-creating-modal';
@@ -30,9 +31,13 @@ interface IProps {
   setIsChange: (isChange: boolean) => void;
   step?: TimelineNode;
 }
+
+const CHUNK_ESTIMATE_SIZE = 140;
+
 const ChunkerContainer = (props: IProps) => {
   const { isChange, setIsChange, step } = props;
   const [selectedChunkIds, setSelectedChunkIds] = useState<string[]>([]);
+  const chunkListRef = useRef<HTMLDivElement>(null);
 
   const { t } = useTranslation();
   const {
@@ -68,6 +73,12 @@ const ChunkerContainer = (props: IProps) => {
   useEffect(() => {
     setChunkList(data);
   }, [data]);
+  const chunkVirtualizer = useVirtualizer({
+    count: chunkList.length,
+    getScrollElement: () => chunkListRef.current,
+    estimateSize: () => CHUNK_ESTIMATE_SIZE,
+    overscan: 6,
+  });
   const onPaginationChange: IntellectPaginationType['onChange'] = (
     page,
     size,
@@ -176,33 +187,51 @@ const ChunkerContainer = (props: IProps) => {
                 selectedChunkIds={selectedChunkIds}
               />
             </div>
-            <div className="h-[calc(100vh-280px)] overflow-y-auto pr-2 scrollbar-auto">
+            <div
+              ref={chunkListRef}
+              className="h-[calc(100vh-280px)] overflow-y-auto pr-2 scrollbar-auto"
+            >
               <div
                 className={classNames(
                   styles.chunkContainer,
                   {
                     [styles.chunkOtherContainer]: !isPdf,
                   },
-                  'flex flex-col gap-4',
+                  'relative w-full',
                 )}
+                style={{ height: `${chunkVirtualizer.getTotalSize()}px` }}
               >
-                {chunkList.map((item) => (
-                  <ChunkCard
-                    item={item}
-                    key={item.chunk_id}
-                    editChunk={showChunkUpdatingModal}
-                    checked={selectedChunkIds.some((x) => x === item.chunk_id)}
-                    handleCheckboxClick={handleSingleCheckboxClick}
-                    switchChunk={handleSwitchChunk}
-                    clickChunkCard={
-                      handleChunkCardClick as unknown as (
-                        chunkId: string,
-                      ) => void
-                    }
-                    selected={item.chunk_id === selectedChunk?.chunk_id}
-                    textMode={textMode}
-                  ></ChunkCard>
-                ))}
+                {chunkVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const item = chunkList[virtualRow.index];
+                  return (
+                    <div
+                      key={item.chunk_id}
+                      className="absolute left-0 top-0 w-full pb-4"
+                      style={{
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      ref={chunkVirtualizer.measureElement}
+                      data-index={virtualRow.index}
+                    >
+                      <ChunkCard
+                        item={item}
+                        editChunk={showChunkUpdatingModal}
+                        checked={selectedChunkIds.some(
+                          (x) => x === item.chunk_id,
+                        )}
+                        handleCheckboxClick={handleSingleCheckboxClick}
+                        switchChunk={handleSwitchChunk}
+                        clickChunkCard={
+                          handleChunkCardClick as unknown as (
+                            chunkId: string,
+                          ) => void
+                        }
+                        selected={item.chunk_id === selectedChunk?.chunk_id}
+                        textMode={textMode}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div className={styles.pageFooter}>

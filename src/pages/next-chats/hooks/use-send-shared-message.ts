@@ -45,7 +45,7 @@ export const useSendSharedMessage = () => {
   const {
     from,
     sharedId: conversationId,
-    data: data,
+    data,
   } = useGetSharedChatSearchParams();
   const { handleInputChange, value, setValue } = useHandleMessageInputChange();
   const completionUrl = `/api/v1/${from === SharedFrom.Agent ? 'agentbots' : 'chatbots'}/${conversationId}/completions`;

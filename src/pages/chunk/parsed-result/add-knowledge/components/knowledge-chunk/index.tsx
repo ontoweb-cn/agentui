@@ -2,8 +2,9 @@ import {
   useFetchNextChunkList,
   useSwitchChunk,
 } from '@/hooks/use-chunk-request';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import classNames from 'classnames';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ChunkCard from './components/chunk-card';
 import CreatingModal from './components/chunk-creating-modal';
@@ -38,6 +39,8 @@ import {
 import { LucideArrowBigLeft } from 'lucide-react';
 import styles from './index.module.less';
 
+const CHUNK_ESTIMATE_SIZE = 140;
+
 const Chunk = () => {
   const [selectedChunkIds, setSelectedChunkIds] = useState<string[]>([]);
   const { removeChunk } = useDeleteChunkByIds();
@@ -53,6 +56,7 @@ const Chunk = () => {
   } = useFetchNextChunkList();
   const { handleChunkCardClick, selectedChunkId } = useHandleChunkCardClick();
   const isPdf = documentInfo?.type === 'pdf';
+  const chunkListRef = useRef<HTMLDivElement>(null);
 
   const { t } = useTranslation();
   const { changeChunkTextMode, textMode } = useChangeChunkTextMode();
@@ -72,6 +76,12 @@ const Chunk = () => {
   useEffect(() => {
     setChunkList(data);
   }, [data]);
+  const chunkVirtualizer = useVirtualizer({
+    count: chunkList.length,
+    getScrollElement: () => chunkListRef.current,
+    estimateSize: () => CHUNK_ESTIMATE_SIZE,
+    overscan: 6,
+  });
   const onPaginationChange: IntellectPaginationType['onChange'] = (
     page,
     size,
@@ -245,23 +255,43 @@ const Chunk = () => {
                   />
                 </div>
 
-                <div className="space-y-4 flex-1 overflow-y-auto min-h-0">
-                  {chunkList.map((item) => (
-                    <ChunkCard
-                      item={item}
-                      key={item.chunk_id}
-                      editChunk={showChunkUpdatingModal}
-                      checked={selectedChunkIds.some(
-                        (x) => x === item.chunk_id,
-                      )}
-                      handleCheckboxClick={handleSingleCheckboxClick}
-                      switchChunk={handleSwitchChunk}
-                      clickChunkCard={handleChunkCardClick}
-                      selected={item.chunk_id === selectedChunkId}
-                      textMode={textMode}
-                      t={dataUpdatedAt}
-                    />
-                  ))}
+                <div
+                  ref={chunkListRef}
+                  className="flex-1 overflow-y-auto min-h-0"
+                >
+                  <div
+                    className="relative w-full"
+                    style={{ height: `${chunkVirtualizer.getTotalSize()}px` }}
+                  >
+                    {chunkVirtualizer.getVirtualItems().map((virtualRow) => {
+                      const item = chunkList[virtualRow.index];
+                      return (
+                        <div
+                          key={item.chunk_id}
+                          className="absolute left-0 top-0 w-full pb-4"
+                          style={{
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                          ref={chunkVirtualizer.measureElement}
+                          data-index={virtualRow.index}
+                        >
+                          <ChunkCard
+                            item={item}
+                            editChunk={showChunkUpdatingModal}
+                            checked={selectedChunkIds.some(
+                              (x) => x === item.chunk_id,
+                            )}
+                            handleCheckboxClick={handleSingleCheckboxClick}
+                            switchChunk={handleSwitchChunk}
+                            clickChunkCard={handleChunkCardClick}
+                            selected={item.chunk_id === selectedChunkId}
+                            textMode={textMode}
+                            t={dataUpdatedAt}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <footer className="mt-5">

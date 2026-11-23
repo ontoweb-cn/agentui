@@ -159,7 +159,7 @@ export const useManageValues = (props: IManageValuesProps) => {
           }
         });
       }
-      handleChange('values', [...new Set([...newValues])]);
+      handleChange('values', [...new Set(newValues)]);
     },
     [handleChange, tempValues, metaData, data, addUpdateValue, isAddValueMode],
   );

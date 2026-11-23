@@ -4,8 +4,10 @@
  * - 只调用网关公开端点 `/api/members/oauth/providers`，不携带 API_SERVER_KEY
  * - 字段缺失的 provider 视为 misconfigured，不进入渠道列表
  * - 按 tenant 维度做短 TTL 缓存；刷新失败时允许使用 ≤5 分钟的旧值
+ * - 出站经 `safeFetch`（§9 S1：redirect:manual + 主机/DNS 私网校验）
  */
 import type { SsoConfig } from './sso-config';
+import { safeFetch } from './ssrf-guard';
 
 export interface PublicOAuthProvider {
   id: string;
@@ -63,9 +65,12 @@ function extractArray(body: unknown): PublicOAuthProvider[] | null {
 }
 
 async function fetchPublicProviders(baseUrl: string): Promise<PublicOAuthProvider[]> {
-  const resp = await fetch(`${baseUrl}/api/members/oauth/providers`, {
+  const url = `${baseUrl.replace(/\/$/, '')}/api/members/oauth/providers`;
+  // 与 wizard probe 对齐：安全出站（默认允许私网以适配内网网关；公网部署设 SSRF_ALLOW_PRIVATE_IP=false）
+  const resp = await safeFetch(url, {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
+    timeoutMs: 5000,
   });
 
   if (!resp.ok) {

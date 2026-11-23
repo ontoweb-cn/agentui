@@ -236,6 +236,8 @@ const getExpectedAud = () => process.env.BFF_OAUTH_EXPECTED_AUD?.trim() || 'ia-i
  * ssoError 展示提示——替换原 502 裸 JSON（UX-01）。
  */
 function ssoErrorRedirect(
+  // 评审修复(L-RP1-03):结构桩类型缺 redirect——改用既有 Hono Context 泛型
+  // (与 L269/L290/L325 的既有口径一致)。
   c: Context<{ Variables: AuthVariables }>,
   code: string,
 ) {
@@ -900,7 +902,11 @@ function respondLogout(c: Context<{ Variables: AuthVariables }>) {
 // POST /api/bff/auth/backchannel-logout — OIDC Back-Channel Logout 接收端(A1)
 // ---------------------------------------------------------------------------
 
-const backchannelLogoutHandler = async (c: Context<{ Variables: AuthVariables }>) => {
+const backchannelLogoutHandler = async (
+  // 评审修复(L-RP1-03):结构桩缺 req.get/json 与类型化 Variables——改用
+  // Hono Context 泛型;双挂载路径(Context 默认 P=string)对具体路径参数可赋值。
+  c: Context<{ Variables: AuthVariables }>,
+) => {
   const idpIssuer = getIdpIssuer();
   if (!idpIssuer) {
     // 未启用：503（IdP outbox 按退避重试；运维未配置时明确可见）

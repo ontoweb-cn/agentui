@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-20
 
-**Status**: P1 Implemented (v1.5；已按两轮代码评审修复安全/一致性问题，BFF 侧 P2 待实施)
+**Status**: **部分回归 / 双栈未齐**(2026-11-23 复验) — Rust 曾实现 P1(`1c034c51`/`9a0143dd`)后在 D2 合并中从 `main` 丢失；Python 从未对齐；agentui BFF P2 RP 已落地。详见 `docs/auth-intellect-auth-to-team-flow-status.md` §1.5。
 
 **Input**: 用户需求："在启用 SSO（例如 intellect-auth）的情形下，agentui 是否可以免除配置 TOKEN？直接通过 OAuth 登录 intellect-team，并可以访问其它应用资源（例如 aidevops）。" — 本 spec 落地方案 2（BFF 作为 OIDC RP，网关提供授权码兑换端点）。
 
@@ -315,29 +315,26 @@ hiedu 的 `external_identity` 是 **person → intellect member id** 的映射�
 | P2 | BFF OIDC RP 改造（state cookie / PKCE / 静默重登）+ 能力开关 | P1 |
 | P3 | 运维：IdP 注册 client、provider 配置、NetworkPolicy、审计看板 | P2 |
 
-## 实现状态（v1.3）
+## 实现状态（v1.3 原文 + **2026-11-23 双栈复验**）
 
-| 项 | 状态 | 位置 |
+> **复验结论**：下表「✅」多为 2026-11-20 合入时状态。intellect-team **`main` 于 D2 合并后 Rust 侧 exchange 路由丢失**；**Python 从未实现**同契约。agentui BFF RP（P2）已可用，但上游未齐则真网 SSO 仍阻塞。恢复/对齐要求见 `docs/auth-intellect-auth-to-team-flow-status.md` §1.4–§1.5。
+
+| 项 | 状态(复验) | 位置 / 说明 |
 |---|---|---|
-| `POST /api/members/oauth/exchange` | ✅ | `intellect-gateway/src/platform/members_api.rs`（路由 + `handle_sso_exchange`） |
-| 端点开关 `INTELLECT_OAUTH_EXCHANGE_ENABLED`（默认 false） | ✅ | 处理函数内按请求读取 |
-| TTL `INTELLECT_OAUTH_TOKEN_TTL_SECS`（默认 28800） | ✅ | 同上，provider 可用 `token_ttl_secs` 覆盖 |
-| issuer 从 discovery 剥离 | ✅ | `platform/oidc.rs::issuer_from_discovery_url`，`api_server::extract_user_claims` 复用 |
-| `azp` 校验 + 多 aud 无 azp 拒绝 | ✅ | `platform/oidc.rs::validate_authorized_party` |
-| 任意 claim 提取（`cas`） | ✅ | `IdTokenClaims.extra`（`#[serde(flatten)]`） |
-| `(provider_id, sub)` 绑定 / `member_id_claim` 接管 / JIT | ✅ | `handle_sso_exchange`（接管前置 enabled/identity 冲突检查，`bind_identity_if_absent`） |
-| 租户头校验、限流 | ✅ | `identity::resolve_request_tenant` + 可信 IP 限流（provider 校验后执行） |
-| 接管并发安全 | ✅ | `MemberStore::bind_identity_if_absent`（新增，`ON CONFLICT DO NOTHING` + 回读） |
-| TTL clamp / 单活跃 token | ✅ | `clamp_sso_ttl`（60s–7d）+ 签发前撤销旧 `sso_login` token |
-| `validate_nbf` | ✅ | `oidc.rs` 已开启 |
-| 持久审计 | ✅ | `member_admin_audit_log`（source=sso） |
-| 10 次/分钟专用限流 + `Retry-After` | ✅ | `sso_exchange_rate_limit` / `sso_rate_limited_response` |
-| 身份唯一约束 | ✅ | 迁移 `20261120000001_identities_unique_member_provider.sql` |
-| token 原子轮换 | ✅ | `MemberStore::replace_api_token` |
-| 验签失败 fail-closed | ✅ | `extract_user_claims` 不再回落 userinfo |
-| 公开 provider 列表返回 `client_id` | ✅ | `OAuthProviderInfo.client_id` |
-| 调用方 HMAC（FR-011 可选部分） | ⏸ 未实现 | 依赖内网/NetworkPolicy；如跨集群再补 |
-| BFF OIDC RP 改造（P2） | ⏳ 待实施 | agentui `bff/src/routes/auth.ts` |
+| `POST /api/members/oauth/exchange` | ❌ Rust 回归缺失 / ❌ Python 无 | 曾: `members_api.rs` `handle_sso_exchange`（`1c034c51`）；须双栈恢复/实现 |
+| 端点开关 `INTELLECT_OAUTH_EXCHANGE_ENABLED` | ❌ 随路由丢失 | 恢复时保留默认 false |
+| TTL `INTELLECT_OAUTH_TOKEN_TTL_SECS` | ❌ 随路由丢失 | 同上，provider `token_ttl_secs` 可覆盖 |
+| issuer 从 discovery 剥离 | ⚠ 视当前 `oidc.rs`/extract 路径 | 不得回退「discovery URL 当 iss」 |
+| `azp` 校验 + 多 aud 无 azp 拒绝 | ⚠ 随 exchange 丢失需随恢复带回 | |
+| 任意 claim 提取（`cas`） | ⚠ 同上 | |
+| `(provider_id, sub)` / `member_id_claim` / JIT | ❌ 随 exchange 丢失；Python 仅旧 `auto_provision*` | 双栈须对齐 `cas` + 缺省 JIT 关 |
+| 租户头校验、限流 | ⚠ 部分能力仍在其它 OAuth 路径 | exchange 专用限流须随恢复 |
+| 接管并发安全 `bind_identity_if_absent` | ⚠ 存储层可能仍在；handler 缺失 | |
+| 公开 provider 列表返回 `client_id` | ❌ 当前 `OAuthProviderInfo` 无该字段 | 双栈补齐 |
+| `POST /api/oauth/exchange-id-token`（D2） | ✅ Rust 有 / ❌ Python 无 | **非**本 spec 主路径；默认 JIT，勿冒充 exchange |
+| 调用方 HMAC（FR-011 可选部分） | ⏸ 未实现 | 依赖内网/NetworkPolicy |
+| BFF OIDC RP 改造（P2） | ✅ agentui | `bff/src/routes/auth.ts` + `sso-exchange.ts` |
+| **双栈门禁** | ❌ 未建 | Rust+Python 契约测试同绿才可标 SSO 就绪 |
 
 **验证**：
 - `cargo test -p intellect-gateway platform::members_api --lib` → 13 passed

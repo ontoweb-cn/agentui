@@ -1,3 +1,11 @@
+/**
+ * Provenance: ported from upstream RAGFlow web/ collapse.tsx (base 91c702e)。
+ * 与旧版的关键差异:受控 `open` 改为渲染期生效(上游注释:"A boolean `open`
+ * prop takes effect at render time so callers can rely on the content being
+ * mounted right after they update it")——旧版 useEffect 同步会让内容挂载晚一个
+ * commit,useRevealSubmitErrors 的布局效应因此在内容入 DOM 前执行扑空(T2.8)。
+ * 非受控用法行为不变。
+ */
 import {
   Collapsible,
   CollapsibleContent,
@@ -34,19 +42,21 @@ export function Collapse({
   onOpenChange,
   disabled,
 }: CollapseProps) {
-  const [currentOpen, setCurrentOpen] = useState(open);
+  const [internalOpen, setInternalOpen] = useState(open ?? defaultOpen);
 
   useEffect(() => {
-    if (typeof open === 'boolean') {
-      setCurrentOpen(open);
-    } else {
-      setCurrentOpen(defaultOpen);
+    if (typeof open !== 'boolean') {
+      setInternalOpen(defaultOpen);
     }
   }, [defaultOpen, open]);
 
+  // A boolean `open` prop takes effect at render time so callers can rely on
+  // the content being mounted right after they update it.
+  const currentOpen = typeof open === 'boolean' ? open : internalOpen;
+
   const handleOpenChange = useCallback(
     (open: boolean) => {
-      setCurrentOpen(open);
+      setInternalOpen(open);
       onOpenChange?.(open);
     },
     [onOpenChange],

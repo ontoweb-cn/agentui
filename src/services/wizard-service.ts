@@ -42,8 +42,14 @@ export interface WizardStatusResponse {
   backendCount: number;
 }
 
+/** wizard-ent-sso-mode:企业双卡 profile(与 BFF 同步) */
+export type WizardSetupProfile = 'enterprise-sso' | 'enterprise-password';
+
 export interface WizardBackendTypeOption {
+  /** 选型主键;企业双卡必不同 */
+  optionId: string;
   type: BackendType;
+  setupProfile?: WizardSetupProfile;
   label: string;
   description: string;
   defaultEndpoint: string;
@@ -95,8 +101,10 @@ export interface WizardSetupRequest {
   password?: string;
   adminTokenEnvVar?: string;
   intellectTenantId?: string;
+  /** wizard-ent-sso-mode:企业双卡 */
+  setupProfile?: WizardSetupProfile;
   defaultForTenant?: boolean;
-  /** wizard-sso(P2): 统一认证配置(仅 intellect-enterprise;明文 secret 仅存在于请求期,不落盘) */
+  /** wizard-sso(P2): 统一认证配置(仅 enterprise-sso;明文 secret 仅存在于请求期,不落盘) */
   sso?: WizardSsoSettings;
 }
 

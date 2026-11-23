@@ -6,10 +6,12 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from '@/components/ui/carousel';
+import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { IReferenceChunk } from '@/interfaces/database/chat';
 import { isPlainObject } from 'lodash';
-import { RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
-import { useMemo } from 'react';
+import { ExternalLink, RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
+import { useMemo, type MouseEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import { extractNumbersFromMessageContent } from './utils';
 
@@ -21,6 +23,9 @@ type IProps = {
 type ImageItem = {
   id: string;
   index: number;
+  documentId?: string;
+  datasetId?: string;
+  documentName?: string;
 };
 
 const getButtonVisibilityClass = (imageCount: number) => {
@@ -34,17 +39,46 @@ const getButtonVisibilityClass = (imageCount: number) => {
   return map[imageCount] || (imageCount >= 6 ? '@2xl:hidden' : '');
 };
 
-function ImagePhotoView({ id, index }: ImageItem) {
+function ImagePhotoView({
+  id,
+  index,
+  documentId,
+  datasetId,
+  documentName,
+}: ImageItem) {
   const src = useDocumentImageUrl(id);
+  const { t } = useTranslation();
+  const { navigateToChunkParsedResult } = useNavigatePage();
+
+  const openSourceDocument = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!documentId) return;
+    navigateToChunkParsedResult(documentId, datasetId)();
+  };
 
   return (
-    <PhotoView src={src}>
-      <Image
-        id={id}
-        className="h-40 w-full"
-        label={`Fig. ${(index + 1).toString()}`}
-      />
-    </PhotoView>
+    <div className="relative group">
+      <PhotoView src={src}>
+        <Image
+          id={id}
+          className="h-40 w-full"
+          label={`Fig. ${(index + 1).toString()}`}
+        />
+      </PhotoView>
+      {documentId ? (
+        <button
+          type="button"
+          className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded bg-black/60 px-2 py-1 text-trae-xs text-white opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+          onClick={openSourceDocument}
+          title={documentName || t('chat.openSourceDocument')}
+          data-testid="reference-image-source-doc"
+        >
+          <ExternalLink className="size-3" />
+          <span>{t('chat.openSourceDocument')}</span>
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -53,7 +87,6 @@ function ImageCarousel({ images }: { images: ImageItem[] }) {
 
   return (
     <PhotoProvider
-      // className="[&_.PhotoView-Slider__toolbarIcon]:hidden"
       toolbarRender={({ rotate, onRotate, scale, onScale }) => {
         return (
           <>
@@ -69,7 +102,6 @@ function ImageCarousel({ images }: { images: ImageItem[] }) {
               className="cursor-pointer text-text-disabled hover:text-text-primary"
               onClick={() => onScale(scale - 1)}
             />
-            {/* <X className="cursor-pointer text-text-disabled hover:text-text-primary" /> */}
           </>
         );
       }}
@@ -81,9 +113,9 @@ function ImageCarousel({ images }: { images: ImageItem[] }) {
         }}
       >
         <CarouselContent>
-          {images.map(({ id, index }) => (
+          {images.map((item) => (
             <CarouselItem
-              key={index}
+              key={item.index}
               className="
               basis-full
               @sm:basis-1/2
@@ -92,7 +124,7 @@ function ImageCarousel({ images }: { images: ImageItem[] }) {
               @2xl:basis-1/6
               "
             >
-              <ImagePhotoView id={id} index={index}></ImagePhotoView>
+              <ImagePhotoView {...item} />
             </CarouselItem>
           ))}
         </CarouselContent>
@@ -111,7 +143,13 @@ export function ReferenceImageList({
   const images = useMemo(() => {
     if (Array.isArray(referenceChunks)) {
       return referenceChunks
-        .map((chunk, idx) => ({ id: chunk.image_id, index: idx }))
+        .map((chunk, idx) => ({
+          id: chunk.image_id,
+          index: idx,
+          documentId: chunk.document_id,
+          datasetId: chunk.dataset_id,
+          documentName: chunk.document_name,
+        }))
         .filter((item, idx) => allChunkIndexes.includes(idx) && item.id);
     }
 
@@ -119,7 +157,13 @@ export function ReferenceImageList({
       return Object.entries(referenceChunks || {}).reduce<ImageItem[]>(
         (pre, [idx, chunk]) => {
           if (allChunkIndexes.includes(Number(idx)) && chunk.image_id) {
-            return pre.concat({ id: chunk.image_id, index: Number(idx) });
+            return pre.concat({
+              id: chunk.image_id,
+              index: Number(idx),
+              documentId: chunk.document_id,
+              datasetId: chunk.dataset_id,
+              documentName: chunk.document_name,
+            });
           }
           return pre;
         },

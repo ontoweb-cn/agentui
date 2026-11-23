@@ -235,6 +235,60 @@ describe('IntellectRagAdapter', () => {
       expect(init.method).toBe('GET');
       expect(result).toEqual(sessions);
     });
+
+    it('listSessions 脱敏顶层与 metadata 中的 *_api_key', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse([
+          {
+            id: 's1',
+            agentId: 'a1',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            prompt_config: {
+              web_search_provider: 'exa',
+              exa_api_key: 'secret-exa',
+              system: 'keep',
+            },
+            metadata: { promptConfig: { tavilyApiKey: 'secret-tvly' } },
+          },
+        ]),
+      );
+
+      const result = await adapter.listSessions(ctx, 'a1');
+      expect(result[0]).toMatchObject({
+        prompt_config: { web_search_provider: 'exa', system: 'keep' },
+        metadata: { promptConfig: {} },
+      });
+      expect(JSON.stringify(result)).not.toContain('secret');
+    });
+
+    it('listSessions 包装形状 { data: [] } 仍脱敏,不跳过', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          data: [
+            {
+              id: 's1',
+              agentId: 'a1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              prompt_config: { tavily_api_key: 'secret-wrap' },
+            },
+          ],
+        }),
+      );
+
+      const result = await adapter.listSessions(ctx, 'a1');
+      expect(result).toHaveLength(1);
+      expect(JSON.stringify(result)).not.toContain('secret');
+    });
+
+    it('listSessions 未知非数组形状 → [](不回传未脱敏 raw)', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({ unexpected: { tavily_api_key: 'secret-leak' } }),
+      );
+      const result = await adapter.listSessions(ctx, 'a1');
+      expect(result).toEqual([]);
+    });
   });
 
   describe('getSession', () => {
@@ -265,6 +319,37 @@ describe('IntellectRagAdapter', () => {
       const [url, init] = mockFetch.mock.calls[0];
       expect(url).toBe('http://localhost:9380/api/v1/agents/a1/sessions/s1');
       expect(init.method).toBe('DELETE');
+    });
+  });
+
+  // 评审修复回归(Bugbot High):updateSession 必须发送构造好的 snake_case
+  // body(title/kb_ids/prompt_config),而不是 camelCase 的 params——此前
+  // 误传 params,在 intellect-rag 后端上 kb_ids/prompt_config 静默丢失。
+  describe('updateSession (T2.10 + 评审修复)', () => {
+    it('PATCH body 使用 snake_case 且含 kb_ids/prompt_config', async () => {
+      const session: Session = {
+        id: 's1',
+        agentId: 'a1',
+        title: 'renamed',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      };
+      mockFetch.mockResolvedValueOnce(makeJsonResponse(session));
+
+      await adapter.updateSession(ctx, 'a1', 's1', {
+        title: 'renamed',
+        kbIds: ['kb-1'],
+        promptConfig: { system: 'x', web_search_provider: 'tavily' },
+      });
+
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://localhost:9380/api/v1/agents/a1/sessions/s1');
+      expect(init.method).toBe('PATCH');
+      expect(JSON.parse(init.body)).toEqual({
+        title: 'renamed',
+        kb_ids: ['kb-1'],
+        prompt_config: { system: 'x', web_search_provider: 'tavily' },
+      });
     });
   });
 

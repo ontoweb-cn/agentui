@@ -17,10 +17,12 @@ import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 import { z } from 'zod';
+import { getWebSearchProvider } from '../web-search-api-key';
 import ChatBasicSetting from './chat-basic-settings';
 import { ChatPromptEngine } from './chat-prompt-engine';
 import { SavingButton } from './saving-button';
 import { useChatSettingSchema } from './use-chat-setting-schema';
+import { useRevealSubmitErrors } from './use-reveal-submit-errors';
 
 // 开合状态由页面层(chat/index.tsx)持有,齿轮 toggle 常驻 CardHeader
 type ChatSettingsProps = { visible: boolean; switchVisible: () => void };
@@ -35,6 +37,14 @@ export function ChatSettings({
   const findLlmByUuid = useFindLlmByUuid();
   const { id } = useParams();
   const { t } = useTranslation();
+
+  // T2.8:无效提交时展开全部折叠分区并滚动到首个错误字段(上游模式)。
+  const {
+    formContainerRef,
+    handleInvalidSubmit,
+    advancedSettingOpen,
+    onAdvancedSettingOpenChange,
+  } = useRevealSubmitErrors();
 
   type FormSchemaType = z.infer<typeof formSchema>;
 
@@ -95,7 +105,9 @@ export function ChatSettings({
       };
     }
 
-    updateChat({
+    // await 避免 mutateAsync 拒绝时出现未处理的 Promise rejection;
+    // 失败 toast 由 next-request 全局 errorHandler 统一弹出。
+    await updateChat({
       chatId: id!,
       params: {
         ...omit(data, [
@@ -113,8 +125,8 @@ export function ChatSettings({
     });
   }
 
-  function onInvalid(errors: any) {
-    void errors;
+  function onInvalid() {
+    handleInvalidSubmit();
   }
 
   useEffect(() => {
@@ -134,6 +146,11 @@ export function ChatSettings({
       prompt_config: {
         ...data.prompt_config,
         reference_metadata: normalizedReferenceMetadata,
+        // T2.1:legacy 对话(仅存 tavily_api_key,无 provider 字段)打开设置页
+        // 时回显 Tavily 预选,与运行时联网开关(getWebSearchProvider 推断)对齐;
+        // 显式 '' 是"用户清除",不得回落;新对话(undefined)归一为 ''。
+        // 副作用(上游同款):legacy 对话保存会首次写入 web_search_provider: 'tavily'。
+        web_search_provider: getWebSearchProvider(data.prompt_config) ?? '',
       },
       ...llmSettingEnabledValues,
     };
@@ -176,10 +193,17 @@ export function ChatSettings({
               className="flex-1 flex flex-col min-h-0"
             >
               <ScrollArea viewportClassName="[&>div]:!block">
-                <section className="p-5 space-y-6 overflow-auto flex-1 min-h-0">
-                  <ChatBasicSetting></ChatBasicSetting>
-                  <ChatPromptEngine></ChatPromptEngine>
-                </section>
+                <div ref={formContainerRef}>
+                  <section className="p-5 space-y-6 overflow-auto flex-1 min-h-0">
+                    <ChatBasicSetting></ChatBasicSetting>
+                    <ChatPromptEngine
+                      advancedSettingOpen={advancedSettingOpen}
+                      onAdvancedSettingOpenChange={
+                        onAdvancedSettingOpenChange
+                      }
+                    ></ChatPromptEngine>
+                  </section>
+                </div>
               </ScrollArea>
 
               <div className="p-5 pt-4 space-x-5 text-right">

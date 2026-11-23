@@ -1,5 +1,6 @@
 import message from '@/components/ui/message';
 import { Spin } from '@/components/ui/spin';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import request from '@/utils/request';
 import classNames from 'classnames';
 import Papa from 'papaparse';
@@ -15,11 +16,13 @@ interface FileViewerProps {
   url: string;
 }
 
+const ROW_HEIGHT = 52;
+
 const CSVFileViewer: React.FC<FileViewerProps> = ({ url }) => {
   const [data, setData] = useState<CSVData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const containerRef = useRef<HTMLDivElement>(null);
-  // const url = useGetDocumentUrl();
+
   const parseCSV = (csvText: string): CSVData => {
     const result = Papa.parse<string[]>(csvText, {
       header: false,
@@ -27,8 +30,7 @@ const CSVFileViewer: React.FC<FileViewerProps> = ({ url }) => {
     });
 
     const rows = result.data as string[][];
-
-    const headers = rows[0];
+    const headers = rows[0] ?? [];
     const dataRows = rows.slice(1);
 
     return { headers, rows: dataRows };
@@ -46,13 +48,10 @@ const CSVFileViewer: React.FC<FileViewerProps> = ({ url }) => {
           },
         });
 
-        // parse CSV file
         const reader = new FileReader();
         reader.readAsText(res.data);
         reader.onload = () => {
-          const parsedData = parseCSV(reader.result as string);
-          console.log('file loaded successfully', reader.result);
-          setData(parsedData);
+          setData(parseCSV(reader.result as string));
         };
       } catch (error) {
         message.error('CSV file parse failed');
@@ -69,6 +68,21 @@ const CSVFileViewer: React.FC<FileViewerProps> = ({ url }) => {
     };
   }, [url]);
 
+  const rowCount = data?.rows.length ?? 0;
+  const colCount = data?.headers.length ?? 1;
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 12,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
+  const paddingBottom =
+    virtualRows.length > 0
+      ? rowVirtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end
+      : 0;
+
   return (
     <div
       ref={containerRef}
@@ -83,7 +97,7 @@ const CSVFileViewer: React.FC<FileViewerProps> = ({ url }) => {
         </div>
       ) : data ? (
         <table className="min-w-full divide-y divide-border-normal">
-          <thead className="bg-background-header-bar">
+          <thead className="bg-background-header-bar sticky top-0 z-[1]">
             <tr>
               {data.headers.map((header, index) => (
                 <th
@@ -96,18 +110,37 @@ const CSVFileViewer: React.FC<FileViewerProps> = ({ url }) => {
             </tr>
           </thead>
           <tbody className="bg-background-paper divide-y divide-border-normal">
-            {data.rows.map((row, rowIndex) => (
-              <tr key={`row-${rowIndex}`}>
-                {row.map((cell, cellIndex) => (
-                  <td
-                    key={`cell-${rowIndex}-${cellIndex}`}
-                    className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary"
-                  >
-                    {cell || '-'}
-                  </td>
-                ))}
+            {paddingTop > 0 ? (
+              <tr aria-hidden>
+                <td
+                  colSpan={colCount}
+                  style={{ height: paddingTop, padding: 0, border: 0 }}
+                />
               </tr>
-            ))}
+            ) : null}
+            {virtualRows.map((virtualRow) => {
+              const row = data.rows[virtualRow.index];
+              return (
+                <tr key={`row-${virtualRow.index}`}>
+                  {row.map((cell, cellIndex) => (
+                    <td
+                      key={`cell-${virtualRow.index}-${cellIndex}`}
+                      className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary"
+                    >
+                      {cell || '-'}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+            {paddingBottom > 0 ? (
+              <tr aria-hidden>
+                <td
+                  colSpan={colCount}
+                  style={{ height: paddingBottom, padding: 0, border: 0 }}
+                />
+              </tr>
+            ) : null}
           </tbody>
         </table>
       ) : null}

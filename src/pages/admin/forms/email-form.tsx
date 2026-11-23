@@ -79,7 +79,7 @@ function useCreateEmailForm(props?: {
   const form = useForm<CreateEmailFormData>({
     defaultValues: {
       email: '',
-      ...(props?.defaultValues ?? {}),
+      ...props?.defaultValues,
     },
     resolver: zodResolver(schema),
   });

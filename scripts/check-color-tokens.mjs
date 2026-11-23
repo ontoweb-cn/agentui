@@ -14,6 +14,7 @@
  * down. Regenerate the snapshot with:
  *
  *   node scripts/check-color-tokens.mjs --update
+ *   node scripts/check-color-tokens.mjs --prune   # drop cleaned files + fix total
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -82,15 +83,26 @@ function total(counts) {
   return Object.values(counts).reduce((sum, n) => sum + n, 0);
 }
 
+function writeBaseline(counts) {
+  const payload = {
+    _comment:
+      'Per-file legacy raw-color counts. Ratchet: may only shrink. Regenerate: node scripts/check-color-tokens.mjs --update|--prune',
+    files: counts,
+    total: total(counts),
+  };
+  writeFileSync(BASELINE_FILE, JSON.stringify(payload, null, 2) + '\n');
+  return payload.total;
+}
+
 const update = process.argv.includes('--update');
+const prune = process.argv.includes('--prune');
 const counts = scan();
 
-if (update) {
-  writeFileSync(
-    BASELINE_FILE,
-    JSON.stringify({ _comment: 'Per-file legacy raw-color counts. Ratchet: may only shrink. Regenerate: node scripts/check-color-tokens.mjs --update', files: counts, total: total(counts) }, null, 2) + '\n',
+if (update || prune) {
+  const n = writeBaseline(counts);
+  console.log(
+    `color-token baseline ${prune ? 'pruned' : 'updated'}: ${n} occurrences in ${Object.keys(counts).length} files`,
   );
-  console.log(`color-token baseline updated: ${total(counts)} occurrences in ${Object.keys(counts).length} files`);
   process.exit(0);
 }
 
@@ -102,19 +114,31 @@ try {
   process.exit(1);
 }
 
+const baselineFiles = baseline.files || {};
+const sumFiles = total(baselineFiles);
+if (typeof baseline.total === 'number' && baseline.total !== sumFiles) {
+  console.error(
+    `color-token baseline inconsistent: total=${baseline.total} but sum(files)=${sumFiles}. Run: node scripts/check-color-tokens.mjs --prune`,
+  );
+  process.exit(1);
+}
+
 const failures = [];
+const improved = [];
 for (const [file, n] of Object.entries(counts)) {
-  const allowed = baseline.files[file];
+  const allowed = baselineFiles[file];
   if (allowed === undefined) {
     failures.push(`${file}: ${n} raw-color occurrence(s) in a previously-clean file`);
   } else if (n > allowed) {
     failures.push(`${file}: ${n} > baseline ${allowed}`);
+  } else if (n < allowed) {
+    improved.push(`${file}: ${allowed} → ${n}`);
   }
 }
-for (const file of Object.keys(baseline.files)) {
+for (const file of Object.keys(baselineFiles)) {
   if (!(file in counts)) {
-    // File cleaned up or removed — prune on next --update.
-    console.log(`improved: ${file} is now clean (baseline will shrink on next --update)`);
+    improved.push(`${file}: ${baselineFiles[file]} → 0 (clean)`);
+    console.log(`improved: ${file} is now clean (baseline will shrink on next --update/--prune)`);
   }
 }
 
@@ -126,4 +150,10 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`color tokens ok: no new raw-color violations (baseline ${baseline.total})`);
+if (improved.length > 0) {
+  console.log(
+    `color tokens ok: no new violations (baseline ${baseline.total}); ${improved.length} file(s) improved — run --prune to shrink baseline`,
+  );
+} else {
+  console.log(`color tokens ok: no new raw-color violations (baseline ${baseline.total})`);
+}

@@ -160,7 +160,7 @@ interface BffTenant {
   intellectProjectId?: string;   // intellect-team 实例内 Project ID(可选,实例内组织隔离)
   intellectBackendId: string;    // 主后端 ID(任意类型,绑定到 intellect-team 实例=租户隔离锚点)
   canvasBackendId?: string;      // 画布后端 ID(可选,必须是 intellect-rag 类型,Principle III)
-  authMode?: 'intellect-rag' | 'intellect-enterprise';  // 认证模式(P4b)
+  authMode?: 'intellect-community' | 'intellect-rag' | 'intellect-enterprise';  // 认证模式(P4b);community=现行社区默认,rag=旧别名(行为同 community)
   createdAt: string;
   updatedAt: string;
 }
@@ -1271,7 +1271,7 @@ interface BffTenant {
   intellectTenantId?: string;      // Team ID("0"=缺省)
   intellectProjectId?: string;     // Project ID(可选)
   // 认证模式(P4b)
-  authMode?: 'intellect-rag' | 'intellect-enterprise';
+  authMode?: 'intellect-community' | 'intellect-rag' | 'intellect-enterprise';  // community=默认;rag=旧别名
   createdAt: string;
   updatedAt: string;
 }
@@ -1561,7 +1561,7 @@ function AgentPage() {
 
 | 任务 | 文件 | 说明 | 状态 |
 |------|------|------|------|
-| BffTenant.authMode 字段 | `bff/src/types/tenant.ts` + `bff/src/services/tenant-store.ts` | intellect-rag \| intellect-enterprise | ✅ |
+| BffTenant.authMode 字段 | `bff/src/types/tenant.ts` + `bff/src/services/tenant-store.ts` | intellect-community(默认) \| intellect-rag(旧别名) \| intellect-enterprise | ✅ |
 | 缺省 TenantID=0 兼容 | `bff/src/middleware/tenant-context.ts` | intellectTenantId==="0" 不注入 X-Intellect-Team | ✅ |
 | auth-session 中间件 | `bff/src/middleware/auth-session.ts` | cookie 提取 imt_token 注入 AuthSession | ✅ |
 | 认证路由 | `bff/src/routes/auth.ts` | login/register/logout/me/channels/oauth callback | ✅ |
@@ -1574,7 +1574,7 @@ function AgentPage() {
 - ✅ /auth/me:cookie 鉴权 → 返回 member 信息
 - ✅ 注册/登出闭环:register → login → logout → /auth/me → 401
 - ✅ OAuth 渠道列表 + login/{provider} 302 + callback state 校验 + token 签发完整流程
-- ✅ 社区版 authMode=intellect-rag 透传,100% 不回归
+- ✅ 社区版 authMode=intellect-community(及旧别名 intellect-rag)透传,100% 不回归
 - ✅ TypeScript 编译零错误(BFF + 前端)
 - ✅ 单元测试全过:BFF 253 测试(P0-P3 164 + P4b 47 + P5 42),无回归
 - ✅ intellect-team 对接文档完成(README + member-auth-api + oauth-callback-token + default-tenant-compat)
@@ -1596,9 +1596,9 @@ function AgentPage() {
 | BFF auth config 端点 | `bff/src/routes/auth.ts` | 公开 GET `/api/bff/auth/config` 返回 `{ authMode }`(无需认证) | ✅ |
 | auth config 测试 | `bff/src/routes/auth.test.ts` | 3 场景:企业版/社区版/无 tenantId | ✅ |
 | useAuthMode hook | `src/hooks/use-login-request.ts` | TanStack Query 5min 缓存,从 BFF 拉 authMode | ✅ |
-| 登录页表单适配 | `src/pages/login-next/index.tsx` | authMode=intellect-enterprise 显示 login_name;authMode=intellect-rag 显示 email | ✅ |
+| 登录页表单适配 | `src/pages/login-next/index.tsx` | authMode=intellect-enterprise 显示 login_name;非 enterprise(intellect-community / 旧别名 intellect-rag)显示 email | ✅ |
 | zod schema 切换 | `src/pages/login-next/index.tsx` | email 格式校验 vs login_name 长度校验 | ✅ |
-| 注册页表单适配 | `src/pages/login-next/index.tsx` | intellect-enterprise 显示 login_name + display_name;intellect-rag 显示 email + nickname | ✅ |
+| 注册页表单适配 | `src/pages/login-next/index.tsx` | intellect-enterprise 显示 login_name + display_name;非 enterprise(community / 旧别名 rag)显示 email + nickname | ✅ |
 | i18n 键新增 | `src/locales/{en,zh}.ts` | loginNameLabel/Placeholder + displayNameLabel/Placeholder | ✅ |
 | useLogin/useRegister 类型扩展 | `src/hooks/use-login-request.ts` | 支持 login_name + display_name 字段 | ✅ |
 
