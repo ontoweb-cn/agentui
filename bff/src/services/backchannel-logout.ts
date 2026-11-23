@@ -10,6 +10,7 @@ import {
   createRemoteJWKSet,
   jwtVerify,
   type JWTPayload,
+  // jose v6:注入面为 createLocalJWKSet / createRemoteJWKSet 返回类型
   type LocalJWKSet,
   type RemoteJWKSet,
 } from 'jose';
@@ -23,9 +24,7 @@ export interface VerifyLogoutTokenOptions {
   audience: string;
   /**
    * 单测注入：默认按 issuer 发现文档拉取远程 JWKS（缓存）。
-   * 评审修复(L-RP1-03):jose v6 无 KeyLike/VerifyKeyGetter 导出(原写法
-   * 疑为 v5 记忆/杜撰,tsc 从未通过)——实际注入面是 createLocalJWKSet/
-   * createRemoteJWKSet 的返回,按 v6 导出类型收窄。
+   * 评审修复(L-RP1-03):jose v6 注入面为 createLocalJWKSet/createRemoteJWKSet 返回类型。
    */
   jwks?: LocalJWKSet | RemoteJWKSet;
 }

@@ -2,17 +2,25 @@
 
 拓扑：**ai.wust.edu.cn 根路径 `/`**（原 `/frontend` 门户下线）。
 
-## 1. 发版（Gitee tag）
+## 1. 发版（Gitee tag，2026-11-22 起自动触发）
 
 ```bash
-git tag v0.4.3
-git push origin v0.4.3
+git tag v0.4.7
+git push origin v0.4.7
 ```
 
-Jenkins 任务要求：Multibranch Pipeline + 开启 tag discovery（或等价 webhook 传入 `TAG_NAME`）。
-- tag 构建自动 `RELEASE=true`，`IMAGE_TAG` 取 tag 去掉 `v` 前缀；
-- 手动构建仍用参数 `RELEASE` + `IMAGE_TAG`；
-- 非 tag 且未勾选 `RELEASE` 时只跑验证，不产出镜像。
+触发机制（Gitee 公网无法回调内网 Jenkins，走轮询）：
+- `intellect/agentui-release`（Multibranch）：跟踪 **main 分支 + v 语义化 tag**
+  （`RegexSCMHeadFilterTrait ^(main|vX.Y.Z)$`），每 5 分钟扫描 Gitee；
+  main 构建=纯验证；tag 条目存在但**不会因发现而自动构建**；
+- `intellect/agentui-tag-watch`（Pipeline，cron H/2 每 2 分钟）：`git ls-remote`
+  发现新的 `vX.Y.Z` tag → 先刷 multibranch 索引 → 触发对应 tag 子任务构建；
+  已处理的 tag 记入工作区 `handled-tags.txt`（首次运行只建基线，不回溯构建）；
+- 端到端延迟 ≈ 扫描/轮询间隔之和（通常 2–7 分钟）。
+
+tag 构建自动 `RELEASE=true`，`IMAGE_TAG` 取 tag 去掉 `v` 前缀（`TAG_NAME`）；
+手动构建仍用参数 `RELEASE` + `IMAGE_TAG`；非 tag 且未勾 `RELEASE` 只跑验证。
+原有的 dev 跟踪任务 `agentui-ci` 已停用（保留历史），如需 dev 分支验证再启用。
 
 镜像：`hub.wust.edu.cn/intellect/agentui:<tag>`，推送凭据 `harbor-agentui-release`。
 发版元数据 `deploy/release-metadata.json` 由 Jenkins 归档。
