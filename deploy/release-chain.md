@@ -5,8 +5,8 @@
 ## 1. 发版（Gitee tag，2026-11-22 起自动触发）
 
 ```bash
-git tag v0.4.7
-git push origin v0.4.7
+git tag v0.4.8
+git push origin v0.4.8
 ```
 
 触发机制（Gitee 公网无法回调内网 Jenkins，走轮询）：
