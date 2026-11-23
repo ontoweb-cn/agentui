@@ -1,74 +1,40 @@
-# Spec 批准门 — auth-team-sso
+# Spec 批准门 — auth-team-sso（续跑：status 未完成可编码项）
 
-> 日期:2026-11-23  
-> 九步:步骤 1–5 已完成;本文件提请**批准后进入步骤 6–9**  
-> 依据:`docs/auth-intellect-auth-to-team-flow-status.md` §1.4–§1.5
+> 日期:2026-11-23（续）  
+> 模块:`auth-team-sso`  
+> 真源:`docs/auth-intellect-auth-to-team-flow-status.md`；向导安全:`docs/wizard-enterprise-sso-mode-design.md` §9  
+> **授权**:用户「调用九步交付技能实施 auth-intellect-auth-to-team-flow-status.md 未完成任务」→ **门后连续执行步骤 6–9**
 
-## 1. 执行摘要
+## 1. 本轮范围（可编码）
+
+| 纳入 | ID | 说明 |
+|---|---|---|
+| ✅ | **F-WED-SEC-01 / Q1** | `sso-section` 补 `Switch` import |
+| ✅ | **F-WED-SEC-02 / W3·S1** | `sso-providers` 改 `safeFetch`（redirect:manual + 主机校验） |
+| ✅ | **F-WED-SEC-03 / W4·S2** | wizard envSnippet 对 `providers[]` charset 消毒 |
+| ✅ | **F-DOC-TEAM-01** | status/大纲：intellect-team **origin/main 已恢复** exchange + `client_id` + Python 对齐（源码复验），纠正「仍缺失」过时口径；**现网部署/探针**另记 |
+| ❌ 本轮不做 | D1–D5 / I* / HIEDU P* / Portal 深链 / S2S | 运维与跨仓产品；记受限 |
+| ❌ | 以 D2 `exchange-id-token` 作主 SSO | 禁止 |
+
+## 2. 步骤 5 复验摘要（续）
 
 | 用例 | 结果 | 说明 |
 |---|---|---|
-| TC-ATS-01 登录页/渠道 | **部分通过** | BFF `channels` 返回 `intellect-auth`;SPA `/login` 200。浏览器 MCP **无法访问宿主机 127.0.0.1**(R6 L-BROWSER-LOCAL),未获 UI 截图 |
-| TC-ATS-04 exchange 探针 | **FAIL** | 公网 POST exchange **404**;Rust `main` 无路由 → **F-TEAM-RUST-01** |
-| TC-ATS-05 providers.client_id | **FAIL** | 公网 10 渠道均无 `client_id`;Rust struct 无字段 → **F-TEAM-PROV-01** |
-| TC-ATS-06 BFF vitest | **PASS** | `auth.test.ts` **71/71** |
-| TC-ATS-07 Python 静态 | **FAIL** | adapter 无 `members/oauth/exchange` → **F-TEAM-PY-01** |
-| TC-ATS-02/03/08–10 | **未跑/受限** | 真 IdP 账号 L-01;未开通文案依赖上游 exchange;密码账号未备 |
+| TC-ATS-04/05/07（源码） | **源码 PASS** | intellect-team `origin/main`：`members_api` 有 exchange + `client_id`；Python `sso_exchange.py` + adapter 路由在 |
+| TC-ATS-04（公网探针） | **受限 L-ATS-PROD** | 公网实例是否已滚到该 main 未在本环境证实；不以旧 404 否定源码 |
+| TC-ATS-06 | 待步骤 8 重跑 | auth vitest |
+| §9 Q1/S1/S2 | **FAIL→步骤 6** | Switch 未 import；裸 fetch；snippet 未 charset |
 
-结论:**agentui BFF 侧就绪;阻塞在 intellect-team 双栈契约(必修)。**
+## 3. 缺陷 → 修复
 
-## 2. 缺陷清单
+| ID | 严重度 | 修复 |
+|---|---|---|
+| F-WED-SEC-01 | P0 | import Switch |
+| F-WED-SEC-02 | P0（公网） | `fetchPublicProviders` → `safeFetch` |
+| F-WED-SEC-03 | P0（公网） | `^[a-zA-Z0-9_-]+$` 过滤 + warning |
+| F-DOC-TEAM-01 | P2 | 更新 status T1–T3 口径为「源码已齐 / 现网待滚」 |
 
-| ID | 严重度 | 描述 | 责任仓 | 建议修复 |
-|---|---|---|---|---|
-| **F-TEAM-RUST-01** | P0 | `POST /api/members/oauth/exchange` 从 main 丢失(D2 合并);公网 404 | intellect-team Rust | 自 `1c034c51`+`9a0143dd` **恢复** handler/路由/`client_id`/claim;加路由快照测试防再丢 |
-| **F-TEAM-PY-01** | P0 | Python 从未实现同契约 exchange | intellect-team Python | 按 `contracts/sso-exchange.*` 实现同 path/错误码/`member_id_claim` |
-| **F-TEAM-PROV-01** | P0 | 公开 providers 缺 `client_id` | intellect-team 双栈 | 与 exchange 同批补齐;BFF 已对缺字段渠道隐藏 |
-| F-DOC-01 | P2 | spec-014 状态曾标 ✅ | agentui docs | **已修订**(现状文档+spec 头);步骤 9 归档确认 |
-| — | — | HIEDU 开通深链/对账键口径 | HIEDU + 运维 | 本批准范围**不改 HIEDU 仓**;记后续/受限 |
+## 4. 产物
 
-## 3. 拟修复范围(步骤 6,待批准)
-
-### 纳入本轮(必修)
-
-1. **intellect-team Rust**:恢复 SSO exchange + providers.`client_id` + 回归测试(路由存在断言)。  
-2. **intellect-team Python**:对齐实现 exchange(最小可用)+ providers.`client_id`(或公开 members providers 等价面)。  
-3. **agentui**:契约/夹具/冒烟与文档对齐;必要时 BFF 单测补「上游 404→可读错误」;不改 `src/components/ui/`。  
-4. 双栈最小矩阵 DV-01~DV-04 能在单测或集成级证明(Python 可用 mock/静态+单测)。
-
-### 明确不纳入本轮
-
-- HIEDU Portal 深链产品改动、生产 L-10 首装代操作、真 IdP 账号联调(L-01)、SLO、跨应用 token 直通、T4.2/Phase B。  
-- 以 D2 `exchange-id-token` 冒充主 SSO 路径。
-
-### 取舍
-
-| 选项 | 说明 |
-|---|---|
-| A(推荐) | 双栈同批恢复/实现对齐契约后再回归 |
-| B | 仅 Rust 恢复,Python 标「不支持 SSO」清单 | **违背**现状文档双栈强制约束,除非产品改口 |
-| C | 仅改 agentui | **无效**(上游 404) |
-
-**本 Spec 默认选项 A。**
-
-## 4. 步骤 7–9 计划(批准后连续执行)
-
-7. intellect-team:`cargo test` 相关 + Python pytest/静态门禁;agentui `vitest auth` + 守卫;代码审查 P0/P1。  
-8. 重跑 TC-ATS-04/05/06/07;能通则补 TC-ATS-03 mock;UI 若浏览器仍不可达则 R6。  
-9. `reports/REPORT-auth-team-sso-20261123.md` + 受限专节 + 记忆更新。
-
-## 5. 产物路径
-
-| 产物 | 路径 |
-|---|---|
-| 调研 | `tests/e2e-tests/outline/auth-team-sso-research.md` |
-| 手册 | `docs/auth-team-sso-manual.md` |
-| 大纲 | `tests/e2e-tests/outline/auth-team-sso.md` |
-| 用例/夹具 | `tests/e2e-tests/cases|fixtures/auth-team-sso/` |
-| 探针结果 | `tests/e2e-tests/results/auth-team-sso/` |
-| 本批准门 | `tests/e2e-tests/spec/auth-team-sso-spec.md` |
-
-## 6. 请用户批准
-
-请回复是否批准 **选项 A**,进入步骤 6 在 intellect-team(Rust+Python)与 agentui 落地修复。  
-若选 B/C 或缩范围,请明示。
+- 报告:`tests/e2e-tests/reports/REPORT-auth-team-sso-2026-11-23.md`
+- 证据:`tests/e2e-tests/results/auth-team-sso/`

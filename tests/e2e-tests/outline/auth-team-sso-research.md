@@ -67,14 +67,15 @@
 ## 六、初步缺陷/缺口(待步骤 5 编号)
 
 1. **F-TEAM-RUST-01**:公网+源码均无 `members/oauth/exchange` → BFF SSO 主路径不可用  
-2. **F-TEAM-PY-01**:Python 无同契约 exchange  
-3. **F-TEAM-PROV-01**:providers 缺统一 `client_id`(BFF RP 依赖)  
-4. **F-DOC-01**:spec-014 状态表曾标 ✅(已在现状文档/spec 头修订,步骤 3 再核)  
-5. 部署/对账/深链属运维与 HIEDU 仓,本模块记 **受限** 或跨仓修复项
+2. **F-TEAM-PY-01**:~~Python 无~~ → **源码已有**(origin/main);现网滚版待确认  
+3. **F-TEAM-PROV-01**:~~缺 client_id~~ → **源码已有**;现网待确认  
+4. **F-DOC-01**:spec-014 / status 已修订  
+5. 部署/对账/深链属运维与 HIEDU 仓 → **受限 L-OPS-D / L-ID-I**  
+6. **续跑(2026-11-23)**:agentui §9 **Q1/S1/S2 已修**;见 `REPORT-auth-team-sso-2026-11-23.md`
 
-## 七、实施优先级(对齐现状文档落地顺序 0)
+## 七、实施优先级(对齐现状文档落地顺序)
 
-1. Rust 恢复 exchange(+路由快照测试防再丢)  
-2. Python 对齐同契约  
-3. providers.`client_id` 双栈  
-4. agentui 联调/冒烟;HIEDU 开通与深链分仓跟进
+1. ~~Rust/Python/client_id 源码~~ → **已齐**;现网滚 team  
+2. agentui 向导安全 §9 → **本仓已齐**;公网 `SSRF_ALLOW_PRIVATE_IP=false`  
+3. D1–D5 部署 + I*/HIEDU 对账 + 真网冒烟  
+4. Portal 深链 / S2S 可选

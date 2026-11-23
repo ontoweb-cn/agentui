@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import { Hono } from 'hono';
-import { wizardRoutes } from './wizard';
+import { sanitizeSsoProviderIds, wizardRoutes } from './wizard';
 import { clearImtSessionCache } from '../middleware/imt-session-guard';
 import { AUTH_COOKIE_NAME } from '../types/auth';
 import type { BootstrapTokenManager } from '../services/bootstrap-token';
@@ -568,6 +568,48 @@ describe('wizard 路由 (B-3)', () => {
       expect(body.success).toBe(true);
       expect(body.envSnippet).toContain('BFF_SSO_ENABLED=true');
       expect(body.warnings.some((w: string) => w.includes('尚未生效') || w.includes('写入'))).toBe(true);
+    });
+
+    it('U-21(§9 S2): providers 含换行/等号 → snippet 不注入且 warning 剔除', async () => {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+      vi.mocked(getLoginProviders).mockResolvedValue({
+        providers: [
+          { id: 'intellect-auth', displayName: '统一认证', icon: 'sso', clientId: 'c', authorizeUrl: 'u', scopes: 's' },
+        ],
+        misconfigured: [],
+      });
+      const evil = 'evil\nBFF_SSO_ENABLED=false';
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...enterpriseSetupBody,
+          name: 'e2e-ent-sso-inject',
+          setupProfile: 'enterprise-sso',
+          sso: {
+            ...enterpriseSetupBody.sso,
+            providers: ['intellect-auth', evil],
+          },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.envSnippet).toContain('BFF_SSO_PROVIDERS=intellect-auth');
+      expect(body.envSnippet).not.toContain('BFF_SSO_ENABLED=false');
+      expect(body.envSnippet.split('\n').some((l: string) => l.includes(evil))).toBe(false);
+      expect(body.warnings.some((w: string) => w.includes('非法 id'))).toBe(true);
+    });
+
+    it('sanitizeSsoProviderIds 仅放行 [A-Za-z0-9_-]', () => {
+      const { ok, rejected } = sanitizeSsoProviderIds([
+        'intellect-auth',
+        'a=b',
+        'x\ny',
+        ' ok_id ',
+        '',
+      ]);
+      expect(ok).toEqual(['intellect-auth', 'ok_id']);
+      expect(rejected).toEqual(['a=b', 'x\ny']);
     });
 
     it('U-16: GET sso/providers 限流 → 429(独立 forwarded-for 键,不干扰其他用例)', async () => {

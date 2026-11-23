@@ -4,7 +4,7 @@
 |---|---|
 | 文档版本 | v1.2（含 §8 选型评审 + §9 质量/安全评审） |
 | 日期 | 2026-11-23 |
-| 状态 | 双卡主路径已实施；§9 **安全加固与质量债**为必跟进（公网暴露前先合 H1/M1/Q1） |
+| 状态 | 双卡主路径已实施；§9 **S1/S2/Q1 本仓已落地**（2026-11-23）；公网仍须 `SSRF_ALLOW_PRIVATE_IP=false`；S3–S5/Q2–Q4 为 backlog |
 | 前置决策 | 用户确认方案 **A**：SSO 不再作为 `intellect-enterprise` Connection 内嵌可选项，而是 SelectType **独立首卡** |
 | 关联 | `docs/wizard-kag-to-sso-design.md`（§4.2 / D2 被本文件修订）；`docs/auth-intellect-auth-to-team-flow-status.md`；spec-010 / spec-014 |
 | 改动范围 | 本仓向导选型与 SSO 区块挂载；**不**新增 `authMode`；运行时仍仅 `intellect-enterprise` |
@@ -280,8 +280,8 @@ export interface WizardBackendTypeOption {
 
 | 编号 | 级别 | 发现 | 方案处置 |
 |---|---|---|---|
-| **S1** | **High / 公网 P0** | `GET /admin/wizard/sso/providers`（及 setup 白名单校验）经 `isUrlSafe` 后调用 `getLoginProviders` → 底层 **裸 `fetch`**，无 `safeFetch`、无 `redirect:'manual'`、无解析后私网复核；默认可打私网（`SSRF_ALLOW_PRIVATE_IP`） | **(1)** wizard 路径改为经 `safeFetch`（或给 `sso-providers` 注入可测的安全 fetch）；**(2)** 公网部署强制 `SSRF_ALLOW_PRIVATE_IP=false`；**(3)** 可选：providers 与 probe 同级要求 bootstrap/admin（收紧公开面）。单测：SSRF 拒绝 + 限流仍绿 |
-| **S2** | **Med / P0** | `sso.providers[]` 仅 `typeof string && trim`，原样写入 `BFF_SSO_PROVIDERS=…`，可注入换行篡改运维粘贴的 `.env` | setup 生成 snippet 前：**仅允许** `^[a-zA-Z0-9_-]+$`，**且**（若已拉到渠道列表）须 ∈ 网关返回 id；非法 id → 剔出并 `warnings`，或整单 400。单测：含 `\n` / `=` 的 id 不得出现在 snippet |
+| **S1** | **High / 公网 P0** | ~~裸 `fetch`~~ → **已改** `sso-providers.fetchPublicProviders` 走 `safeFetch`（2026-11-23） | 公网部署仍须 `SSRF_ALLOW_PRIVATE_IP=false`；单测见 `sso-providers.test.ts` |
+| **S2** | **Med / P0** | ~~原样拼接 providers~~ → **已** `sanitizeSsoProviderIds` + warning（2026-11-23） | 保持；U-21 防回归 |
 | **S3** | **Med / P1 backlog** | bootstrap 窗 `POST /admin/wizard/setup` 可无凭据（`BOOTSTRAP_ENABLED`）；SSO 使攻击者可诱导恶意 `publicOrigin` / gateway / snippet | **不改变**「首装零配置」默认，但文档标明风险；演进：**一次性 bootstrap token** 覆盖 setup + providers，或 CSRF token。与 status 部署基线交叉引用 |
 | **S4** | **Med / 运维** | `stateSecret` 经 setup HTTPS 请求体（不回显） | 手册：禁止在网关/APM 全量记录 setup body；TLS 终止后日志勿存明文 |
 | **S5** | **Med / 部署** | probe 与 providers 共用 IP 限流；`BFF_TRUST_PROXY=true` 时 XFF 可伪造 | 部署文档：仅在可信反代后开 TRUST_PROXY；限流键勿对公网裸奔伪造头 |
@@ -298,7 +298,7 @@ export interface WizardBackendTypeOption {
 
 | 编号 | 级别 | 发现 | 方案处置 |
 |---|---|---|---|
-| **Q1** | **P0** | `sso-section.tsx` 使用 `<Switch>`（静默重登）但 **未 import** → SSO 卡运行时/构建失败 | 补 `import { Switch } from '@/components/ui/switch'`（或改用既有 Checkbox 模式并删 Switch）；加组件/单测冒烟 |
+| **Q1** | **P0** | ~~`Switch` 未 import~~ → **已补** `@/components/ui/switch`（2026-11-23） | 保持 |
 | **Q2** | **P1** | Connection `useEffect([option])` 无条件写回 `credentialKind`，双卡切换易覆盖用户输入 | 仅在 `credentialKind` 仍为初始/与 option 不一致且用户未脏写时更新；或切卡时显式重置整表（与切卡重置 SSO 一致） |
 | **Q3** | **P1** | 双卡文案多靠 `defaultValue`，未进 `zh`/`en`（或 ee private） | 按项目 i18n 规则沉淀 `wizard.types.*` / `wizard.done.ssoEnvPending` / `wizard.sso.requiredHint` 等键 |
 | **Q4** | **P2** | `getOptionForType(type)` 双卡同 type 永远命中首卡 | 改为 `getOptionForOptionId` / `(type, setupProfile)`；调用点随 profile 查找 |

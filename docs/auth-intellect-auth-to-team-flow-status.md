@@ -7,11 +7,10 @@
 
 ## 1. 结论
 
-**agentui BFF 侧 SSO/密码主路径已就绪；intellect-team 双栈契约未齐，不能再说「只差部署」。**  
-- agentui:OIDC RP + exchange 客户端 + `imt_token` Cookie 已通。  
-- **向导产品口径(已定稿、待实施)**:SelectType **首卡「企业版（SSO模式）」**、次卡「企业版（非SSO模式）」;两卡均写 `authMode=intellect-enterprise`,以 `setupProfile` 区分——**不再**把 SSO 藏在单张 enterprise 卡的 Connection 内嵌开关下(见 `wizard-enterprise-sso-mode-design.md`)。  
-- intellect-team:**Rust** 上 spec-014 exchange **曾合入后被 D2 合并冲掉**;**Python** **从未**实现同契约 → 真网 SSO 仍阻塞(详 §1.5)。  
-其余阻塞仍含部署 / 对账 / HIEDU 开通(§1.4),与 T4.2 / Phase B 无关。
+**agentui BFF + 向导双模式已就绪；intellect-team 双栈源码已恢复，真网仍卡部署/对账/滚版。**  
+- agentui:OIDC RP + exchange 客户端 + `imt_token` Cookie 已通;向导首卡「企业版（SSO模式）」已落地;§9 S1/S2/Q1 本仓已加固。  
+- intellect-team:**`origin/main` 已恢复** Rust exchange + providers.`client_id` + Python 同契约(2026-11-23 源码复验);**现网是否已滚到该版本**须运维确认(旧实例仍可能 404)。  
+其余阻塞仍含部署 D1–D5 / 身份 I* / HIEDU 开通(§1.4),与 T4.2 / Phase B 无关。
 
 必须分清两枚凭证:
 
@@ -188,16 +187,16 @@ HIEDU/IdP 注册或直授
 |---|---|---|---|---|
 | **W 向导** | W1 | ~~向导仍把 SSO 挂在单张 enterprise 卡内嵌开关下~~ → **本仓已实施双卡**(见 `wizard-ent-sso-mode` 九步 REPORT);真网首装仍须运维走 SSO 模式卡 | agentui | 未用新向导首装则仍易漏配 |
 | **W 向导** | W2 | ~~`optionId`/`setupProfile` 未进契约~~ → **已进** backend-types/setup(§8 R1/R5);部署侧须升级到含该契约的 BFF | agentui 部署 | 旧 BFF 无双卡 |
-| **W 向导** | W3 | 公开 `GET …/wizard/sso/providers` 经 `isUrlSafe` 后仍裸 `fetch`(无 `safeFetch`/防重定向);公网 SSRF 面(设计 §9 S1) | agentui BFF | 未加固则公网 BFF 可被诱导向内网/任意 URL 探 providers |
-| **W 向导** | W4 | `envSnippet` 对 `sso.providers[]` 未 charset/白名单消毒(§9 S2) | agentui BFF | 恶意 setup 可向运维粘贴的 `.env` 注入换行 |
+| **W 向导** | W3 | ~~providers 裸 fetch~~ → **已改 `safeFetch`**(§9 S1;公网仍须 `SSRF_ALLOW_PRIVATE_IP=false`) | agentui 部署 | 未关私网放行时内网探测仍可能 |
+| **W 向导** | W4 | ~~snippet 未消毒~~ → **已 charset 过滤**(§9 S2;`^[a-zA-Z0-9_-]+$`) | agentui | — |
 | **D 部署** | D1 | 生产 BFF 未首装 / 非 enterprise(L-10) | 运维 + agentui 向导 | 无企业 SSO/密码面 |
 | **D 部署** | D2 | `BFF_SSO_ENABLED` / `STATE_SECRET` / `PUBLIC_ORIGIN` 未齐 | agentui 部署(SSO 模式卡应产出 envSnippet) | 无渠道按钮或 RP 起不来 |
 | **D 部署** | D3 | team `INTELLECT_OAUTH_EXCHANGE_ENABLED` / provider / `redirect_uris` | intellect-team(双栈) | exchange 关或回调拒 |
 | **D 部署** | D4 | IdP client(`ia-agentui`)白名单与 tokenFormat | intellect-auth | 授权/验签失败 |
 | **D 部署** | D5 | 渠道模板缺 `enabled`/`usage`/`client_id`(F-A3-01) | team(+agentui 过滤) | 登录页无 SSO |
-| **T 双栈** | T1 | **Rust `POST /api/members/oauth/exchange` 在现网 main 缺失**(曾合入后被 D2 合并冲掉,见 §1.5) | intellect-team Rust | BFF-as-RP 主兑换 404/不可用 |
-| **T 双栈** | T2 | **Python 从未实现**同契约 exchange / claim 接管 | intellect-team Python | 存量 Python 部署无法走目标路径 |
-| **T 双栈** | T3 | 公开 providers **未统一暴露 `client_id`** | intellect-team 双栈 | BFF 无法可靠构造 authorize |
+| **T 双栈** | T1 | ~~源码缺失~~ → intellect-team **`origin/main` 已恢复** exchange(2026-11-23 复验);**现网实例是否已滚版**待运维确认 | 运维 + team | 旧集群仍 404 |
+| **T 双栈** | T2 | ~~Python 无实现~~ → **源码已有** `agent/sso_exchange.py` + adapter 路由;现网 Python flavor 待滚版/验收 | 运维 + team | 旧 Python 部署仍不可用 |
+| **T 双栈** | T3 | ~~无 client_id~~ → **源码已暴露**;现网 providers 响应待滚版验证 | 运维 + team | 旧实例渠道可能仍被 BFF 隐藏 |
 | **T 双栈** | T4 | 仅有的 `exchange-id-token`(Rust D2)语义≠spec-014(默认 JIT、错误信封、强依赖 user_jwt) | intellect-team Rust(+agentui 勿误用为主路径) | 身份分裂 / 契约漂移 |
 | **I 身份** | I1 | HIEDU `external_identity` ≠ team `(provider_id,sub)`(R-15) | HIEDU + team | 有同步 member 仍 `member_not_provisioned` |
 | **I 身份** | I2 | `member_external_id` 与 IdP `cas`/`sub` 口径未统一 | HIEDU(+产品裁定) | claim 接管打不中 |
@@ -245,7 +244,7 @@ HIEDU/IdP 注册或直授
 | 优先级 | 项 | 说明 |
 |---|---|---|
 | **P0 向导(W1/W2)** | 企业双模式选型 | **已实施**(§8)。SelectType 首卡「企业版（SSO模式）」/次卡「企业版（非SSO模式）」;`optionId`+`setupProfile`;SSO 卡强制配置面 |
-| **P0 向导安全(W3/W4)** | §9 S1/S2/Q1 | providers 改 `safeFetch`(或等价);`providers[]` 写入 snippet 前 charset+白名单;`sso-section` 补 `Switch` import。**公网 BFF 发布阻断**还含 `SSRF_ALLOW_PRIVATE_IP=false` |
+| **P0 向导安全(W3/W4)** | §9 S1/S2/Q1 | **本仓已落地**(safeFetch + charset + Switch import)。公网仍须部署 `SSRF_ALLOW_PRIVATE_IP=false` |
 | **P1 向导加固** | §9 S3–S5 / Q2–Q4 | bootstrap CSRF/一次性 token;TRUST_PROXY 部署纪律;切卡 effect 竞态;i18n 沉淀;`getOptionFor*` 按 profile |
 | **P0 部署** | 解除 L-10 | 目标路径首装走 **「企业版（SSO模式）」** → enterprise 后端可达 + `API_SERVER_KEY` + envSnippet 含 `BFF_SSO_*`;密码-only 部署走「非SSO模式」卡;粘贴 snippet 前按手册 §5 核对 |
 | **P0 SSO 运行时** | 打开 BFF-as-RP | `BFF_SSO_ENABLED=true`,`BFF_SSO_STATE_SECRET`,`BFF_PUBLIC_ORIGIN`;建议 `BFF_SSO_SILENT_RELOGIN=true`(SSO 模式卡 Done 页引导复制) |
@@ -258,10 +257,10 @@ HIEDU/IdP 注册或直授
 
 #### 推荐落地顺序(跨仓)
 
-0. **双栈契约**(T1–T3):Rust **恢复** exchange;Python **对齐**实现;providers 暴露 `client_id`;共享契约测试进 CI。  
-0b. **向导双模式**(W1–W2):本仓**已实施**;与 0 可并行。SSO 模式真网验收仍卡 T1–T3。  
-0c. **向导安全加固**(W3–W4 / 设计 §9):S1+S2+Q1 优先;公网暴露前必须过 S1/S2 + `SSRF_ALLOW_PRIVATE_IP=false`。  
-1. **部署基线**:D1–D5——目标路径用 **SSO 模式卡** 首装 + IdP client + provider 白名单;注明 backend **flavor**=rust|python;密码-only 用非 SSO 卡;TRUST_PROXY 仅可信反代(§9 S5)。  
+0. **双栈契约**(T1–T3):源码侧 **已齐**(team `origin/main`);下一步 = **现网滚版** + 契约 CI 门禁常绿。  
+0b. **向导双模式**(W1–W2):本仓**已实施**。  
+0c. **向导安全加固**(W3–W4 / §9 S1/S2/Q1):本仓**已落地**;公网部署 checklist 含 `SSRF_ALLOW_PRIVATE_IP=false`(S5 TRUST_PROXY)。  
+1. **部署基线**:D1–D5——目标路径用 **SSO 模式卡** 首装 + 滚到含 exchange 的 team + IdP client + provider 白名单;注明 **flavor**=rust\|python。  
 2. **身份口径**:I2 裁定 `cas`↔`member_external_id`;双栈启用 `member_id_claim`;HIEDU 开通写对键(I1/I4)。  
 3. **存量**:I3 对账作业或接受「首次 SSO claim 接管」窗口。  
 4. **体验**:P1 Portal 深链 + agentui 渠道/自动 authorize;静默留给二次访问(P2)。  
@@ -286,8 +285,8 @@ T4.2 / Phase B / D1 模型 flag 等**不在本目标路径关键路径上**;它�
 
 | 能力 | Rust `main` HEAD | Python `adapter.py` / `members_oauth.py` | agentui BFF 期望 |
 |---|---|---|---|
-| `POST /api/members/oauth/exchange` | **缺失**(曾于 `1c034c51`/`9a0143dd` 存在;D2 合入 `065f21df`→`8fd124cd` 后 `members_api.rs` 无该路由) | **无** | **主路径**(非 passthrough 时) |
-| 公开 `GET /api/members/oauth/providers` + `client_id` | 有 providers 路由;**响应结构无 `client_id` 字段** | 有 `/api/oauth/providers`,非 members 公开契约、字段未对齐 | 构造 authorize 需要 `client_id` |
+| `POST /api/members/oauth/exchange` | **源码已恢复**(`origin/main`,含防丢回归);现网滚版待确认 | **源码已实现**(`agent/sso_exchange.py` + adapter) | **主路径**(非 passthrough 时) |
+| 公开 `GET /api/members/oauth/providers` + `client_id` | **源码已含 `client_id`**;现网响应待滚版验证 | members 公开面已对齐(随 exchange 批次) | 构造 authorize 需要 `client_id` |
 | `POST /api/oauth/exchange-id-token` | **有**(D2;`resolve_or_create_oauth_member` **默认建号**;嵌套 error) | **无** | 仅 IdP passthrough 可选 |
 | `member_id_claim` / JIT 缺省关 | 随 exchange 一并丢失 | 仅旧 `auto_provision` + `auto_provision_id_claim`(email_local\|sub) | 推荐 `cas` + 缺省关 JIT |
 | 密码 login/register/`members/{id}/token` | 有 | 有 | 密码与可选 S2S |

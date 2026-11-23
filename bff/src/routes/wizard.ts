@@ -29,6 +29,24 @@ import { BootstrapTokenManager } from '../services/bootstrap-token';
 // wizard-sso(P2):渠道拉取与 SSO 配置加载(仅结构校验用;https 强制仍由 sso-config 启动 fail-fast 裁决)
 import { getLoginProviders } from '../services/sso-providers';
 import { loadSsoConfig } from '../services/sso-config';
+
+/** §9 S2:写入 envSnippet / 白名单前仅允许安全 provider id(防换行注入 .env) */
+const SSO_PROVIDER_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
+export function sanitizeSsoProviderIds(ids: string[]): {
+  ok: string[];
+  rejected: string[];
+} {
+  const ok: string[] = [];
+  const rejected: string[] = [];
+  for (const raw of ids) {
+    const id = typeof raw === 'string' ? raw.trim() : '';
+    if (!id) continue;
+    if (SSO_PROVIDER_ID_RE.test(id)) ok.push(id);
+    else rejected.push(id);
+  }
+  return { ok, rejected };
+}
 import { checkImtSession } from '../middleware/imt-session-guard';
 import { isImtCanvasAgentsEnabled } from '../utils/feature-flags';
 import type { HarnessStoreListConfigs } from '../types/harness-admin';
@@ -654,10 +672,21 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
         400,
       );
     }
-    const providerIds = Array.isArray(req.sso.providers)
-      ? req.sso.providers.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
-      : null;
-    if (providerIds && providerIds.length > 0) {
+    const rawProviderIds = Array.isArray(req.sso.providers)
+      ? req.sso.providers.filter((p): p is string => typeof p === 'string')
+      : [];
+    const { ok: providerIds, rejected: rejectedProviderIds } =
+      sanitizeSsoProviderIds(rawProviderIds);
+    if (rejectedProviderIds.length > 0) {
+      ssoWarnings.push(
+        `sso 渠道白名单含非法 id(已剔除,禁止写入 env): ${rejectedProviderIds
+          .map((id) => JSON.stringify(id))
+          .join(', ')}`,
+      );
+    }
+    // 回写消毒后的列表,供下方 envSnippet 使用
+    req.sso.providers = providerIds.length > 0 ? providerIds : null;
+    if (providerIds.length > 0) {
       try {
         const selection = await getLoginProviders(req.endpoint.replace(/\/$/, ''), 'wizard-probe', loadSsoConfig());
         const known = new Set(selection.providers.map((p) => p.id));
@@ -900,12 +929,16 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   const baseSnippet = `# 添加到 .env 文件\n${adminTokenEnvVar}=<your-token>`;
   const ssoSnippetLines: string[] = [];
   if (req.sso?.enabled && req.type === 'intellect-enterprise') {
-    const providerIds = Array.isArray(req.sso.providers)
-      ? req.sso.providers.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
-      : [];
+    // §9 S2:再次消毒(防御未走上方 enabled 分支的异常路径)
+    const { ok: providerIds } = sanitizeSsoProviderIds(
+      Array.isArray(req.sso.providers)
+        ? req.sso.providers.filter((p): p is string => typeof p === 'string')
+        : [],
+    );
+    const publicOrigin = (req.sso.publicOrigin ?? '').trim().replace(/[\r\n\0]/g, '');
     ssoSnippetLines.push('# 统一认证(SSO)');
     ssoSnippetLines.push('BFF_SSO_ENABLED=true');
-    ssoSnippetLines.push(`BFF_PUBLIC_ORIGIN=${(req.sso.publicOrigin ?? '').trim()}`);
+    ssoSnippetLines.push(`BFF_PUBLIC_ORIGIN=${publicOrigin}`);
     ssoSnippetLines.push('BFF_SSO_STATE_SECRET=<your-secret>');
     ssoSnippetLines.push(
       providerIds.length > 0
