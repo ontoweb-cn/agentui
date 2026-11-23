@@ -66,6 +66,10 @@ spec:
               value: https://ai.wust.edu.cn/intellect-kb
             - name: RAG_ADMIN_UPSTREAM
               value: https://ai.wust.edu.cn/intellect-kb
+            # BFF 直连 RAG 的基址：跨命名空间必须用 FQDN，且 RAG 挂载在
+            # /intellect-kb 基础路径下；缺省会回落 http://localhost:9380 导致 502。
+            - name: INTELLECT_RAG_URL
+              value: http://intellect-rag.intellect-rag.svc.cluster.local/intellect-kb
             # cognitive-wargame:wargamesrv 网关化到 /wargame(网关剥前缀前提,
             # 见 cluster-rollout.md §0.2);REST 通道(nginx)与 BFF 插件代理共用
             - name: WARGAME_UPSTREAM
