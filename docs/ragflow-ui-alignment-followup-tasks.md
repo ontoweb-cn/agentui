@@ -13,6 +13,8 @@
 > **v8(2026-11-22)**:九步 next-iter-aihub-t3——**T2.5 aihub→`ee/features/aihub`**;**T3.1 虚拟滚动(CSV+chunk)**;**T3.7 color-tokens `--prune`/交叉校验**;T4.2 落地仍等 Gateway(L-T42-01)。报告 [REPORT-next-iter-aihub-t3-20261122.md](../tests/e2e-tests/reports/REPORT-next-iter-aihub-t3-20261122.md)。
 > **v9(2026-11-23)**:对齐 HEAD `642d643` remaining-backlog——**T2.5 applications→`ee/features/applications` + admin 三页→`ee/pages/*`**;**T3.2/T3.4/T3.5/T3.6 完成**;九步 `t42-phasebc-prep` 交付 [Gateway secrets API 契约草案](./web-search-secrets-gateway-api-contract.md)+ [Phase B/C 前端对齐准备](./phase-bc-frontend-alignment-prep.md)。**T4.2 M1/M2 仍无 Gateway 实现(L-T42-01)**;D1 仍 L-09/L-10。报告 [REPORT-t42-phasebc-prep-20261123.md](../tests/e2e-tests/reports/REPORT-t42-phasebc-prep-20261123.md)。
 > **v9.1(2026-11-23)**:质量/安全评审跟进——BFF `resolveWebSearchProvider` 与前端对齐(非法 provider 不回落 Tavily);补齐 `redactSessionWebSearchSecrets` 供 rag/mcp/openai-base `listSessions`;设计 §10 明确 GET 详情明文为 T4.2 过渡债与缓解面。
+> **v9.2(2026-11-23)**:九步 `exec-triad-20261123` 复证三连闸门——Gateway secrets **仍无路由**(L-T42-01 不关闭);kubectl 缺失(L-09/L-10);Go SSE 未稳定(L-PHASEB-01)。交付 secrets probe 客户端 + Go SSE↔StreamChunk/MessageEventType 映射预备(**未接线** live)。报告 [REPORT-exec-triad-20261123.md](../tests/e2e-tests/reports/REPORT-exec-triad-20261123.md)。
+> **v9.3(2026-11-23)**:九步 `gate-reverify-20261123` **再次复证**三连仍关——不伪关闭 L-*;增量 `npm run check:exec-gates`([scripts/check-exec-gates.mjs](../scripts/check-exec-gates.mjs))。报告 [REPORT-gate-reverify-20261123.md](../tests/e2e-tests/reports/REPORT-gate-reverify-20261123.md)。
 
 ## 使用说明
 
@@ -154,7 +156,8 @@
 - 设计:[web-search-secret-storage-design.md](./web-search-secret-storage-design.md) 方案 C,M0–M4。
 - **v9 契约草案**:[web-search-secrets-gateway-api-contract.md](./web-search-secrets-gateway-api-contract.md)(PUT/GET/DELETE secrets、PC 剥离时机、禁止无表 prune)。
 - **M1/M2 接线**:Gateway 实现可探测后开 module `t42-m1-wire`;此前保持 **L-T42-01**。
-- Phase B/C 前端准备:[phase-bc-frontend-alignment-prep.md](./phase-bc-frontend-alignment-prep.md)。
+- **v9.2 预备**:`bff/src/utils/web-search-secrets-client.ts`(probe);未挂路由。
+- Phase B/C 前端准备:[phase-bc-frontend-alignment-prep.md](./phase-bc-frontend-alignment-prep.md);Go 映射预备 `map-go-stream-agent-event.ts` / `go-canvas-sse-adapter.ts`(**L-PHASEB-01** 未接线)。
 
 ---
 
@@ -177,7 +180,7 @@ Phase B 准备文档 ──▶ Go SSE 稳定 ──▶ phase-b-sse-adapter
 D1 手册 ──▶ 持权 kubeconfig ──▶ prod-d1-exec
 ```
 
-建议节奏(**v9**):~~T1–T3.2/T3.4–T3.7 / T2.5 全目标模块 / T4.1a 代码 / T4.2 设计+契约~~ **已完成**;余 **T2.4/T4.1a④→T4.2 M1+**、**T3.3**、**T4.1b/Phase C**、**T5**、**D1 生产执行(L-09/10)**。
+建议节奏(**v9.3**):~~设计/契约/probe/映射预备/闸门探测脚本~~ **已完成**;接线闸门 **仍关**(先跑 `npm run check:exec-gates`)。余 **T4.2 M1 真接线**、**D1 真执行**、**Phase B live**、**T3.3 / T4.1b / T5**。
 
 ## 工作量汇总
 

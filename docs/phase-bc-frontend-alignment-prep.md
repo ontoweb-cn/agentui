@@ -34,9 +34,9 @@
 | Go SSE `event` | payload 要点 | 与前端映射建议 |
 |---|---|---|
 | `message` | `answer` / `reference` | → 既有 `Message`(字段名可能要适配层:`answer`↔`content`) |
-| `waiting_for_user` | `cpn_id` | **新增**或映射为 `UserInputs`(需统一 payload:`inputs`/`tips` vs `cpn_id`) |
-| `error` | `error` | 今日多靠 HTTP/流中断;**建议显式事件** |
-| `done` | `[DONE]` | 近似 `MessageEnd` + `WorkflowFinished` 合成;需适配器拆分 |
+| `waiting_for_user` | `cpn_id` (+可选 `inputs`/`tips`) | → `UserInputs`;预备适配器透传 `inputs`/`tips`/`user_inputs` 别名 + `cpn_id` |
+| `error` | `error` | → `streamError` 字段(无 MessageEventType);live 合入必须走流错误通道 |
+| `done` | `[DONE]` | → `MessageEnd` + `WorkflowFinished` |
 
 ### 2.3 节点级事件
 
@@ -91,7 +91,7 @@ Go 设计同时强调节点开始/结束与 Python `agent_api` 对齐;canvas-plu
 | ID | 内容 | 2026-11-23 |
 |---|---|---|
 | L-09 | 无 intellect ns kubeconfig / 跨 ns RBAC | **仍成立**(本环境无 kubectl 管理通道) |
-| L-10 | 生产 BFF 未首装(needsSetup/community) | **仍成立**(凭据不可代输) |
+| L-10 | 生产 BFF 未首装(needsSetup;非 enterprise / 缺省 `authMode=intellect-community`) | **仍成立**(凭据不可代输) |
 | L-11 | RAG→gateway 9091 集群内连通 | 待持权者在 D1 时验证 |
 
 运维手册已齐;本 agent **不伪造**集群变更。
@@ -101,3 +101,11 @@ Go 设计同时强调节点开始/结束与 Python `agent_api` 对齐;canvas-plu
 1. `t42-m1-wire` — Gateway secrets 就绪 → BFF PUT+sanitize+GET 标志位;
 2. `phase-b-sse-adapter` — BFF 或 canvas hook 适配 `waiting_for_user`/`done` ↔ `MessageEventType`;
 3. `prod-d1-exec` — 持权者按决策简报 §三/§四执行并回填报告。
+
+## 7. 执行三连复证(2026-11-23,module `exec-triad-20261123`)
+
+| 闸门 | 复证 | 本批交付 |
+|---|---|---|
+| Gateway secrets | 源码 0 命中;`kubectl` N/A | `bff/.../web-search-secrets-client.ts` probe;**L-T42-01** |
+| D1 kubeconfig | `kubectl: not found` | **L-09/L-10** |
+| Go SSE 稳定 | 无完整 Go canvas SSE 运行时;`waiting_for_user` 仅设计文档 | `mapGoStreamAgentEventToChunks` + `mapGoCanvasSseEventToMessageEvents`;**未接线** parseCanvasWorkflowSSE;**L-PHASEB-01** |

@@ -33,7 +33,7 @@
 
 ## 四、生产开启流程(汇总,详单见 p1b-remaining-analysis §5.1)
 
-> **⚠ 步骤 0(2026-11-21 实测新增,当前阻塞)**:生产 agentui BFF 现状 `needsSetup:true / backendCount:0`、authMode=community——**从未完成首装登记**。flag 验收的前提(后端绑定 + ragAdminToken + 企业模式)均不存在。须先完成:生产 BFF 向导登记(intellect-enterprise 后端 + RAG 伴生 + 租户绑定;需要现网网关凭据与管理员会话,见受限 L-02/L-10)。
+> **⚠ 步骤 0(2026-11-21 实测新增,当前阻塞)**:生产 agentui BFF 现状 `needsSetup:true / backendCount:0`、**非 enterprise**(缺省/`authMode=intellect-community` 或未绑定企业后端)——**从未完成首装登记**。flag 验收的前提(后端绑定 + ragAdminToken + 企业模式)均不存在。须先完成:生产 BFF 向导登记(intellect-enterprise 后端 + RAG 伴生 + 租户绑定;需要现网网关凭据与管理员会话,见受限 L-02/L-10)。
 
 1. ~~D1 按本手册落地并验证~~ → 待集群权限执行(§三);
 2. 生产 BFF 完成向导登记(步骤 0);
@@ -46,7 +46,7 @@
 | 编号 | 内容 |
 |---|---|
 | L-09 | **无集群管理通道**:dev pod(SSH 2225)无 kubectl、无 SA 挂载、无跨 ns RBAC——D1 的 Deployment env 变更与 flag env 变更均无法从现有通道执行;需持有 `intellect` 命名空间权限的 kubeconfig/控制台,或授权 dev pod 的 RBAC |
-| L-10 | **生产 agentui BFF 未完成首装登记**(backendCount:0、community 模式,2026-11-21 实测)——flag 验收前提不存在;需持现网网关凭据走向导登记(凭据不可自动化代输,L-02 同源) |
+| L-10 | **生产 agentui BFF 未完成首装登记**(backendCount:0、非 enterprise / 缺省 `authMode=intellect-community`,2026-11-21 实测)——flag 验收前提不存在;需持现网网关凭据走向导登记(凭据不可自动化代输,L-02 同源) |
 | L-11 | 生产网关通道验证仅到 ClusterIP 层;集群内 RAG→gateway 9091 连通性待持权者在 D1 执行时一并用 `curl http://intellect-gateway.intellect.svc.cluster.local:9091` 自 pod 内验证 |
 
 ## 五、代码侧支撑(本批)
