@@ -82,15 +82,17 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
   }
 
   async listSessions(_ctx: BackendContext, agentId: string): Promise<Session[]> {
-    const raw = await this.request<Session[]>(
+    const raw = await this.request<unknown>(
       'GET',
       `/api/v1/agents/${encodeURIComponent(agentId)}/sessions`,
       undefined,
       _ctx,
     );
-    // 列表宽面脱敏;详情 getSession 仍回明文(设置页整包回写,见设计文档 §9)
-    if (!Array.isArray(raw)) return raw;
-    return raw.map((item) => redactSessionWebSearchSecrets(item));
+    // 列表宽面脱敏;详情 getSession 仍回明文(设置页整包回写,见设计文档 §9)。
+    // 兼容裸数组与 { data|sessions|items: [] } 包装,避免非数组形状跳过脱敏。
+    return unwrapSessionList(raw).map((item) =>
+      redactSessionWebSearchSecrets(item),
+    );
   }
 
   async getSession(
@@ -536,4 +538,21 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
  */
 async function* errorStream(message: string): StreamIterable {
   yield { type: 'error' as const, message } as StreamChunk;
+}
+
+/** Normalize listSessions payloads; unknown shapes → [] (never skip redaction). */
+export function unwrapSessionList(raw: unknown): Session[] {
+  if (Array.isArray(raw)) {
+    return raw as Session[];
+  }
+  if (raw && typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    for (const key of ['data', 'sessions', 'items'] as const) {
+      const nested = obj[key];
+      if (Array.isArray(nested)) {
+        return nested as Session[];
+      }
+    }
+  }
+  return [];
 }

@@ -261,6 +261,34 @@ describe('IntellectRagAdapter', () => {
       });
       expect(JSON.stringify(result)).not.toContain('secret');
     });
+
+    it('listSessions 包装形状 { data: [] } 仍脱敏,不跳过', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          data: [
+            {
+              id: 's1',
+              agentId: 'a1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              prompt_config: { tavily_api_key: 'secret-wrap' },
+            },
+          ],
+        }),
+      );
+
+      const result = await adapter.listSessions(ctx, 'a1');
+      expect(result).toHaveLength(1);
+      expect(JSON.stringify(result)).not.toContain('secret');
+    });
+
+    it('listSessions 未知非数组形状 → [](不回传未脱敏 raw)', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({ unexpected: { tavily_api_key: 'secret-leak' } }),
+      );
+      const result = await adapter.listSessions(ctx, 'a1');
+      expect(result).toEqual([]);
+    });
   });
 
   describe('getSession', () => {

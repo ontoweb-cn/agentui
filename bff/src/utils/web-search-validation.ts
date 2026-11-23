@@ -124,11 +124,11 @@ function isProviderKeyField(field: string): boolean {
 
 /**
  * T4.1a / T2.4:存储侧按活动 provider 过滤联网搜索 key。
- * - 有活动 provider:仅保留该 provider 的 key 字段(keyless 则剥离全部 key)
- * - provider 为 ''(清除):剥离全部已知 provider key
- * - 无 provider 但有 legacy tavily_api_key:仅保留 tavily key
- * - 非 key 字段原样保留
- * 返回新对象,不修改入参。
+ * - 有活动(允许列表) provider:仅保留该 provider 的 key(keyless 则剥全部)
+ * - provider 为 ''(清除)或非允许列表非法值:剥离全部 provider key
+ * - **仅当 provider 字段缺省(undefined)** 且有 legacy tavily_api_key:保留 tavily
+ *   (与 resolveWebSearchProvider / 前端 getWebSearchProvider 对齐)
+ * - 非 key 字段原样保留;不修改入参。
  */
 export function sanitizePromptConfigWebSearchKeys(
   promptConfig: unknown,
@@ -148,20 +148,26 @@ export function sanitizePromptConfigWebSearchKeys(
     'webSearchProvider',
   ]);
 
-  let allowedKeyFields: Set<string> | null = null;
-  if (rawProvider === '') {
-    allowedKeyFields = new Set();
-  } else if (typeof rawProvider === 'string' && WEB_SEARCH_PROVIDERS.has(rawProvider)) {
-    allowedKeyFields = KEYLESS_WEB_SEARCH_PROVIDERS.has(rawProvider)
-      ? new Set()
-      : new Set(providerKeyFields(rawProvider));
-  } else {
-    // legacy:无 provider 时仅保留 tavily
+  let allowedKeyFields: Set<string>;
+  if (rawProvider === undefined) {
+    // legacy:字段缺省时仅保留 tavily
     const hasTavily =
       typeof readString(src, ['tavily_api_key', 'tavilyApiKey']) === 'string';
     allowedKeyFields = hasTavily
       ? new Set(providerKeyFields('tavily'))
       : new Set();
+  } else if (rawProvider === '') {
+    allowedKeyFields = new Set();
+  } else if (
+    typeof rawProvider === 'string' &&
+    WEB_SEARCH_PROVIDERS.has(rawProvider)
+  ) {
+    allowedKeyFields = KEYLESS_WEB_SEARCH_PROVIDERS.has(rawProvider)
+      ? new Set()
+      : new Set(providerKeyFields(rawProvider));
+  } else {
+    // 非法/非允许列表/非字符串值:不回落 tavily,剥全部 key
+    allowedKeyFields = new Set();
   }
 
   const out: Record<string, unknown> = {};

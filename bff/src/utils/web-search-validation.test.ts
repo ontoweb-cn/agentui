@@ -146,6 +146,17 @@ describe('sanitizePromptConfigWebSearchKeys (T4.1a)', () => {
     expect(out.brave_api_key).toBeUndefined();
   });
 
+  it('非法/非允许列表 provider 不回落 tavily,剥离全部 key', () => {
+    const out = sanitizePromptConfigWebSearchKeys({
+      web_search_provider: 'typo',
+      tavily_api_key: 'still-there',
+      brave_api_key: 'b',
+    }) as Record<string, unknown>;
+    expect(out.web_search_provider).toBe('typo');
+    expect(out.tavily_api_key).toBeUndefined();
+    expect(out.brave_api_key).toBeUndefined();
+  });
+
   it('不修改入参对象', () => {
     const input = {
       web_search_provider: 'tavily',

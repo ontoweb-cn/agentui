@@ -134,3 +134,9 @@ T2.4 短期选择整包保体验。终态两种产品选项(需业务拍板,记�
 | PATCH 写侧 prune | 未启用 | 无表 prune = 永久丢非活动 key;见 §7 |
 
 残余 Medium(安全评审):详情 GET 暴露活动+非活动 key——接受为 **L-T42-01 / M1–M3** 债;缓解=鉴权边界 + 列表/分享已脱敏 + 契约已冻结。
+
+## 11. M1 预备客户端(2026-11-23)
+
+- 代码:`bff/src/utils/web-search-secrets-client.ts`(`probeWebSearchSecretsApi` / `buildWebSearchSecretPutUrl`)。
+- **仍禁止**在 probe≠available 时对 PATCH 调用 `sanitizePromptConfigWebSearchKeys`。
+- 九步复证报告:[REPORT-exec-triad-20261123.md](../tests/e2e-tests/reports/REPORT-exec-triad-20261123.md)。
