@@ -1,0 +1,13 @@
+[
+  {
+    "id": "intellect-auth",
+    "name": "统一认证（SSO）",
+    "enabled": true,
+    "usage": ["login"],
+    "client_id": "ia-agentui",
+    "authorize_url": "https://example.test/auth/login/oauth/authorize",
+    "token_url": "https://example.test/auth/api/login/oauth/access_token",
+    "scopes": ["openid", "profile", "email"],
+    "pkce": true
+  }
+]

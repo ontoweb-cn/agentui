@@ -1,10 +1,11 @@
-// wizard-sso(P2): 向导统一认证(SSO)配置区块(仅 intellect-enterprise 渲染)。
+// wizard-sso(P2) + wizard-ent-sso-mode:
+// 向导统一认证(SSO)配置区块 —— 仅「企业版（SSO模式）」卡渲染。
 //
-// 设计(docs/wizard-kag-to-sso-design.md §4.2):
-// - 开关默认关闭,可跳过 —— SSO 不阻塞首装;
+// 设计(docs/wizard-enterprise-sso-mode-design.md §3.3 / §8 R4):
+// - SSO 模式卡强制启用(无「可跳过」主开关);
 // - 渠道列表来自 BFF /admin/wizard/sso/providers(字段裁剪视图,只读展示);
-// - stateSecret 仅存在于组件内存态(评审 R3:不进 localStorage 草稿,刷新后重新生成);
-// - publicOrigin 为 http:// 时警告但不阻断(评审 R4;生产强制由 BFF 启动 fail-fast 裁决)。
+// - stateSecret 仅存在于组件内存态(不进 localStorage 草稿,刷新后重新生成);
+// - publicOrigin 为 http:// 时警告但不阻断(生产强制由 BFF 启动 fail-fast 裁决)。
 //
 // 约束:文本遵循 Text Overflow 规则(渠道名可能很长,truncate + min-w-0)。
 
@@ -19,7 +20,6 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
 import {
@@ -51,6 +51,8 @@ interface SsoSectionProps {
   endpoint: string;
   onChange: (patch: Partial<WizardDraftSso>) => void;
   onSecretChange: (secret: string) => void;
+  /** SSO 模式卡:锁定启用,隐藏可跳过开关(§8 R4) */
+  lockedEnabled?: boolean;
 }
 
 const SECRET_LENGTH = 48;
@@ -75,9 +77,11 @@ export function SsoSection({
   endpoint,
   onChange,
   onSecretChange,
+  lockedEnabled = false,
 }: SsoSectionProps) {
   const { t } = useTranslation();
   const [channels, setChannels] = useState<ChannelState | null>(null);
+  const showFields = lockedEnabled || value.enabled;
 
   const providersMutation = useMutation({
     mutationFn: () => fetchWizardSsoProviders(endpoint.trim().replace(/\/+$/, '')),
@@ -124,35 +128,24 @@ export function SsoSection({
 
   return (
     <div className="space-y-3 rounded-lg border border-border p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 space-y-0.5">
-          <Label htmlFor="wizard-sso-enable">
-            {t('wizard.sso.enable', { defaultValue: '启用统一认证登录(SSO)' })}
-          </Label>
-          <p className="text-xs text-text-secondary">
-            {t('wizard.sso.skipHint', {
-              defaultValue: '可跳过,稍后在系统管理中配置;开启后终端用户可经统一认证免密登录。',
-            })}
-          </p>
-        </div>
-        <Switch
-          id="wizard-sso-enable"
-          checked={value.enabled}
-          onCheckedChange={(v) => {
-            // 设计 §4.2:开启时预填当前浏览器 origin(可改)
-            if (v && !value.publicOrigin.trim()) {
-              onChange({
-                enabled: true,
-                publicOrigin: window.location.origin,
-              });
-            } else {
-              onChange({ enabled: v });
-            }
-          }}
-        />
+      <div className="min-w-0 space-y-0.5">
+        <Label>
+          {t('wizard.sso.title', { defaultValue: '统一认证登录(SSO)' })}
+        </Label>
+        <p className="text-xs text-text-secondary">
+          {lockedEnabled
+            ? t('wizard.sso.requiredHint', {
+                defaultValue:
+                  '本模式必须配置统一认证;完成后请将环境变量写入部署配置并重启 BFF,登录页才会出现渠道按钮。',
+              })
+            : t('wizard.sso.skipHint', {
+                defaultValue:
+                  '可跳过,稍后在系统管理中配置;开启后终端用户可经统一认证免密登录。',
+              })}
+        </p>
       </div>
 
-      {value.enabled && (
+      {showFields && (
         <div className="space-y-4 pt-1">
           {/* 登录渠道 */}
           <div className="space-y-2">

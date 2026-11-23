@@ -54,6 +54,7 @@ import {
   type HarnessCapabilities,
   type WizardBackendTypeOption,
   type WizardProbeResponse,
+  type WizardSetupProfile,
   type WizardSetupResponse,
 } from '@/services/wizard-service';
 import { SsoSection, INITIAL_WIZARD_DRAFT_SSO, type WizardDraftSso } from './sso-section';
@@ -75,7 +76,10 @@ interface WizardDraftCredentials {
 const WIZARD_STEPS = 6;
 
 interface WizardDraft {
+  /** 选型主键(§8 R1);企业双卡靠此区分 */
+  selectedOptionId: string | null;
   selectedType: BackendType | null;
+  setupProfile?: WizardSetupProfile;
   name: string;
   endpoint: string;
   credentialKind: CredentialKind;
@@ -89,7 +93,9 @@ interface WizardDraft {
 }
 
 const INITIAL_DRAFT: WizardDraft = {
+  selectedOptionId: null,
   selectedType: null,
+  setupProfile: undefined,
   name: '',
   endpoint: '',
   credentialKind: 'bearer-token',
@@ -100,6 +106,39 @@ const INITIAL_DRAFT: WizardDraft = {
   defaultForTenant: true,
   sso: INITIAL_WIZARD_DRAFT_SSO,
 };
+
+/** 前端按 optionId 覆盖 BFF 英文化 label(§8 R7) */
+function optionDisplayLabel(
+  opt: WizardBackendTypeOption,
+  t: (key: string, opts?: { defaultValue: string }) => string,
+): string {
+  if (opt.optionId === 'enterprise-sso') {
+    return t('wizard.types.enterpriseSso', { defaultValue: '企业版（SSO模式）' });
+  }
+  if (opt.optionId === 'enterprise-password') {
+    return t('wizard.types.enterprisePassword', {
+      defaultValue: '企业版（非SSO模式）',
+    });
+  }
+  return opt.label;
+}
+
+function optionDisplayDescription(
+  opt: WizardBackendTypeOption,
+  t: (key: string, opts?: { defaultValue: string }) => string,
+): string {
+  if (opt.optionId === 'enterprise-sso') {
+    return t('wizard.types.enterpriseSsoDesc', {
+      defaultValue: '统一认证登录；首装即配置 BFF SSO',
+    });
+  }
+  if (opt.optionId === 'enterprise-password') {
+    return t('wizard.types.enterprisePasswordDesc', {
+      defaultValue: '使用成员密码登录；可稍后手工开启 SSO',
+    });
+  }
+  return opt.description;
+}
 
 // ---------------------------------------------------------------------------
 // Draft persistence helpers
@@ -116,6 +155,20 @@ function loadDraft(): WizardDraft {
       delete parsed.email;
       delete parsed.password;
       base = { ...INITIAL_DRAFT, ...parsed };
+      // §8 R6:旧草稿仅有 selectedType=enterprise、无 optionId/profile → 清空选型,禁止静默当 SSO
+      if (
+        base.selectedType === 'intellect-enterprise' &&
+        !base.selectedOptionId &&
+        !base.setupProfile
+      ) {
+        base = {
+          ...base,
+          selectedType: null,
+          selectedOptionId: null,
+          setupProfile: undefined,
+          sso: { ...INITIAL_WIZARD_DRAFT_SSO },
+        };
+      }
     }
     try {
       const credRaw = sessionStorage.getItem(DRAFT_CREDENTIALS_STORAGE_KEY);
@@ -255,14 +308,14 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
 
 function StepSelectType({
   options,
-  selectedType,
+  selectedOptionId,
   onSelect,
   onNext,
   onBack,
 }: {
   options: WizardBackendTypeOption[];
-  selectedType: BackendType | null;
-  onSelect: (type: BackendType, option: WizardBackendTypeOption) => void;
+  selectedOptionId: string | null;
+  onSelect: (option: WizardBackendTypeOption) => void;
   onNext: () => void;
   onBack: () => void;
 }) {
@@ -284,33 +337,48 @@ function StepSelectType({
       </CardHeader>
       <CardContent>
         <RadioGroup
-          value={selectedType ?? ''}
+          value={selectedOptionId ?? ''}
           onValueChange={(v) => {
-            const opt = options.find((o) => o.type === v);
-            if (opt) onSelect(opt.type, opt);
+            const opt = options.find((o) => o.optionId === v);
+            if (opt) onSelect(opt);
           }}
           className="grid grid-cols-1 md:grid-cols-2 gap-3"
         >
           {options.map((opt) => (
             <label
-              key={opt.type}
+              key={opt.optionId}
               className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors ${
-                selectedType === opt.type
+                selectedOptionId === opt.optionId
                   ? 'border-primary bg-primary/5'
                   : 'border-border hover:border-border-hover'
               }`}
             >
               <RadioGroupItem
-                value={opt.type}
-                id={`backend-type-${opt.type}`}
+                value={opt.optionId}
+                id={`backend-option-${opt.optionId}`}
                 className="mt-1"
               />
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{opt.label}</span>
-                  <code className="text-xs text-text-secondary">{opt.type}</code>
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                  <span className="font-medium truncate">
+                    {optionDisplayLabel(opt, t)}
+                  </span>
+                  {opt.setupProfile === 'enterprise-sso' && (
+                    <Badge variant="secondary" className="text-xs shrink-0">
+                      SSO
+                    </Badge>
+                  )}
+                  {opt.setupProfile === 'enterprise-password' && (
+                    <Badge variant="outline" className="text-xs shrink-0">
+                      {t('wizard.types.passwordBadge', {
+                        defaultValue: '密码',
+                      })}
+                    </Badge>
+                  )}
                 </div>
-                <p className="text-xs text-text-secondary">{opt.description}</p>
+                <p className="text-xs text-text-secondary">
+                  {optionDisplayDescription(opt, t)}
+                </p>
                 <div className="flex flex-wrap gap-1 pt-1">
                   {opt.capabilities.canvas && (
                     <Badge variant="secondary" className="text-xs">
@@ -355,7 +423,7 @@ function StepSelectType({
           <LucideChevronLeft className="size-4 mr-1" />
           {t('common.back', { defaultValue: 'Back' })}
         </Button>
-        <Button disabled={!selectedType} onClick={onNext}>
+        <Button disabled={!selectedOptionId} onClick={onNext}>
           {t('common.next', { defaultValue: 'Next' })}
           <LucideChevronRight className="size-4 ml-1" />
         </Button>
@@ -386,6 +454,7 @@ function StepConnectionForm({
 }) {
   const { t } = useTranslation();
   const isEnterprise = draft.selectedType === 'intellect-enterprise';
+  const isEnterpriseSso = draft.setupProfile === 'enterprise-sso';
 
   // 自动填充默认 endpoint(首次进入时)
   // 注:adminTokenEnvVar 由 BFF 自动生成 HARNESS_<ID>_TOKEN,前端不再收集该字段
@@ -398,6 +467,18 @@ function StepConnectionForm({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [option]);
+
+  // SSO 模式卡:进入连接步时锁定 enabled 并预填 origin
+  useEffect(() => {
+    if (!isEnterpriseSso) return;
+    if (!draft.sso.enabled || !draft.sso.publicOrigin.trim()) {
+      onSsoChange({
+        enabled: true,
+        publicOrigin: draft.sso.publicOrigin.trim() || window.location.origin,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEnterpriseSso]);
 
   const valid = useMemo(() => {
     if (!draft.name.trim() || !draft.endpoint.trim()) return false;
@@ -416,8 +497,8 @@ function StepConnectionForm({
       if (!tenantId) return false;
       if (!/^[0-9a-fA-F]{32}$/.test(tenantId)) return false;
     }
-    // wizard-sso(P2):SSO 开启时需合法 publicOrigin + ≥32 字符密钥(P3:RAG 字段已移除)
-    if (isEnterprise && draft.sso.enabled) {
+    // enterprise-sso:强制合法 publicOrigin + ≥32 字符密钥
+    if (isEnterpriseSso) {
       const origin = draft.sso.publicOrigin.trim();
       let originOk = false;
       try {
@@ -430,7 +511,7 @@ function StepConnectionForm({
       if (!ssoSecret || ssoSecret.length < 32) return false;
     }
     return true;
-  }, [draft, isEnterprise, ssoSecret]);
+  }, [draft, isEnterprise, isEnterpriseSso, ssoSecret]);
 
   return (
     <Card className="max-w-2xl mx-auto">
@@ -556,13 +637,14 @@ function StepConnectionForm({
           </div>
         )}
 
-        {isEnterprise && (
+        {isEnterpriseSso && (
           <SsoSection
             value={draft.sso}
             secret={ssoSecret}
             endpoint={draft.endpoint}
             onChange={onSsoChange}
             onSecretChange={onSsoSecretChange}
+            lockedEnabled
           />
         )}
       </CardContent>
@@ -712,7 +794,17 @@ function StepConfirm({
         />
         <Row
           label={t('wizard.confirm.type', { defaultValue: 'Type' })}
-          value={draft.selectedType ?? '-'}
+          value={
+            draft.setupProfile === 'enterprise-sso'
+              ? t('wizard.types.enterpriseSso', {
+                  defaultValue: '企业版（SSO模式）',
+                })
+              : draft.setupProfile === 'enterprise-password'
+                ? t('wizard.types.enterprisePassword', {
+                    defaultValue: '企业版（非SSO模式）',
+                  })
+                : (draft.selectedType ?? '-')
+          }
         />
         <Row
           label={t('wizard.confirm.endpoint', { defaultValue: 'Endpoint' })}
@@ -724,14 +816,18 @@ function StepConfirm({
             value={draft.intellectTenantId}
           />
         )}
-        {/* P3(wizard-sso):RAG endpoint 摘要行移除;wizard-sso(P2):SSO 摘要行 */}
-        {draft.selectedType === 'intellect-enterprise' && draft.sso.enabled && (
+        {/* wizard-ent-sso-mode:仅 SSO 模式卡展示摘要;文案强调待写入(§8 R8) */}
+        {draft.setupProfile === 'enterprise-sso' && (
           <Row
             label={t('wizard.confirm.sso', { defaultValue: 'SSO(统一认证)' })}
-            value={`${t('wizard.confirm.ssoEnabled', { defaultValue: '已启用' })} · ${
+            value={`${t('wizard.confirm.ssoPending', {
+              defaultValue: '待写入环境变量',
+            })} · ${
               draft.sso.providers.length > 0
                 ? draft.sso.providers.join(',')
-                : t('wizard.confirm.ssoAllChannels', { defaultValue: '全部渠道' })
+                : t('wizard.confirm.ssoAllChannels', {
+                    defaultValue: '全部渠道',
+                  })
             } · ${draft.sso.publicOrigin}`}
           />
         )}
@@ -805,6 +901,15 @@ function StepDone({
           ".env 片段"。补渲染到完成页(与确认卡同键复用)。 */}
       {setupResult?.envSnippet && (
         <CardContent className="space-y-1">
+          {/* §8 R8:SSO snippet 时强制提示尚未写入 env */}
+          {setupResult.envSnippet.includes('BFF_SSO_ENABLED') && (
+            <p className="text-xs text-state-warning break-words">
+              {t('wizard.done.ssoEnvPending', {
+                defaultValue:
+                  '统一认证尚未生效:请将下列 BFF_SSO_* 写入部署 .env 并重启 BFF 后,登录页才会出现统一认证渠道。',
+              })}
+            </p>
+          )}
           <p className="text-xs text-text-secondary">
             {t('wizard.confirm.envSnippet', {
               defaultValue: '.env snippet (copy to your .env file)',
@@ -883,22 +988,31 @@ function WizardPage() {
     retry: false,
   });
   // intellect-rag 不作为独立向导类型(RAG 是 enterprise 插件)。BFF 已不返回该项;此处再过滤一次防止旧缓存。
-  const options = (typesData?.options ?? []).filter(
-    (o) => o.type !== 'intellect-rag',
-  );
+  // 滚动升级:旧 BFF 无 optionId 时回落 type(双卡场景须新 BFF)
+  const options = (typesData?.options ?? [])
+    .filter((o) => o.type !== 'intellect-rag')
+    .map((o) => ({
+      ...o,
+      optionId: o.optionId || o.type,
+    }));
 
-  // 当前选中类型的 option 元数据
+  // 当前选中 option 元数据(按 optionId,§8 R2)
   const selectedOption = useMemo(
-    () => options.find((o) => o.type === draft.selectedType),
-    [options, draft.selectedType],
+    () => options.find((o) => o.optionId === draft.selectedOptionId),
+    [options, draft.selectedOptionId],
   );
 
   useEffect(() => {
-    if (!draft.selectedType || options.length === 0) return;
-    if (!options.some((o) => o.type === draft.selectedType)) {
-      setDraft((prev) => ({ ...prev, selectedType: null }));
+    if (!draft.selectedOptionId || options.length === 0) return;
+    if (!options.some((o) => o.optionId === draft.selectedOptionId)) {
+      setDraft((prev) => ({
+        ...prev,
+        selectedOptionId: null,
+        selectedType: null,
+        setupProfile: undefined,
+      }));
     }
-  }, [options, draft.selectedType]);
+  }, [options, draft.selectedOptionId]);
 
   // Step 5-6 刷新时检查后端是否已配置,有则跳 /
   const { data: statusData } = useQuery({
@@ -1020,9 +1134,9 @@ function WizardPage() {
         ...(draft.intellectTenantId
           ? { intellectTenantId: draft.intellectTenantId }
           : {}),
-        // P3(wizard-sso):RAG 插件字段移除——RAG 由管理端补配
-        // wizard-sso(P2/X-08):仅 enterprise 且启用时携带 sso;白名单空 = null(不过滤)
-        ...(draft.selectedType === 'intellect-enterprise' && draft.sso.enabled
+        // wizard-ent-sso-mode:显式 setupProfile;仅 enterprise-sso 携带 sso
+        ...(draft.setupProfile ? { setupProfile: draft.setupProfile } : {}),
+        ...(draft.setupProfile === 'enterprise-sso'
           ? {
               sso: {
                 enabled: true,
@@ -1073,12 +1187,12 @@ function WizardPage() {
   });
 
   // ----- Handlers -----
-  const handleSelectType = (
-    type: BackendType,
-    option: WizardBackendTypeOption,
-  ) => {
+  const handleSelectType = (option: WizardBackendTypeOption) => {
+    const isSso = option.setupProfile === 'enterprise-sso';
     updateDraft({
-      selectedType: type,
+      selectedOptionId: option.optionId,
+      selectedType: option.type,
+      setupProfile: option.setupProfile,
       endpoint: option.defaultEndpoint,
       credentialKind: option.credentialKind,
       // 重置凭据字段(切换类型时旧凭据无效)
@@ -1086,8 +1200,14 @@ function WizardPage() {
       email: '',
       password: '',
       intellectTenantId: '',
-      // wizard-sso(P2):切换类型时重置 SSO 配置与内存态密钥
-      sso: { ...INITIAL_WIZARD_DRAFT_SSO },
+      // 切卡重置 SSO;SSO 模式卡进入连接步再锁定 enabled
+      sso: isSso
+        ? {
+            ...INITIAL_WIZARD_DRAFT_SSO,
+            enabled: true,
+            publicOrigin: window.location.origin,
+          }
+        : { ...INITIAL_WIZARD_DRAFT_SSO },
     });
     setSsoSecret('');
   };
@@ -1127,7 +1247,7 @@ function WizardPage() {
           {step === 2 && (
             <StepSelectType
               options={options}
-              selectedType={draft.selectedType}
+              selectedOptionId={draft.selectedOptionId}
               onSelect={handleSelectType}
               onNext={() => goToStep(3)}
               onBack={() => goToStep(1)}

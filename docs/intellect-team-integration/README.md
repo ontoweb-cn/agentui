@@ -1,7 +1,7 @@
 # AgentUI ↔ Intellect-Team Integration Overview
 
-> **Version**: P4a+P4b Complete (2026-07-13)
-> **Status**: ✅ 两端均已完成 — 全部 13 个 P4a 端点已在 intellect-team gateway 中实现并通过验证
+> **Version**: P4a+P4b Complete (2026-07-13); SSO 双栈修订 2026-11-23  
+> **Status**: P4a 基础成员鉴权两端可用；**企业 SSO exchange 双栈未齐** — 见 [auth-intellect-auth-to-team-flow-status.md](../auth-intellect-auth-to-team-flow-status.md) §1.5（Rust 曾实现后回归缺失；Python 未对齐；agentui BFF RP 已就绪）
 
 ## 1. Architecture
 
@@ -15,8 +15,8 @@
 ┌─────────────────────────────────────────────────────────┐
 │                   BFF (Hono, :9390)                     │
 │                                                         │
-│  /api/bff/auth/* ──┬── authMode=intellect-rag ──────────┼──▶ intellect-rag (:9380)
-│                    │                                    │     /api/v1/auth/*
+│  /api/bff/auth/* ──┬── authMode=intellect-community ────┼──▶ intellect-rag (:9380)
+│                    │   (旧别名 intellect-rag 行为相同)   │     /api/v1/auth/*
 │                    └── authMode=intellect-enterprise ───┼──▶ intellect-team (:9091)
 │                                                         │     /api/members/*
 │  /api/bff/agents/* ── IntellectRagAdapter ──────────────┼──▶ intellect-rag
@@ -35,6 +35,7 @@
 - **Single entry point**: Frontend calls `/api/bff/auth/*` uniformly; BFF routes by `BffTenant.authMode`
 - **Cookie-based auth**: Enterprise member token (`imt_*`) stored in HttpOnly cookie, not localStorage
 - **Default TenantID=0**: When `intellectTenantId === "0"`, BFF does NOT inject `X-Intellect-Team` header; intellect-team uses global default space
+- **Dual stack (Rust + Python)**: intellect-team keeps both Gateway flavors; agentui SSO expects **one** HTTP contract (`POST /api/members/oauth/exchange`, providers with `client_id`, `member_id_claim`). Do not ship “Rust-only SSO” while Python remains on the old OAuth callback path. HIEDU provisions members/reconciles identities; BFF exchanges for `imt_*` (never distribute `imt_*` via Portal).
 
 ---
 
@@ -52,17 +53,13 @@
 | `/api/bff/auth/login/{channel}` | GET | `GET /api/oauth/login/{provider}` | Public | intellect-team 302 重定向到 OAuth 提供方(BFF 直接透传 302) |
 | `/api/bff/auth/oauth/callback` | GET | `GET /api/oauth/callback` + `POST /api/members/{id}/token` | Public + API_SERVER_KEY | Two-step: callback → token sign → Set-Cookie → 302 |
 
-> **⚠ Known gap（2026-11-21 代码评审）**：本表假设 IdP 回调落在 BFF
-> `/api/bff/auth/oauth/callback`。但 intellect-team 的
-> `GET /api/oauth/login/{provider}` 仅在显式携带 `?redirect_uri=` 时使用传入值，
-> 默认按请求 Host 推导为**自身** `/api/oauth/callback`
-> （`intellect-gateway/src/platform/api_server.rs:10444-10456`）；BFF 当前只传
-> `usage`/`invite_code`（`bff/src/routes/auth.ts:741-745`），未传 `redirect_uri`。
-> 同时 intellect-auth 侧 `ia-intellect-team` 种子登记的
-> `https://ai.wust.edu.cn/intellect/oauth2/callback` 按路由矩阵落在 WebUI 域
-> （`/intellect` → WebUI），三仓均无该路径承接方。
-> 接入前需三方对齐回调落点（详见 intellect-auth 仓
-> `docs/AgentUI-intellect-team-三系统SSO调用链分析.md` §2/§8）。
+> **回调落点（2026-11-23 修订）**：兼容网关 OAuth 路径上，BFF 已通过
+> `resolveOAuthRedirectUri` **显式传** `redirect_uri=/api/bff/auth/oauth/callback`
+> （或 env `BFF_OAUTH_REDIRECT_URI`；F-CB-01）。intellect-team 仅在带该参数时
+> 使用传入值，否则仍会推导为 Gateway 自身回调——故生产必须登记 IdP
+> redirectUris 与 BFF 公开回调一致。BFF-as-RP 路径（`BFF_SSO_ENABLED`）另用
+> `getSsoRedirectUri`，勿与 `BFF_OAUTH_REDIRECT_URI` 混为一谈。
+> 现状总览见 [auth-intellect-auth-to-team-flow-status.md](../auth-intellect-auth-to-team-flow-status.md)。
 
 ### 2.2 Data Endpoints (BFF → intellect-team, via Adapter)
 

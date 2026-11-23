@@ -43,6 +43,7 @@ import type {
   WizardProbeResponse,
   WizardSetupRequest,
   WizardSetupResponse,
+  WizardSetupProfile,
   WizardSsoProvidersResponse,
 } from '../types/wizard';
 
@@ -64,46 +65,63 @@ const DEFAULT_BOOTSTRAP_MANAGER = new BootstrapTokenManager();
 // Backend type options (shared by /backend-types and /setup)
 // ---------------------------------------------------------------------------
 
+const ENTERPRISE_CAPABILITIES = {
+  canvas: true,
+  knowledgeBase: true,
+  memory: true,
+  mcp: true,
+  multiTenant: true,
+  modelManagement: true,
+} as const;
+
 const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
-  // D-02/X-01(P1):kag 已从向导选项下架(设计 docs/wizard-kag-to-sso-design.md §3.3)。
-  // 类型联合与 Adapter 保留:存量配置兼容 + 管理端仍可手工配置;仅向导入口不再提供。
+  // wizard-ent-sso-mode:企业双卡置顶(设计 docs/wizard-enterprise-sso-mode-design.md §3.1 / §8 R1)
+  // D-02/X-01(P1):kag 已从向导选项下架;类型联合与 Adapter 保留。
   {
+    optionId: 'enterprise-sso',
     type: 'intellect-enterprise',
-    label: 'Intellect Enterprise',
-    description: 'Team/Project + multi-tenant',
+    setupProfile: 'enterprise-sso',
+    label: 'Enterprise (SSO mode)',
+    description: 'Sign in with SSO; configure BFF SSO during setup',
     defaultEndpoint: 'http://localhost:9091',
-    // spec-010 v8.3:memory/mcp 能力与 spec.md §3.2 对齐
-    // intellect-enterprise 集成 intellect-rag 插件,具备 canvas 和 knowledgeBase 能力
-    capabilities: { canvas: true, knowledgeBase: true, memory: true, mcp: true, multiTenant: true, modelManagement: true },
+    capabilities: { ...ENTERPRISE_CAPABILITIES },
     credentialKind: 'bearer-token',
   },
-  // intellect-rag 不作为独立向导类型:它是 intellect-enterprise 的 RAG 插件,
-  // 由 enterprise setup 创建伴生 backend。Harness type 字面量仍保留。
-  // spec-010 v8 新增(待 Phase C 实现 Adapter)
   {
+    optionId: 'enterprise-password',
+    type: 'intellect-enterprise',
+    setupProfile: 'enterprise-password',
+    label: 'Enterprise (non-SSO mode)',
+    description: 'Sign in with member password; enable SSO later if needed',
+    defaultEndpoint: 'http://localhost:9091',
+    capabilities: { ...ENTERPRISE_CAPABILITIES },
+    credentialKind: 'bearer-token',
+  },
+  // intellect-rag 不作为独立向导类型:它是 intellect-enterprise 的 RAG 插件。
+  {
+    optionId: 'intellect-community',
     type: 'intellect-community',
     label: 'Intellect Community',
     description: 'Pure Agent runtime (OpenAI-compatible)',
-    // spec-010 v8.3:默认 endpoint 与 spec.md §9.2 对齐(与 intellect-enterprise 同源)
     defaultEndpoint: 'http://localhost:9091',
     capabilities: { canvas: false, knowledgeBase: false, memory: false, mcp: false, multiTenant: false, modelManagement: false },
     credentialKind: 'bearer-token',
   },
   {
+    optionId: 'hermes',
     type: 'hermes',
     label: 'HERMES',
     description: 'HERMES protocol backend',
-    // spec-010 v8.3:默认 endpoint 与 spec.md §9.2 对齐(部署时需改端口,避免与 intellect-enterprise 冲突)
     defaultEndpoint: 'http://localhost:9091',
     capabilities: { canvas: false, knowledgeBase: false, memory: true, mcp: true, multiTenant: false, modelManagement: false },
     credentialKind: 'bearer-token',
   },
   {
+    optionId: 'agent-scope',
     type: 'agent-scope',
     label: 'AgentScope',
     description: 'AgentScope multi-agent framework',
     defaultEndpoint: 'http://localhost:5000',
-    // spec-010 v8.3:memory/mcp 能力与 spec.md §3.2 对齐
     capabilities: { canvas: false, knowledgeBase: false, memory: true, mcp: true, multiTenant: false, modelManagement: false },
     credentialKind: 'bearer-token',
   },
@@ -534,12 +552,72 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   }
 
   // ---------------------------------------------------------------------------
-  // wizard-sso(P2):SSO 配置校验(仅 intellect-enterprise;结构校验,https 强制
-  // 由 sso-config.ts 启动 fail-fast 裁决,向导保持非阻塞 —— 设计 §4.3/§4.4)
+  // wizard-ent-sso-mode + wizard-sso(P2):setupProfile + SSO 结构校验
+  // https 强制仍由 sso-config 启动 fail-fast 裁决 —— 设计 §3.4 / §8 R4–R5
   // ---------------------------------------------------------------------------
   const ssoWarnings: string[] = [];
+  let resolvedSetupProfile: WizardSetupProfile | undefined;
+
+  if (req.setupProfile != null && req.type !== 'intellect-enterprise') {
+    return c.json(
+      {
+        success: false,
+        error: 'setupProfile 仅支持 intellect-enterprise 类型',
+      } satisfies WizardSetupResponse,
+      400,
+    );
+  }
+
+  if (req.type === 'intellect-enterprise') {
+    const rawProfile = req.setupProfile;
+    if (rawProfile === 'enterprise-sso' || rawProfile === 'enterprise-password') {
+      resolvedSetupProfile = rawProfile;
+    } else if (rawProfile != null && rawProfile !== '') {
+      return c.json(
+        {
+          success: false,
+          error: `未知 setupProfile: ${String(rawProfile)}`,
+        } satisfies WizardSetupResponse,
+        400,
+      );
+    } else if (req.sso?.enabled) {
+      // §8 R5:缺省时按 sso.enabled 推断,兼容旧客户端
+      resolvedSetupProfile = 'enterprise-sso';
+      ssoWarnings.push(
+        '未传 setupProfile:已按 sso.enabled 推断为 enterprise-sso;请显式传 setupProfile',
+      );
+    } else {
+      resolvedSetupProfile = 'enterprise-password';
+      ssoWarnings.push(
+        '未传 setupProfile:已默认 enterprise-password;请显式传 setupProfile',
+      );
+    }
+  }
+
+  if (resolvedSetupProfile === 'enterprise-password' && req.sso?.enabled) {
+    return c.json(
+      {
+        success: false,
+        error: 'enterprise-password 模式不允许 sso.enabled=true',
+      } satisfies WizardSetupResponse,
+      400,
+    );
+  }
+
+  if (resolvedSetupProfile === 'enterprise-sso') {
+    if (!req.sso?.enabled) {
+      return c.json(
+        {
+          success: false,
+          error: 'enterprise-sso 模式必须提供 sso.enabled=true',
+        } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+  }
+
   if (req.sso?.enabled) {
-    // X-10/评审 R1:非 enterprise 类型携带 sso → 400 明确拒绝,避免"静默忽略被误以为已启用"
+    // X-10:非 enterprise 类型携带 sso → 400
     if (req.type !== 'intellect-enterprise') {
       return c.json(
         { success: false, error: 'sso 配置仅支持 intellect-enterprise 类型' } satisfies WizardSetupResponse,
@@ -576,7 +654,6 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
         400,
       );
     }
-    // X-09:白名单 Best-effort 校验,网关不可达时降级为警告(不阻断首装)
     const providerIds = Array.isArray(req.sso.providers)
       ? req.sso.providers.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
       : null;
@@ -836,6 +913,10 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
         : '# BFF_SSO_PROVIDERS= 渠道白名单(留空=不过滤)',
     );
     ssoSnippetLines.push(`BFF_SSO_SILENT_RELOGIN=${req.sso.silentRelogin === false ? 'false' : 'true'}`);
+    // §8 R8:完成页须明示「待写入 env 前渠道不会出现」
+    ssoWarnings.push(
+      '统一认证尚未生效:请将上方 BFF_SSO_* 写入部署 .env 并重启 BFF 后,登录页才会出现统一认证渠道。',
+    );
   }
   const envSnippet = ssoSnippetLines.length > 0 ? `${baseSnippet}\n${ssoSnippetLines.join('\n')}` : baseSnippet;
 

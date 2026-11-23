@@ -229,32 +229,39 @@ describe('wizard 路由 (B-3)', () => {
   // -------------------------------------------------------------------------
 
   describe('GET /admin/wizard/backend-types', () => {
-    it('返回 4 个后端类型选项(不含独立 intellect-rag 与已下架 kag)', async () => {
+    it('返回 5 个选项:双企业卡置顶 + community/hermes/agent-scope(无 kag/rag)', async () => {
       const res = await app.request('/admin/wizard/backend-types', {
         headers: { Authorization: 'Bearer test' },
       });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.options).toHaveLength(4);
+      expect(body.options).toHaveLength(5);
 
-      const types = body.options.map((o: { type: string }) => o.type);
-      expect(types).toEqual([
-        'intellect-enterprise',
+      const optionIds = body.options.map((o: { optionId: string }) => o.optionId);
+      expect(optionIds).toEqual([
+        'enterprise-sso',
+        'enterprise-password',
         'intellect-community',
         'hermes',
         'agent-scope',
       ]);
+      expect(body.options[0].type).toBe('intellect-enterprise');
+      expect(body.options[0].setupProfile).toBe('enterprise-sso');
+      expect(body.options[1].type).toBe('intellect-enterprise');
+      expect(body.options[1].setupProfile).toBe('enterprise-password');
+
+      const types = body.options.map((o: { type: string }) => o.type);
       expect(types).not.toContain('intellect-rag');
-      // P1: kag 已从向导选项下架(仍保留在 BackendType 联合与 Adapter,管理端可手工配置)
       expect(types).not.toContain('kag');
     });
 
-    it('每个选项含 capabilities + credentialKind', async () => {
+    it('每个选项含 optionId + capabilities + credentialKind', async () => {
       const res = await app.request('/admin/wizard/backend-types', {
         headers: { Authorization: 'Bearer test' },
       });
       const body = await res.json();
       for (const opt of body.options) {
+        expect(opt.optionId).toBeTruthy();
         expect(opt.capabilities).toBeDefined();
         expect(opt.credentialKind).toBe('bearer-token');
         expect(opt.defaultEndpoint).toMatch(/^http/);
@@ -490,6 +497,77 @@ describe('wizard 路由 (B-3)', () => {
       expect(res.status).toBe(502);
       const body = await res.json();
       expect(body.providers).toHaveLength(0);
+    });
+
+    it('U-17: setupProfile=enterprise-sso 且无 sso.enabled → 400', async () => {
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...enterpriseSetupBody,
+          setupProfile: 'enterprise-sso',
+          sso: { ...enterpriseSetupBody.sso, enabled: false },
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('enterprise-sso');
+    });
+
+    it('U-18: setupProfile=enterprise-password + sso.enabled → 400', async () => {
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...enterpriseSetupBody,
+          setupProfile: 'enterprise-password',
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('enterprise-password');
+    });
+
+    it('U-19: setupProfile=enterprise-password 无 sso → 200 且无 BFF_SSO_ENABLED', async () => {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+      const { sso: _sso, ...rest } = enterpriseSetupBody;
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...rest,
+          name: 'e2e-ent-password',
+          setupProfile: 'enterprise-password',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.envSnippet).not.toContain('BFF_SSO_ENABLED');
+    });
+
+    it('U-20: setupProfile=enterprise-sso + 合法 sso → 200 且含待写入 warning', async () => {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+      vi.mocked(getLoginProviders).mockResolvedValue({
+        providers: [
+          { id: 'intellect-auth', displayName: '统一认证', icon: 'sso', clientId: 'c', authorizeUrl: 'u', scopes: 's' },
+        ],
+        misconfigured: [],
+      });
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...enterpriseSetupBody,
+          name: 'e2e-ent-sso-profile',
+          setupProfile: 'enterprise-sso',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.envSnippet).toContain('BFF_SSO_ENABLED=true');
+      expect(body.warnings.some((w: string) => w.includes('尚未生效') || w.includes('写入'))).toBe(true);
     });
 
     it('U-16: GET sso/providers 限流 → 429(独立 forwarded-for 键,不干扰其他用例)', async () => {

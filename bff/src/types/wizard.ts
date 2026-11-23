@@ -5,9 +5,16 @@
 import type { BackendType, HarnessCapabilities } from './harness';
 import type { CredentialKind } from '../services/token-vault';
 
+/** wizard-ent-sso-mode:企业双卡选型 profile(不写入 harness type / authMode) */
+export type WizardSetupProfile = 'enterprise-sso' | 'enterprise-password';
+
 // Step 2: 选择后端类型
 export interface WizardBackendTypeOption {
+  /** 选型主键;企业双卡必不同(§8 R1);非企业可等于 type */
+  optionId: string;
   type: BackendType;
+  /** 仅 intellect-enterprise 双卡 */
+  setupProfile?: WizardSetupProfile;
   label: string;
   description: string;
   defaultEndpoint: string;
@@ -34,10 +41,12 @@ export interface WizardSetupRequest {
   adminTokenEnvVar?: string;
   // intellect-enterprise 专用
   intellectTenantId?: string;
+  /** wizard-ent-sso-mode:企业双卡;缺省时 BFF 按 sso.enabled 推断并 warning(§8 R5) */
+  setupProfile?: WizardSetupProfile;
   // 是否作为默认主后端
   defaultForTenant?: boolean;
   // P3(wizard-sso):RAG 插件字段移除——RAG 由管理端补配,不随向导收集。
-  /** wizard-sso(P2): 统一认证配置(仅 intellect-enterprise;明文 secret 仅存在于请求期,不落盘) */
+  /** wizard-sso(P2): 统一认证配置(仅 enterprise-sso;明文 secret 仅存在于请求期,不落盘) */
   sso?: WizardSsoSettings;
 }
 

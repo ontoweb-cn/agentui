@@ -18,18 +18,20 @@ R6 现状口径:无。
 | 预期 | 显示 6 步步骤条与欢迎页;不被重定向走 |
 | 截图 | `TC-WIZSSO-01-01.png` |
 
-## TC-WIZSSO-01-02 类型列表为 4 类(无 KAG)
+## TC-WIZSSO-01-02 类型列表为 5 类(双企业卡,无 KAG)
 
 | 项 | 内容 |
 |---|---|
-| 目的 | X-01:KAG 从类型选择中移除 |
+| 目的 | X-01:KAG 下架;wizard-ent-sso-mode:企业双卡置顶 |
 | 前置 | 进入 Step 2 |
 | 数据 | 无 |
 | 优先级 | P0 |
-| 关联手册 | §2 |
+| 关联手册 | §2;`docs/wizard-ent-sso-mode-manual.md` §3.1 |
 | 步骤 | 1. 欢迎页点"开始配置";2. 观察类型卡片列表 |
-| 预期 | 恰好 4 张卡片:Intellect Enterprise / Intellect Community / HERMES / AgentScope;无 KAG;未选择时"下一步"禁用 |
+| 预期 | 恰好 5 张卡片:企业版（SSO模式）→ 企业版（非SSO模式）→ Intellect Community → HERMES → AgentScope;无 KAG;未选择时"下一步"禁用 |
 | 截图 | `TC-WIZSSO-01-02.png` |
+
+> 回归修订日期:2026-11-23:wizard-ent-sso-mode 双企业卡,4→5。
 
 ## TC-WIZSSO-01-03 选择类型联动默认端点与徽章
 
@@ -37,9 +39,11 @@ R6 现状口径:无。
 |---|---|
 | 目的 | 选择类型自动填默认端点(手册 §3.1) |
 | 前置 | Step 2 |
-| 数据 | 依次点选 4 类 |
+| 数据 | 依次点选 5 卡(含两张企业卡) |
 | 优先级 | P1 |
-| 关联手册 | §2、§3.1 |
-| 步骤 | 1. 点选 Intellect Enterprise;2. 下一步 |
-| 预期 | Enterprise 卡片带画布/知识库/多租户/模型管理徽章;进入 Step 3 端点预填 `http://localhost:9091` |
+| 关联手册 | §2、§3.1;`docs/wizard-ent-sso-mode-manual.md` §3.1 |
+| 步骤 | 1. 点选「企业版（SSO模式）」;2. 下一步 |
+| 预期 | SSO 模式卡带画布/知识库/多租户/模型管理徽章及 SSO 标识;进入 Step 3 端点预填 `http://localhost:9091` 且出现强制 SSO 配置面 |
 | 截图 | `TC-WIZSSO-01-03.png` |
+
+> 回归修订日期:2026-11-23:选型改为企业双卡首项 SSO 模式。
