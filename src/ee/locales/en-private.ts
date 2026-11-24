@@ -13,6 +13,8 @@ export default {
         wizard: {
           title: 'Setup Wizard',
           subtitle: 'Connect your first harness backend',
+          // wizard-ent-sso-mode v1.3: SSO 模式走独立流程(只配置统一认证)
+          subtitleSso: 'Set up unified sign-in',
           step: {
             welcome: 'Welcome',
             selectType: 'Select Type',
@@ -20,20 +22,33 @@ export default {
             probe: 'Probe',
             confirm: 'Confirm',
             done: 'Done',
+            ssoSetup: 'Unified sign-in',
+            verify: 'Verify',
           },
           welcome: {
             title: 'Welcome to Setup',
             description:
-              'This wizard guides you through connecting your first harness backend. You can configure Intellect Community, Intellect Enterprise, or other OpenAI-compatible backends.',
+              'This wizard guides you through first-time setup: sign in to the enterprise edition with unified authentication (SSO) or with member passwords, or connect Intellect Community, HERMES, AgentScope and other backends.',
             steps:
-              'You will: select a backend type → enter connection info → probe → confirm → done.',
-            note: 'Token is sent over HTTPS only. Response will not include the plaintext token; instead an .env snippet is provided for persistence.',
+              'You will: select a type → fill in the corresponding settings → verify → confirm → done.',
+            note: 'Credentials are sent over HTTPS only and never echoed back. Anything that must go into deployment configuration is provided as an .env snippet.',
             start: 'Start Setup',
           },
           selectType: {
             title: 'Select Backend Type',
             description: 'Choose the harness backend platform you want to connect to.',
             defaultEndpoint: 'Default endpoint',
+            ssoCardHidden:
+              'An enterprise backend already exists, so SSO mode is not offered here. To adjust unified authentication, go to System → Unified authentication settings.',
+          },
+          types: {
+            enterpriseSso: 'Enterprise (SSO mode)',
+            enterprisePassword: 'Enterprise (non-SSO mode)',
+            enterpriseSsoDesc:
+              'Sign in with unified authentication. Only the authentication gateway and sign-in details are needed',
+            // v1.3 D2: the non-SSO card only talks about password sign-in
+            enterprisePasswordDesc: 'Sign in with member password',
+            passwordBadge: 'Password',
           },
           cap: {
             canvas: 'Canvas',
@@ -79,31 +94,73 @@ export default {
             envSnippet: '.env snippet (copy to your .env file)',
             error: 'Error',
             submit: 'Create Backend',
-            // wizard-sso (P2): SSO summary row
+            // wizard-sso (P2) + v1.3: SSO-mode summary (no "enabled" concept; SSO mode implies it)
             sso: 'Unified authentication (SSO)',
-            ssoEnabled: 'Enabled',
             ssoAllChannels: 'All channels (unfiltered)',
+            gateway: 'Authentication gateway',
+            ssoDescription:
+              'Review the unified sign-in settings. On confirm, unified sign-in is turned on and the enterprise gateway is registered automatically.',
+            ssoPendingHint:
+              'Unified sign-in is not active yet. The completion page lists the environment variables to add to your deployment configuration; sign-in channels appear on the login page only after they are written and the BFF is restarted.',
+            ssoOn: 'On',
+            ssoOff: 'Off',
+            submitSso: 'Finish setup',
           },
           done: {
             title: 'Setup Complete',
             description:
               'Backend has been configured successfully. You can now start using the platform.',
+            ssoDescription:
+              'Unified sign-in is configured and the enterprise gateway has been registered. Add the environment variables below to your deployment configuration and restart the service.',
+            ssoEnvPending:
+              'Unified sign-in is not active yet: add the BFF_SSO_* variables below to the deployment .env and restart the BFF. Only then will sign-in channels appear on the login page.',
             goHome: 'Go to Home',
             warnings: 'Notes',
           },
+          // wizard-ent-sso-mode v1.3: SSO 模式第 3 步——只采集认证网关与统一认证信息
+          ssoSetup: {
+            title: 'Unified sign-in settings',
+            description:
+              'Enter the authentication gateway and unified sign-in details. The enterprise backend is registered automatically; there is nothing else to configure.',
+            gateway: 'Authentication gateway',
+            gatewayHint:
+              'Use the gateway base URL (not the web UI address). Login channels and tenant details are read from here.',
+            serverKey: 'Gateway service key',
+            serverKeyHint:
+              'The gateway API_SERVER_KEY. Sign-in callback exchange and login requests are authenticated with it. Sent over HTTPS only and never echoed back.',
+            verify: 'Verify and continue',
+          },
+          // wizard-ent-sso-mode v1.3: SSO 模式第 4 步——验证四项结论
+          verify: {
+            title: 'Verify',
+            description:
+              'Checking the authentication gateway, the gateway service key and the unified sign-in service.',
+            gatewayOk: 'Authentication gateway is reachable',
+            gatewayFailed: 'Authentication gateway is unreachable',
+            tenantDetected: 'Enterprise tenant ID detected',
+            tenantManual:
+              'The enterprise tenant ID could not be detected automatically. Enter it manually.',
+            keyValid: 'Gateway service key is valid',
+            keyInvalid: 'Gateway service key is invalid',
+            keyUnknown:
+              'The gateway exposes no endpoint to check the key; it will be verified when first used.',
+            providersOk: 'Unified sign-in service is available',
+            providersFailed: 'Unified sign-in service is unreachable',
+            providersNoChannel:
+              'The gateway has no login channel configured yet. You can add one later in System → Unified authentication settings.',
+          },
           // wizard-sso (P2): unified authentication (SSO) configuration block
           sso: {
-            enable: 'Enable unified authentication (SSO) login',
-            skipHint:
-              'You can skip this and configure it later in system settings. Once enabled, end users can sign in via unified authentication without a password.',
+            title: 'Unified authentication (SSO)',
+            requiredHint:
+              'After finishing, write the environment variables into the deployment configuration and restart the BFF. Only then will unified sign-in channels appear on the login page.',
             channels: 'Login channels',
             fetchChannels: 'Fetch login channels',
             needEndpoint:
-              'Enter the enterprise gateway endpoint first, then fetch login channels.',
-            fetchFailed:
-              'Failed to fetch login channels. Retry later or skip SSO.',
+              'Enter the authentication gateway address first, then fetch login channels.',
+            fetchFailed: 'Failed to fetch login channels. Retry later.',
             noChannels:
-              'No login channels are available yet from the unified authentication service. Configure later or skip SSO.',
+              'No login channels are available yet from the unified authentication service. You can add them later in System → Unified authentication settings.',
             misconfigured: 'Misconfigured, unavailable',
             whitelistHint:
               'Select channels to show on the login page. Select none to show all available channels.',
@@ -127,6 +184,7 @@ export default {
           },
           toast: {
             success: 'Backend created successfully',
+            successSso: 'Unified sign-in setup is complete',
             failed: 'Setup failed',
           },
         },

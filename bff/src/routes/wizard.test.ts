@@ -209,6 +209,32 @@ describe('wizard 路由 (B-3)', () => {
       expect(body.backendCount).toBe(1);
     });
 
+    it('hasEnterpriseBackend:configs 含企业后端(即使 token 未就绪)时为 true(v1.3 D5)', async () => {
+      stores = createMockStores(
+        [{ ...ragConfig, id: 'intellect-enterprise-default', type: 'intellect-enterprise' }],
+        [],
+        [],
+      );
+      app = createApp(stores);
+
+      const res = await app.request('/admin/wizard/status', {
+        headers: { Authorization: 'Bearer test' },
+      });
+      const body = await res.json();
+      expect(body.hasEnterpriseBackend).toBe(true);
+    });
+
+    it('hasEnterpriseBackend:仅有非企业后端时为 false(v1.3 D5)', async () => {
+      stores = createMockStores([ragConfig], [ragBackend], [tenant1]);
+      app = createApp(stores);
+
+      const res = await app.request('/admin/wizard/status', {
+        headers: { Authorization: 'Bearer test' },
+      });
+      const body = await res.json();
+      expect(body.hasEnterpriseBackend).toBe(false);
+    });
+
     // 修复回归:configs 中有条目但 token 未就绪(对应 env var 未设置)时,
     // list() 返回空数组,needsSetup 应为 true,触发向导而非进入登录页。
     it('configs 有条目但无就绪 backend 时返回 needsSetup=true(token 未就绪)', async () => {
@@ -267,6 +293,16 @@ describe('wizard 路由 (B-3)', () => {
         expect(opt.defaultEndpoint).toMatch(/^http/);
         expect(opt.label).toBeTruthy();
       }
+    });
+    it('v1.3 D2:非 SSO 卡说明不再提 SSO,SSO 卡说明保留', async () => {
+      const res = await app.request('/admin/wizard/backend-types', {
+        headers: { Authorization: 'Bearer test' },
+      });
+      const body = await res.json();
+      const ssoCard = body.options.find((o: { optionId: string }) => o.optionId === 'enterprise-sso');
+      const passwordCard = body.options.find((o: { optionId: string }) => o.optionId === 'enterprise-password');
+      expect(ssoCard.description).toMatch(/SSO/);
+      expect(passwordCard.description).not.toMatch(/SSO/);
     });
   });
 
@@ -499,7 +535,26 @@ describe('wizard 路由 (B-3)', () => {
       expect(body.providers).toHaveLength(0);
     });
 
-    it('U-17: setupProfile=enterprise-sso 且无 sso.enabled → 400', async () => {
+    it('U-17: setupProfile=enterprise-sso 且无 sso → 400', async () => {
+      const { sso: _sso, ...rest } = enterpriseSetupBody;
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...rest, setupProfile: 'enterprise-sso' }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('enterprise-sso');
+    });
+
+    it('U-17b(v1.3): SSO 模式不传 sso.enabled 也视为启用(启用状态由模式推定)', async () => {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+      vi.mocked(getLoginProviders).mockResolvedValue({
+        providers: [
+          { id: 'intellect-auth', displayName: '统一认证', icon: 'sso', clientId: 'c', authorizeUrl: 'u', scopes: 's' },
+        ],
+        misconfigured: [],
+      });
       const res = await app.request('/admin/wizard/setup', {
         method: 'POST',
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
@@ -509,9 +564,9 @@ describe('wizard 路由 (B-3)', () => {
           sso: { ...enterpriseSetupBody.sso, enabled: false },
         }),
       });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.error).toContain('enterprise-sso');
+      expect(body.envSnippet).toContain('BFF_SSO_ENABLED=true');
     });
 
     it('U-18: setupProfile=enterprise-password + sso.enabled → 400', async () => {
@@ -543,7 +598,8 @@ describe('wizard 路由 (B-3)', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.success).toBe(true);
-      expect(body.envSnippet).not.toContain('BFF_SSO_ENABLED');
+      // v1.3 D4:凭据已存入 vault,不再输出任何 token 环境变量行
+      expect(body.envSnippet).toBeUndefined();
     });
 
     it('U-20: setupProfile=enterprise-sso + 合法 sso → 200 且含待写入 warning', async () => {
@@ -629,6 +685,159 @@ describe('wizard 路由 (B-3)', () => {
   });
 
   // -------------------------------------------------------------------------
+  // wizard-ent-sso-mode v1.3:SSO 模式只采集统一认证信息,企业后端由系统自动登记
+  // -------------------------------------------------------------------------
+
+  describe('wizard-ent-sso-mode v1.3(SSO 模式 setup)', () => {
+    const SECRET = 's'.repeat(48);
+    const TENANT_ID = '0123456789abcdef0123456789abcdef';
+    const GATEWAY = 'http://x.example:9091';
+    /** SSO 模式的最小请求:不带 name / credentialKind / intellectTenantId,也不带 sso.enabled */
+    const ssoMinimalBody = {
+      type: 'intellect-enterprise',
+      endpoint: GATEWAY,
+      token: 'server-key',
+      setupProfile: 'enterprise-sso',
+      sso: {
+        publicOrigin: 'https://wizard.example.com',
+        stateSecret: SECRET,
+        providers: ['intellect-auth'],
+        silentRelogin: true,
+      },
+    };
+
+    function mockHealthyGateway() {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+      vi.mocked(fetchTenantInfo).mockResolvedValue({ tenant_id: TENANT_ID });
+      vi.mocked(getLoginProviders).mockResolvedValue({
+        providers: [
+          { id: 'intellect-auth', displayName: '统一认证', icon: 'sso', clientId: 'c', authorizeUrl: 'u', scopes: 's' },
+        ],
+        misconfigured: [],
+      });
+    }
+
+    async function callSetup(body: Record<string, unknown>) {
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return { status: res.status, body: await res.json() };
+    }
+
+    it('W-01: 不传名称/凭据类型/租户 ID 也能完成;租户 ID 自动识别,后端以默认名登记', async () => {
+      mockHealthyGateway();
+      const { status, body } = await callSetup(ssoMinimalBody);
+      expect(status).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.backendId).toBe('intellect-enterprise-default');
+      expect(body.envSnippet).toContain('BFF_SSO_ENABLED=true');
+      // D4:服务密钥已入 vault,片段里没有 token 环境变量行
+      expect(body.envSnippet).not.toContain('HARNESS_');
+
+      const saved = stores.saveConfigMock.mock.calls[0][0] as HarnessBackendConfig[];
+      expect(saved[0]).toMatchObject({
+        id: 'intellect-enterprise-default',
+        type: 'intellect-enterprise',
+        endpoint: GATEWAY,
+        credentialKind: 'bearer-token',
+        intellectTenantId: TENANT_ID,
+      });
+      expect(stores.setCredentialsMock).toHaveBeenCalledWith('intellect-enterprise-default', {
+        kind: 'bearer-token',
+        token: 'server-key',
+      });
+      // Token Security:落盘配置与响应都不含服务密钥/引导密钥明文
+      expect(JSON.stringify(saved)).not.toContain('server-key');
+      expect(JSON.stringify(body)).not.toContain('server-key');
+      expect(JSON.stringify(body)).not.toContain(SECRET);
+    });
+
+    it('W-02: 缺网关服务密钥 → 400,不落盘', async () => {
+      const { token: _token, ...withoutToken } = ssoMinimalBody;
+      const { status, body } = await callSetup(withoutToken);
+      expect(status).toBe(400);
+      expect(body.error).toContain('网关服务密钥');
+      expect(stores.saveConfigMock).not.toHaveBeenCalled();
+    });
+
+    it('W-03: 网关未返回租户 ID 且未手填 → 400,不落盘', async () => {
+      vi.mocked(fetchTenantInfo).mockResolvedValue(null);
+      const { status, body } = await callSetup(ssoMinimalBody);
+      expect(status).toBe(400);
+      expect(body.error).toContain('无法自动识别企业租户 ID');
+      expect(stores.saveConfigMock).not.toHaveBeenCalled();
+    });
+
+    it('W-04: 自动识别拿不到租户 ID 时,手填 intellectTenantId 可完成(D7)', async () => {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+      // 网关侧读不到租户 ID(返回空);持久化前的一致性校验同样取不到,按既有口径降级放行
+      vi.mocked(fetchTenantInfo).mockResolvedValue({ tenant_id: '' });
+      vi.mocked(getLoginProviders).mockResolvedValue({ providers: [], misconfigured: [] });
+
+      const { status } = await callSetup({ ...ssoMinimalBody, intellectTenantId: TENANT_ID });
+      expect(status).toBe(200);
+      const saved = stores.saveConfigMock.mock.calls[0][0] as HarnessBackendConfig[];
+      expect(saved[0].intellectTenantId).toBe(TENANT_ID);
+    });
+
+    it('W-05: 非 SSO 模式显式携带 sso(即使 enabled=false)→ 400(D2)', async () => {
+      const { status, body } = await callSetup({
+        ...ssoMinimalBody,
+        name: 'e2e-password-with-sso',
+        intellectTenantId: TENANT_ID,
+        setupProfile: 'enterprise-password',
+        sso: { enabled: false, publicOrigin: 'https://wizard.example.com', stateSecret: SECRET },
+      });
+      expect(status).toBe(400);
+      expect(body.error).toContain('enterprise-password');
+      expect(stores.saveConfigMock).not.toHaveBeenCalled();
+    });
+
+    it('W-06: 旧客户端未传 profile 且 sso.enabled=false → 按非 SSO 模式放行,无 SSO 输出', async () => {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+      const { setupProfile: _profile, ...rest } = ssoMinimalBody;
+      const { status, body } = await callSetup({
+        ...rest,
+        name: 'e2e-legacy-disabled-sso',
+        credentialKind: 'bearer-token',
+        intellectTenantId: TENANT_ID,
+        sso: { enabled: false, publicOrigin: 'https://wizard.example.com', stateSecret: SECRET },
+      });
+      expect(status).toBe(200);
+      expect(body.envSnippet).toBeUndefined();
+      expect(body.warnings.some((w: string) => w.includes('未传 setupProfile'))).toBe(true);
+    });
+
+    it('W-07: 凭据未能写入 vault(无 vault)时,envSnippet 保留 HARNESS_<ID>_TOKEN 行', async () => {
+      stores = createMockStores();
+      stores.vault = undefined as unknown as ITokenVault;
+      app = createApp(stores);
+
+      const { status, body } = await callSetup({
+        name: 'No Vault',
+        type: 'intellect-community',
+        endpoint: 'http://localhost:9380',
+        credentialKind: 'bearer-token',
+        token: 'env-fallback-token',
+      });
+      expect(status).toBe(200);
+      expect(body.envSnippet).toContain('HARNESS_NO_VAULT_TOKEN=<your-token>');
+      expect(JSON.stringify(body)).not.toContain('env-fallback-token');
+    });
+
+    it('W-08: 未知 setupProfile → 400', async () => {
+      const { status, body } = await callSetup({
+        ...ssoMinimalBody,
+        setupProfile: 'enterprise-unknown',
+      });
+      expect(status).toBe(400);
+      expect(body.error).toContain('未知 setupProfile');
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // POST /admin/wizard/probe
   // -------------------------------------------------------------------------
 
@@ -698,6 +907,189 @@ describe('wizard 路由 (B-3)', () => {
       expect(body.error).toContain('网关基址');
       expect(body.error).toContain('WebUI');
       vi.mocked(fetchTenantInfo).mockResolvedValue(null);
+    });
+
+    describe('SSO 模式验证(wizard-ent-sso-mode v1.3)', () => {
+      const GATEWAY = 'http://x.example:9091';
+      const TENANT_ID = '0123456789abcdef0123456789abcdef';
+      let seq = 0;
+
+      function mockGateway(tenantId: string | null) {
+        vi.mocked(fetchTenantInfo).mockResolvedValue(
+          tenantId === null ? null : { tenant_id: tenantId },
+        );
+      }
+
+      /** 依次给出各受保护端点的响应状态;最后一个状态重复使用 */
+      function mockKeyCheck(...statuses: number[]) {
+        const queue = [...statuses];
+        vi.mocked(safeFetch).mockImplementation(async () => {
+          const status = queue.length > 1 ? queue.shift() : queue[0];
+          return new Response('{}', { status });
+        });
+      }
+
+      function mockProviders(count: number) {
+        vi.mocked(getLoginProviders).mockResolvedValue({
+          providers: Array.from({ length: count }, (_, i) => ({
+            id: `provider-${i}`,
+            displayName: `渠道 ${i}`,
+            icon: 'sso',
+            clientId: 'c',
+            authorizeUrl: 'u',
+            scopes: 's',
+          })),
+          misconfigured: [],
+        });
+      }
+
+      /** 独立 forwarded-for 键:probe 限流器按 IP 计数,避免挤占其他用例的 'unknown' 额度 */
+      async function probeSso(overrides: Record<string, unknown> = {}) {
+        vi.stubEnv('BFF_TRUST_PROXY', 'true');
+        try {
+          const res = await app.request('/admin/wizard/probe', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-forwarded-for': `e2e-probe-sso-${++seq}`,
+            },
+            body: JSON.stringify({
+              type: 'intellect-enterprise',
+              endpoint: GATEWAY,
+              token: 'server-key',
+              setupProfile: 'enterprise-sso',
+              ...overrides,
+            }),
+          });
+          return { status: res.status, body: await res.json() };
+        } finally {
+          vi.unstubAllEnvs();
+        }
+      }
+
+      it('W-P10: 请求键为 snake_case(setup_profile)时同样走 SSO 验证分支', async () => {
+        mockGateway(TENANT_ID);
+        mockKeyCheck(200);
+        mockProviders(2);
+        vi.stubEnv('BFF_TRUST_PROXY', 'true');
+        try {
+          const res = await app.request('/admin/wizard/probe', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-forwarded-for': `e2e-probe-sso-${++seq}`,
+            },
+            // 前端共享 axios 拦截器会把 setupProfile 转为 setup_profile
+            body: JSON.stringify({
+              type: 'intellect-enterprise',
+              endpoint: GATEWAY,
+              token: 'server-key',
+              setup_profile: 'enterprise-sso',
+            }),
+          });
+          expect(res.status).toBe(200);
+          const body = await res.json();
+          expect(body.healthy).toBe(true);
+          expect(body.sso).toMatchObject({ gatewayOk: true, keyValid: true, providersOk: true });
+        } finally {
+          vi.unstubAllEnvs();
+        }
+      });
+
+      afterEach(() => {
+        vi.mocked(safeFetch).mockReset();
+        vi.mocked(fetchTenantInfo).mockResolvedValue(null);
+        vi.mocked(getLoginProviders).mockReset();
+      });
+
+      it('W-P01: 四项全部通过 → healthy=true 并返回明细', async () => {
+        mockGateway(TENANT_ID);
+        mockKeyCheck(200);
+        mockProviders(2);
+        const { status, body } = await probeSso();
+        expect(status).toBe(200);
+        expect(body.healthy).toBe(true);
+        expect(body.sso).toEqual({
+          gatewayOk: true,
+          tenantId: TENANT_ID,
+          keyValid: true,
+          providersOk: true,
+          providerCount: 2,
+        });
+      });
+
+      it('W-P02: 网关不可达 → healthy=false + 网关基址防呆提示,不再校验密钥', async () => {
+        mockGateway(null);
+        const { body } = await probeSso();
+        expect(body.healthy).toBe(false);
+        expect(body.error).toContain('网关基址');
+        expect(body.sso).toMatchObject({ gatewayOk: false, tenantId: null, keyValid: null, providersOk: false });
+        expect(vi.mocked(safeFetch)).not.toHaveBeenCalled();
+      });
+
+      it('W-P03: 密钥被网关拒绝(401)→ keyValid=false,其余结论照常返回', async () => {
+        mockGateway(TENANT_ID);
+        mockKeyCheck(401);
+        mockProviders(1);
+        const { body } = await probeSso();
+        expect(body.healthy).toBe(false);
+        expect(body.error).toContain('服务密钥无效');
+        expect(body.sso).toMatchObject({ gatewayOk: true, keyValid: false, providersOk: true });
+      });
+
+      it('W-P04: 两处受保护端点都是 404 → keyValid=null(无法判定),不阻断', async () => {
+        mockGateway(TENANT_ID);
+        mockKeyCheck(404, 404);
+        mockProviders(1);
+        const { body } = await probeSso();
+        expect(body.healthy).toBe(true);
+        expect(body.sso.keyValid).toBeNull();
+        expect(vi.mocked(safeFetch).mock.calls.map((call) => String(call[0]))).toEqual([
+          `${GATEWAY}/v1/capabilities`,
+          `${GATEWAY}/v1/models`,
+        ]);
+      });
+
+      it('W-P05: /v1/capabilities 不存在但 /v1/models 认可密钥 → keyValid=true', async () => {
+        mockGateway(TENANT_ID);
+        mockKeyCheck(404, 200);
+        mockProviders(1);
+        const { body } = await probeSso();
+        expect(body.sso.keyValid).toBe(true);
+      });
+
+      it('W-P06: 网关未返回租户 ID → healthy=false 且 tenantId=null(前端回退手填),其余照常', async () => {
+        mockGateway('');
+        mockKeyCheck(200);
+        mockProviders(1);
+        const { body } = await probeSso();
+        expect(body.healthy).toBe(false);
+        expect(body.error).toContain('手动填写');
+        expect(body.sso).toMatchObject({ gatewayOk: true, tenantId: null, keyValid: true, providersOk: true });
+      });
+
+      it('W-P07: 统一认证服务不可达 → providersOk=false', async () => {
+        mockGateway(TENANT_ID);
+        mockKeyCheck(200);
+        vi.mocked(getLoginProviders).mockRejectedValue(new Error('provider list returned 500'));
+        const { body } = await probeSso();
+        expect(body.healthy).toBe(false);
+        expect(body.sso.providersOk).toBe(false);
+      });
+
+      it('W-P08: 未填服务密钥 → keyValid=false', async () => {
+        mockGateway(TENANT_ID);
+        mockProviders(1);
+        const { body } = await probeSso({ token: '' });
+        expect(body.sso.keyValid).toBe(false);
+        expect(body.error).toContain('网关服务密钥');
+      });
+
+      it('W-P09: 非 enterprise 类型携带 setupProfile → 400', async () => {
+        const { status, body } = await probeSso({ type: 'hermes' });
+        expect(status).toBe(400);
+        expect(body.error).toContain('setupProfile');
+      });
     });
 
     it('SSRF 拦截返回 400', async () => {
@@ -845,10 +1237,10 @@ describe('wizard 路由 (B-3)', () => {
       const body = await res.json();
       expect(body.success).toBe(true);
       expect(body.backendId).toBe('my-rag');
-      expect(body.envSnippet).toContain('HARNESS_MY_RAG_TOKEN');
+      // v1.3 D4:凭据已存入 vault,不再输出 HARNESS_MY_RAG_TOKEN 环境变量行
+      expect(body.envSnippet).toBeUndefined();
       // P1-3 修复:响应不含 token 明文
-      expect(body.envSnippet).not.toContain('secret-token-123');
-      expect(body.envSnippet).toContain('<your-token>');
+      expect(JSON.stringify(body)).not.toContain('secret-token-123');
 
       // saveConfig 被调用
       expect(stores.saveConfigMock).toHaveBeenCalledTimes(1);
@@ -890,7 +1282,8 @@ describe('wizard 路由 (B-3)', () => {
       expect(JSON.stringify(savedConfigs)).not.toContain('plaintext-secret');
       // P1-3 修复:响应体也不含 token 明文(包括 envSnippet)
       expect(text).not.toContain('plaintext-secret');
-      expect(text).toContain('<your-token>');
+      // v1.3 D4:凭据已入 vault,响应不再带 token 环境变量占位行
+      expect(text).not.toContain('<your-token>');
     });
 
     it('id 重复时返回 409', async () => {
@@ -964,7 +1357,7 @@ describe('wizard 路由 (B-3)', () => {
       expect(stores.backendStore.setCanvasBinding).not.toHaveBeenCalled();
       // envSnippet 无 RAG 行
       const body = await res.json();
-      expect(body.envSnippet).not.toContain('rag');
+      expect(body.envSnippet ?? '').not.toContain('rag');
       // warnings 含 RAG 延后提示(X-04)
       expect(
         (body.warnings as string[]).some((w) => w.includes('RAG 插件未配置')),
@@ -1200,8 +1593,8 @@ describe('wizard 路由 (B-3)', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.backendId).toBe('auto-gen-var');
-      // 命名规则升级为 HARNESS_<ID>_TOKEN
-      expect(body.envSnippet).toContain('HARNESS_AUTO_GEN_VAR_TOKEN');
+      // 命名规则升级为 HARNESS_<ID>_TOKEN(凭据已入 vault,片段里不再出现,以持久化配置为准)
+      expect(body.envSnippet).toBeUndefined();
 
       const savedConfigs = stores.saveConfigMock.mock.calls[0][0] as HarnessBackendConfig[];
       expect(savedConfigs[0].adminTokenEnvVar).toBe('HARNESS_AUTO_GEN_VAR_TOKEN');
@@ -1231,8 +1624,8 @@ describe('wizard 路由 (B-3)', () => {
       const savedConfigs = stores.saveConfigMock.mock.calls[0][0] as HarnessBackendConfig[];
       expect(savedConfigs[0].adminTokenEnvVar).toBe('HARNESS_IGNORE_VAR_TOKEN');
       expect(savedConfigs[0].adminTokenEnvVar).not.toBe('FRONTEND_INJECTED_VAR');
-      expect(body.envSnippet).toContain('HARNESS_IGNORE_VAR_TOKEN');
-      expect(body.envSnippet).not.toContain('FRONTEND_INJECTED_VAR');
+      expect(body.envSnippet).toBeUndefined();
+      expect(JSON.stringify(body)).not.toContain('FRONTEND_INJECTED_VAR');
       // warn 被记录,包含被忽略的值
       expect(warnSpy).toHaveBeenCalledTimes(1);
       expect(warnSpy.mock.calls[0][0]).toContain('FRONTEND_INJECTED_VAR');

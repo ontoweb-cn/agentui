@@ -40,6 +40,8 @@ export interface WizardStatusResponse {
   needsSetup: boolean;
   bootstrapEnabled: boolean;
   backendCount: number;
+  /** 已存在企业版后端配置(含 token 未就绪);"新增后端"场景据此隐藏 SSO 模式卡 */
+  hasEnterpriseBackend: boolean;
 }
 
 /** wizard-ent-sso-mode:企业双卡 profile(与 BFF 同步) */
@@ -67,12 +69,27 @@ export interface WizardProbeRequest {
   token?: string;
   email?: string;
   password?: string;
+  /** wizard-ent-sso-mode v1.3:enterprise-sso 时走 SSO 模式验证分支 */
+  setupProfile?: WizardSetupProfile;
+}
+
+/** wizard-ent-sso-mode v1.3:SSO 模式验证的四项结论(第 4 步逐项展示) */
+export interface WizardProbeSso {
+  gatewayOk: boolean;
+  /** 网关返回的实例级租户 ID;null = 网关可达但未返回,需手填 */
+  tenantId: string | null;
+  /** 网关服务密钥是否通过校验;null = 无法判定,不阻断 */
+  keyValid: boolean | null;
+  providersOk: boolean;
+  providerCount?: number;
 }
 
 export interface WizardProbeResponse {
   healthy: boolean;
   capabilities?: HarnessCapabilities;
   error?: string;
+  /** 仅 SSO 模式验证返回 */
+  sso?: WizardProbeSso;
 }
 
 /**
@@ -81,7 +98,8 @@ export interface WizardProbeResponse {
  * 为单一裁决点,向导保持非阻塞;此处仅做结构校验。
  */
 export interface WizardSsoSettings {
-  enabled: boolean;
+  /** 兼容字段:SSO 模式下由 BFF 推定为 true,前端不传 */
+  enabled?: boolean;
   publicOrigin: string;
   /** 客户端生成的随机密钥(≥32 字符);响应 envSnippet 永以 <your-secret> 占位 */
   stateSecret?: string;
@@ -100,8 +118,9 @@ export interface WizardSetupRequest {
   email?: string;
   password?: string;
   adminTokenEnvVar?: string;
+  /** 企业版实例级租户 ID;SSO 模式下可缺省,由 BFF 从网关自动识别(识别不到时手填) */
   intellectTenantId?: string;
-  /** wizard-ent-sso-mode:企业双卡 */
+  /** wizard-ent-sso-mode:企业双卡。SSO 模式下 name / credentialKind 亦可缺省 */
   setupProfile?: WizardSetupProfile;
   defaultForTenant?: boolean;
   /** wizard-sso(P2): 统一认证配置(仅 enterprise-sso;明文 secret 仅存在于请求期,不落盘) */
