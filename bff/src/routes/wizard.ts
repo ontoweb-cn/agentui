@@ -25,6 +25,7 @@ import type { IAdapterRegistry } from '../services/adapter-registry-types';
 import type { ITokenVault } from '../services/token-vault';
 import { safeFetch, isUrlSafe, SSRF_PRIVATE_IP_HINT } from '../services/ssrf-guard';
 import { validateTenantConfigs, fetchTenantInfo } from '../services/tenant-validator';
+import type { TenantInfoResponse } from '../services/tenant-validator';
 import { BootstrapTokenManager } from '../services/bootstrap-token';
 // wizard-sso(P2):渠道拉取与 SSO 配置加载(仅结构校验用;https 强制仍由 sso-config 启动 fail-fast 裁决)
 import { getLoginProviders } from '../services/sso-providers';
@@ -32,6 +33,13 @@ import { loadSsoConfig } from '../services/sso-config';
 
 /** §9 S2:写入 envSnippet / 白名单前仅允许安全 provider id(防换行注入 .env) */
 const SSO_PROVIDER_ID_RE = /^[a-zA-Z0-9_-]+$/;
+/** 企业版实例级租户 ID(Rust 版网关要求 32 位 hex) */
+const TENANT_ID_RE = /^[0-9a-fA-F]{32}$/;
+/** SSO 模式自动登记企业后端时使用的默认名称(backendId = intellect-enterprise-default) */
+const SSO_DEFAULT_BACKEND_NAME = 'Intellect Enterprise Default';
+/** 网关基址防呆:WebUI 页面地址与网关基址都能通过 URL 安全校验,但前者没有 /api/tenant/info */
+const GATEWAY_BASE_HINT =
+  '无法访问 /api/tenant/info 端点(请确认 endpoint 填写的是网关基址,如 https://<host>/intellect-gateway,而非 WebUI 页面地址)';
 
 export function sanitizeSsoProviderIds(ids: string[]): {
   ok: string[];
@@ -62,6 +70,7 @@ import type {
   WizardSetupRequest,
   WizardSetupResponse,
   WizardSetupProfile,
+  WizardProbeSso,
   WizardSsoProvidersResponse,
 } from '../types/wizard';
 
@@ -110,7 +119,8 @@ const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
     type: 'intellect-enterprise',
     setupProfile: 'enterprise-password',
     label: 'Enterprise (non-SSO mode)',
-    description: 'Sign in with member password; enable SSO later if needed',
+    // wizard-ent-sso-mode v1.3 D2:非 SSO 卡只讲密码登录,不再提"可稍后开启 SSO"
+    description: 'Sign in with member password',
     defaultEndpoint: 'http://localhost:9091',
     capabilities: { ...ENTERPRISE_CAPABILITIES },
     credentialKind: 'bearer-token',
@@ -150,8 +160,23 @@ const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
 // 分支)补配,capabilities 端点对未绑定 RAG 的租户自动降级(capabilities.ts L119-129)。
 // intellect-rag 仍不是独立向导类型(setup 保留显式拒绝,给出可读文案)。
 
-function getOptionForType(type: BackendType): WizardBackendTypeOption | undefined {
-  return BACKEND_TYPE_OPTIONS.find((o) => o.type === type);
+/**
+ * 向导选项查找。企业双卡共享同一个 type,必须再按 setupProfile 区分(§9 Q4);
+ * 缺省 profile 按非 SSO 卡处理,与 setup 的缺省兼容口径一致。
+ */
+function getWizardOption(
+  type: BackendType,
+  setupProfile?: WizardSetupProfile,
+): WizardBackendTypeOption | undefined {
+  const profile =
+    type === 'intellect-enterprise'
+      ? (setupProfile ?? 'enterprise-password')
+      : undefined;
+  return BACKEND_TYPE_OPTIONS.find(
+    (o) =>
+      o.type === type &&
+      (o.type !== 'intellect-enterprise' || o.setupProfile === profile),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -174,10 +199,16 @@ wizardRoutes.get('/admin/wizard/status', (c) => {
   // 避免出现"Backend 实际未配置却进入登录页"的逻辑错误。
   const readyBackends = store.list();
   const needsSetup = readyBackends.length === 0;
+  // wizard-ent-sso-mode v1.3 D5:按"全部配置"判断是否已有企业后端(含 token 未就绪的),
+  // 供向导在"新增后端"场景隐藏 SSO 模式卡
+  const hasEnterpriseBackend = (store.listConfigs?.() ?? []).some(
+    (cfg) => cfg.type === 'intellect-enterprise',
+  );
   return c.json({
     needsSetup,
     bootstrapEnabled: process.env.BOOTSTRAP_ENABLED !== 'false',
     backendCount: readyBackends.length,
+    hasEnterpriseBackend,
   } satisfies WizardStatusResponse);
 });
 
@@ -283,6 +314,91 @@ function getClientIp(c: Context): string {
 }
 
 // ---------------------------------------------------------------------------
+// wizard-ent-sso-mode v1.3:SSO 模式验证
+// ---------------------------------------------------------------------------
+
+/** 受 API_SERVER_KEY 保护的网关端点,依次尝试;首个非 404 的响应即作为判据 */
+const SERVER_KEY_PROBE_PATHS = ['/v1/capabilities', '/v1/models'];
+
+/**
+ * 校验网关服务密钥:200 = 有效,401/403 = 无效。
+ * 其余(端点不存在 404、5xx、网络错误)= unknown,不阻断——不同网关实现的
+ * 受保护端点并不一致,向导只对"网关明确拒绝"下结论。
+ */
+async function verifyEnterpriseServerKey(
+  endpoint: string,
+  serverKey: string,
+): Promise<'valid' | 'invalid' | 'unknown'> {
+  for (const path of SERVER_KEY_PROBE_PATHS) {
+    try {
+      const resp = await safeFetch(`${endpoint}${path}`, {
+        headers: { Authorization: `Bearer ${serverKey}` },
+        timeoutMs: 5000,
+      });
+      if (resp.ok) return 'valid';
+      if (resp.status === 401 || resp.status === 403) return 'invalid';
+      if (resp.status !== 404) return 'unknown';
+    } catch {
+      return 'unknown';
+    }
+  }
+  return 'unknown';
+}
+
+/**
+ * SSO 模式验证(向导第 4 步),一次给出网关 / 租户 / 密钥 / 认证服务四项结论。
+ * 租户 ID 缺失不算失败:前端据 tenantId=null 回退为手填,由 healthy=false + error 说明,
+ * 其余结论照常返回。
+ */
+async function verifyEnterpriseSso(
+  endpoint: string,
+  tenantInfo: TenantInfoResponse | null,
+  serverKey: string | undefined,
+): Promise<WizardProbeResponse> {
+  const sso: WizardProbeSso = {
+    gatewayOk: false,
+    tenantId: null,
+    keyValid: null,
+    providersOk: false,
+  };
+  if (!tenantInfo) {
+    return { healthy: false, error: GATEWAY_BASE_HINT, sso };
+  }
+  sso.gatewayOk = true;
+  sso.tenantId = tenantInfo.tenant_id?.trim() || null;
+
+  let error: string | undefined;
+  if (!sso.tenantId) {
+    error = '网关未返回企业租户 ID,请手动填写(32 位 hex)。';
+  }
+
+  if (!serverKey) {
+    sso.keyValid = false;
+    error ??= '请填写网关服务密钥。';
+  } else {
+    const verdict = await verifyEnterpriseServerKey(endpoint, serverKey);
+    sso.keyValid = verdict === 'unknown' ? null : verdict === 'valid';
+    if (sso.keyValid === false) {
+      error ??= '网关服务密钥无效(网关返回 401/403)。';
+    }
+  }
+
+  try {
+    // 不过滤渠道:这里要的是网关侧可用渠道总数,而非当前 env 白名单下的子集
+    const selection = await getLoginProviders(endpoint, 'wizard-probe', {
+      ...loadSsoConfig(),
+      providers: null,
+    });
+    sso.providersOk = true;
+    sso.providerCount = selection.providers.length;
+  } catch {
+    error ??= '统一认证服务不可达,请稍后再试。';
+  }
+
+  return { healthy: !error, ...(error ? { error } : {}), sso };
+}
+
+// ---------------------------------------------------------------------------
 // POST /admin/wizard/probe — 探测后端连接
 // 公开端点(首次安装时无 admin token),IP 速率限制 + SSRF 防护
 // M3 修复:按 credentialKind 区分鉴权头
@@ -299,13 +415,21 @@ wizardRoutes.post('/admin/wizard/probe', async (c) => {
     );
   }
 
-  const body = await c.req.json<WizardProbeRequest>().catch(() => null);
-  if (!body || !body.endpoint) {
+  const rawBody = await c.req.json<Record<string, unknown>>().catch(() => null);
+  if (!rawBody || !rawBody.endpoint) {
     return c.json(
       { healthy: false, error: 'endpoint is required' } satisfies WizardProbeResponse,
       400,
     );
   }
+
+  // 兼容前端 request 拦截器的 snake_case 转换(setupProfile → setup_profile;
+  // 与 setup 路由的归一化同源,见下方 setup handler 注释)
+  const toCamel = (s: string): string =>
+    s.replace(/_([a-z])/g, (_, ch: string) => ch.toUpperCase());
+  const body = Object.fromEntries(
+    Object.entries(rawBody).map(([k, v]) => [toCamel(k), v]),
+  ) as unknown as WizardProbeRequest;
 
   // SSRF 预校验
   const safe = await isUrlSafe(body.endpoint);
@@ -317,7 +441,24 @@ wizardRoutes.post('/admin/wizard/probe', async (c) => {
   }
 
   const endpoint = body.endpoint.replace(/\/$/, '');
-  const option = getOptionForType(body.type);
+  // setupProfile 仅企业双卡可用;SSO 模式验证分支依赖它,故先于选项查找校验
+  // (请求体来自外部,按 unknown 校验取值)
+  const rawSetupProfile: unknown = body.setupProfile;
+  if (rawSetupProfile != null && rawSetupProfile !== '') {
+    if (body.type !== 'intellect-enterprise') {
+      return c.json(
+        { healthy: false, error: 'setupProfile 仅支持 intellect-enterprise 类型' } satisfies WizardProbeResponse,
+        400,
+      );
+    }
+    if (rawSetupProfile !== 'enterprise-sso' && rawSetupProfile !== 'enterprise-password') {
+      return c.json(
+        { healthy: false, error: `未知 setupProfile: ${String(rawSetupProfile)}` } satisfies WizardProbeResponse,
+        400,
+      );
+    }
+  }
+  const option = getWizardOption(body.type, body.setupProfile);
   // D-02 修复(P1):未知/已下架类型(如 kag)显式拒绝,不再误走 /v1/models 探测。
   // 此前 option 仅用于回填 capabilities,未知 type 仍会探测并可"假成功"。
   if (!option) {
@@ -332,17 +473,15 @@ wizardRoutes.post('/admin/wizard/probe', async (c) => {
     // 该端点公开,返回 tenant_id 用于校验配置一致性
     if (body.type === 'intellect-enterprise') {
       const tenantInfo = await fetchTenantInfo(endpoint);
+      // wizard-ent-sso-mode v1.3:SSO 模式一次给出网关/租户/密钥/认证服务四项结论
+      if (body.setupProfile === 'enterprise-sso') {
+        return c.json(await verifyEnterpriseSso(endpoint, tenantInfo, body.token));
+      }
       if (!tenantInfo) {
         // 防呆提示(生产联调实测坑):WebUI 地址(如 …/intellect)与网关基址
         // (如 …/intellect-gateway)都会通过 URL 安全校验,但前者没有
         // /api/tenant/info——探测失败时显式引导,避免运维在错误基址上排查凭据
-        return c.json(
-          {
-            healthy: false,
-            error:
-              '无法访问 /api/tenant/info 端点(请确认 endpoint 填写的是网关基址,如 https://<host>/intellect-gateway,而非 WebUI 页面地址)',
-          } satisfies WizardProbeResponse,
-        );
+        return c.json({ healthy: false, error: GATEWAY_BASE_HINT } satisfies WizardProbeResponse);
       }
       if (!tenantInfo.tenant_id) {
         return c.json(
@@ -512,6 +651,104 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   const body = toCamelDeep(rawBody) as Record<string, unknown>;
   const req = body as unknown as WizardSetupRequest;
 
+  const ssoWarnings: string[] = [];
+
+  // setupProfile 只属于企业双卡;取值先校验,后续的 profile 解析与选项查找都依赖它
+  // (请求体来自外部,按 unknown 校验取值)
+  const rawSetupProfile: unknown = req.setupProfile;
+  if (rawSetupProfile != null && rawSetupProfile !== '') {
+    if (req.type !== 'intellect-enterprise') {
+      return c.json(
+        {
+          success: false,
+          error: 'setupProfile 仅支持 intellect-enterprise 类型',
+        } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+    if (rawSetupProfile !== 'enterprise-sso' && rawSetupProfile !== 'enterprise-password') {
+      return c.json(
+        {
+          success: false,
+          error: `未知 setupProfile: ${String(rawSetupProfile)}`,
+        } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+  }
+
+  // 企业 profile 解析(§8 R5:缺省兼容)。SSO 模式免填的后端字段依赖解析结果,
+  // 故先于基本校验。
+  let resolvedSetupProfile: WizardSetupProfile | undefined;
+  if (req.type === 'intellect-enterprise') {
+    if (req.setupProfile === 'enterprise-sso' || req.setupProfile === 'enterprise-password') {
+      resolvedSetupProfile = req.setupProfile;
+    } else if (req.sso?.enabled) {
+      resolvedSetupProfile = 'enterprise-sso';
+      ssoWarnings.push(
+        '未传 setupProfile:已按 sso.enabled 推断为 enterprise-sso;请显式传 setupProfile',
+      );
+    } else {
+      resolvedSetupProfile = 'enterprise-password';
+      ssoWarnings.push(
+        '未传 setupProfile:已默认 enterprise-password;请显式传 setupProfile',
+      );
+      // 旧客户端未启用时仍可能带 sso:{enabled:false}:视为未配置,
+      // 不按"非 SSO 模式拒绝 sso 配置"处理
+      if (req.sso) delete req.sso;
+    }
+  }
+
+  // wizard-ent-sso-mode v1.3:SSO 模式只采集统一认证信息,企业后端由系统自动登记——
+  // 名称与凭据类型取默认值,租户 ID 稍后从网关自动识别
+  if (resolvedSetupProfile === 'enterprise-sso') {
+    if (typeof req.name !== 'string' || !req.name.trim()) {
+      req.name = SSO_DEFAULT_BACKEND_NAME;
+    }
+    req.credentialKind ??= 'bearer-token';
+  }
+
+  // ---------------------------------------------------------------------------
+  // wizard-ent-sso-mode + wizard-sso(P2):setupProfile + SSO 结构校验
+  // https 强制仍由 sso-config 启动 fail-fast 裁决 —— 设计 §3.4 / §8 R4–R5、§10
+  // 输入形态类错误先于任何网络调用(租户自动识别)报出。
+  // ---------------------------------------------------------------------------
+
+  // v1.3 D2:非 SSO 模式不接受任何统一认证配置
+  if (resolvedSetupProfile === 'enterprise-password' && req.sso) {
+    return c.json(
+      {
+        success: false,
+        error: 'enterprise-password 模式不接受 sso 配置;统一认证请改用 enterprise-sso 模式',
+      } satisfies WizardSetupResponse,
+      400,
+    );
+  }
+
+  if (resolvedSetupProfile === 'enterprise-sso') {
+    if (!req.sso) {
+      return c.json(
+        {
+          success: false,
+          error: 'enterprise-sso 模式必须提供 sso 配置(publicOrigin/stateSecret 等)',
+        } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+    // 启用状态由模式推定:SSO 模式不存在"是否启用"的选项,客户端传值被忽略
+    req.sso.enabled = true;
+    // 网关服务密钥:回调兑换/登录等由 BFF 发往网关的请求都以此鉴权,缺了 SSO 走不通
+    if (!req.token) {
+      return c.json(
+        {
+          success: false,
+          error: 'enterprise-sso 模式必须提供网关服务密钥(token)',
+        } satisfies WizardSetupResponse,
+        400,
+      );
+    }
+  }
+
   // 基本校验
   if (!req.name || !req.type || !req.endpoint || !req.credentialKind) {
     return c.json(
@@ -535,13 +772,29 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   // m4 修复(P3):intellect-enterprise 的 intellectTenantId 校验(32 位 hex)
   // P3(wizard-sso):RAG 插件必填校验移除——RAG 由管理端补配,不再阻塞首装向导。
   if (req.type === 'intellect-enterprise') {
+    // SSO 模式不向用户采集租户 ID:从网关公开端点自动识别(设计 v1.3 §10 D7)
+    if (!req.intellectTenantId && resolvedSetupProfile === 'enterprise-sso') {
+      const detected = (await fetchTenantInfo(req.endpoint))?.tenant_id?.trim();
+      if (!detected || !TENANT_ID_RE.test(detected)) {
+        return c.json(
+          {
+            success: false,
+            error:
+              '无法自动识别企业租户 ID(网关 /api/tenant/info 不可达或未返回),' +
+              '请手动填写 intellectTenantId(32 位 hex)',
+          } satisfies WizardSetupResponse,
+          400,
+        );
+      }
+      req.intellectTenantId = detected;
+    }
     if (!req.intellectTenantId) {
       return c.json(
         { success: false, error: 'intellect-enterprise 类型必须提供 intellectTenantId' } satisfies WizardSetupResponse,
         400,
       );
     }
-    if (!/^[0-9a-fA-F]{32}$/.test(req.intellectTenantId)) {
+    if (!TENANT_ID_RE.test(req.intellectTenantId)) {
       return c.json(
         { success: false, error: 'intellectTenantId 必须为 32 位 hex(Rust 版本要求)' } satisfies WizardSetupResponse,
         400,
@@ -561,77 +814,12 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
     );
   }
 
-  const option = getOptionForType(req.type);
+  const option = getWizardOption(req.type, resolvedSetupProfile);
   if (!option) {
     return c.json(
       { success: false, error: `Unsupported backend type: ${req.type}` } satisfies WizardSetupResponse,
       400,
     );
-  }
-
-  // ---------------------------------------------------------------------------
-  // wizard-ent-sso-mode + wizard-sso(P2):setupProfile + SSO 结构校验
-  // https 强制仍由 sso-config 启动 fail-fast 裁决 —— 设计 §3.4 / §8 R4–R5
-  // ---------------------------------------------------------------------------
-  const ssoWarnings: string[] = [];
-  let resolvedSetupProfile: WizardSetupProfile | undefined;
-
-  if (req.setupProfile != null && req.type !== 'intellect-enterprise') {
-    return c.json(
-      {
-        success: false,
-        error: 'setupProfile 仅支持 intellect-enterprise 类型',
-      } satisfies WizardSetupResponse,
-      400,
-    );
-  }
-
-  if (req.type === 'intellect-enterprise') {
-    const rawProfile = req.setupProfile;
-    if (rawProfile === 'enterprise-sso' || rawProfile === 'enterprise-password') {
-      resolvedSetupProfile = rawProfile;
-    } else if (rawProfile != null && rawProfile !== '') {
-      return c.json(
-        {
-          success: false,
-          error: `未知 setupProfile: ${String(rawProfile)}`,
-        } satisfies WizardSetupResponse,
-        400,
-      );
-    } else if (req.sso?.enabled) {
-      // §8 R5:缺省时按 sso.enabled 推断,兼容旧客户端
-      resolvedSetupProfile = 'enterprise-sso';
-      ssoWarnings.push(
-        '未传 setupProfile:已按 sso.enabled 推断为 enterprise-sso;请显式传 setupProfile',
-      );
-    } else {
-      resolvedSetupProfile = 'enterprise-password';
-      ssoWarnings.push(
-        '未传 setupProfile:已默认 enterprise-password;请显式传 setupProfile',
-      );
-    }
-  }
-
-  if (resolvedSetupProfile === 'enterprise-password' && req.sso?.enabled) {
-    return c.json(
-      {
-        success: false,
-        error: 'enterprise-password 模式不允许 sso.enabled=true',
-      } satisfies WizardSetupResponse,
-      400,
-    );
-  }
-
-  if (resolvedSetupProfile === 'enterprise-sso') {
-    if (!req.sso?.enabled) {
-      return c.json(
-        {
-          success: false,
-          error: 'enterprise-sso 模式必须提供 sso.enabled=true',
-        } satisfies WizardSetupResponse,
-        400,
-      );
-    }
   }
 
   if (req.sso?.enabled) {
@@ -774,6 +962,8 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
 
   // 4. 如果有 vault 且提供了凭据,存储到 vault
   // P1-5 修复:email-password 模式必须有 vault,否则凭据会丢失(无 env var 回退)
+  // credentialInVault:凭据是否已持久化到 vault,决定 envSnippet 是否还需要 token 环境变量行
+  let credentialInVault = false;
   if (req.credentialKind === 'email-password') {
     if (!req.email || !req.password) {
       return c.json(
@@ -792,8 +982,10 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
       email: req.email,
       password: req.password,
     });
+    credentialInVault = true;
   } else if (vault && req.credentialKind === 'bearer-token' && req.token) {
     await vault.setCredentials(backendId, { kind: 'bearer-token', token: req.token });
+    credentialInVault = true;
   }
 
   // 5. 构造 HarnessBackendConfig(不含 token 明文)
@@ -926,7 +1118,13 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   // wizard-sso(P2/X-08):启用 SSO 时追加统一认证配置;stateSecret 永以占位符输出,
   // 真实密钥仅存在于向导 UI(用户复制到 .env),任何响应/落盘均不含明文。
   // P3(wizard-sso):RAG 不再随向导配置,snippet 无 RAG key 行。
-  const baseSnippet = `# 添加到 .env 文件\n${adminTokenEnvVar}=<your-token>`;
+  // 设计 v1.3 §10 D4:凭据已存入 vault 时不再输出 HARNESS_<ID>_TOKEN 行——
+  // 密钥不靠环境变量生效,保留该行会让人误以为还必须配置环境变量
+  const baseSnippetLines: string[] = [];
+  if (!credentialInVault) {
+    baseSnippetLines.push('# 添加到 .env 文件');
+    baseSnippetLines.push(`${adminTokenEnvVar}=<your-token>`);
+  }
   const ssoSnippetLines: string[] = [];
   if (req.sso?.enabled && req.type === 'intellect-enterprise') {
     // §9 S2:再次消毒(防御未走上方 enabled 分支的异常路径)
@@ -936,6 +1134,9 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
         : [],
     );
     const publicOrigin = (req.sso.publicOrigin ?? '').trim().replace(/[\r\n\0]/g, '');
+    if (baseSnippetLines.length === 0) {
+      ssoSnippetLines.push('# 添加到 .env 文件');
+    }
     ssoSnippetLines.push('# 统一认证(SSO)');
     ssoSnippetLines.push('BFF_SSO_ENABLED=true');
     ssoSnippetLines.push(`BFF_PUBLIC_ORIGIN=${publicOrigin}`);
@@ -951,13 +1152,13 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
       '统一认证尚未生效:请将上方 BFF_SSO_* 写入部署 .env 并重启 BFF 后,登录页才会出现统一认证渠道。',
     );
   }
-  const envSnippet = ssoSnippetLines.length > 0 ? `${baseSnippet}\n${ssoSnippetLines.join('\n')}` : baseSnippet;
+  const snippetLines = [...baseSnippetLines, ...ssoSnippetLines];
 
   const allWarnings = [...warnings, ...ssoWarnings];
   return c.json({
     success: true,
     backendId,
-    envSnippet,
+    ...(snippetLines.length > 0 ? { envSnippet: snippetLines.join('\n') } : {}),
     ...(allWarnings.length > 0 ? { warnings: allWarnings } : {}),
   } satisfies WizardSetupResponse);
 });

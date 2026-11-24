@@ -84,3 +84,26 @@
 | S4–S6 / Q2–Q5 | — | 运维日志、TRUST_PROXY、切卡 effect、i18n、`getOptionFor*` | 见设计 §9 |
 
 下一补丁建议用例：注入换行的 `providers` 不得进 snippet；对私网/重定向 URL 的 providers 探测拒绝。
+
+## 8. v1.3 修订：两条流程拆分（2026-11-24）
+
+口径真源更新为 `docs/wizard-enterprise-sso-mode-design.md` **§10**（用户评审通过，D1–D8 按推荐意见实施）。
+
+| 项 | 内容 |
+|---|---|
+| 范围 | SSO 模式第 3–6 步改为「统一认证设置 / 验证 / 确认 / 完成」，只采集认证网关与统一认证信息；企业后端由 BFF 自动登记、租户 ID 自动识别；非 SSO 模式不含任何统一认证内容 |
+| BFF | `types/wizard.ts`、`routes/wizard.ts`、`wizard.test.ts`（79 例通过，新增 21） |
+| 前端 | `wizard-service.ts`、`ee/pages/wizard/index.tsx`、`sso-section.tsx`、`ee/locales/{zh,en}-private.ts`、新增 `__tests__/wizard-modes.test.tsx`（6 例通过） |
+| 用例 | `TC-WED-01～04` 已按 v1.3 修订（新增 01-04、02-04～06、03-05～09） |
+| 顺带修复 | 第 3 步既有重渲染循环（设计 §10.8）；`getOptionForType` 企业版永远命中 SSO 卡 |
+
+### 执行状态
+
+| 层 | 状态 |
+|---|---|
+| BFF 单测 | 已执行，通过 |
+| 前端组件测试 | 已执行，通过 |
+| 浏览器步骤（TC-WED 各截图项） | **未执行** |
+| 真实网关联调（SSO 登录闭环、Agent Loop 可用） | **未执行** |
+
+> 本节不宣称 §1–§7 之外的任何门禁已关闭；v1.3 尚未随版本发布。

@@ -2,9 +2,9 @@
 
 | 项 | 值 |
 |---|---|
-| 文档版本 | v1.2（含 §8 选型评审 + §9 质量/安全评审） |
-| 日期 | 2026-11-23 |
-| 状态 | 双卡主路径已实施；§9 **S1/S2/Q1 本仓已落地**（2026-11-23）；公网仍须 `SSRF_ALLOW_PRIVATE_IP=false`；S3–S5/Q2–Q4 为 backlog |
+| 文档版本 | v1.3（§10：两条流程拆分——SSO 模式只配置统一认证） |
+| 日期 | 2026-11-24 |
+| 状态 | 双卡主路径已实施；§9 **S1/S2/Q1 本仓已落地**（2026-11-23）；**§10 v1.3 已实施（2026-11-24，尚未发版）**；公网仍须 `SSRF_ALLOW_PRIVATE_IP=false`；S3–S5 为 backlog，Q2/Q3/Q4 已随 §10 修复 |
 | 前置决策 | 用户确认方案 **A**：SSO 不再作为 `intellect-enterprise` Connection 内嵌可选项，而是 SelectType **独立首卡** |
 | 关联 | `docs/wizard-kag-to-sso-design.md`（§4.2 / D2 被本文件修订）；`docs/auth-intellect-auth-to-team-flow-status.md`；spec-010 / spec-014 |
 | 改动范围 | 本仓向导选型与 SSO 区块挂载；**不**新增 `authMode`；运行时仍仅 `intellect-enterprise` |
@@ -324,3 +324,91 @@ export interface WizardBackendTypeOption {
 ### 9.6 评审结论
 
 **双模式产品方案维持；安全/质量以 §9 为增量真源。** 无 Critical 密钥泄露路径。公网前阻断项：**S1、S2**；开发阻断项：**Q1**。S3 为 bootstrap 产品加固，与 SSO 双卡正交但因 snippet 诱导面扩大而升权记录。
+
+---
+
+## 10. v1.3：两条流程拆分（SSO 模式只配置统一认证）
+
+> 2026-11-24 评审通过并实施。本节修订 §2 D6/D7、§3.2 流程、§3.4 校验规则 1–3 与 §9.3 的 Q2/Q3/Q4；其余章节不变。
+
+### 10.1 问题
+
+v1.2 落地后，两张企业卡共用同一个连接表单（名称 / 端点 / Bearer Token / 租户 ID）、同一个探测页、确认页与完成页，SSO 卡只是把 SSO 区块追加在表单下方。评审要求：
+
+1. SSO 模式不配置 Agent Loop 后端，只设置统一认证信息，且没有「启用 SSO」按钮；
+2. 非 SSO 模式不设置任何统一认证内容。
+
+### 10.2 运行时约束（决定了方案边界）
+
+- **SSO 自身依赖一条企业后端记录**：BFF 的 SSO 授权、回调、登录路由经 `getEnterpriseBackend()` 从租户绑定的企业后端读取网关地址；首装是否完成以「是否存在就绪后端」判断。后端不能不建，只能由系统自动登记。
+- **网关服务密钥不只服务于 Agent Loop**：`enterpriseFetch` 发往网关的回调兑换、密码登录、注册请求都带 `API_SERVER_KEY`（即表单里的 Bearer Token）。不采集它，统一认证登录本身也走不通。
+
+### 10.3 决策
+
+| # | 决策点 | 结论 |
+|---|---|---|
+| D1 | SSO 模式是否保留网关服务密钥 | **保留，必填**；与认证网关地址同组呈现（§10.2） |
+| D2 | 非 SSO 卡 | 文案去掉 SSO 字样；BFF 拒绝请求里出现任何 `sso` 字段（不再只拒绝 `enabled=true`） |
+| D3 | 向导文案 | 副标题、步骤名、确认与完成页按模式切换；欢迎语改为模式中立 |
+| D4 | 环境变量片段 | 凭据已写入 vault 时不再输出 `HARNESS_<ID>_TOKEN` 行；无 vault 时保留 |
+| D5 | 已有企业后端时的 SSO 卡 | 「新增后端」场景隐藏 SSO 卡并指向「系统管理 → 统一认证设置」（`status.hasEnterpriseBackend`） |
+| D6 | SSO 模式免重启生效 | **本版不做**；后续可在部署已配 `BFF_SSO_STATE_SECRET` 时直接写运行时配置 |
+| D7 | 租户 ID 自动识别失败 | 验证步回退为手填（32 位 hex），其余三项结论照常展示 |
+| D8 | 非 SSO 模式的租户 ID | 采集方式不变 |
+
+启用状态由模式推定：前端草稿与请求都不再有 `enabled`，BFF 对 `enterprise-sso` 一律视为启用、忽略客户端传值。
+
+### 10.4 两条流程
+
+步骤数仍为六步，状态机、草稿与刷新恢复逻辑沿用，只按模式替换第 3–6 步。
+
+| 步骤 | SSO 模式 | 非 SSO 模式 |
+|---|---|---|
+| 3 | **统一认证设置**：认证网关地址、网关服务密钥、登录渠道、公开来源地址、引导密钥、静默重登 | 连接信息：名称、端点、凭据、租户 ID（不变） |
+| 4 | **验证**：认证网关可达、租户 ID（自动识别 / 手填）、网关服务密钥、统一认证服务 | 探测（不变） |
+| 5 | 只显示统一认证摘要，按钮为「完成配置」 | 确认（不变） |
+| 6 | `BFF_SSO_*` 片段与「待写入并重启」提示，说明企业网关已自动登记 | 完成（不变） |
+
+SSO 模式第 3 步**不出现**：后端名称、租户 ID 输入框、启用开关、「可跳过」类提示。选型页的 SSO 卡也不再展示后端能力徽章与默认端点。
+
+### 10.5 自动推导
+
+| 项 | 取值 |
+|---|---|
+| 后端名称 | 客户端未传时用 `Intellect Enterprise Default`（`backendId = intellect-enterprise-default`） |
+| 凭据类型 | `bearer-token` |
+| 租户 ID | 网关公开端点 `/api/tenant/info`；读不到或格式不对且未手填 → 400 |
+| 服务密钥 | 入加密 vault，不回显、不落 JSON |
+
+### 10.6 契约变更
+
+| 接口 | 变更 |
+|---|---|
+| `GET /admin/wizard/status` | 响应增加 `hasEnterpriseBackend`（按全部配置判断，含 token 未就绪的） |
+| `POST /admin/wizard/probe` | 请求增加 `setupProfile`；`enterprise-sso` 时响应增加 `sso`：`{ gatewayOk, tenantId, keyValid, providersOk, providerCount? }`，`healthy` 为四项结论的合并 |
+| `POST /admin/wizard/setup` | `enterprise-sso` 下 `name` / `credentialKind` / `intellectTenantId` 可缺省；`sso` 必填、`sso.enabled` 不再要求；`token` 必填 |
+| `POST /admin/wizard/setup` | `enterprise-password` 显式携带 `sso` → 400；缺省 profile 且 `sso.enabled=false` 的旧请求仍按非 SSO 放行 |
+
+密钥校验依次调用 `/v1/capabilities`、`/v1/models`：200 判有效，401/403 判无效，其余（404、5xx、网络错误）记为 `keyValid: null`，不阻断——不同网关实现的受保护端点并不一致，向导只对「网关明确拒绝」下结论。
+
+校验顺序：输入形态类错误（缺 `sso`、缺密钥、非 SSO 模式带 `sso`）先于任何网络调用报出。
+
+### 10.7 安全边界（保持不变）
+
+- 服务密钥与引导密钥都不回显；服务密钥只进 vault，引导密钥只存在于向导页面。
+- 探测沿用 SSRF 预校验与 IP 限流。
+- `enterprise-password` 模式现在连「未启用的 sso 对象」也拒绝，比 v1.2 更严。
+
+### 10.8 顺带修复
+
+- **第 3 步重渲染循环**：选项数组每次渲染新建，`StepConnectionForm` 的 `[option]` 副作用无条件写回 `credentialKind`，形成「渲染 → 写状态 → 再渲染」的循环并反复写 localStorage。改为选项数组 `useMemo` + 副作用只在值不一致时写回（§9.3 Q2）。
+- 选项查找改为按 `(type, setupProfile)`，企业版不再永远命中 SSO 卡（§9.3 Q4）。
+- 双卡与 SSO 相关文案补进 `src/ee/locales/{zh,en}-private.ts`（§9.3 Q3）。
+
+### 10.9 测试
+
+| 层 | 内容 |
+|---|---|
+| BFF `wizard.test.ts` | 79 例（新增 21）：SSO 模式 setup 矩阵 W-01～08、验证矩阵 W-P01～09、`hasEnterpriseBackend`、选项文案 |
+| 前端 `wizard-modes.test.tsx` | 6 例：两种模式第 3 步渲染差异、选型页差异、切卡重置、SSO 卡隐藏、租户 ID 手填回退 |
+| e2e 用例 `TC-WED-01～04` | 已按本节修订；浏览器步骤未执行，真实网关联调待做 |

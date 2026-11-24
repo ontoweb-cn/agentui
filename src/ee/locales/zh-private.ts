@@ -13,6 +13,8 @@ export default {
         wizard: {
           title: '安装向导',
           subtitle: '连接你的第一个 harness 后端',
+          // wizard-ent-sso-mode v1.3: SSO 模式走独立流程(只配置统一认证)
+          subtitleSso: '配置统一认证登录',
           step: {
             welcome: '欢迎',
             selectType: '选择类型',
@@ -20,19 +22,31 @@ export default {
             probe: '探测',
             confirm: '确认',
             done: '完成',
+            ssoSetup: '统一认证',
+            verify: '验证',
           },
           welcome: {
             title: '欢迎使用安装向导',
             description:
-              '本向导将引导你连接第一个 harness 后端。你可以配置 Intellect Community、Intellect Enterprise 或其他 OpenAI 兼容后端。',
-            steps: '流程:选择后端类型 → 填写连接信息 → 探测 → 确认 → 完成。',
-            note: 'Token 仅通过 HTTPS 传输,响应不含明文 Token;系统会提供一段 .env 片段用于持久化保存。',
+              '本向导将引导你完成首次配置:可以选择企业版的统一认证登录或成员账号密码登录,也可以连接 Intellect Community、HERMES、AgentScope 等后端。',
+            steps: '流程:选择类型 → 填写相应配置 → 验证 → 确认 → 完成。',
+            note: '凭据仅通过 HTTPS 传输,响应不含明文;需要写入部署配置的项目会给出 .env 片段。',
             start: '开始配置',
           },
           selectType: {
             title: '选择后端类型',
             description: '选择你要连接的 harness 后端平台。',
             defaultEndpoint: '默认端点',
+            ssoCardHidden:
+              '已存在企业后端,这里不再提供 SSO 模式;统一认证请到「系统管理 → 统一认证设置」调整。',
+          },
+          types: {
+            enterpriseSso: '企业版（SSO模式）',
+            enterprisePassword: '企业版（非SSO模式）',
+            enterpriseSsoDesc: '统一认证登录;只需配置认证网关与统一认证信息',
+            // v1.3 D2: 非 SSO 卡只讲密码登录
+            enterprisePasswordDesc: '使用成员账号密码登录',
+            passwordBadge: '密码',
           },
           cap: {
             canvas: '画布',
@@ -75,26 +89,62 @@ export default {
             envSnippet: '.env 片段(复制到你的 .env 文件)',
             error: '错误',
             submit: '创建后端',
-            // wizard-sso(P2):SSO 摘要行
+            // wizard-sso(P2) + v1.3: SSO 模式摘要(没有"是否启用"的概念,SSO 模式即启用)
             sso: '统一认证(SSO)',
-            ssoEnabled: '已启用',
             ssoAllChannels: '全部渠道(未过滤)',
+            gateway: '认证网关',
+            ssoDescription: '请核对统一认证配置。确认后将启用统一认证,并由系统自动登记企业网关。',
+            ssoPendingHint:
+              '统一认证尚未生效:完成页会给出需写入部署配置的环境变量,写入并重启 BFF 后登录页才会出现统一认证渠道。',
+            ssoOn: '开',
+            ssoOff: '关',
+            submitSso: '完成配置',
           },
           done: {
             title: '配置完成',
             description: '后端已成功配置,现在可以开始使用平台。',
+            ssoDescription:
+              '统一认证配置已完成,企业网关已自动登记。请按下方提示写入环境变量并重启服务。',
+            ssoEnvPending:
+              '统一认证尚未生效:请将下列 BFF_SSO_* 写入部署 .env 并重启 BFF 后,登录页才会出现统一认证渠道。',
             goHome: '返回首页',
             warnings: '提示',
           },
+          // wizard-ent-sso-mode v1.3: SSO 模式第 3 步——只采集认证网关与统一认证信息
+          ssoSetup: {
+            title: '统一认证设置',
+            description: '填写认证网关与统一认证信息。企业后端由系统自动登记,无需单独配置。',
+            gateway: '认证网关地址',
+            gatewayHint: '填写网关基址(而非 WebUI 页面地址);登录渠道与租户信息都从这里读取。',
+            serverKey: '网关服务密钥',
+            serverKeyHint:
+              '网关的 API_SERVER_KEY。统一认证的回调兑换与登录请求都以它鉴权;仅经 HTTPS 传输,不会回显。',
+            verify: '验证并继续',
+          },
+          // wizard-ent-sso-mode v1.3: SSO 模式第 4 步——验证四项结论
+          verify: {
+            title: '验证',
+            description: '正在校验认证网关、网关服务密钥与统一认证服务。',
+            gatewayOk: '认证网关可达',
+            gatewayFailed: '认证网关不可达',
+            tenantDetected: '已识别企业租户 ID',
+            tenantManual: '未能自动识别企业租户 ID,请手动填写',
+            keyValid: '网关服务密钥有效',
+            keyInvalid: '网关服务密钥无效',
+            keyUnknown: '网关没有可供校验的端点,服务密钥将在使用时验证',
+            providersOk: '统一认证服务可用',
+            providersFailed: '统一认证服务不可达',
+            providersNoChannel: '网关暂未配置可用的登录渠道,可稍后在「系统管理 → 统一认证设置」中配置。',
+          },
           // wizard-sso(P2):统一认证(SSO)配置区块
           sso: {
-            enable: '启用统一认证登录(SSO)',
-            skipHint: '可跳过,稍后在系统管理中配置;开启后终端用户可经统一认证免密登录。',
+            title: '统一认证登录(SSO)',
+            requiredHint: '完成后请将环境变量写入部署配置并重启 BFF,登录页才会出现统一认证渠道。',
             channels: '登录渠道',
             fetchChannels: '获取登录渠道',
-            needEndpoint: '先填写企业版网关端点,再获取登录渠道。',
-            fetchFailed: '登录渠道获取失败,可稍后重试或跳过 SSO。',
-            noChannels: '统一认证服务暂无可用登录渠道;可稍后配置或跳过 SSO。',
+            needEndpoint: '先填写认证网关地址,再获取登录渠道。',
+            fetchFailed: '登录渠道获取失败,可稍后再试。',
+            noChannels: '统一认证服务暂无可用登录渠道,可稍后在「系统管理 → 统一认证设置」中配置。',
             misconfigured: '配置缺失,不可选',
             whitelistHint: '勾选将展示在登录页的渠道;一个都不勾 = 展示全部可用渠道。',
             publicOrigin: '公开来源地址',
@@ -114,6 +164,7 @@ export default {
           },
           toast: {
             success: '后端创建成功',
+            successSso: '统一认证配置已完成',
             failed: '配置失败',
           },
         },
