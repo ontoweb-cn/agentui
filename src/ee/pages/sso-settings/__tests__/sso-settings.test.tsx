@@ -55,10 +55,6 @@ function renderPage() {
   );
 }
 
-function saveButton() {
-  return screen.getByRole('button', { name: 'Save' });
-}
-
 describe('AdminSsoSettings v1.4 管理页扩展', () => {
   beforeAll(() => {
     // radix Switch/Checkbox 依赖 ResizeObserver,jsdom 未实现

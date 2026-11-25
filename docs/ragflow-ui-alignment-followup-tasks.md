@@ -15,6 +15,7 @@
 > **v9.1(2026-11-23)**:质量/安全评审跟进——BFF `resolveWebSearchProvider` 与前端对齐(非法 provider 不回落 Tavily);补齐 `redactSessionWebSearchSecrets` 供 rag/mcp/openai-base `listSessions`;设计 §10 明确 GET 详情明文为 T4.2 过渡债与缓解面。
 > **v9.2(2026-11-23)**:九步 `exec-triad-20261123` 复证三连闸门——Gateway secrets **仍无路由**(L-T42-01 不关闭);kubectl 缺失(L-09/L-10);Go SSE 未稳定(L-PHASEB-01)。交付 secrets probe 客户端 + Go SSE↔StreamChunk/MessageEventType 映射预备(**未接线** live)。报告 [REPORT-exec-triad-20261123.md](../tests/e2e-tests/reports/REPORT-exec-triad-20261123.md)。
 > **v9.3(2026-11-23)**:九步 `gate-reverify-20261123` **再次复证**三连仍关——不伪关闭 L-*;增量 `npm run check:exec-gates`([scripts/check-exec-gates.mjs](../scripts/check-exec-gates.mjs))。报告 [REPORT-gate-reverify-20261123.md](../tests/e2e-tests/reports/REPORT-gate-reverify-20261123.md)。
+> **v9.4(2026-11-25)**:九步 `gate-reverify-20261125` **三连仍 BLOCK**(L-T42-01 / L-09 / L-PHASEB-01);sanitize / Go SSE live **未接线**;oxlint 修 sso-settings 测试死代码(7→6 warning)。报告 [REPORT-gate-reverify-20261125.md](../tests/e2e-tests/reports/REPORT-gate-reverify-20261125.md)。
 
 ## 使用说明
 
@@ -180,7 +181,7 @@ Phase B 准备文档 ──▶ Go SSE 稳定 ──▶ phase-b-sse-adapter
 D1 手册 ──▶ 持权 kubeconfig ──▶ prod-d1-exec
 ```
 
-建议节奏(**v9.3**):~~设计/契约/probe/映射预备/闸门探测脚本~~ **已完成**;接线闸门 **仍关**(先跑 `npm run check:exec-gates`)。余 **T4.2 M1 真接线**、**D1 真执行**、**Phase B live**、**T3.3 / T4.1b / T5**。
+建议节奏(**v9.4**):~~设计/契约/probe/映射预备/闸门探测脚本~~ **已完成**;2026-11-25 复验闸门 **仍关**(`npm run check:exec-gates`)。余 **T4.2 M1 真接线**、**D1 真执行**、**Phase B live**、**T3.3 / T4.1b / T5**(均依赖跨仓/生产闸门 OPEN)。
 
 ## 工作量汇总
 
