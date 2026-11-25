@@ -476,6 +476,8 @@ export default {
 
   // wizard-sso-followup(A7):统一认证运行时配置管理(管理员)
   ssoAdminConfig: `${bffAdmin}/sso/config`,
+  // wizard-ent-sso-mode v1.4:绑定后端的登录渠道裁剪视图(admin 门控)
+  ssoAdminProviders: `${bffAdmin}/sso/providers`,
 
   // spec-010 v8 B-7: Wizard — 首次安装向导
   // Constitution Principle I: 前端经 BFF Wizard 路由完成首次配置。

@@ -78,17 +78,23 @@ kubectl -n intellect create secret generic agentui-sso \
   --from-literal=state-secret="$(openssl rand -base64 48 | tr -d '\n')"
 ```
 
-## 5. 启用 SSO
+## 5. 启用 SSO（v1.4：安装后管理页，不在向导/部署清单中开）
 
-前置（网关侧）：provider `intellect-auth`（issuer `https://ai.wust.edu.cn/auth`）、
-`redirect_uris=https://ai.wust.edu.cn/api/bff/auth/oauth/callback`、
-`INTELLECT_OAUTH_EXCHANGE_ENABLED=true`；IdP 侧 client 已注册。
+前置（网关侧）：provider `intellect-auth` 启用；IdP 侧 client 已注册，
+`redirect_uris` 含 `https://ai.wust.edu.cn/api/bff/auth/oauth/callback`。
 
 步骤：
-1. 创建 `agentui-sso` Secret；
-2. 在 Git 中把 `deploy/k8s/agentui-config.yaml` 的 `BFF_SSO_ENABLED` 改为 `"true"` 并提交（**不要 kubectl edit**：ArgoCD `selfHeal` 会回滚）；
-3. 确认 `BFF_PUBLIC_ORIGIN=https://ai.wust.edu.cn`；
-4. 提交后 ArgoCD 同步，跑冒烟。
+
+1. 首装：向导选 **Intellect Enterprise**（网关地址/服务密钥/租户 ID 入库；v1.4 起无 SSO 卡）；
+2. 部署配置预置 `BFF_SSO_STATE_SECRET`（≥32 字符静态值；本变量仍是部署级，不走管理页/运行时存储）；
+3. 管理员以成员密码登录（SSO 未启用的破窗路径）；
+4. 「系统管理 → 统一认证设置」：查看前置状态（四项检测）→ 启用 + 公开来源 `https://ai.wust.edu.cn` + 渠道白名单 → 保存**即时生效**（运行时配置 sso-config.json，逐字段覆盖 env）；
+5. 跑冒烟 + 登录页验证（应见 SSO 渠道按钮 + 密码框）。
+
+注意：
+- **不要 kubectl edit**：本页是运行时配置（sso-config.json），部署 env 里无需 `BFF_SSO_ENABLED`；
+- 启用时后端未绑定/密钥未设会返回非阻断警示，按提示补齐；
+- 回滚：关闭开关（即时）或「回落环境变量」。
 
 ## 6. 冒烟
 

@@ -255,30 +255,29 @@ describe('wizard 路由 (B-3)', () => {
   // -------------------------------------------------------------------------
 
   describe('GET /admin/wizard/backend-types', () => {
-    it('返回 5 个选项:双企业卡置顶 + community/hermes/agent-scope(无 kag/rag)', async () => {
+    it('v1.4: 返回 4 个选项(单一企业卡 + community/hermes/agent-scope;SSO 卡已移除)', async () => {
       const res = await app.request('/admin/wizard/backend-types', {
         headers: { Authorization: 'Bearer test' },
       });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.options).toHaveLength(5);
+      expect(body.options).toHaveLength(4);
 
       const optionIds = body.options.map((o: { optionId: string }) => o.optionId);
       expect(optionIds).toEqual([
-        'enterprise-sso',
         'enterprise-password',
         'intellect-community',
         'hermes',
         'agent-scope',
       ]);
       expect(body.options[0].type).toBe('intellect-enterprise');
-      expect(body.options[0].setupProfile).toBe('enterprise-sso');
-      expect(body.options[1].type).toBe('intellect-enterprise');
-      expect(body.options[1].setupProfile).toBe('enterprise-password');
+      expect(body.options[0].setupProfile).toBe('enterprise-password');
 
       const types = body.options.map((o: { type: string }) => o.type);
       expect(types).not.toContain('intellect-rag');
       expect(types).not.toContain('kag');
+      // v1.4:SSO 卡从选项表移除(SSO 配置移交管理页,设计 §11)
+      expect(optionIds).not.toContain('enterprise-sso');
     });
 
     it('每个选项含 optionId + capabilities + credentialKind', async () => {
@@ -294,15 +293,14 @@ describe('wizard 路由 (B-3)', () => {
         expect(opt.label).toBeTruthy();
       }
     });
-    it('v1.3 D2:非 SSO 卡说明不再提 SSO,SSO 卡说明保留', async () => {
+    it('v1.4: 单一企业卡说明只讲密码登录,不含 SSO 字样', async () => {
       const res = await app.request('/admin/wizard/backend-types', {
         headers: { Authorization: 'Bearer test' },
       });
       const body = await res.json();
-      const ssoCard = body.options.find((o: { optionId: string }) => o.optionId === 'enterprise-sso');
-      const passwordCard = body.options.find((o: { optionId: string }) => o.optionId === 'enterprise-password');
-      expect(ssoCard.description).toMatch(/SSO/);
-      expect(passwordCard.description).not.toMatch(/SSO/);
+      const enterpriseCard = body.options.find((o: { optionId: string }) => o.optionId === 'enterprise-password');
+      expect(enterpriseCard.description).toMatch(/member password/i);
+      expect(enterpriseCard.description).not.toMatch(/SSO/);
     });
   });
 
@@ -752,6 +750,21 @@ describe('wizard 路由 (B-3)', () => {
       expect(JSON.stringify(saved)).not.toContain('server-key');
       expect(JSON.stringify(body)).not.toContain('server-key');
       expect(JSON.stringify(body)).not.toContain(SECRET);
+    });
+
+    it('W-R1(v1.4 §12 R-1): SSO 卡移除后,deprecated enterprise-sso setup 仍走通(选项查找回退)', async () => {
+      // 本用例即 W-01 的 R-1 断言版:选项表已无 enterprise-sso 条目,
+      // getWizardOption 回退企业卡,capabilities/校验链不受影响
+      mockHealthyGateway();
+      const types = await app.request('/admin/wizard/backend-types', {
+        headers: { Authorization: 'Bearer test' },
+      });
+      expect(((await types.json()).options ?? []).some((o: { optionId: string }) => o.optionId === 'enterprise-sso')).toBe(false);
+
+      const { status, body } = await callSetup(ssoMinimalBody);
+      expect(status).toBe(200);
+      expect(body.backendId).toBe('intellect-enterprise-default');
+      expect(stores.saveConfigMock).toHaveBeenCalledTimes(1);
     });
 
     it('W-02: 缺网关服务密钥 → 400,不落盘', async () => {

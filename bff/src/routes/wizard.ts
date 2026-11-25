@@ -33,13 +33,8 @@ import { loadSsoConfig } from '../services/sso-config';
 
 /** §9 S2:写入 envSnippet / 白名单前仅允许安全 provider id(防换行注入 .env) */
 const SSO_PROVIDER_ID_RE = /^[a-zA-Z0-9_-]+$/;
-/** 企业版实例级租户 ID(Rust 版网关要求 32 位 hex) */
-const TENANT_ID_RE = /^[0-9a-fA-F]{32}$/;
 /** SSO 模式自动登记企业后端时使用的默认名称(backendId = intellect-enterprise-default) */
 const SSO_DEFAULT_BACKEND_NAME = 'Intellect Enterprise Default';
-/** 网关基址防呆:WebUI 页面地址与网关基址都能通过 URL 安全校验,但前者没有 /api/tenant/info */
-const GATEWAY_BASE_HINT =
-  '无法访问 /api/tenant/info 端点(请确认 endpoint 填写的是网关基址,如 https://<host>/intellect-gateway,而非 WebUI 页面地址)';
 
 export function sanitizeSsoProviderIds(ids: string[]): {
   ok: string[];
@@ -57,6 +52,13 @@ export function sanitizeSsoProviderIds(ids: string[]): {
 }
 import { checkImtSession } from '../middleware/imt-session-guard';
 import { isImtCanvasAgentsEnabled } from '../utils/feature-flags';
+// wizard-ent-sso-mode v1.4(§12 R-2):SSO 前置状态检测抽到共享服务,
+// 供本路由(deprecated enterprise-sso 验证分支)与 sso-admin(?check=1)复用
+import {
+  verifyEnterpriseSso,
+  GATEWAY_BASE_HINT,
+  TENANT_ID_RE,
+} from '../services/enterprise-sso-check';
 import type { HarnessStoreListConfigs } from '../types/harness-admin';
 import type { HarnessBackendConfig, BackendType, HarnessCapabilities } from '../types/harness';
 import type { AuthMode } from '../types/tenant';
@@ -70,7 +72,6 @@ import type {
   WizardSetupRequest,
   WizardSetupResponse,
   WizardSetupProfile,
-  WizardProbeSso,
   WizardSsoProvidersResponse,
 } from '../types/wizard';
 
@@ -102,25 +103,16 @@ const ENTERPRISE_CAPABILITIES = {
 } as const;
 
 const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
-  // wizard-ent-sso-mode:企业双卡置顶(设计 docs/wizard-enterprise-sso-mode-design.md §3.1 / §8 R1)
+  // wizard-ent-sso-mode v1.4(设计 §11):企业回归**单张卡**——SSO 配置移交管理页
+  // (系统管理 → 统一认证设置),setupProfile=enterprise-sso 仅作 deprecated 兼容
+  // (§12 R-1:选项查找回退本卡,历史向导请求不 400)。
   // D-02/X-01(P1):kag 已从向导选项下架;类型联合与 Adapter 保留。
-  {
-    optionId: 'enterprise-sso',
-    type: 'intellect-enterprise',
-    setupProfile: 'enterprise-sso',
-    label: 'Enterprise (SSO mode)',
-    description: 'Sign in with SSO; configure BFF SSO during setup',
-    defaultEndpoint: 'http://localhost:9091',
-    capabilities: { ...ENTERPRISE_CAPABILITIES },
-    credentialKind: 'bearer-token',
-  },
   {
     optionId: 'enterprise-password',
     type: 'intellect-enterprise',
     setupProfile: 'enterprise-password',
-    label: 'Enterprise (non-SSO mode)',
-    // wizard-ent-sso-mode v1.3 D2:非 SSO 卡只讲密码登录,不再提"可稍后开启 SSO"
-    description: 'Sign in with member password',
+    label: 'Intellect Enterprise',
+    description: 'Member password sign-in; teams/projects with multi-tenancy',
     defaultEndpoint: 'http://localhost:9091',
     capabilities: { ...ENTERPRISE_CAPABILITIES },
     credentialKind: 'bearer-token',
@@ -161,8 +153,9 @@ const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
 // intellect-rag 仍不是独立向导类型(setup 保留显式拒绝,给出可读文案)。
 
 /**
- * 向导选项查找。企业双卡共享同一个 type,必须再按 setupProfile 区分(§9 Q4);
- * 缺省 profile 按非 SSO 卡处理,与 setup 的缺省兼容口径一致。
+ * 向导选项查找。v1.4 起企业为单卡;`setupProfile=enterprise-sso` 属 deprecated
+ * 兼容路径(§12 R-1):卡片已从选项表移除,此时回退同能力集的企业卡,
+ * 保证历史向导请求(setup/probe)不因选项表收缩而 400。
  */
 function getWizardOption(
   type: BackendType,
@@ -172,11 +165,13 @@ function getWizardOption(
     type === 'intellect-enterprise'
       ? (setupProfile ?? 'enterprise-password')
       : undefined;
-  return BACKEND_TYPE_OPTIONS.find(
+  const exact = BACKEND_TYPE_OPTIONS.find(
     (o) =>
       o.type === type &&
       (o.type !== 'intellect-enterprise' || o.setupProfile === profile),
   );
+  if (exact || type !== 'intellect-enterprise') return exact;
+  return BACKEND_TYPE_OPTIONS.find((o) => o.type === 'intellect-enterprise');
 }
 
 // ---------------------------------------------------------------------------
@@ -314,89 +309,9 @@ function getClientIp(c: Context): string {
 }
 
 // ---------------------------------------------------------------------------
-// wizard-ent-sso-mode v1.3:SSO 模式验证
+// wizard-ent-sso-mode:SSO 前置状态检测已抽至 services/enterprise-sso-check.ts
+// (v1.4 §12 R-2)——本路由仅保留 deprecated enterprise-sso 探测分支的调用点。
 // ---------------------------------------------------------------------------
-
-/** 受 API_SERVER_KEY 保护的网关端点,依次尝试;首个非 404 的响应即作为判据 */
-const SERVER_KEY_PROBE_PATHS = ['/v1/capabilities', '/v1/models'];
-
-/**
- * 校验网关服务密钥:200 = 有效,401/403 = 无效。
- * 其余(端点不存在 404、5xx、网络错误)= unknown,不阻断——不同网关实现的
- * 受保护端点并不一致,向导只对"网关明确拒绝"下结论。
- */
-async function verifyEnterpriseServerKey(
-  endpoint: string,
-  serverKey: string,
-): Promise<'valid' | 'invalid' | 'unknown'> {
-  for (const path of SERVER_KEY_PROBE_PATHS) {
-    try {
-      const resp = await safeFetch(`${endpoint}${path}`, {
-        headers: { Authorization: `Bearer ${serverKey}` },
-        timeoutMs: 5000,
-      });
-      if (resp.ok) return 'valid';
-      if (resp.status === 401 || resp.status === 403) return 'invalid';
-      if (resp.status !== 404) return 'unknown';
-    } catch {
-      return 'unknown';
-    }
-  }
-  return 'unknown';
-}
-
-/**
- * SSO 模式验证(向导第 4 步),一次给出网关 / 租户 / 密钥 / 认证服务四项结论。
- * 租户 ID 缺失不算失败:前端据 tenantId=null 回退为手填,由 healthy=false + error 说明,
- * 其余结论照常返回。
- */
-async function verifyEnterpriseSso(
-  endpoint: string,
-  tenantInfo: TenantInfoResponse | null,
-  serverKey: string | undefined,
-): Promise<WizardProbeResponse> {
-  const sso: WizardProbeSso = {
-    gatewayOk: false,
-    tenantId: null,
-    keyValid: null,
-    providersOk: false,
-  };
-  if (!tenantInfo) {
-    return { healthy: false, error: GATEWAY_BASE_HINT, sso };
-  }
-  sso.gatewayOk = true;
-  sso.tenantId = tenantInfo.tenant_id?.trim() || null;
-
-  let error: string | undefined;
-  if (!sso.tenantId) {
-    error = '网关未返回企业租户 ID,请手动填写(32 位 hex)。';
-  }
-
-  if (!serverKey) {
-    sso.keyValid = false;
-    error ??= '请填写网关服务密钥。';
-  } else {
-    const verdict = await verifyEnterpriseServerKey(endpoint, serverKey);
-    sso.keyValid = verdict === 'unknown' ? null : verdict === 'valid';
-    if (sso.keyValid === false) {
-      error ??= '网关服务密钥无效(网关返回 401/403)。';
-    }
-  }
-
-  try {
-    // 不过滤渠道:这里要的是网关侧可用渠道总数,而非当前 env 白名单下的子集
-    const selection = await getLoginProviders(endpoint, 'wizard-probe', {
-      ...loadSsoConfig(),
-      providers: null,
-    });
-    sso.providersOk = true;
-    sso.providerCount = selection.providers.length;
-  } catch {
-    error ??= '统一认证服务不可达,请稍后再试。';
-  }
-
-  return { healthy: !error, ...(error ? { error } : {}), sso };
-}
 
 // ---------------------------------------------------------------------------
 // POST /admin/wizard/probe — 探测后端连接

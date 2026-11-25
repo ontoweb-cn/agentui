@@ -11,10 +11,11 @@
 // - Probe 失败:停留在 Step 4 显示错误,允许修改后重试
 // - Setup 成功:清空 wizard-draft,跳转 /
 //
-// wizard-ent-sso-mode v1.3:两张企业卡走不同的第 3–6 步——
-// - SSO 模式:只采集认证网关与统一认证信息(网关地址、网关服务密钥、登录渠道、
-//   公开来源、引导密钥),企业后端由 BFF 自动登记,租户 ID 自动识别(识别不到才手填);
-// - 非 SSO 模式:纯后端连接(名称/端点/凭据/租户 ID),不含任何统一认证内容。
+// wizard-ent-sso-mode v1.4(设计 docs/wizard-enterprise-sso-mode-design.md §11,
+// §12 评审通过):向导回归**单张企业卡**,统一认证(SSO)配置移交安装后管理页
+// (系统管理 → 统一认证设置)。v1.3 的双模式分支(SSO 第 3-6 步/setupProfile)
+// 全部移除;保留:选项数组 memo、[option] 条件写回(重渲染循环修复)、
+// 旧草稿兼容清理。BFF 对 deprecated enterprise-sso 请求仍兼容(§12 R-1)。
 //
 // 路由:/wizard (不经过 AuthWrapper,首次安装无 admin token)
 // URL query:?step=N 控制步骤,?mode=add 从 Admin 页跳转过来(已有后端时新增)
@@ -29,7 +30,6 @@ import {
   LucideCheck,
   LucideChevronLeft,
   LucideChevronRight,
-  LucideX,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -59,13 +59,9 @@ import {
   type CredentialKind,
   type HarnessCapabilities,
   type WizardBackendTypeOption,
-  type WizardProbeRequest,
   type WizardProbeResponse,
-  type WizardProbeSso,
-  type WizardSetupProfile,
   type WizardSetupResponse,
 } from '@/services/wizard-service';
-import { SsoSection, INITIAL_WIZARD_DRAFT_SSO, type WizardDraftSso } from './sso-section';
 
 // ---------------------------------------------------------------------------
 // Local types & constants
@@ -77,28 +73,12 @@ const DRAFT_STORAGE_KEY = 'wizard-draft';
 const DRAFT_CREDENTIALS_STORAGE_KEY = 'wizard-draft-credentials';
 /** 企业版实例级租户 ID(Rust 版网关要求 32 位 hex) */
 const TENANT_ID_RE = /^[0-9a-fA-F]{32}$/;
-/** 公开来源地址:必须是绝对的 http(s) URL(是否强制 https 由 BFF 启动校验裁决) */
-function isValidOrigin(value: string): boolean {
-  try {
-    const u = new URL(value);
-    return u.protocol === 'http:' || u.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
-interface WizardDraftCredentials {
-  token: string;
-  email: string;
-  password: string;
-}
 const WIZARD_STEPS = 6;
 
 interface WizardDraft {
-  /** 选型主键(§8 R1);企业双卡靠此区分 */
+  /** 选型主键;v1.4 起企业为单卡(optionId=enterprise-password) */
   selectedOptionId: string | null;
   selectedType: BackendType | null;
-  setupProfile?: WizardSetupProfile;
   name: string;
   endpoint: string;
   credentialKind: CredentialKind;
@@ -107,14 +87,11 @@ interface WizardDraft {
   password: string;
   intellectTenantId: string;
   defaultForTenant: boolean;
-  /** wizard-sso(P2): SSO 配置(stateSecret 除外 —— 密钥仅内存态,不进 localStorage) */
-  sso: WizardDraftSso;
 }
 
 const INITIAL_DRAFT: WizardDraft = {
   selectedOptionId: null,
   selectedType: null,
-  setupProfile: undefined,
   name: '',
   endpoint: '',
   credentialKind: 'bearer-token',
@@ -123,21 +100,15 @@ const INITIAL_DRAFT: WizardDraft = {
   password: '',
   intellectTenantId: '',
   defaultForTenant: true,
-  sso: INITIAL_WIZARD_DRAFT_SSO,
 };
 
-/** 前端按 optionId 覆盖 BFF 英文化 label(§8 R7) */
+/** 前端按 optionId/type 覆盖 BFF 英文化 label(§8 R7) */
 function optionDisplayLabel(
   opt: WizardBackendTypeOption,
   t: (key: string, opts?: { defaultValue: string }) => string,
 ): string {
-  if (opt.optionId === 'enterprise-sso') {
-    return t('wizard.types.enterpriseSso', { defaultValue: '企业版（SSO模式）' });
-  }
-  if (opt.optionId === 'enterprise-password') {
-    return t('wizard.types.enterprisePassword', {
-      defaultValue: '企业版（非SSO模式）',
-    });
+  if (opt.type === 'intellect-enterprise') {
+    return t('wizard.types.enterprise', { defaultValue: 'Intellect Enterprise' });
   }
   return opt.label;
 }
@@ -146,14 +117,9 @@ function optionDisplayDescription(
   opt: WizardBackendTypeOption,
   t: (key: string, opts?: { defaultValue: string }) => string,
 ): string {
-  if (opt.optionId === 'enterprise-sso') {
-    return t('wizard.types.enterpriseSsoDesc', {
-      defaultValue: '统一认证登录;只需配置认证网关与统一认证信息',
-    });
-  }
-  if (opt.optionId === 'enterprise-password') {
-    return t('wizard.types.enterprisePasswordDesc', {
-      defaultValue: '使用成员账号密码登录',
+  if (opt.type === 'intellect-enterprise') {
+    return t('wizard.types.enterpriseDesc', {
+      defaultValue: '团队/项目 + 多租户;成员账号密码登录',
     });
   }
   return opt.description;
@@ -163,47 +129,30 @@ function optionDisplayDescription(
 // Draft persistence helpers
 // ---------------------------------------------------------------------------
 
+interface WizardDraftCredentials {
+  token: string;
+  email: string;
+  password: string;
+}
+
 function loadDraft(): WizardDraft {
   try {
     const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
     let base = INITIAL_DRAFT;
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<WizardDraft>;
+      const parsed = JSON.parse(raw) as Partial<WizardDraft> & {
+        // v1.3 双模式草稿遗留(现由管理页承载):不恢复
+        sso?: unknown;
+        setupProfile?: unknown;
+      };
       // A5:历史草稿中的凭据字段不再从 localStorage 恢复(防长期残留)
       delete parsed.token;
       delete parsed.email;
       delete parsed.password;
+      // v1.4:SSO/双模式遗留字段一并剥离(SSO 配置已移交管理页)
+      delete parsed.sso;
+      delete parsed.setupProfile;
       base = { ...INITIAL_DRAFT, ...parsed };
-      // v1.3:旧草稿的 sso 里可能带 enabled(启用状态现由模式推定),只保留仍在用的字段
-      if (parsed.sso) {
-        base = {
-          ...base,
-          sso: {
-            publicOrigin:
-              typeof parsed.sso.publicOrigin === 'string'
-                ? parsed.sso.publicOrigin
-                : '',
-            providers: Array.isArray(parsed.sso.providers)
-              ? parsed.sso.providers
-              : [],
-            silentRelogin: parsed.sso.silentRelogin !== false,
-          },
-        };
-      }
-      // §8 R6:旧草稿仅有 selectedType=enterprise、无 optionId/profile → 清空选型,禁止静默当 SSO
-      if (
-        base.selectedType === 'intellect-enterprise' &&
-        !base.selectedOptionId &&
-        !base.setupProfile
-      ) {
-        base = {
-          ...base,
-          selectedType: null,
-          selectedOptionId: null,
-          setupProfile: undefined,
-          sso: { ...INITIAL_WIZARD_DRAFT_SSO },
-        };
-      }
     }
     try {
       const credRaw = sessionStorage.getItem(DRAFT_CREDENTIALS_STORAGE_KEY);
@@ -254,34 +203,18 @@ function clearDraft(): void {
 // Stepper
 // ---------------------------------------------------------------------------
 
-function Stepper({
-  current,
-  isSsoMode,
-}: {
-  current: number;
-  isSsoMode: boolean;
-}) {
+function Stepper({ current }: { current: number }) {
   const { t } = useTranslation();
   const labels = useMemo(
-    () =>
-      isSsoMode
-        ? [
-            t('wizard.step.welcome', { defaultValue: 'Welcome' }),
-            t('wizard.step.selectType', { defaultValue: 'Select Type' }),
-            t('wizard.step.ssoSetup', { defaultValue: 'Unified sign-in' }),
-            t('wizard.step.verify', { defaultValue: 'Verify' }),
-            t('wizard.step.confirm', { defaultValue: 'Confirm' }),
-            t('wizard.step.done', { defaultValue: 'Done' }),
-          ]
-        : [
-            t('wizard.step.welcome', { defaultValue: 'Welcome' }),
-            t('wizard.step.selectType', { defaultValue: 'Select Type' }),
-            t('wizard.step.connection', { defaultValue: 'Connection' }),
-            t('wizard.step.probe', { defaultValue: 'Probe' }),
-            t('wizard.step.confirm', { defaultValue: 'Confirm' }),
-            t('wizard.step.done', { defaultValue: 'Done' }),
-          ],
-    [t, isSsoMode],
+    () => [
+      t('wizard.step.welcome', { defaultValue: 'Welcome' }),
+      t('wizard.step.selectType', { defaultValue: 'Select Type' }),
+      t('wizard.step.connection', { defaultValue: 'Connection' }),
+      t('wizard.step.probe', { defaultValue: 'Probe' }),
+      t('wizard.step.confirm', { defaultValue: 'Confirm' }),
+      t('wizard.step.done', { defaultValue: 'Done' }),
+    ],
+    [t],
   );
   return (
     <div className="flex items-center justify-center gap-2 mb-8">
@@ -330,7 +263,7 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
         <CardDescription>
           {t('wizard.welcome.description', {
             defaultValue:
-              'This wizard guides you through first-time setup: sign in to the enterprise edition with unified authentication (SSO) or with member passwords, or connect Intellect Community, HERMES, AgentScope and other backends.',
+              'This wizard guides you through connecting your first harness backend. You can configure Intellect Enterprise, Intellect Community, HERMES, AgentScope and other OpenAI-compatible backends.',
           })}
         </CardDescription>
       </CardHeader>
@@ -338,7 +271,7 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
         <p>
           {t('wizard.welcome.steps', {
             defaultValue:
-              'You will: select a type → fill in the corresponding settings → verify → confirm → done.',
+              'You will: select a backend type → enter connection info → probe → confirm → done.',
           })}
         </p>
         <p>
@@ -363,15 +296,12 @@ function StepSelectType({
   onSelect,
   onNext,
   onBack,
-  ssoCardHidden = false,
 }: {
   options: WizardBackendTypeOption[];
   selectedOptionId: string | null;
   onSelect: (option: WizardBackendTypeOption) => void;
   onNext: () => void;
   onBack: () => void;
-  /** wizard-ent-sso-mode v1.3 D5:SSO 模式卡因已有企业后端而被隐藏时给出指引 */
-  ssoCardHidden?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -417,73 +347,48 @@ function StepSelectType({
                   <span className="font-medium truncate">
                     {optionDisplayLabel(opt, t)}
                   </span>
-                  {opt.setupProfile === 'enterprise-sso' && (
-                    <Badge variant="secondary" className="text-xs shrink-0">
-                      SSO
-                    </Badge>
-                  )}
-                  {opt.setupProfile === 'enterprise-password' && (
-                    <Badge variant="outline" className="text-xs shrink-0">
-                      {t('wizard.types.passwordBadge', {
-                        defaultValue: '密码',
-                      })}
-                    </Badge>
-                  )}
                 </div>
                 <p className="text-xs text-text-secondary">
                   {optionDisplayDescription(opt, t)}
                 </p>
-                  {/* SSO 模式卡只讲统一认证:不展示后端能力徽章与默认端点(v1.3) */}
-                  {opt.setupProfile !== 'enterprise-sso' && (
-                    <>
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {opt.capabilities.canvas && (
-                          <Badge variant="secondary" className="text-xs">
-                            {t('wizard.cap.canvas', { defaultValue: 'Canvas' })}
-                          </Badge>
-                        )}
-                        {opt.capabilities.knowledgeBase && (
-                          <Badge variant="secondary" className="text-xs">
-                            {t('wizard.cap.knowledgeBase', {
-                              defaultValue: 'KnowledgeBase',
-                            })}
-                          </Badge>
-                        )}
-                        {opt.capabilities.multiTenant && (
-                          <Badge variant="secondary" className="text-xs">
-                            {t('wizard.cap.multiTenant', {
-                              defaultValue: 'MultiTenant',
-                            })}
-                          </Badge>
-                        )}
-                        {opt.capabilities.modelManagement && (
-                          <Badge variant="secondary" className="text-xs">
-                            {t('wizard.cap.modelManagement', {
-                              defaultValue: 'ModelMgmt',
-                            })}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-text-secondary pt-1">
-                        {t('wizard.selectType.defaultEndpoint', {
-                          defaultValue: 'Default endpoint',
-                        })}
-                        : <code>{opt.defaultEndpoint}</code>
-                      </p>
-                    </>
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {opt.capabilities.canvas && (
+                    <Badge variant="secondary" className="text-xs">
+                      {t('wizard.cap.canvas', { defaultValue: 'Canvas' })}
+                    </Badge>
+                  )}
+                  {opt.capabilities.knowledgeBase && (
+                    <Badge variant="secondary" className="text-xs">
+                      {t('wizard.cap.knowledgeBase', {
+                        defaultValue: 'KnowledgeBase',
+                      })}
+                    </Badge>
+                  )}
+                  {opt.capabilities.multiTenant && (
+                    <Badge variant="secondary" className="text-xs">
+                      {t('wizard.cap.multiTenant', {
+                        defaultValue: 'MultiTenant',
+                      })}
+                    </Badge>
+                  )}
+                  {opt.capabilities.modelManagement && (
+                    <Badge variant="secondary" className="text-xs">
+                      {t('wizard.cap.modelManagement', {
+                        defaultValue: 'ModelMgmt',
+                      })}
+                    </Badge>
                   )}
                 </div>
-              </label>
-            ))}
+                <p className="text-xs text-text-secondary pt-1">
+                  {t('wizard.selectType.defaultEndpoint', {
+                    defaultValue: 'Default endpoint',
+                  })}
+                  : <code>{opt.defaultEndpoint}</code>
+                </p>
+              </div>
+            </label>
+          ))}
         </RadioGroup>
-        {ssoCardHidden && (
-          <p className="mt-3 text-xs text-text-secondary">
-            {t('wizard.selectType.ssoCardHidden', {
-              defaultValue:
-                'An enterprise backend already exists, so SSO mode is not offered here. To adjust unified authentication, go to System → Unified authentication settings.',
-            })}
-          </p>
-        )}
       </CardContent>
       <CardFooter className="justify-between">
         <Button variant="ghost" onClick={onBack}>
@@ -502,31 +407,23 @@ function StepSelectType({
 function StepConnectionForm({
   draft,
   option,
-  ssoSecret,
-  onSsoChange,
-  onSsoSecretChange,
   update,
   onNext,
   onBack,
 }: {
   draft: WizardDraft;
   option: WizardBackendTypeOption | undefined;
-  /** wizard-sso(P2): 引导密钥仅内存态 */
-  ssoSecret: string;
-  onSsoChange: (patch: Partial<WizardDraftSso>) => void;
-  onSsoSecretChange: (secret: string) => void;
   update: (patch: Partial<WizardDraft>) => void;
   onNext: () => void;
   onBack: () => void;
 }) {
   const { t } = useTranslation();
   const isEnterprise = draft.selectedType === 'intellect-enterprise';
-  const isEnterpriseSso = draft.setupProfile === 'enterprise-sso';
 
   // 自动填充默认 endpoint(首次进入时)
   // 注:adminTokenEnvVar 由 BFF 自动生成 HARNESS_<ID>_TOKEN,前端不再收集该字段
   // 仅在草稿缺值或与选项不一致时写回:无条件写回会与 option 引用变化互相触发,
-  // 形成重渲染循环,也会覆盖用户已填内容(设计 §9 Q2)
+  // 形成重渲染循环,也会覆盖用户已填内容(设计 §10.8,回归保留)
   useEffect(() => {
     if (!option) return;
     if (!draft.endpoint) {
@@ -538,25 +435,8 @@ function StepConnectionForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [option]);
 
-  // SSO 模式卡:进入本步时预填公开来源地址
-  useEffect(() => {
-    if (!isEnterpriseSso) return;
-    if (!draft.sso.publicOrigin.trim()) {
-      onSsoChange({ publicOrigin: window.location.origin });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEnterpriseSso]);
-
   const valid = useMemo(() => {
-    if (!draft.endpoint.trim()) return false;
-    // SSO 模式只采集统一认证信息:认证网关 + 网关服务密钥 + 公开来源 + 引导密钥(v1.3 §10)
-    if (isEnterpriseSso) {
-      if (!draft.token.trim()) return false;
-      if (!isValidOrigin(draft.sso.publicOrigin.trim())) return false;
-      if (!ssoSecret || ssoSecret.length < 32) return false;
-      return true;
-    }
-    if (!draft.name.trim()) return false;
+    if (!draft.name.trim() || !draft.endpoint.trim()) return false;
     if (draft.credentialKind === 'bearer-token' && !draft.token.trim()) {
       return false;
     }
@@ -573,81 +453,7 @@ function StepConnectionForm({
       if (!TENANT_ID_RE.test(tenantId)) return false;
     }
     return true;
-  }, [draft, isEnterprise, isEnterpriseSso, ssoSecret]);
-
-  // wizard-ent-sso-mode v1.3:SSO 模式的第 3 步只采集认证网关与统一认证信息,
-  // 不出现后端名称 / 租户 ID(企业后端由 BFF 自动登记、租户 ID 自动识别)
-  if (isEnterpriseSso) {
-    return (
-      <Card className="max-w-2xl mx-auto">
-        <CardHeader>
-          <CardTitle>
-            {t('wizard.ssoSetup.title', { defaultValue: 'Unified sign-in settings' })}
-          </CardTitle>
-          <CardDescription>
-            {t('wizard.ssoSetup.description', {
-              defaultValue:
-                'Enter the authentication gateway and unified sign-in details. The enterprise backend is registered automatically; there is nothing else to configure.',
-            })}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="wizard-endpoint">
-              {t('wizard.ssoSetup.gateway', { defaultValue: 'Authentication gateway' })}
-            </Label>
-            <Input
-              id="wizard-endpoint"
-              value={draft.endpoint}
-              onChange={(e) => update({ endpoint: e.target.value })}
-              placeholder="https://<host>/intellect-gateway"
-            />
-            <p className="text-xs text-text-secondary">
-              {t('wizard.ssoSetup.gatewayHint', {
-                defaultValue:
-                  'Use the gateway base URL (not the web UI address). Login channels and tenant details are read from here.',
-              })}
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="wizard-token">
-              {t('wizard.ssoSetup.serverKey', { defaultValue: 'Gateway service key' })}
-            </Label>
-            <Input
-              id="wizard-token"
-              type="password"
-              value={draft.token}
-              onChange={(e) => update({ token: e.target.value })}
-              placeholder="API_SERVER_KEY"
-            />
-            <p className="text-xs text-text-secondary">
-              {t('wizard.ssoSetup.serverKeyHint', {
-                defaultValue:
-                  'The gateway API_SERVER_KEY. Sign-in callback exchange and login requests are authenticated with it. Sent over HTTPS only and never echoed back.',
-              })}
-            </p>
-          </div>
-          <SsoSection
-            value={draft.sso}
-            secret={ssoSecret}
-            endpoint={draft.endpoint}
-            onChange={onSsoChange}
-            onSecretChange={onSsoSecretChange}
-          />
-        </CardContent>
-        <CardFooter className="justify-between">
-          <Button variant="ghost" onClick={onBack}>
-            <LucideChevronLeft className="size-4 mr-1" />
-            {t('common.back', { defaultValue: 'Back' })}
-          </Button>
-          <Button disabled={!valid} onClick={onNext}>
-            {t('wizard.ssoSetup.verify', { defaultValue: 'Verify and continue' })}
-            <LucideChevronRight className="size-4 ml-1" />
-          </Button>
-        </CardFooter>
-      </Card>
-    );
-  }
+  }, [draft, isEnterprise]);
 
   return (
     <Card className="max-w-2xl mx-auto">
@@ -752,11 +558,11 @@ function StepConnectionForm({
               placeholder="32 位 hex (e.g. 0123456789abcdef0123456789abcdef)"
               aria-invalid={
                 draft.intellectTenantId.trim().length > 0 &&
-                !/^[0-9a-fA-F]{32}$/.test(draft.intellectTenantId.trim())
+                !TENANT_ID_RE.test(draft.intellectTenantId.trim())
               }
             />
             {draft.intellectTenantId.trim().length > 0 &&
-              !/^[0-9a-fA-F]{32}$/.test(draft.intellectTenantId.trim()) && (
+              !TENANT_ID_RE.test(draft.intellectTenantId.trim()) && (
                 <p className="text-xs text-destructive">
                   {t('wizard.connection.intellectTenantIdError', {
                     defaultValue:
@@ -772,7 +578,6 @@ function StepConnectionForm({
             </p>
           </div>
         )}
-
       </CardContent>
       <CardFooter className="justify-between">
         <Button variant="ghost" onClick={onBack}>
@@ -788,227 +593,25 @@ function StepConnectionForm({
   );
 }
 
-/** SSO 模式"验证"步的一条结论:通过 / 未通过 / 无法判定(不阻断) */
-function VerifyRow({
-  state,
-  label,
-  detail,
-}: {
-  state: 'ok' | 'failed' | 'unknown';
-  label: string;
-  detail?: string;
-}) {
-  return (
-    <div className="flex items-start gap-2 text-sm">
-      <span className="mt-0.5 shrink-0 size-4">
-        {state === 'ok' && (
-          <LucideCheck className="size-4 text-accent-primary-text" />
-        )}
-        {state === 'failed' && <LucideX className="size-4 text-destructive" />}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className={state === 'failed' ? 'text-destructive' : 'text-text-primary'}>
-          {label}
-        </span>
-        {detail && (
-          <span className="block text-xs text-text-secondary break-all">
-            {detail}
-          </span>
-        )}
-      </span>
-    </div>
-  );
-}
-
-/**
- * wizard-ent-sso-mode v1.3:SSO 模式的第 4 步"验证"。
- * 逐项展示认证网关 / 租户 ID / 网关服务密钥 / 统一认证服务四项结论;
- * 网关可达但未返回租户 ID 时回退为手填(D7),其余三项照常展示。
- */
-function StepSsoVerify({
-  sso,
-  isProbing,
-  manualTenantId,
-  onManualTenantChange,
-  onRetry,
-  onNext,
-  onBack,
-}: {
-  sso: WizardProbeSso;
-  isProbing: boolean;
-  manualTenantId: string;
-  onManualTenantChange: (value: string) => void;
-  onRetry: () => void;
-  onNext: () => void;
-  onBack: () => void;
-}) {
-  const { t } = useTranslation();
-  const trimmedTenant = manualTenantId.trim();
-  const needManualTenant = sso.gatewayOk && !sso.tenantId;
-  const tenantResolved = !!sso.tenantId || TENANT_ID_RE.test(trimmedTenant);
-  // keyValid === null:网关没有可供校验的受保护端点,不算失败
-  const checksPassed =
-    sso.gatewayOk && sso.keyValid !== false && sso.providersOk;
-  const canContinue = checksPassed && tenantResolved;
-
-  return (
-    <Card className="max-w-2xl mx-auto">
-      <CardHeader>
-        <CardTitle>{t('wizard.verify.title', { defaultValue: 'Verify' })}</CardTitle>
-        <CardDescription>
-          {t('wizard.verify.description', {
-            defaultValue:
-              'Checking the authentication gateway, the gateway service key and the unified sign-in service.',
-          })}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <VerifyRow
-          state={sso.gatewayOk ? 'ok' : 'failed'}
-          label={
-            sso.gatewayOk
-              ? t('wizard.verify.gatewayOk', {
-                  defaultValue: 'Authentication gateway is reachable',
-                })
-              : t('wizard.verify.gatewayFailed', {
-                  defaultValue: 'Authentication gateway is unreachable',
-                })
-          }
-        />
-        {needManualTenant ? (
-          <div className="space-y-2">
-            <Label htmlFor="wizard-sso-tenant-id">
-              {t('wizard.verify.tenantManual', {
-                defaultValue:
-                  'The enterprise tenant ID could not be detected automatically. Enter it manually.',
-              })}
-            </Label>
-            <Input
-              id="wizard-sso-tenant-id"
-              value={manualTenantId}
-              onChange={(e) => onManualTenantChange(e.target.value)}
-              placeholder="32-char hex"
-              aria-invalid={
-                trimmedTenant.length > 0 && !TENANT_ID_RE.test(trimmedTenant)
-              }
-            />
-            <p className="text-xs text-text-secondary">
-              {t('wizard.connection.intellectTenantIdHint', {
-                defaultValue:
-                  'Copy from intellect-team INTELLECT_TENANT_ID env var (Rust version requires 32-char hex)',
-              })}
-            </p>
-          </div>
-        ) : (
-          <VerifyRow
-            state={sso.tenantId ? 'ok' : 'unknown'}
-            label={t('wizard.verify.tenantDetected', {
-              defaultValue: 'Enterprise tenant ID detected',
-            })}
-            detail={sso.tenantId ?? undefined}
-          />
-        )}
-        <VerifyRow
-          state={sso.keyValid === false ? 'failed' : sso.keyValid ? 'ok' : 'unknown'}
-          label={
-            sso.keyValid === false
-              ? t('wizard.verify.keyInvalid', {
-                  defaultValue: 'Gateway service key is invalid',
-                })
-              : sso.keyValid
-                ? t('wizard.verify.keyValid', {
-                    defaultValue: 'Gateway service key is valid',
-                  })
-                : t('wizard.verify.keyUnknown', {
-                    defaultValue:
-                      'The gateway exposes no endpoint to check the key; it will be verified when first used.',
-                  })
-          }
-        />
-        <VerifyRow
-          state={sso.providersOk ? 'ok' : 'failed'}
-          label={
-            sso.providersOk
-              ? t('wizard.verify.providersOk', {
-                  defaultValue: 'Unified sign-in service is available',
-                })
-              : t('wizard.verify.providersFailed', {
-                  defaultValue: 'Unified sign-in service is unreachable',
-                })
-          }
-          detail={
-            sso.providersOk && sso.providerCount === 0
-              ? t('wizard.verify.providersNoChannel', {
-                  defaultValue:
-                    'The gateway has no login channel configured yet. You can add one later in System → Unified authentication settings.',
-                })
-              : undefined
-          }
-        />
-      </CardContent>
-      <CardFooter className="justify-between">
-        <Button variant="ghost" onClick={onBack}>
-          <LucideChevronLeft className="size-4 mr-1" />
-          {t('common.back', { defaultValue: 'Back' })}
-        </Button>
-        {checksPassed ? (
-          <Button disabled={!canContinue} onClick={onNext}>
-            {t('wizard.probe.continue', { defaultValue: 'Continue' })}
-            <LucideChevronRight className="size-4 ml-1" />
-          </Button>
-        ) : (
-          <Button onClick={onRetry} disabled={isProbing}>
-            {t('wizard.probe.retry', { defaultValue: 'Retry' })}
-          </Button>
-        )}
-      </CardFooter>
-    </Card>
-  );
-}
-
 function StepProbeResult({
   probeResult,
   isProbing,
-  isSsoMode = false,
-  manualTenantId,
-  onManualTenantChange,
   onRetry,
   onNext,
   onBack,
 }: {
   probeResult: WizardProbeResponse | null;
   isProbing: boolean;
-  /** wizard-ent-sso-mode v1.3:SSO 模式渲染"验证"卡 */
-  isSsoMode?: boolean;
-  /** 租户 ID 自动识别失败时的手填值 */
-  manualTenantId: string;
-  onManualTenantChange: (value: string) => void;
   onRetry: () => void;
   onNext: () => void;
   onBack: () => void;
 }) {
   const { t } = useTranslation();
-  // SSO 模式且 BFF 返回了验证明细:走独立验证卡(仍在探测或旧 BFF 无明细时回落通用卡)
-  if (isSsoMode && probeResult?.sso) {
-    return (
-      <StepSsoVerify
-        sso={probeResult.sso}
-        isProbing={isProbing}
-        manualTenantId={manualTenantId}
-        onManualTenantChange={onManualTenantChange}
-        onRetry={onRetry}
-        onNext={onNext}
-        onBack={onBack}
-      />
-    );
-  }
   return (
     <Card className="max-w-2xl mx-auto">
       <CardHeader>
         <CardTitle>
-          {t(isSsoMode ? 'wizard.verify.title' : 'wizard.probe.title', {
-            defaultValue: 'Connection Probe',
-          })}
+          {t('wizard.probe.title', { defaultValue: 'Connection Probe' })}
         </CardTitle>
         <CardDescription>
           {t('wizard.probe.description', {
@@ -1092,35 +695,16 @@ function StepConfirm({
   draft,
   setupResult,
   isSettingUp,
-  isSsoMode,
-  detectedTenantId,
   onConfirm,
   onBack,
 }: {
   draft: WizardDraft;
   setupResult: WizardSetupResponse | null;
   isSettingUp: boolean;
-  /** wizard-ent-sso-mode v1.3:SSO 模式只显示统一认证摘要 */
-  isSsoMode: boolean;
-  /** 验证步自动识别到的租户 ID(未识别或非 SSO 模式为 null) */
-  detectedTenantId: string | null;
   onConfirm: () => void;
   onBack: () => void;
 }) {
   const { t } = useTranslation();
-  const ssoTypeLabel = t('wizard.types.enterpriseSso', {
-    defaultValue: '企业版（SSO模式）',
-  });
-  const typeLabel = t('wizard.confirm.type', { defaultValue: 'Type' });
-  const tenantIdLabel = t('wizard.confirm.tenantId', {
-    defaultValue: 'Tenant ID',
-  });
-  const channelsText =
-    draft.sso.providers.length > 0
-      ? draft.sso.providers.join(',')
-      : t('wizard.confirm.ssoAllChannels', {
-          defaultValue: '全部渠道',
-        });
   return (
     <Card className="max-w-2xl mx-auto">
       <CardHeader>
@@ -1128,77 +712,30 @@ function StepConfirm({
           {t('wizard.confirm.title', { defaultValue: 'Confirm Setup' })}
         </CardTitle>
         <CardDescription>
-          {isSsoMode
-            ? t('wizard.confirm.ssoDescription', {
-                defaultValue:
-                  'Review the unified sign-in settings. On confirm, unified sign-in is turned on and the enterprise gateway is registered automatically.',
-              })
-            : t('wizard.confirm.description', {
-                defaultValue:
-                  'Review the configuration. On confirm, a backend config will be created.',
-              })}
+          {t('wizard.confirm.description', {
+            defaultValue:
+              'Review the configuration. On confirm, a backend config will be created.',
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
-        {isSsoMode ? (
-          <>
-            <Row label={typeLabel} value={ssoTypeLabel} />
-            <Row
-              label={t('wizard.confirm.gateway', {
-                defaultValue: 'Authentication gateway',
-              })}
-              value={draft.endpoint}
-            />
-            <Row
-              label={tenantIdLabel}
-              value={detectedTenantId ?? draft.intellectTenantId.trim()}
-            />
-            <Row
-              label={t('wizard.confirm.sso', { defaultValue: 'SSO(统一认证)' })}
-              value={`${channelsText} · ${draft.sso.publicOrigin}`}
-            />
-            <Row
-              label={t('wizard.sso.silentRelogin', {
-                defaultValue: '会话过期后静默重登',
-              })}
-              value={
-                draft.sso.silentRelogin
-                  ? t('wizard.confirm.ssoOn', { defaultValue: 'On' })
-                  : t('wizard.confirm.ssoOff', { defaultValue: 'Off' })
-              }
-            />
-            {/* §8 R8:向导完成 ≠ 统一认证已生效,须写入环境变量并重启 BFF */}
-            <p className="text-xs text-state-warning break-words">
-              {t('wizard.confirm.ssoPendingHint', {
-                defaultValue:
-                  'Unified sign-in is not active yet. The completion page lists the environment variables to add to your deployment configuration; sign-in channels appear on the login page only after they are written and the BFF is restarted.',
-              })}
-            </p>
-          </>
-        ) : (
-          <>
-            <Row
-              label={t('wizard.confirm.name', { defaultValue: 'Name' })}
-              value={draft.name}
-            />
-            <Row
-              label={typeLabel}
-              value={
-                draft.setupProfile === 'enterprise-password'
-                  ? t('wizard.types.enterprisePassword', {
-                      defaultValue: '企业版（非SSO模式）',
-                    })
-                  : (draft.selectedType ?? '-')
-              }
-            />
-            <Row
-              label={t('wizard.confirm.endpoint', { defaultValue: 'Endpoint' })}
-              value={draft.endpoint}
-            />
-            {draft.intellectTenantId && (
-              <Row label={tenantIdLabel} value={draft.intellectTenantId} />
-            )}
-          </>
+        <Row
+          label={t('wizard.confirm.name', { defaultValue: 'Name' })}
+          value={draft.name}
+        />
+        <Row
+          label={t('wizard.confirm.type', { defaultValue: 'Type' })}
+          value={draft.selectedType ?? '-'}
+        />
+        <Row
+          label={t('wizard.confirm.endpoint', { defaultValue: 'Endpoint' })}
+          value={draft.endpoint}
+        />
+        {draft.intellectTenantId && (
+          <Row
+            label={t('wizard.confirm.tenantId', { defaultValue: 'Tenant ID' })}
+            value={draft.intellectTenantId}
+          />
         )}
         {setupResult?.envSnippet && (
           <div className="space-y-1 pt-2">
@@ -1227,9 +764,7 @@ function StepConfirm({
         <Button onClick={onConfirm} disabled={isSettingUp}>
           {isSettingUp
             ? t('common.submitting', { defaultValue: 'Submitting...' })
-            : isSsoMode
-              ? t('wizard.confirm.submitSso', { defaultValue: 'Finish setup' })
-              : t('wizard.confirm.submit', { defaultValue: 'Create Backend' })}
+            : t('wizard.confirm.submit', { defaultValue: 'Create Backend' })}
         </Button>
       </CardFooter>
     </Card>
@@ -1246,17 +781,17 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 function StepDone({
+  draft,
   setupResult,
-  isSsoMode,
   onDone,
 }: {
+  draft: WizardDraft;
   setupResult: WizardSetupResponse | null;
-  /** wizard-ent-sso-mode v1.3:SSO 模式的完成页以统一认证为主线 */
-  isSsoMode: boolean;
   onDone: () => void;
 }) {
   const { t } = useTranslation();
   const warnings = setupResult?.warnings ?? [];
+  const isEnterprise = draft.selectedType === 'intellect-enterprise';
   return (
     <Card className="max-w-2xl mx-auto">
       <CardHeader>
@@ -1264,15 +799,10 @@ function StepDone({
           {t('wizard.done.title', { defaultValue: 'Setup Complete' })}
         </CardTitle>
         <CardDescription>
-          {isSsoMode
-            ? t('wizard.done.ssoDescription', {
-                defaultValue:
-                  'Unified sign-in is configured and the enterprise gateway has been registered. Add the environment variables below to your deployment configuration and restart the service.',
-              })
-            : t('wizard.done.description', {
-                defaultValue:
-                  'Backend has been configured successfully. You can now start using the platform.',
-              })}
+          {t('wizard.done.description', {
+            defaultValue:
+              'Backend has been configured successfully. You can now start using the platform.',
+          })}
         </CardDescription>
       </CardHeader>
       {/* D-FUP-01(wizard-sso-followup/A2):envSnippet 原只渲染在第 5 步确认卡,
@@ -1280,15 +810,6 @@ function StepDone({
           ".env 片段"。补渲染到完成页(与确认卡同键复用)。 */}
       {setupResult?.envSnippet && (
         <CardContent className="space-y-1">
-          {/* §8 R8:SSO snippet 时强制提示尚未写入 env */}
-          {setupResult.envSnippet.includes('BFF_SSO_ENABLED') && (
-            <p className="text-xs text-state-warning break-words">
-              {t('wizard.done.ssoEnvPending', {
-                defaultValue:
-                  '统一认证尚未生效:请将下列 BFF_SSO_* 写入部署 .env 并重启 BFF 后,登录页才会出现统一认证渠道。',
-              })}
-            </p>
-          )}
           <p className="text-xs text-text-secondary">
             {t('wizard.confirm.envSnippet', {
               defaultValue: '.env snippet (copy to your .env file)',
@@ -1312,6 +833,17 @@ function StepDone({
               </li>
             ))}
           </ul>
+        </CardContent>
+      )}
+      {/* wizard-ent-sso-mode v1.4:企业版完成页指引统一认证入口(SSO 已移交管理页,§11.2) */}
+      {isEnterprise && (
+        <CardContent className="space-y-1">
+          <p className="text-xs text-text-secondary break-words">
+            {t('wizard.done.enterpriseSsoHint', {
+              defaultValue:
+                'To enable unified authentication (SSO) sign-in, go to System → Unified authentication settings after setup.',
+            })}
+          </p>
         </CardContent>
       )}
       <CardFooter>
@@ -1356,8 +888,6 @@ function WizardPage() {
   const [setupResult, setSetupResult] = useState<WizardSetupResponse | null>(
     null,
   );
-  // wizard-sso(P2/R3):引导密钥仅内存态,不进 localStorage 草稿;刷新丢失需重新生成
-  const [ssoSecret, setSsoSecret] = useState('');
 
   // ----- Queries -----
   // 列表:可用后端类型
@@ -1367,7 +897,6 @@ function WizardPage() {
     retry: false,
   });
   // intellect-rag 不作为独立向导类型(RAG 是 enterprise 插件)。BFF 已不返回该项;此处再过滤一次防止旧缓存。
-  // 滚动升级:旧 BFF 无 optionId 时回落 type(双卡场景须新 BFF)
   // useMemo 保持引用稳定:selectedOption 与 StepConnectionForm 的 [option] 副作用都依赖它,
   // 每次渲染新建数组会让该副作用反复触发(修复:第 3 步曾因此陷入重渲染循环)
   const options = useMemo(
@@ -1386,8 +915,6 @@ function WizardPage() {
     () => options.find((o) => o.optionId === draft.selectedOptionId),
     [options, draft.selectedOptionId],
   );
-  // wizard-ent-sso-mode v1.3:SSO 模式走独立的第 3–6 步(统一认证设置 / 验证 / 确认 / 完成)
-  const isSsoMode = draft.setupProfile === 'enterprise-sso';
 
   useEffect(() => {
     if (!draft.selectedOptionId || options.length === 0) return;
@@ -1396,7 +923,6 @@ function WizardPage() {
         ...prev,
         selectedOptionId: null,
         selectedType: null,
-        setupProfile: undefined,
       }));
     }
   }, [options, draft.selectedOptionId]);
@@ -1405,29 +931,10 @@ function WizardPage() {
   const { data: statusData } = useQuery({
     queryKey: ['wizard/status'],
     queryFn: async () => (await fetchWizardStatus()).data,
-    // Step 5-6 才启用;"新增后端"场景从第 2 步起就需要(判断是否隐藏 SSO 模式卡)
-    enabled: step >= 5 || mode === 'add',
+    // Step 5-6 才启用
+    enabled: step >= 5,
     retry: false,
   });
-
-  // v1.3 D5:"新增后端"场景下已有企业后端时不再提供 SSO 模式卡——
-  // 它会再登记一条企业后端并改写默认租户绑定;统一认证的调整走系统管理的「统一认证设置」
-  const hideSsoCard = mode === 'add' && statusData?.hasEnterpriseBackend === true;
-  const visibleOptions = hideSsoCard
-    ? options.filter((o) => o.setupProfile !== 'enterprise-sso')
-    : options;
-
-  // SSO 模式卡被隐藏时,清掉旧草稿里可能残留的 SSO 选型
-  useEffect(() => {
-    if (hideSsoCard && draft.setupProfile === 'enterprise-sso') {
-      setDraft((prev) => ({
-        ...prev,
-        selectedOptionId: null,
-        selectedType: null,
-        setupProfile: undefined,
-      }));
-    }
-  }, [hideSsoCard, draft.setupProfile]);
 
   // 仅当页面以 step>=5 加载(刷新场景)时才执行重定向检测。
   // 用户从 Step 4 点击"继续"进入 Step 5 时,后端尚未创建(needsSetup=true 是预期行为),
@@ -1485,7 +992,7 @@ function WizardPage() {
       if (!draft.selectedType || !draft.endpoint) {
         throw new Error('missing type or endpoint');
       }
-      const req: WizardProbeRequest =
+      const req =
         draft.credentialKind === 'email-password'
           ? {
               type: draft.selectedType,
@@ -1499,10 +1006,6 @@ function WizardPage() {
               token: draft.token,
             };
       // P3(wizard-sso):RAG 插件探测随向导 RAG 区块移除
-      // wizard-ent-sso-mode v1.3:SSO 模式走验证分支(BFF 校验网关与密钥、识别租户)
-      if (draft.setupProfile) {
-        req.setupProfile = draft.setupProfile;
-      }
       return (await probeWizardBackend(req)).data;
     },
     onSuccess: (resp) => {
@@ -1544,21 +1047,6 @@ function WizardPage() {
         ...(draft.intellectTenantId
           ? { intellectTenantId: draft.intellectTenantId }
           : {}),
-        // wizard-ent-sso-mode:显式 setupProfile;仅 enterprise-sso 携带 sso。
-        // v1.3:启用状态由模式推定(不传 sso.enabled);SSO 模式下名称由 BFF 取默认值、
-        // 租户 ID 由 BFF 自动识别,intellectTenantId 仅在验证步手填过时携带
-        ...(draft.setupProfile ? { setupProfile: draft.setupProfile } : {}),
-        ...(draft.setupProfile === 'enterprise-sso'
-          ? {
-              sso: {
-                publicOrigin: draft.sso.publicOrigin.trim(),
-                stateSecret: ssoSecret,
-                providers:
-                  draft.sso.providers.length > 0 ? draft.sso.providers : null,
-                silentRelogin: draft.sso.silentRelogin,
-              },
-            }
-          : {}),
         defaultForTenant: draft.defaultForTenant,
       };
       return (await setupWizardBackend(req)).data;
@@ -1567,13 +1055,9 @@ function WizardPage() {
       setSetupResult(resp);
       if (resp.success) {
         toast.success(
-          isSsoMode
-            ? t('wizard.toast.successSso', {
-                defaultValue: 'Unified sign-in setup is complete',
-              })
-            : t('wizard.toast.success', {
-                defaultValue: 'Backend created successfully',
-              }),
+          t('wizard.toast.success', {
+            defaultValue: 'Backend created successfully',
+          }),
         );
         // 失效 wizard/status 缓存,避免 WizardGuard 读到旧 needsSetup=true
         // 导致跳转 / 时被重定向回 /wizard 形成死循环
@@ -1603,11 +1087,9 @@ function WizardPage() {
 
   // ----- Handlers -----
   const handleSelectType = (option: WizardBackendTypeOption) => {
-    const isSso = option.setupProfile === 'enterprise-sso';
     updateDraft({
       selectedOptionId: option.optionId,
       selectedType: option.type,
-      setupProfile: option.setupProfile,
       endpoint: option.defaultEndpoint,
       credentialKind: option.credentialKind,
       // 重置凭据字段(切换类型时旧凭据无效)
@@ -1615,15 +1097,7 @@ function WizardPage() {
       email: '',
       password: '',
       intellectTenantId: '',
-      // 切卡重置 SSO;SSO 模式卡预填公开来源地址(启用状态由模式推定,草稿里没有 enabled)
-      sso: isSso
-        ? {
-            ...INITIAL_WIZARD_DRAFT_SSO,
-            publicOrigin: window.location.origin,
-          }
-        : { ...INITIAL_WIZARD_DRAFT_SSO },
     });
-    setSsoSecret('');
   };
 
   const handleProbeRetry = () => {
@@ -1649,27 +1123,22 @@ function WizardPage() {
             {t('wizard.title', { defaultValue: 'Setup Wizard' })}
           </h1>
           <p className="text-center text-sm text-text-secondary mb-8">
-            {isSsoMode
-              ? t('wizard.subtitleSso', {
-                  defaultValue: 'Set up unified sign-in',
-                })
-              : t('wizard.subtitle', {
-                  defaultValue: 'Connect your first harness backend',
-                })}
+            {t('wizard.subtitle', {
+              defaultValue: 'Connect your first harness backend',
+            })}
           </p>
 
-          <Stepper current={step} isSsoMode={isSsoMode} />
+          <Stepper current={step} />
 
           {step === 1 && <StepWelcome onNext={() => goToStep(2)} />}
 
           {step === 2 && (
             <StepSelectType
-              options={visibleOptions}
+              options={options}
               selectedOptionId={draft.selectedOptionId}
               onSelect={handleSelectType}
               onNext={() => goToStep(3)}
               onBack={() => goToStep(1)}
-              ssoCardHidden={hideSsoCard}
             />
           )}
 
@@ -1677,9 +1146,6 @@ function WizardPage() {
             <StepConnectionForm
               draft={draft}
               option={selectedOption}
-              ssoSecret={ssoSecret}
-              onSsoChange={(patch) => updateDraft({ sso: { ...draft.sso, ...patch } })}
-              onSsoSecretChange={setSsoSecret}
               update={updateDraft}
               onNext={() => {
                 setProbeResult(null);
@@ -1693,11 +1159,6 @@ function WizardPage() {
             <StepProbeResult
               probeResult={probeResult}
               isProbing={probeMutation.isPending}
-              isSsoMode={isSsoMode}
-              manualTenantId={draft.intellectTenantId}
-              onManualTenantChange={(value) =>
-                updateDraft({ intellectTenantId: value })
-              }
               onRetry={handleProbeRetry}
               onNext={() => goToStep(5)}
               onBack={() => goToStep(3)}
@@ -1709,8 +1170,6 @@ function WizardPage() {
               draft={draft}
               setupResult={setupResult}
               isSettingUp={setupMutation.isPending}
-              isSsoMode={isSsoMode}
-              detectedTenantId={probeResult?.sso?.tenantId ?? null}
               onConfirm={handleConfirm}
               onBack={() => goToStep(4)}
             />
@@ -1718,8 +1177,8 @@ function WizardPage() {
 
           {step === 6 && (
             <StepDone
+              draft={draft}
               setupResult={setupResult}
-              isSsoMode={isSsoMode}
               onDone={handleDone}
             />
           )}

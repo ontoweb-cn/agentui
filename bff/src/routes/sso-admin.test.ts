@@ -9,6 +9,19 @@ vi.mock('../services/sso-store', () => ({
   writeSsoRuntimeConfig: vi.fn(),
   clearSsoRuntimeConfig: vi.fn(),
 }));
+// v1.4:检测服务与渠道拉取 mock(路由层只关心结果)
+vi.mock('../services/enterprise-sso-check', () => ({
+  verifyEnterpriseSso: vi.fn(),
+  GATEWAY_BASE_HINT: 'TEST_HINT',
+  TENANT_ID_RE: /^[0-9a-fA-F]{32}$/,
+}));
+vi.mock('../services/sso-providers', () => ({
+  getLoginProviders: vi.fn(),
+}));
+vi.mock('../services/tenant-validator', () => ({
+  fetchTenantInfo: vi.fn().mockResolvedValue(null),
+  validateTenantConfigs: vi.fn(),
+}));
 
 import { ssoAdminRoutes } from './sso-admin';
 import {
@@ -16,12 +29,57 @@ import {
   writeSsoRuntimeConfig,
   clearSsoRuntimeConfig,
 } from '../services/sso-store';
+import { verifyEnterpriseSso } from '../services/enterprise-sso-check';
+import { getLoginProviders } from '../services/sso-providers';
 import { authMiddleware } from '../middleware/auth';
 import { clearImtSessionCache, requireValidImtSession } from '../middleware/imt-session-guard';
+import type { HarnessStore } from '../types/stores';
+import type { BackendStore } from '../types/stores';
+import type { HarnessBackend } from '../types/harness';
+import type { BffTenant } from '../types/tenant';
 
 function createApp() {
   const app = new Hono();
   app.route('/', ssoAdminRoutes as unknown as Hono);
+  return app;
+}
+
+/** v1.4:注入默认租户 '0' 绑定企业后端的 app(守卫/检测/providers 用) */
+function createAppWithBackend(backend: Partial<HarnessBackend> | null) {
+  const app = new Hono<{
+    Variables: { harnessStore: HarnessStore; backendStore: BackendStore };
+  }>();
+  app.use('*', async (c, next) => {
+    const tenant: BffTenant | undefined = backend
+      ? ({
+          id: '0',
+          name: 'T0',
+          intellectBackendId: backend.id ?? 'ent-default',
+          createdAt: '',
+          updatedAt: '',
+        } as BffTenant)
+      : undefined;
+    const backendStore = {
+      load: vi.fn(),
+      getBackend: vi.fn((id: string) => (id === '0' ? tenant : undefined)),
+      listBackends: vi.fn(() => (tenant ? [tenant] : [])),
+    } as unknown as BackendStore;
+    const harnessStore = {
+      get: vi.fn((id: string) =>
+        backend ? ({ id, type: 'intellect-enterprise', endpoint: 'http://gw.example', ...backend } as HarnessBackend) : undefined,
+      ),
+      list: vi.fn(() => []),
+    } as unknown as HarnessStore;
+    c.set('backendStore', backendStore);
+    c.set('harnessStore', harnessStore);
+    await next();
+  });
+  app.route(
+    '/',
+    ssoAdminRoutes as unknown as Hono<{
+      Variables: { harnessStore: HarnessStore; backendStore: BackendStore };
+    }>,
+  );
   return app;
 }
 
@@ -226,5 +284,128 @@ describe('sso-admin 鉴权门控(评审补强)', () => {
     vi.stubEnv('BFF_ENABLE_IMT_CANVAS_AGENTS', 'false');
     const res = await createGuardedApp().request('/admin/sso/config');
     expect(res.status).toBe(401);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v1.4 管理页扩展(设计 §11.2/§11.3 + §12 R-3/R-4/R-5):
+// stateSecret 三态 / boundBackend / ?check=1 / providers 预览 / PUT 守卫
+// ---------------------------------------------------------------------------
+
+const entBackend = { id: 'ent-default', endpoint: 'http://gw.example', adminToken: 'gw-key' };
+
+describe('sso-admin v1.4 管理页扩展', () => {
+  it('V-01: stateSecretStatus 三态(unset/set/invalid),stateSecretConfigured 兼容位=set', async () => {
+    vi.mocked(readSsoRuntimeConfig).mockReturnValue(null);
+    vi.stubEnv('BFF_SSO_STATE_SECRET', '');
+    let body = await (await createApp().request('/admin/sso/config')).json();
+    expect(body.data.stateSecretStatus).toBe('unset');
+    expect(body.data.stateSecretConfigured).toBe(false);
+
+    vi.stubEnv('BFF_SSO_STATE_SECRET', 'short');
+    body = await (await createApp().request('/admin/sso/config')).json();
+    expect(body.data.stateSecretStatus).toBe('invalid');
+    expect(body.data.stateSecretConfigured).toBe(false);
+
+    vi.stubEnv('BFF_SSO_STATE_SECRET', 'x'.repeat(40));
+    body = await (await createApp().request('/admin/sso/config')).json();
+    expect(body.data.stateSecretStatus).toBe('set');
+    expect(body.data.stateSecretConfigured).toBe(true);
+    // 永不回显密钥值
+    expect(JSON.stringify(body)).not.toContain('xxxx');
+  });
+
+  it('V-02: view.boundBackend 反映默认租户绑定(有→对象,无→null,stores 缺失→undefined)', async () => {
+    vi.mocked(readSsoRuntimeConfig).mockReturnValue(null);
+    let body = await (await createAppWithBackend(entBackend).request('/admin/sso/config')).json();
+    expect(body.data.boundBackend).toEqual({ id: 'ent-default', endpoint: 'http://gw.example' });
+
+    body = await (await createAppWithBackend(null).request('/admin/sso/config')).json();
+    expect(body.data.boundBackend).toBeNull();
+
+    body = await (await createApp().request('/admin/sso/config')).json();
+    expect(body.data.boundBackend).toBeUndefined();
+  });
+
+  it('V-03: ?check=1 → 服务端实时四项检测(复用 verifyEnterpriseSso)', async () => {
+    vi.mocked(readSsoRuntimeConfig).mockReturnValue(null);
+    vi.mocked(verifyEnterpriseSso).mockResolvedValue({
+      healthy: true,
+      sso: { gatewayOk: true, tenantId: 'a'.repeat(32), keyValid: true, providersOk: true, providerCount: 2 },
+    });
+    const res = await createAppWithBackend(entBackend).request('/admin/sso/config?check=1');
+    const body = await res.json();
+    expect(body.data.check.boundBackendMissing).toBe(false);
+    expect(body.data.check.status).toMatchObject({
+      gatewayOk: true,
+      tenantId: 'a'.repeat(32),
+      keyValid: true,
+      providersOk: true,
+      providerCount: 2,
+    });
+    expect(vi.mocked(verifyEnterpriseSso)).toHaveBeenCalledWith(
+      'http://gw.example',
+      null, // tenant-validator 已 mock:fetchTenantInfo → null
+      'gw-key',
+    );
+  });
+
+  it('V-04: ?check=1 未绑定后端 → boundBackendMissing=true', async () => {
+    vi.mocked(readSsoRuntimeConfig).mockReturnValue(null);
+    const body = await (await createAppWithBackend(null).request('/admin/sso/config?check=1')).json();
+    expect(body.data.check.boundBackendMissing).toBe(true);
+    expect(body.data.check.status).toBeNull();
+  });
+
+  it('V-05: GET /admin/sso/providers → 裁剪视图;无绑定 → 400;上游失败 → 502', async () => {
+    vi.mocked(readSsoRuntimeConfig).mockReturnValue(null);
+    vi.mocked(getLoginProviders).mockResolvedValue({
+      providers: [
+        { id: 'intellect-auth', displayName: '统一认证', icon: 'sso', clientId: 'secret-c', authorizeUrl: 'https://idp', scopes: 'openid' },
+      ],
+      misconfigured: ['broken'],
+    });
+    const ok = await createAppWithBackend(entBackend).request('/admin/sso/providers');
+    expect(ok.status).toBe(200);
+    const okBody = await ok.json();
+    expect(okBody.data.providers[0]).toEqual({ id: 'intellect-auth', displayName: '统一认证', icon: 'sso' });
+    expect(JSON.stringify(okBody)).not.toContain('secret-c');
+
+    const noBackend = await createAppWithBackend(null).request('/admin/sso/providers');
+    expect(noBackend.status).toBe(400);
+
+    vi.mocked(getLoginProviders).mockRejectedValue(new Error('provider list returned 500'));
+    const bad = await createAppWithBackend(entBackend).request('/admin/sso/providers');
+    expect(bad.status).toBe(502);
+  });
+
+  it('V-06: PUT 启用守卫(R-3)——后端缺失→warning;后端未就绪→warning;就绪→无后端 warning', async () => {
+    vi.mocked(readSsoRuntimeConfig).mockReturnValue(null);
+    vi.mocked(writeSsoRuntimeConfig).mockReturnValue(runtimeSample);
+
+    const missing = await createAppWithBackend(null).request('/admin/sso/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true, publicOrigin: 'https://rt.example.com' }),
+    });
+    let body = await missing.json();
+    expect(body.data.warnings.some((w: string) => w.includes('未绑定企业后端'))).toBe(true);
+
+    const notReady = await createAppWithBackend({ id: 'ent-default', endpoint: 'http://gw.example', adminToken: '' }).request('/admin/sso/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true, publicOrigin: 'https://rt.example.com' }),
+    });
+    body = await notReady.json();
+    expect(body.data.warnings.some((w: string) => w.includes('未就绪'))).toBe(true);
+
+    const ready = await createAppWithBackend(entBackend).request('/admin/sso/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true, publicOrigin: 'https://rt.example.com' }),
+    });
+    body = await ready.json();
+    expect(body.data.warnings.some((w: string) => w.includes('未绑定企业后端'))).toBe(false);
+    expect(body.data.warnings.some((w: string) => w.includes('未就绪'))).toBe(false);
   });
 });

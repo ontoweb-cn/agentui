@@ -2,10 +2,10 @@
 
 | 项 | 值 |
 |---|---|
-| 文档版本 | v1.3（§10：两条流程拆分——SSO 模式只配置统一认证） |
-| 日期 | 2026-11-24 |
-| 状态 | 双卡主路径已实施；§9 **S1/S2/Q1 本仓已落地**（2026-11-23）；**§10 v1.3 已实施（2026-11-24，尚未发版）**；公网仍须 `SSRF_ALLOW_PRIVATE_IP=false`；S3–S5 为 backlog，Q2/Q3/Q4 已随 §10 修复 |
-| 前置决策 | 用户确认方案 **A**：SSO 不再作为 `intellect-enterprise` Connection 内嵌可选项，而是 SelectType **独立首卡** |
+| 文档版本 | v1.4（§11 设计 + §12 评审 + **§13 质量/安全评审:通过,Q-1 已修,可提交**） |
+| 日期 | 2026-11-25 |
+| 状态 | §10 v1.3 已实施并随 **v0.4.9 发版上线**（2026-11-25，冒烟通过）；§11 v1.4 为**决策反转设计**——§12 评审**方向通过**，R-1（P0）吸收后定稿，实施载体 v0.5.0；实施完成前 §10 双卡形态（线上）维持现状；公网仍须 `SSRF_ALLOW_PRIVATE_IP=false`；S3 随 v1.4 实质缓解，S4–S5 为 backlog |
+| 前置决策 | ~~用户确认方案 **A**：SSO 独立首卡~~（**v1.4 废止，见 §11.1 决策反转记录**）→ v1.4 方向：SSO 为**安装后管理页能力**，向导回归单张企业卡 |
 | 关联 | `docs/wizard-kag-to-sso-design.md`（§4.2 / D2 被本文件修订）；`docs/auth-intellect-auth-to-team-flow-status.md`；spec-010 / spec-014 |
 | 改动范围 | 本仓向导选型与 SSO 区块挂载；**不**新增 `authMode`；运行时仍仅 `intellect-enterprise` |
 
@@ -412,3 +412,273 @@ SSO 模式第 3 步**不出现**：后端名称、租户 ID 输入框、启用�
 | BFF `wizard.test.ts` | 79 例（新增 21）：SSO 模式 setup 矩阵 W-01～08、验证矩阵 W-P01～09、`hasEnterpriseBackend`、选项文案 |
 | 前端 `wizard-modes.test.tsx` | 6 例：两种模式第 3 步渲染差异、选型页差异、切卡重置、SSO 卡隐藏、租户 ID 手填回退 |
 | e2e 用例 `TC-WED-01～04` | 已按本节修订；浏览器步骤未执行，真实网关联调待做 |
+
+---
+
+## 11. v1.4：移除向导 SSO 卡，SSO 配置迁移至管理页（已按 §12 评审修订实施,2026-11-25）
+
+> 2026-11-25 发起。触发点：v1.3 发版落地后对 #1（认证网关地址）/#2（网关服务密钥）的性质分析
+> （见与 HIEDU 端能力边界的讨论）。本节为**设计草案**，评审通过后才进入实施；
+> 评审前 §10 双卡形态维持现状（已随 v0.4.9 上线，不受本节影响）。**实施状态:已实施（2026-11-25,dev 工作区,待提交发版）——验证 Node 20.20.2:宿主 jest 66 套件/807 用例、BFF vitest 1268 全过;tsc 0 错;R-1 吸收（选项查找回退,W-R1 固化）。报告 `tests/e2e-tests/reports/REPORT-sso-admin-v14-20261125.md`。**
+
+### 11.1 决策反转记录
+
+**废止 v1.2 前置决策「方案 A：SSO 独立首卡」**。理由（v1.3 实施与发版后暴露）：
+
+1. **双卡前提不成立**：#1/#2 是 agentui↔team 的部署级连接信息，**非 SSO 模式同样必需**
+   （密码登录 `/api/members/login`、会话校验 `/api/members/me`、Agent Loop 全靠它们）。
+   两张企业卡的"后端连接"部分完全相同，唯一差别是"要不要顺带填 SSO 参数"——
+   这是表单分层问题，不是部署形态问题，用两张卡表达属过度设计。
+2. **首装配 SSO 给不出"能用的 SSO"**：完成时 SSO 仍未生效（envSnippet + 重启），
+   生效动作必然发生在安装后，配置动作留在首装向导是错位的。
+3. **安全面**：向导 setup 走 bootstrap 窗口（首装无凭据，§9 S3），
+   而它采集 `stateSecret`；同样的配置放到管理页则处于管理员会话门控之内
+   （`/admin/sso/*` 有 `requireValidImtSession`）——直接缓解 S3。
+4. **验证时序**：SSO 配置的验证（渠道数/密钥有效性）只有在系统运行后才有意义；
+   管理页"保存即时生效、当场可验"是天然正确的时序。
+
+**v1.3 各决策（§10.3 D1–D8）在 v1.4 的处置**：
+
+| v1.3 决策 | v1.4 处置 |
+|---|---|
+| D1 网关服务密钥（SSO 卡必填） | **保留必要性，变更归属**：密钥移到唯一企业卡（两种模式共用），不再属于"SSO 配置" |
+| D2 非 SSO 卡去 SSO 字样 / BFF 拒绝 sso | 企业卡即原非 SSO 流程；BFF 对 setup 携带 `sso` 的拒绝**保留**（管理页路径不经 setup） |
+| D3 文案按模式切换 | 失效（单一企业卡，无模式分支）；步骤条回归单一文案 |
+| D4 envSnippet 去 token 行 | envSnippet 的 SSO 行随向导 SSO 路径一起消失；SSO 参数由管理页运行时配置承载 |
+| D5 已有企业后端隐藏 SSO 卡 | 失效（无 SSO 卡）；`status.hasEnterpriseBackend` 字段保留做兼容 |
+| D6 SSO 免重启生效（当时不做） | **反转落地**：管理页运行时配置天然即时生效——`BFF_SSO_STATE_SECRET` 预置后，启用 SSO 全程免重启（v1.3 未做的能力成为 v1.4 默认） |
+| D7 租户 ID 识别失败回退手填 | 保留在管理页"前置状态"卡；向导首装回归手填（v1.1 行为） |
+| D8 非 SSO 模式租户 ID 采集不变 | 无意义化（单一企业卡即此行为） |
+
+**v1.3 资产存续**：探针 snake_case 归一化、选项 memo/[option] 副作用修复（普适 bug 修复）保留；
+渠道拉取组件、四项验证逻辑（`verifyEnterpriseSso`）**移植管理页复用**；
+BFF setup/probe 的 setupProfile 分支保留一版做兼容（11.3）。
+
+### 11.2 目标形态与管理页交互稿
+
+**向导（4 卡）**：
+
+```text
+[1] Intellect Enterprise   ← 唯一企业卡 = 原「非 SSO 模式」流程
+[2] Intellect Community
+[3] HERMES
+[4] AgentScope
+```
+
+企业卡描述追加："安装后可在 系统管理 → 统一认证设置 开启统一认证登录"；
+完成页（企业后端）追加同一指引。SSO 卡、sso-section、验证/确认/完成的双模式分支全部移除。
+
+**管理页（系统管理 → 统一认证设置）扩展交互稿**：
+
+```text
+┌─ 系统管理 › 统一认证设置 ─────────────────────────────────────────────┐
+│ 副标题：统一认证(SSO)登录的运行时配置；保存后即时生效，无需重启。       │
+│                                                                        │
+│ ┌─ ① 前置状态（只读，[重新检测] 触发服务端实时检查）─────────────────┐ │
+│ │ 企业后端   intellect-enterprise-default                            │ │
+│ │   认证网关  https://ai.wust.edu.cn/intellect-gateway     ✓ 可达    │ │
+│ │   服务密钥  ✓ 有效（网关侧校验：/v1/capabilities→/v1/models）      │ │
+│ │   租户 ID   fedcba98…cdef（网关自动识别）                          │ │
+│ │ 登录渠道   1 个可用（intellect-auth）                               │ │
+│ │ BFF_SSO_STATE_SECRET   ✓ 部署配置已设置 / ✗ 未设置（黄字警示）      │ │
+│ └────────────────────────────────────────────────────────────────────┘ │
+│ ┌─ ② 生效配置（可编辑；保存即写入运行时配置 sso-config.json）────────┐ │
+│ │ 启用统一认证登录            [开关]（后端未绑定/密钥未设时禁用+提示）│ │
+│ │ 公开来源地址   [https://ai.wust.edu.cn]（http 黄字警告）            │ │
+│ │ 登录渠道白名单  [获取渠道]  ☑ 统一认证(intellect-auth) ☐ …         │ │
+│ │   （不勾 = 展示全部；配置缺失渠道灰显标注）                          │ │
+│ │ 会话过期后静默重登          [开关]                                   │ │
+│ │ [保存]   来源标注：运行时配置 / 环境变量兜底（沿用 A7 语义）        │ │
+│ └────────────────────────────────────────────────────────────────────┘ │
+│ ┌─ ③ 提示区 ────────────────────────────────────────────────────────┐ │
+│ │ · 密钥未设时启用 → 黄字：重启后 BFF 将启动失败，先在部署配置设置     │ │
+│ │ · 企业后端未绑定 → 启用开关禁用 + 指引到「Harness 后端」             │ │
+│ │ · 启用后验证：打开登录页应出现渠道按钮（密码保留为破窗，非缺陷）     │ │
+│ └────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+**三种状态与页面表现**：
+
+| 状态 | ① 前置状态 | ② 生效配置 |
+|---|---|---|
+| 未就绪（无企业后端） | 后端未绑定，检测项灰显 | 启用开关禁用 + 指引 |
+| 就绪未启用 | 全 ✓ | 可编辑，启用开关可用；保存即生效 |
+| 已启用 | 全 ✓ | 可编辑；登录页应见渠道按钮 |
+
+**运维顺序（对比 v1.3：五步 envSnippet 粘贴 → 一次静态预置 + 界面开关）**：
+
+```text
+① 首装：向导选 Intellect Enterprise（名称/网关/服务密钥/租户 ID）→ 完成
+② 一次性：部署配置预置 BFF_SSO_STATE_SECRET（k8s Secret，静态值）
+③ 管理员以成员密码登录（非 SSO 首装的天然破窗路径）
+④ 统一认证设置：启用 + 公开来源 + 渠道 → 保存即时生效
+⑤ 登录页出现渠道按钮，当场验证
+```
+
+**明确不做（边界）**：
+- 管理页**不生成、不展示、不修改** `BFF_SSO_STATE_SECRET`（维持"密钥不入运行时存储"宪法边界）；
+- 不做"自动写部署配置/自动重启"；
+- 不改登录页交互（密码破窗保留）；
+- 不动 HIEDU 链路；不新增 `authMode`。
+
+### 11.3 契约与兼容策略
+
+| 项 | v1.4 处置 |
+|---|---|
+| `GET /admin/wizard/backend-types` | **移除** `enterprise-sso` 卡（4 卡）；UI 与 BFF 同镜像发布，无跨版本组合风险 |
+| `POST /admin/wizard/setup` 的 `setupProfile` | **保留一版 deprecated**：`enterprise-sso` 请求继续按现语义接受（建后端+出 SSO snippet），代码标注 deprecated；下一版再删。兼容已部署的 v0.4.9 UI + 新 BFF 组合 |
+| `POST /admin/wizard/probe` 的 SSO 验证分支 | **保留**（管理页"重新检测/测试"的服务端复用点；含 snake_case 归一化修复） |
+| `GET /admin/wizard/status` 的 `hasEnterpriseBackend` | 字段保留（兼容），UI 不再消费 |
+| `GET /admin/wizard/sso/providers`（公开+限流） | 保留不动；管理页渠道预览**新增** admin 门控端点 `GET /admin/sso/providers`（走绑定后端，复用 `getLoginProviders` 裁剪视图），避免管理页依赖公开限流端点 |
+| `GET /admin/sso/config` | **扩展**：视图增加 `stateSecretConfigured`（布尔，永不回显值）、`boundBackend { id, endpoint, gatewayOk, tenantId, keyValid, providersOk, providerCount }`；支持 `?check=1` 触发服务端实时四项检测（服务端复用 `verifyEnterpriseSso`） |
+| `PUT /admin/sso/config` | 语义不变；新增服务端守卫：绑定后端缺失/密钥未设时返回 warnings（启用开关的前端禁用为 UX 层，服务端校验为准） |
+| 数据迁移 | **无**。`sso-config.json`/env 语义不变；v0.4.9 向导路径只产出过 envSnippet（未写运行时存储），已装环境无需迁移 |
+
+**版本载体**：建议 **v0.5.0**（向导选型结构变化 = minor；顺带统一 repo 内 0.4.8 的 package.json 版本号遗留）。
+
+### 11.4 测试要点（实施后门禁）
+
+1. 向导 4 卡；企业流程（连接/探测/确认/完成）与 v1.3 非卡路径行为一致；完成页含管理页指引。
+2. 兼容：`setupProfile=enterprise-sso` 的 setup 仍 200（deprecated 路径回归）；未知 profile 仍 400。
+3. 管理页：`GET /admin/sso/config?check=1` 四项状态正确（可达/租户/密钥/渠道）；`stateSecretConfigured` 布尔正确且响应永不含密钥值；`GET /admin/sso/providers` 门控（未登录 401）+ 字段裁剪。
+4. `PUT /admin/sso/config`：后端未绑定/密钥未设时的 warnings；启用后登录页渠道出现（真实网关联调项）。
+5. 回归保留：向导第 3 步重渲染循环、probe snake_case 归一化（W-P10）、选项按 (type, profile) 查找。
+
+### 11.5 实施清单
+
+**前端**
+
+| 文件 | 动作 |
+|---|---|
+| `src/ee/pages/wizard/index.tsx` | 移除 SSO 卡与全部双模式分支（第 3–6 步 SSO 变体、Stepper 双文案、`hideSsoCard`、probe 发送 setupProfile）；保留 options memo、[option] 条件写回；企业完成页加管理页指引 |
+| `src/ee/pages/wizard/sso-section.tsx` | 迁移为管理页组件（渠道预览 + 白名单勾选），向导不再引用 |
+| `src/ee/pages/sso-settings.tsx` | 按 §11.2 交互稿扩展（前置状态卡 / 启用守卫 / 来源标注沿用） |
+| `src/services/sso-admin-service.ts` | 扩展 view 类型；新增 providers 预览调用 |
+| `src/services/wizard-service.ts` | 类型保留（兼容），UI 移除 sso/setupProfile 发送 |
+| `src/ee/locales/{zh,en}-private.ts` | `wizard.sso*`/`ssoSetup`/`verify.*` 迁移至 `admin.ssoSettings.*`；清理废弃键 |
+| `src/ee/pages/wizard/__tests__/wizard-modes.test.tsx` | 重写：4 卡 + 渲染循环回归保留；SSO 卡用例删除 |
+| 新增 sso-settings 组件测试 | 前置状态/守卫/渠道预览渲染 |
+
+**BFF**
+
+| 文件 | 动作 |
+|---|---|
+| `bff/src/routes/wizard.ts` | 选项表移除 enterprise-sso 卡；setupProfile 分支标 deprecated 保留；probe SSO 验证保留；status 字段保留 |
+| `bff/src/routes/sso-admin.ts` | view 扩展（`stateSecretConfigured` + `boundBackend`，`?check=1`）；新增 `GET /admin/sso/providers` |
+| `bff/src/types/wizard.ts` | `setupProfile` 标 deprecated（不删） |
+| `bff/src/routes/wizard.test.ts` / `sso-admin.test.ts` | 兼容用例标注 deprecated；新增管理页扩展用例 |
+
+**文档 / 用例资产**
+
+| 资产 | 动作 |
+|---|---|
+| 本文件 | §11 即草案；评审通过后状态改"已实施" |
+| `docs/wizard-manual.md` | 4 卡；移除 SSO 章节；完成页指引 |
+| `docs/wizard-ent-sso-mode-manual.md` | 改写为「统一认证配置手册（安装后管理页）」或并入 sso 手册 |
+| `deploy/release-chain.md` | 「启用 SSO」章节改为：预置 Secret → 管理页启用（即时生效） |
+| `docs/auth-intellect-auth-to-team-flow-status.md` | P0 首装口径更新（"首装选 SSO 卡"→"首装企业卡 + 管理页启用"） |
+| `tests/e2e-tests/cases/wizard-ent-sso-mode/*`、`spec` | 按 v1.4 重写；新增管理页用例（建议 `TC-SOA-*`） |
+
+### 11.6 待评审拍板项
+
+| # | 决策点 | 建议 |
+|---|---|---|
+| 1 | `setupProfile=enterprise-sso` 兼容语义 | 保留一版 deprecated alias，下版删除 |
+| 2 | 管理页"测试/检测"实现 | 扩展 `GET /admin/sso/config?check=1`（admin 门控，服务端复用 `verifyEnterpriseSso`），不复用公开 wizard 端点 |
+| 3 | 渠道预览端点 | 新增 admin 门控 `GET /admin/sso/providers` |
+| 4 | 未绑定企业后端 / 密钥未设时的启用开关 | 前端禁用 + 服务端 warnings（双保险） |
+| 5 | 版本载体 | v0.5.0 |
+| 6 | 向导专属 locale 键清理幅度 | 当版一次清理，管理页复用键迁至 `admin.ssoSettings.*` |
+
+### 11.7 非目标
+
+- 管理页不生成/不展示/不落盘 `BFF_SSO_STATE_SECRET`；
+- 不做"自动写部署配置/自动重启"；
+- 不改登录页交互（密码破窗保留，R10 延续）；
+- 不动 HIEDU 链路；不新增 `authMode`；
+- 不在 v0.5.0 删除 setupProfile 兼容分支（下一版再删）。
+
+---
+
+## 12. §11 v1.4 草案评审（草案 → 定稿修订）
+
+> 评审方式：代码级核对 `bff/src/routes/wizard.ts`（选项表/`getWizardOption`/setup/probe 兼容路径）、
+> `bff/src/index.ts`（sso-admin 挂载与全局 store 注入）、`docs/auth-intellect-auth-to-team-flow-status.md`
+> §1.2–1.3，对 §11 逐条推演。
+> **结论：方向通过（维持决策反转）；R-1 为实施阻断项，吸收后 §11 升为定稿；
+> R-2/R-3/R-4 实施必做；R-5–R-10 并入清单。**
+
+### 12.1 裁决摘要
+
+| 维度 | 裁决 |
+|---|---|
+| 产品方向（决策反转：SSO 移交管理页） | **通过**。四条理由成立，且与"配置应在管理员会话内、验证应在系统运行后"的架构事实一致 |
+| 兼容策略（§11.3） | **原样不通过 → R-1**：兼容声明与选项表实现自相矛盾，吸收后通过 |
+| 管理页扩展（§11.2） | **通过，附补全**：R-6/R-7/R-8 为交互稿补全项 |
+| 安全边界（stateSecret 不进管理页/运行时存储） | **通过**；S3（bootstrap 窗口）随向导 SSO 路径移除实质性缓解 |
+| 实施清单（§11.5） | **通过，附 R-2/R-3 增补** |
+| 版本载体 v0.5.0 | **通过** |
+
+### 12.2 发现与处置
+
+| 编号 | 级别 | 发现 | 处置（并入实现） |
+|---|---|---|---|
+| **R-1** | **P0 实施阻断** | §11.3 兼容声明与实现矛盾：`getWizardOption(type, profile)` 从 `BACKEND_TYPE_OPTIONS` 查找，**移除 enterprise-sso 卡后**，deprecated 的 `setupProfile=enterprise-sso` setup/probe 在选项查找处即返回 400 `Unsupported backend type`——"旧 UI + 新 BFF 不炸"的承诺落空 | 选项查找加 fallback：企业卡缺 `enterprise-sso` 条目时回退 `enterprise-password` 条目（capabilities 相同）；或选项表保留隐藏条目（不出现在 backend-types 响应）。**推荐前者**（无隐藏状态）。补兼容回归用例：删卡后 setup/probe 的 enterprise-sso 路径仍 200 |
+| **R-2** | P1 | `?check=1` 需在 sso-admin 路由复用 `verifyEnterpriseSso`（现居 wizard.ts）——路由互相 import 不洁；且最坏耗时 ~15s（tenant 5s + 密钥探测 2×5s + 渠道 5s） | 将 `verifyEnterpriseSso`/`SERVER_KEY_PROBE_PATHS` 抽到 `bff/src/services/enterprise-sso-check.ts`；管理页 UI 增加检测 loading 态；可选：三项检测并发执行 |
+| **R-3** | P1 | §11.3"PUT 服务端守卫（后端未绑定/密钥未设 warnings）"需要 stores——已核实 `harnessStore`/`backendStore` 为 app 级注入（index.ts:131–132），sso-admin 可 `c.get`，但当前路由未消费 | 实施清单补：sso-admin PUT 前校验默认租户 '0' 绑定的企业后端存在且就绪（沿用 auth.ts 的 `resolveSsoTenantBackend` 口径），缺失→warnings |
+| **R-4** | P1 | 租户口径未定义：运行时 sso-config 是**全局**的，而渠道/回调按租户绑定解析后端；多企业后端部署下"管理页改的是哪个后端的 SSO"有歧义 | 明确：**管理页面向默认租户 '0' 的绑定后端**（与登录页 `resolveSsoTenantBackend('0')` 口径一致）；多企业后端/非默认租户场景记为不支持并写入手册（当前产品形态本就是单实例单租户） |
+| R-5 | P2 | `stateSecretConfigured` 仅"存在性"不够：env 有值但 <32 字符时启动会 fail-fast，管理员看到的却是 ✓ | 布尔升级为三态：未设置 / 已设置 / 已设置但不合规（长度校验，不回显值）；③ 提示区文案对应 |
+| R-6 | P2 | 交互稿前置状态卡缺 `keyValid=null` 第三态（网关无受保护端点时的"无法判定"） | 状态卡补"无法判定，将在使用时验证"展示态（复用 §11 verify.keyUnknown 文案） |
+| R-7 | P2 | 租户 ID 缺失/不一致时管理页只读展示，无修正入口指引 | 状态卡补指引：租户 ID 修正走「系统管理 → Harness 后端」编辑页 |
+| R-8 | P2 | "启用后验证登录页"未给出具体入口 | ③ 提示区补：新开页访问 `/login-next` 应见渠道按钮（+ IdP/网关侧 `redirect_uris` 白名单核对项，人工清单） |
+| R-9 | P3 | 文档标题《向导企业版双模式选型设计》在 v1.4 后成为历史名 | 文首加一行历史名注记（v1.4 起双模式废止），标题不改（保留决策链可追溯） |
+| R-10 | P3 | locale 边界测试（`src/locales/config-boundaries.integration.test.ts`）可能受键迁移影响 | 实施清单补：locale 键迁移后跑 locale 边界测试 |
+
+### 12.3 §11.6 拍板项复核
+
+| # | 拍板项 | 复核结论 |
+|---|---|---|
+| 1 | enterprise-sso setup 兼容语义 | **确认保留一版 deprecated**，但按 R-1 修选项查找 fallback |
+| 2 | 检测实现 `GET /admin/sso/config?check=1` | 确认，按 R-2 抽共享 service |
+| 3 | 渠道预览 `GET /admin/sso/providers` | 确认；租户口径按 R-4（默认租户 '0'） |
+| 4 | 启用开关双保险 | 确认，按 R-3 补 stores 消费 |
+| 5 | 版本载体 v0.5.0 | 确认 |
+| 6 | locale 键清理 | 确认，按 R-10 补边界测试 |
+
+### 12.4 评审结论
+
+**§11 方向与主体设计通过；R-1 吸收（选项查找 fallback + 兼容回归用例）后，§11 升为 v1.4 定稿。**
+实施按 §11.5 清单 + R-2/R-3 增补执行；R-5–R-10 随实现并入。实施完成前，§10 双卡形态（v0.4.9 已上线）维持现状不受影响。
+
+---
+
+## 13. v1.4 实施的质量与安全评审（实施后,评审发现已吸收）
+
+> 评审方式:对 v1.4 全部实施 diff 做代码级核对(BFF 路由/服务/类型、前端向导重写/管理页扩展/service、locales、测试),安全面按 §9 清单口径复核。
+> **结论:可提交。Q-1(P1 功能缺陷)评审中发现并当场修复(含回归用例);S 面无新增风险,既有边界保持。**
+
+### 13.1 质量发现
+
+| 编号 | 级别 | 发现 | 处置 |
+|---|---|---|---|
+| **Q-1** | **P1 功能缺陷** | 管理页手动渠道输入为受控输入直接绑定归一化 join/split——用户敲的逗号被立即剥掉,**无法连续输入多个渠道 id**(v1.3 用独立 providersText state 正是为规避此坑,重写时丢失) | 恢复独立 `providersText` state:数据加载/勾选联动写入,输入 onChange 即时解析到 form.providers;回归断言"键入 `a, b,` 逗号保留、保存产出 `['a','b']`"固化 |
+| **Q-2** | P2 语义缺陷 | 管理页渠道预览走 `loadSsoConfig()`(含 env 白名单过滤)——被全局过滤掉的渠道在预览中不可见,管理员**无法重新勾选** | 预览改 `{...loadSsoConfig(), providers: null}`(与 wizard 检测口径一致);PUT 后保存的白名单才是过滤生效处 |
+| **Q-3** | P3 卫生 | wizard.ts 残留未使用导入 `WizardProbeSso`(检测抽离后不再引用);`TENANT_ID_RE` 与共享服务重复定义 | 删除未使用导入;TENANT_ID_RE 改从 `enterprise-sso-check` 导入(单一来源) |
+| Q-4 | P3 | `runLiveCheck` 中 `bound===undefined` 与 `===null` 两分支体相同 | 保留显式分支(语义不同:stores 缺失跳过 vs 确实未绑定),不合并 |
+
+### 13.2 安全发现
+
+| 编号 | 级别 | 复核项 | 结论 |
+|---|---|---|---|
+| S-1 | — | 新增 admin 端点门控 | ✅ `GET /admin/sso/providers`、`?check=1` 均在 `/admin/sso/*` 挂载点内,受 authMiddleware+requireValidImtSession 双层门控(与既有 /admin/* 一致) |
+| S-2 | — | SSRF 面 | ✅ providers/check 的出站目标是**存储内绑定后端**(非用户输入),且 getLoginProviders/检测内部走 safeFetch;wizard probe 的 SSRF 预校验+限流未回退 |
+| S-3 | — | bootstrap 窗口(§9 S3) | ✅ 实质缓解:向导不再采集 stateSecret/SSO 参数;SSO 配置全部在管理员会话内 |
+| S-4 | — | 密钥泄露面 | ✅ `stateSecretStatus` 三态、`boundBackend` 仅 id/endpoint;providers 裁剪视图无 clientId/authorizeUrl/scopes;任何响应无 stateSecret/API_SERVER_KEY 明文(V-01 断言) |
+| S-5 | — | CSRF(既有) | ⚠️ 不变:admin 写入口仍为 cookie 鉴权,CSRF 防护维持 §9 S3 backlog 口径(v1.4 未扩大也未收敛);记 backlog |
+| S-6 | — | 注入/XSS | ✅ 渠道 id 白名单消毒(sanitizeSsoProviderIds)保留;管理页/向导无 dangerouslySetInnerHTML,所有动态文本经 React 转义 |
+| S-7 | — | 限流 | ✅ 公开 wizard providers/probe 端点限流未回退;新增 admin 端点为门控态,无限流需求(检测最坏 ~15s,仅管理员可触发) |
+
+### 13.3 评审结论
+
+**通过,可提交。** Q-1 已修复并带回归用例;Q-2/Q-3 已吸收;S 面六项复核无新增风险,既有 backlog(CSRF/S5、限流)口径不变。发布载体 v0.5.0,发版顺序红线(先镜像后 newTag)不变。
