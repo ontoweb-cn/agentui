@@ -32,6 +32,8 @@ import { useFormContext, useWatch } from 'react-hook-form';
 
 interface IProps {
   prefix?: string;
+  /** Gateway 已存密钥的 provider(M3);空 key 表示保持现有密钥。 */
+  configuredProviders?: string[];
 }
 
 const providerOptions = webSearchProviderCatalog
@@ -55,7 +57,10 @@ const providerOptions = webSearchProviderCatalog
     value,
   }));
 
-export function WebSearchFormField({ prefix = '' }: IProps) {
+export function WebSearchFormField({
+  prefix = '',
+  configuredProviders = [],
+}: IProps) {
   const form = useFormContext();
   const { t } = useTranslate('chat');
   const providerName = prefixName(prefix, 'prompt_config.web_search_provider');
@@ -68,6 +73,9 @@ export function WebSearchFormField({ prefix = '' }: IProps) {
   // chat box simply never offers the Internet switch. Mark the field required
   // so the asterisk says so before the user has to discover it.
   const keyRequired = isWebSearchApiKeyRequired(selectedProvider);
+  const isConfigured = Boolean(
+    selectedProvider && configuredProviders.includes(selectedProvider),
+  );
   const keyFieldName = entry
     ? `prompt_config.${webSearchProviderBaseKey(entry.value)}_api_key`
     : undefined;
@@ -107,6 +115,7 @@ export function WebSearchFormField({ prefix = '' }: IProps) {
           rules={{
             validate: (value) =>
               !keyRequired ||
+              isConfigured ||
               Boolean(String(value ?? '').trim()) ||
               t('webSearchApiKeyRequired'),
           }}
@@ -114,7 +123,7 @@ export function WebSearchFormField({ prefix = '' }: IProps) {
             <FormItem>
               <FormLabel
                 tooltip={t(webSearchProviderTipKey(entry.value))}
-                required={keyRequired}
+                required={keyRequired && !isConfigured}
               >
                 {t('webSearchApiKeyLabel', { provider: entry.name })}
               </FormLabel>
@@ -122,11 +131,20 @@ export function WebSearchFormField({ prefix = '' }: IProps) {
                 <PasswordInput
                   {...field}
                   value={field.value ?? ''}
-                  placeholder={t(webSearchProviderPlaceholderKey(entry.value))}
+                  placeholder={
+                    isConfigured
+                      ? t('webSearchApiKeyConfiguredPlaceholder')
+                      : t(webSearchProviderPlaceholderKey(entry.value))
+                  }
                   autoComplete="new-password"
                 />
               </FormControl>
               <FormDescription>
+                {isConfigured && (
+                  <span className="me-2 text-accent-primary-text">
+                    {t('webSearchApiKeyConfigured')}
+                  </span>
+                )}
                 <a href={entry.helpUrl} target="_blank" rel="noreferrer">
                   {t('webSearchApiKeyHelp')}
                 </a>

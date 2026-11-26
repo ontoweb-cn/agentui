@@ -158,6 +158,17 @@ export interface IHarnessAdapter {
     sessionId: string,
   ): Promise<unknown[]>;
 
+  /**
+   * T4.2/M3: providers that already have a Gateway-stored secret for this
+   * session. Optional so non-enterprise adapters keep their MCP/in-memory
+   * semantics; callers must treat absence as "none known".
+   */
+  getWebSearchSecretStatus?(
+    ctx: BackendContext,
+    agentId: string,
+    sessionId: string,
+  ): Promise<string[]>;
+
   // -----------------------------------------------------------------------
   // Message streaming methods
   // -----------------------------------------------------------------------

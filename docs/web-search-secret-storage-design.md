@@ -137,6 +137,8 @@ T2.4 短期选择整包保体验。终态两种产品选项(需业务拍板,记�
 
 ## 11. M1 预备客户端(2026-11-23)
 
+> **2026-11-25 更新**:Gateway secrets API 已实现(migration + store + PUT/GET/DELETE + 本地 HTTP/PG 测试);PATCH 已提取 key 并剥离 PC,AES-GCM 使用 `enc:v2:` AAD 绑定 `session_id:provider`。见 [t42-gateway-secrets-manual.md](./t42-gateway-secrets-manual.md) 与 [REPORT-t42-gateway-secrets-20261125.md](../tests/e2e-tests/reports/REPORT-t42-gateway-secrets-20261125.md)。M3 已接线(session sanitized PC + configured 名单 + 运行时 resolve);历史 M2 生产回填与真实 provider 端到端仍待。
+
 - 代码:`bff/src/utils/web-search-secrets-client.ts`(`probeWebSearchSecretsApi` / `buildWebSearchSecretPutUrl`)。
 - **仍禁止**在 probe≠available 时对 PATCH 调用 `sanitizePromptConfigWebSearchKeys`。
 - 九步复证报告:[REPORT-exec-triad-20261123.md](../tests/e2e-tests/reports/REPORT-exec-triad-20261123.md)。

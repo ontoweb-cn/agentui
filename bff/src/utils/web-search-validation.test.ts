@@ -28,6 +28,15 @@ describe('validateWebSearchPromptConfig (T2.7)', () => {
     }
   });
 
+  it('keyed provider 已存 Gateway secret → 空 key 放行(M3)', () => {
+    expect(
+      validateWebSearchPromptConfig(
+        { web_search_provider: 'tavily' },
+        ['tavily'],
+      ),
+    ).toEqual({ ok: true });
+  });
+
   it('keyed provider 全空白 key → 拒绝', () => {
     const result = validateWebSearchPromptConfig({
       web_search_provider: 'brave',

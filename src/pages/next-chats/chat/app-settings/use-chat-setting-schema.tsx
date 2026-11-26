@@ -20,7 +20,10 @@ import { chatPromptKbIssues } from './validate-chat-prompt';
 // (upstream pattern; T2.3). agentui 字段差异(相对上游):保留 tts/use_kg/
 // reference_metadata/toc_enhance,使用 vectorSimilarityWeightSchema,无
 // agentic_rag/decision_id/rerank-candidates(agentui 无对应组件)。
-export function buildChatSettingFormSchema(t: (key: string) => string) {
+export function buildChatSettingFormSchema(
+  t: (key: string) => string,
+  configuredProviders: Iterable<string> = [],
+) {
   const promptConfigSchema = z.object({
     quote: z.boolean(),
     keyword: z.boolean(),
@@ -116,7 +119,10 @@ export function buildChatSettingFormSchema(t: (key: string) => string) {
       // the Internet switch never appears in the chat box — so block the save
       // here instead. Keyless providers are exempt. The rule lives in
       // missingWebSearchApiKeyField so it can be unit-tested without the form.
-      const missingKeyField = missingWebSearchApiKeyField(value?.prompt_config);
+      const missingKeyField = missingWebSearchApiKeyField(
+        value?.prompt_config,
+        configuredProviders,
+      );
       if (missingKeyField) {
         ctx.addIssue({
           code: ZodIssueCode.custom,
@@ -129,11 +135,18 @@ export function buildChatSettingFormSchema(t: (key: string) => string) {
   return formSchema;
 }
 
-export function useChatSettingSchema() {
+export function useChatSettingSchema(
+  configuredProviders: Iterable<string> = [],
+) {
   const { t } = useTranslate('chat');
+  const configuredKey = Array.from(new Set(configuredProviders)).sort().join(',');
 
   return useMemo(
-    () => buildChatSettingFormSchema((key: string) => t(key)),
-    [t],
+    () =>
+      buildChatSettingFormSchema(
+        (key: string) => t(key),
+        configuredKey ? configuredKey.split(',') : [],
+      ),
+    [t, configuredKey],
   );
 }

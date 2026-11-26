@@ -445,6 +445,24 @@ describe('missingWebSearchApiKeyField', () => {
     ).toBe('linkup_api_key');
   });
 
+  it('accepts a configured provider when the key is intentionally blank', () => {
+    expect(
+      missingWebSearchApiKeyField(
+        { web_search_provider: WebSearchProvider.Tavily } as PromptConfig,
+        ['tavily'],
+      ),
+    ).toBeUndefined();
+  });
+
+  it('treats a configured provider as usable without a returned key', () => {
+    expect(
+      hasWebSearchProvider(
+        { web_search_provider: WebSearchProvider.Tavily } as PromptConfig,
+        ['tavily'],
+      ),
+    ).toBe(true);
+  });
+
   it('accepts a keyed provider once its key is set', () => {
     expect(
       missingWebSearchApiKeyField({

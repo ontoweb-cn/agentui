@@ -125,10 +125,18 @@ export function getWebSearchApiKey(promptConfig?: WebSearchKeyConfig) {
  *
  * Pure and exported so the save-time rule is testable without rendering the form.
  */
-export function missingWebSearchApiKeyField(promptConfig?: WebSearchKeyConfig) {
+export function missingWebSearchApiKeyField(
+  promptConfig?: WebSearchKeyConfig,
+  configuredProviders: Iterable<string> = [],
+) {
   const provider = getWebSearchProvider(promptConfig);
   const keyField = getWebSearchApiKeyField(provider);
   if (!keyField || !isWebSearchApiKeyRequired(provider)) {
+    return undefined;
+  }
+  // M3: Gateway already holds a secret for this provider; blank input means
+  // "keep existing" rather than "missing".
+  if (new Set(configuredProviders).has(provider!)) {
     return undefined;
   }
 
@@ -140,13 +148,19 @@ export function missingWebSearchApiKeyField(promptConfig?: WebSearchKeyConfig) {
  * Whether web search is usable as configured. Most providers need a key; a
  * keyless provider is usable as soon as it is selected.
  */
-export function hasWebSearchProvider(promptConfig?: WebSearchKeyConfig) {
+export function hasWebSearchProvider(
+  promptConfig?: WebSearchKeyConfig,
+  configuredProviders: Iterable<string> = [],
+) {
   const provider = getWebSearchProvider(promptConfig);
 
   if (provider === undefined) {
     return false;
   }
   if (KEYLESS_WEB_SEARCH_PROVIDERS.includes(provider)) {
+    return true;
+  }
+  if (new Set(configuredProviders).has(provider)) {
     return true;
   }
 

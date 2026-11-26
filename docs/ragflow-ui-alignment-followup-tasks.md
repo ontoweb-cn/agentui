@@ -15,6 +15,12 @@
 > **v9.1(2026-11-23)**:质量/安全评审跟进——BFF `resolveWebSearchProvider` 与前端对齐(非法 provider 不回落 Tavily);补齐 `redactSessionWebSearchSecrets` 供 rag/mcp/openai-base `listSessions`;设计 §10 明确 GET 详情明文为 T4.2 过渡债与缓解面。
 > **v9.2(2026-11-23)**:九步 `exec-triad-20261123` 复证三连闸门——Gateway secrets **仍无路由**(L-T42-01 不关闭);kubectl 缺失(L-09/L-10);Go SSE 未稳定(L-PHASEB-01)。交付 secrets probe 客户端 + Go SSE↔StreamChunk/MessageEventType 映射预备(**未接线** live)。报告 [REPORT-exec-triad-20261123.md](../tests/e2e-tests/reports/REPORT-exec-triad-20261123.md)。
 > **v9.3(2026-11-23)**:九步 `gate-reverify-20261123` **再次复证**三连仍关——不伪关闭 L-*;增量 `npm run check:exec-gates`([scripts/check-exec-gates.mjs](../scripts/check-exec-gates.mjs))。报告 [REPORT-gate-reverify-20261123.md](../tests/e2e-tests/reports/REPORT-gate-reverify-20261123.md)。
+> **v9.10(2026-11-25)**:M1 运行时密钥边界收口——`AgentConfig.web_search_api_key` 使用 `RuntimeSecret`(Debug redacted + zeroize),不再注入 PC;M2 CLI 增加 `--verify`(明文/非 v2 清零);provider guard 纳入 `npm run type-check`;member-token legacy 越权改 strict/404。仍待 native/Python consumer、M2 生产回填、M4 代码、真实浏览器/provider。
+> **v9.9(2026-11-25)**:M3 安全评审修复——GET session 仅 owner 返回 PC;匿名/None owner 判定收紧;member token 对 legacy session 改 strict(secrets/PATCH 404);BFF 仅缺 key 时查 secrets;M2 回填补 camelCase/CAS/审计;新增主密钥轮换设计。M1 Gateway→Python `web_search`(仅 Tavily)注入已接;managed check 已开;仍待 `web_extract`/真实 provider、M2 生产回填、M4 代码;provider guard 已入 type-check。评审 [t42-m3-configured-ui-code-review.md](./t42-m3-configured-ui-code-review.md)。
+> **v9.8(2026-11-25)**:M3 落地——Gateway GET/PATCH/fork 返回 **sanitized prompt_config + `web_search_configured_providers`**;BFF PATCH 先查 secrets 状态,已配置 provider 允许空 key;前端设置页显示「已配置 — 留空保持」,Internet 开关按 configured 判定;运行时 `apply_session_rag_config` resolve secret 注入内存(不写回 PC)。前端 809 tests/BFF 1271 tests/tsc/build 全绿;真实浏览器截图、真实 provider 与 M2 生产回填仍受限。报告 [REPORT-t42-m3-configured-ui-20261125.md](../tests/e2e-tests/reports/REPORT-t42-m3-configured-ui-20261125.md)。
+> **v9.7(2026-11-25)**:补 T4.2 收尾工具——M2 回填 CLI(`web-search-secrets-backfill`,dry-run/apply)、独立 OpenAPI(`/docs/openapi-web-search-secrets.json`)、rotate 别名、provider 三方守卫(`check:web-search-providers`)。生产回填与前端 M3 仍待。
+> **v9.6(2026-11-25)**:按安全评审补 Gateway PATCH 写入自保——提取 `*_api_key` → secrets upsert → **剥离 PC**;AES-GCM 增加 `enc:v2:` AAD(`session_id:provider`),相同 key 不重复轮换;`GET secrets` 加 `no-store`;新增 PATCH/AAD/ownership 测试。**新写入明文风险已关闭**;历史 M2、前端 M3、生产部署仍待。报告 [REPORT-t42-gateway-secrets-20261125.md](../tests/e2e-tests/reports/REPORT-t42-gateway-secrets-20261125.md);评审 [t42-gateway-secrets-code-review.md](./t42-gateway-secrets-code-review.md)。
+> **v9.5(2026-11-25)**:九步 `t42-gateway-secrets` 落地 Gateway 密钥能力——新增 `web_search_secrets` migration/store 与 PUT/GET/DELETE API、加密/轮换/审计/HTTP 测试;**L-T42-01 Gateway 侧 OPEN**,但 BFF `sanitizePromptConfigWebSearchKeys`/前端 M3 仍未接线,T4.2 整体未完成。报告 [REPORT-t42-gateway-secrets-20261125.md](../tests/e2e-tests/reports/REPORT-t42-gateway-secrets-20261125.md);代码评审 [t42-gateway-secrets-code-review.md](./t42-gateway-secrets-code-review.md)。
 > **v9.4(2026-11-25)**:九步 `gate-reverify-20261125` **三连仍 BLOCK**(L-T42-01 / L-09 / L-PHASEB-01);sanitize / Go SSE live **未接线**;oxlint 修 sso-settings 测试死代码(7→6 warning)。报告 [REPORT-gate-reverify-20261125.md](../tests/e2e-tests/reports/REPORT-gate-reverify-20261125.md)。
 
 ## 使用说明
@@ -153,10 +159,10 @@
 - **T4.1a Rust Gateway/BFF(1-2 天)— 代码项已完成(v6,九步 ragflow-t41a)**:①透传复核(多 key 共存 PATCH 用例);②`GET /api/bff/agents/chat/sessions/:id/external-info` 聚合 `has_web_search_provider`(+`has_tavily_key`),前端 chat 分享改打该路径;enterprise `normalizeSession` 经 metadata 透传 `prompt_config`/`kb_ids`;③T2.7 既有;④**写侧 prune 延期 T4.2**(短期整包保「换回不丢 key」;external-info 响应侧永不回传 key)。`sanitizePromptConfigWebSearchKeys` 已在 BFF utils 就绪,待 T4.2 接线。
 - **T4.1b intellect-rag(随 Phase C 评估)**:仅检索执行联动——联网搜索执行链路按 provider 分发(未支持的 provider 保存后静默失效是当前最大风险)。**不在 Python fork 上做一次性投入**,Go 化后实现。
 
-### T4.2 密钥存储架构评估— **设计✓ + 契约草案✓;M1+ 等 Gateway**(v9)
+### T4.2 密钥存储架构评估— **Gateway API✓(v9.5);BFF/前端 M1+ 待接线**
 - 设计:[web-search-secret-storage-design.md](./web-search-secret-storage-design.md) 方案 C,M0–M4。
 - **v9 契约草案**:[web-search-secrets-gateway-api-contract.md](./web-search-secrets-gateway-api-contract.md)(PUT/GET/DELETE secrets、PC 剥离时机、禁止无表 prune)。
-- **M1/M2 接线**:Gateway 实现可探测后开 module `t42-m1-wire`;此前保持 **L-T42-01**。
+- **M1/M2 接线**:Gateway API 已实现(2026-11-25);下一步开 module `t42-m1-wire` 接 BFF/前端;T4.2 仍未完成。
 - **v9.2 预备**:`bff/src/utils/web-search-secrets-client.ts`(probe);未挂路由。
 - Phase B/C 前端准备:[phase-bc-frontend-alignment-prep.md](./phase-bc-frontend-alignment-prep.md);Go 映射预备 `map-go-stream-agent-event.ts` / `go-canvas-sse-adapter.ts`(**L-PHASEB-01** 未接线)。
 
@@ -190,5 +196,5 @@ D1 手册 ──▶ 持权 kubeconfig ──▶ prod-d1-exec
 | T1 立即可做 | 4(**全部完成**) | ~1 天 ✓ |
 | T2 P1 | 10(**T2.1–T2.3/T2.5–T2.10 完成;T2.4 收口→T4.2**) | 余 T4.2 接线 |
 | T3 P2 | 7(**T3.1/2/4/5/6/7✓;T3.3 等 Go**) | 随 Phase C |
-| T4 跨仓库 | T4.1a✓ / T4.2 设计+契约✓ / T4.1b→Phase C / T4.2 M1+ | **L-T42-01** |
+| T4 跨仓库 | T4.1a✓ / T4.2 Gateway API✓ / T4.1b→Phase C / T4.2 BFF/UI 待接线 | **t42-m1-wire** |
 | T5 Go 化 | 4 阶段 | 3-5 人 × 6-9 个月 |

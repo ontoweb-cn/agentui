@@ -1,7 +1,7 @@
 # Gateway `web_search_secrets` API 契约草案(T4.2 M1 前置)
 
 > 日期:2026-11-23;九步 module: `t42-phasebc-prep`
-> 状态:**契约评审稿**(agentui 侧提出;Gateway **尚未实现**)
+> 状态:**Gateway API + PATCH 提取/剥离 + M3 前端/BFF 已实现(2026-11-25);运行时真实 provider 与 M2 生产回填待验**
 > 关联:[web-search-secret-storage-design.md](./web-search-secret-storage-design.md) 方案 C / M1–M2;清单 T4.2 / T4.1a ④ / T2.4
 
 ## 1. 目的
@@ -14,10 +14,10 @@
 |---|---|
 | agentui 仓内 `web_search_secrets` / rotate API | **无**实现 |
 | intellect-gateway `sessions` + `prompt_config` | 整列 JSON 存储,密钥仍嵌在 PC |
-| BFF `sanitizePromptConfigWebSearchKeys` | utils + 单测就绪,**未**挂 PATCH |
+| BFF `sanitizePromptConfigWebSearchKeys` | utils + 单测就绪,**未**挂 PATCH(待 `t42-m1-wire`) |
 | BFF list 脱敏 / external-info | 已上线(M0) |
 
-**结论**:M1/M2 生产代码 **不可在本批落地** → 受限 **L-T42-01**(延续)。
+**结论(2026-11-25 更新)**:Gateway 侧 PUT/GET/DELETE + migration/store 已实现;M1/M2 的 **BFF 接线**仍未落地 → T4.2 整体保持未完成。
 
 ## 3. 资源模型
 
@@ -94,8 +94,8 @@ POST /api/sessions/{session_id}/web-search-secrets/{provider}/rotate
 
 | API | 变更 |
 |---|---|
-| `PATCH .../sessions/{id}` | body 可含一次性 `web_search_api_key` **或** 继续收 legacy `*_api_key`(过渡期);Gateway/BFF 写入 secrets 后 **PC 持久化剥离全部 `*_api_key`** |
-| `GET .../sessions/{id}` | PC **无** `*_api_key`;可附 `web_search_key_configured: bool`(活动 provider) |
+| `PATCH .../sessions/{id}` | **Gateway 已实现**:body 可含一次性 `web_search_api_key` 或 legacy `*_api_key`;写入 secrets 后 PC 剥离全部 key;secrets+PC 同事务;加密/PC 更新失败则 PATCH 失败回滚 |
+| `GET .../sessions/{id}` | PC **已剥离** key;返回 `web_search_configured_providers` 名单(M3);不返回 key/ciphertext |
 | `GET .../external-info` | 不变(已无 key) |
 | 列表 sessions | 继续脱敏或无 key(已有 redact) |
 
@@ -121,12 +121,12 @@ POST /internal/web-search-secrets/resolve
 
 ## 6. 验收(Gateway + agentui 联调)
 
-- [ ] PUT 后 GET session JSON 无任何 `*_api_key`
+- [x] PATCH 后 DB `prompt_config` 无任何 `*_api_key`(已实测)(需 BFF/PC 接线,下一批)
 - [ ] GET secrets 返回 `configured:true`;external-info `has_web_search_provider` 仍正确
 - [ ] 缺 key 的需密钥 provider → BFF 仍 400(T2.7)
-- [ ] 切 provider 再切回(多行策略)无需重填
+- [x] 多 provider 行并存(存储层已测);切回 UI 需 M3
 - [ ] 审计日志无明文
 
 ## 7. 退出本受限项
 
-Gateway 合并实现 + OpenAPI/路由可探测后,开九步 module `t42-m1-wire` 关闭 **L-T42-01**。
+Gateway 路由 + 新写入剥离已就绪;仍须 M2 历史回填与前端 M3,才能关闭 T4.2。

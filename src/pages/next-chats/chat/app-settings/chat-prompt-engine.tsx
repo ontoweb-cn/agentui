@@ -35,12 +35,14 @@ interface ChatPromptEngineProps {
   // agentui 仅此一个 Collapse;上游的 naive/agentic section 不存在,不接线。
   advancedSettingOpen?: boolean;
   onAdvancedSettingOpenChange?: (open: boolean) => void;
+  configuredProviders?: string[];
 }
 
 export function ChatPromptEngine({
   prefix = '',
   advancedSettingOpen,
   onAdvancedSettingOpenChange,
+  configuredProviders = [],
 }: ChatPromptEngineProps) {
   const { t } = useTranslation();
   const form = useFormContext();
@@ -143,7 +145,10 @@ export function ChatPromptEngine({
         <TOCEnhanceFormField
           name={prefixName(prefix, 'prompt_config.toc_enhance')}
         ></TOCEnhanceFormField>
-        <WebSearchFormField prefix={prefix} />
+        <WebSearchFormField
+          prefix={prefix}
+          configuredProviders={configuredProviders}
+        />
         <MetadataFilter></MetadataFilter>
         <FormField
           control={form.control}

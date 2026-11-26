@@ -31,8 +31,10 @@ export function ChatSettings({
   visible,
   switchVisible,
 }: ChatSettingsProps) {
-  const formSchema = useChatSettingSchema();
   const { data } = useFetchChat();
+  const formSchema = useChatSettingSchema(
+    data.web_search_configured_providers ?? [],
+  );
   const { updateChat, loading } = useUpdateChat();
   const findLlmByUuid = useFindLlmByUuid();
   const { id } = useParams();
@@ -200,6 +202,9 @@ export function ChatSettings({
                       advancedSettingOpen={advancedSettingOpen}
                       onAdvancedSettingOpenChange={
                         onAdvancedSettingOpenChange
+                      }
+                      configuredProviders={
+                        data.web_search_configured_providers ?? []
                       }
                     ></ChatPromptEngine>
                   </section>

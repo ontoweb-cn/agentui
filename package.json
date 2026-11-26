@@ -21,11 +21,12 @@
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
     "test": "jest --coverage",
-    "type-check": "node scripts/check-hiedu-shared.mjs && node scripts/check-color-tokens.mjs && tsc --noEmit",
+    "type-check": "node scripts/check-hiedu-shared.mjs && node scripts/check-color-tokens.mjs && node scripts/check-web-search-providers.mjs && tsc --noEmit",
     "sync:hiedu-shared": "node scripts/sync-hiedu-shared.mjs",
     "check:hiedu-shared": "node scripts/check-hiedu-shared.mjs",
     "check:color-tokens": "node scripts/check-color-tokens.mjs",
     "check:exec-gates": "node scripts/check-exec-gates.mjs",
+    "check:web-search-providers": "node scripts/check-web-search-providers.mjs",
     "gen:api-types": "tsx scripts/gen-api-types.ts",
     "check:plugin-tailwind": "node scripts/check-plugin-tailwind-drift.mjs",
     "chromatic": "chromatic --build-script-name=build-storybook"

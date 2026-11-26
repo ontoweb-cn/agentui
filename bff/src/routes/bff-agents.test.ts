@@ -1534,6 +1534,24 @@ describe('PATCH prompt_config 联网搜索校验 (T2.7)', () => {
     );
   });
 
+  it('已存 Gateway secret 的 provider → 空 key 保存放行(M3)', async () => {
+    (mocks.adapter as unknown as Record<string, unknown>).getWebSearchSecretStatus =
+      vi.fn().mockResolvedValue(['tavily']);
+    (mocks.adapter.updateSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'sess-1',
+    });
+    const res = await patchSession({
+      prompt_config: { system: 'x', web_search_provider: 'tavily' },
+    });
+    expect(res.status).toBe(200);
+    expect(mocks.adapter.updateSession).toHaveBeenCalledWith(
+      expect.anything(),
+      'agent-1',
+      'sess-1',
+      { promptConfig: { system: 'x', web_search_provider: 'tavily' } },
+    );
+  });
+
   it('需 key provider 缺 key → 400,message 含字段名', async () => {
     const res = await patchSession({
       prompt_config: {

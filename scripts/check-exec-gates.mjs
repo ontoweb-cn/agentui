@@ -106,7 +106,17 @@ if (blocked.length === 0) {
 console.log(
   `Blocked ${blocked.length}/${results.length}: ${blocked.map((b) => b.id).join(', ')}`,
 );
-console.log(
-  'Do NOT wire sanitizePromptConfigWebSearchKeys or live SSE adapters until gates open.',
-);
+const byId = new Map(results.map((r) => [r.id, r.ok]));
+if (byId.get('L-T42-01')) {
+  console.log(
+    'L-T42-01 open: Gateway secrets capability is available; t42-m1-wire (BFF wiring) may proceed.',
+  );
+} else {
+  console.log(
+    'Do NOT wire sanitizePromptConfigWebSearchKeys until L-T42-01 is open.',
+  );
+}
+if (!byId.get('L-PHASEB-01')) {
+  console.log('Do NOT wire live SSE adapters until L-PHASEB-01 is open.');
+}
 process.exit(1);

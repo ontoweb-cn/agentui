@@ -315,6 +315,7 @@ describe('IntellectEnterpriseAdapter', () => {
             web_search_provider: 'anysearch',
             tavily_api_key: 'keep-me',
           },
+          web_search_configured_providers: ['anysearch', 'tavily'],
           kb_ids: ['kb-a'],
         },
       });
@@ -323,6 +324,10 @@ describe('IntellectEnterpriseAdapter', () => {
         web_search_provider: 'anysearch',
         tavily_api_key: 'keep-me',
       });
+      expect(res.metadata?.web_search_configured_providers).toEqual([
+        'anysearch',
+        'tavily',
+      ]);
       expect(res.metadata?.kb_ids).toEqual(['kb-a']);
     });
 
@@ -355,6 +360,27 @@ describe('IntellectEnterpriseAdapter', () => {
         ctx,
       );
     });
+  });
+
+  it('T4.2/M3 getWebSearchSecretStatus 只读 provider 元数据', async () => {
+    httpClientMock.request.mockResolvedValueOnce({
+      items: [
+        { provider: 'tavily', configured: true, key_version: 1 },
+        { provider: 'exa', configured: true, key_version: 2 },
+        { provider: 42 },
+      ],
+    });
+    const providers = await adapter.getWebSearchSecretStatus(
+      ctx,
+      'chat',
+      'sess-m3',
+    );
+    expect(providers).toEqual(['tavily', 'exa']);
+    expect(httpClientMock.request).toHaveBeenCalledWith(
+      'GET',
+      '/api/sessions/sess-m3/web-search-secrets',
+      ctx,
+    );
   });
 
   // X-T1 P1-2: updateSession 调用 normalizeSession,需覆盖嵌套格式

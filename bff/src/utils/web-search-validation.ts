@@ -49,7 +49,7 @@ function readString(obj: unknown, keys: string[]): unknown {
 
 export type WebSearchPromptConfigResult =
   | { ok: true }
-  | { ok: false; message: string };
+  | { ok: false; message: string; code: 'unknown_provider' | 'missing_key' };
 
 /**
  * 校验 prompt_config 中的联网搜索配置。非法返回 { ok:false, message }
@@ -58,6 +58,7 @@ export type WebSearchPromptConfigResult =
  */
 export function validateWebSearchPromptConfig(
   promptConfig: unknown,
+  configuredProviders: Iterable<string> = [],
 ): WebSearchPromptConfigResult {
   if (
     promptConfig === undefined ||
@@ -78,6 +79,7 @@ export function validateWebSearchPromptConfig(
   ) {
     return {
       ok: false,
+      code: 'unknown_provider',
       message: `unknown web_search_provider: ${String(rawProvider)}`,
     };
   }
@@ -90,11 +92,18 @@ export function validateWebSearchPromptConfig(
     return { ok: true };
   }
 
+  // M3: an existing Gateway secret satisfies the requirement even though the
+  // browser intentionally does not receive the key.
+  if (new Set(configuredProviders).has(provider)) {
+    return { ok: true };
+  }
+
   const keyField = `${provider}_api_key`;
   const key = readString(promptConfig, [keyField, `${provider}ApiKey`]);
   if (typeof key !== 'string' || !key.trim()) {
     return {
       ok: false,
+      code: 'missing_key',
       message: `missing or empty API key field: ${keyField} for provider ${provider}`,
     };
   }

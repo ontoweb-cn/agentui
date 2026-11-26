@@ -269,6 +269,24 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
     return this.normalizeSession(session, agentId);
   }
 
+  /** T4.2/M3: provider names with a stored secret (metadata only, no keys). */
+  async getWebSearchSecretStatus(
+    ctx: BackendContext,
+    _agentId: string,
+    sessionId: string,
+  ): Promise<string[]> {
+    const data = await this.httpClient.request<{
+      items?: Array<{ provider?: unknown }>;
+    }>(
+      'GET',
+      `/api/sessions/${encodeURIComponent(sessionId)}/web-search-secrets`,
+      ctx,
+    );
+    return (data?.items ?? [])
+      .map((item) => item?.provider)
+      .filter((value): value is string => typeof value === 'string');
+  }
+
   async getSessionMessages(
     ctx: BackendContext,
     _agentId: string,
@@ -621,6 +639,14 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
     }
     if (promptConfig !== undefined) {
       metadata.prompt_config = promptConfig;
+    }
+    const configuredProviders =
+      sessionObj.web_search_configured_providers ??
+      sessionObj.webSearchConfiguredProviders;
+    if (Array.isArray(configuredProviders)) {
+      metadata.web_search_configured_providers = configuredProviders.filter(
+        (value): value is string => typeof value === 'string',
+      );
     }
     const kbIds = sessionObj.kb_ids ?? sessionObj.kbIds;
     if (kbIds !== undefined) {

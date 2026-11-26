@@ -347,7 +347,30 @@ bffAgentRoutes.patch('/agents/:agentId/sessions/:sessionId', async (c) => {
     }
     // T2.7:联网搜索配置校验(服务端镜像)——前端 superRefine 可被直接
     // HTTP 调用绕过,此处按同一规则拒绝非法 provider/缺失 key。
-    const webSearchCheck = validateWebSearchPromptConfig(rawPromptConfig);
+    // M3: key 已存 Gateway secrets 时,前端拿不到明文,允许空 key 保存配置。
+    // Only do the extra status GET when strict validation is failing on a
+    // missing key; valid configs and malformed providers pay no extra hop.
+    let webSearchCheck = validateWebSearchPromptConfig(rawPromptConfig);
+    if (
+      !webSearchCheck.ok &&
+      webSearchCheck.code === 'missing_key' &&
+      adapter.getWebSearchSecretStatus
+    ) {
+      let configuredProviders: string[] = [];
+      try {
+        configuredProviders = await adapter.getWebSearchSecretStatus(
+          resolveBackendContext(c),
+          agentId,
+          sessionId,
+        );
+      } catch {
+        // Old Gateway/unsupported adapter: fall back to strict validation.
+      }
+      webSearchCheck = validateWebSearchPromptConfig(
+        rawPromptConfig,
+        configuredProviders,
+      );
+    }
     if (!webSearchCheck.ok) {
       return c.json({ code: 400, message: webSearchCheck.message }, 400);
     }

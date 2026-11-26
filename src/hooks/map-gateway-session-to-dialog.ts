@@ -10,6 +10,10 @@ export function mapGatewaySessionToDialog(s: any): IDialog {
     s?.metadata && typeof s.metadata === 'object' ? s.metadata : undefined;
   const promptConfig =
     meta?.prompt_config ?? meta?.promptConfig ?? s?.prompt_config;
+  const configuredProviders =
+    meta?.web_search_configured_providers ??
+    meta?.webSearchConfiguredProviders ??
+    s?.web_search_configured_providers;
   const rawKbIds = meta?.kb_ids ?? meta?.kbIds ?? s?.kb_ids;
   const datasetIds = Array.isArray(rawKbIds)
     ? rawKbIds
@@ -30,6 +34,11 @@ export function mapGatewaySessionToDialog(s: any): IDialog {
     language: 'English',
     llm_id: '',
     llm_setting: {},
+    web_search_configured_providers: Array.isArray(configuredProviders)
+      ? configuredProviders.filter(
+          (value: unknown): value is string => typeof value === 'string',
+        )
+      : [],
     prompt_config: promptConfig || {
       empty_response: '',
       parameters: [],

@@ -4,5 +4,8 @@ import { hasWebSearchProvider } from './web-search-api-key';
 export function useShowInternet() {
   const { data: currentDialog } = useFetchChat();
 
-  return hasWebSearchProvider(currentDialog?.prompt_config);
+  return hasWebSearchProvider(
+    currentDialog?.prompt_config,
+    currentDialog?.web_search_configured_providers ?? [],
+  );
 }

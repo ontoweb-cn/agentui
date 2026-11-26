@@ -1187,6 +1187,8 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       // The key field's label. {{provider}} is the provider's BRAND name, which is
       // deliberately not translated, so this single template covers all providers.
       webSearchApiKeyLabel: '{{provider}} API Key',
+      webSearchApiKeyConfigured: 'Configured — leave blank to keep it',
+      webSearchApiKeyConfiguredPlaceholder: 'Leave blank to keep the configured key',
       // One Tip/Message pair per provider, alphabetical by provider id.
       anysearchApiKeyTip:
         'Optional. AnySearch works without a key; add a key to use your account quota. Service limits apply.',

@@ -98,6 +98,8 @@ export interface IDialog {
    * 前端按此字段选择 API 路径（createSession/sendMessage/listSessions 等）。
    */
   source?: 'gateway' | 'rag';
+  /** T4.2/M3: providers with a Gateway-stored secret (metadata only). */
+  web_search_configured_providers?: string[];
 }
 
 interface MetaDataFilter {
