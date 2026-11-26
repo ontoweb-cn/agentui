@@ -173,7 +173,7 @@
 | 阶段 | 内容 | 量级 | 并行前端任务 |
 |---|---|---|---|
 | Phase A | intellect-mem → Go(复用上游 memory,作 Go 服务化样板) | 2-4 人周 | — |
-| Phase B | intellect-dsl → Go(`agent-go-port-design.md`:eino + 5-tier + Redis checkpoint + OTel) | 3-6 人月 | **画布页面对齐**:事件适配 + `NormalizeForCanvas`(准备文档已出,实现等 Go 联调) |
+| Phase B | intellect-dsl → Go。完成度与剩余项:`ragflow/docs/plans/agent-dsl-go-development-plan.md`(约七成可跑主流画布;与 Python `1718fd9` 约六成)。设计真源仍是 `agent-go-port-design.md` | 3-6 人月 | **画布页面对齐**:事件适配 + `NormalizeForCanvas`。对接任务 F-01～F-03 在该计划第 7 节。`go-canvas-sse-adapter.ts` 仍是 **L-PHASEB-01 未接线**;G-01 冻结 SSE 事件前不打开 Phase B live |
 | Phase C | intellect-rag:上游 Go 基座 + 回植多租户 scope/deepdoc 定制/chunk 过滤;`cmd/` 多入口 | 3-6 人月 | dev proxy 切 Go API;T3.3 的 pipeline API 在此到位 |
 | Phase D | 删 Python、CI 全面切 Go、docs 去迁移化表述 | ~1 个月 | 全量前端回归 |
 

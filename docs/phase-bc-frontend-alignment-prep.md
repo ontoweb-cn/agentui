@@ -3,6 +3,7 @@
 > 日期:2026-11-23;九步 module: `t42-phasebc-prep`
 > 状态:**准备文档**(无生产行为变更);D1 生产执行仍受限 L-09/L-10
 > 真源:intellect-rag [`agent-go-port-design.md`](../../intellect-rag/docs/develop/agent-go-port-design.md) §5.1 / §7.5 / §11;agentui `MessageEventType` + canvas-plugin
+> Go 引擎剩余工作与对接顺序:[`agent-dsl-go-development-plan.md`](../../ragflow/docs/plans/agent-dsl-go-development-plan.md) 第 6–7 节(F-01 事件、F-02 取消、F-03 保存前归一)。2026-11-25 评审:Phase B live 仍关,直到 G-01 把 Go 实际发出的 SSE 事件写进手册。
 
 ## 1. 范围裁决
 
@@ -40,10 +41,9 @@
 
 ### 2.3 节点级事件
 
-Go 设计同时强调节点开始/结束与 Python `agent_api` 对齐;canvas-plugin **依赖** `node_started` / `node_finished` 驱动时间线。Phase B 接线时:
+Go 画布实际发出的事件已冻结在 `ragflow/internal/agent/canvas/events_contract.go`(2026-11-25):`workflow_started`、`node_started`、`node_finished`、`message`、`message_end`、`workflow_finished`、`waiting_for_user`、`error`、`cancelled`、`done`。其中 `done` 由 handler 在流结束时补上,不是 runner 内部事件。`node_logs` 与 `user_inputs` 不是 Go 画布事件名;填表对应 `waiting_for_user`。
 
-1. 确认 Go runner 是否仍发射 RAGFlow 风格节点事件;若仅 `message/waiting_for_user/error/done`,前端时间线需降级或 BFF 补齐合成事件;
-2. **禁止**在未确认前删除 `NodeStarted`/`NodeFinished` 消费。
+canvas-plugin 依赖 `node_started` / `node_finished`。适配器 `mapGoCanvasSseEvent` 已按原名透传这些事件,取消映射为带 `cancelled: true` 的 `workflow_finished`。**仍未**接到 `parseCanvasWorkflowSSE`(L-PHASEB-01)。禁止删除 `NodeStarted` / `NodeFinished` 的消费。
 
 ### 2.4 Cancel(两段式 §7.5)
 
@@ -56,23 +56,26 @@ Go 设计同时强调节点开始/结束与 Python `agent_api` 对齐;canvas-plu
 
 准备项:
 
-- [ ] Phase B 接通后核对 cancel key 命名与 Go 一致(`{task_id}-cancel`);
+- [x] 键名已核对（2026-11-25）：路径参数是 SSE 的 `task_id`，Go 把它当作 `session_id`，Redis 键为 `{session_id}-cancel`。`task_id` 与 `session_id` 相同。
 - [ ] 验证「请求 cancel → ≤5s 节点停」的用户可见态(按钮 disabled / 时间线 cancelled);
 - [ ] chat 路径 `cancelMessage` 与 canvas task cancel **勿混用同一语义** unless 统一任务模型。
 
 ## 3. DSL:`NormalizeForCanvas`
 
+细化见 `ragflow/docs/plans/agent-dsl-go-development-plan.md` 第 8.2 节。
+
 | 事实 | 含义 |
 |---|---|
-| Go 唯一入口 `dsl.NormalizeForCanvas` | 扁平 `name`/`params`;handleIds;fold legacy loop |
-| canvas-plugin 当前 | 编辑器读写既有 DSL;仓内 **无**同名 TS 实现 |
-| 风险 | 前端仍写嵌套/legacy loop 形态 → Go Compile 警告或失败 |
+| Go 已在创建、更新、发布、重置和读取时调用 `dsl.NormalizeForCanvas` | BFF `PUT /api/v1/agents/:id` 进更新，库存会是归一后的 DSL |
+| 没有单独的 `/normalize` | 保存本身就是归一边界。试算接口等编辑器确实要预览时再加 |
+| `NormalizeForRun` 会折掉旧循环节点 | 只给编译用，不能回写画布 |
+| canvas-plugin | 仓内不复制这份函数 |
 
-准备项(实现批再做):
+还要做的:
 
-1. 在 BFF 或 plugin-sdk 增加「保存前 normalize」可选调用(代理 Go `/normalize` 或移植纯函数)— **等 Go API 稳定**;
-2. 保存/发布路径断言:出站 DSL 已过 normalize(契约测试夹具来自 `tools/migrate-canvas`);
-3. 文档化前端**禁止**绕过 normalize 直写 storage。
+1. 用 `tools/migrate-canvas` 夹具走保存，读回的 `graph` 已修 handle（F-03-1）。
+2. 保存成功后，编辑器用响应里的 DSL 替换本地草稿，避免下一次保存把旧形态写回去（F-03-2）。
+3. 浏览器只经 BFF 保存。
 
 ## 4. Phase C 前端触点(占位)
 
