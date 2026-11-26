@@ -269,6 +269,9 @@ export class CanvasService {
   }
 
   async cancelTask(ctx: BackendContext, taskId: string): Promise<void> {
+    // taskId is the SSE task_id alias, which Go sets equal to session_id.
+    // The Redis marker is `{session_id}-cancel`. Do not pass an ingestion task id
+    // or a chat-session cancel through this path.
     const adapter = this.resolveAdapter(ctx);
     return adapter.request<void>('POST', `/api/v1/tasks/${encodeURIComponent(taskId)}/cancel`, undefined, ctx);
   }

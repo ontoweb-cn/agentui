@@ -12,6 +12,7 @@ import { useDebounceEffect } from 'ahooks';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import useGraphStore from '../store';
+import { applySavedCanvasDsl } from '../utils/apply-saved-dsl';
 import { useBuildDslData } from './use-build-dsl';
 
 export const useSaveGraph = (showMessage: boolean = true) => {
@@ -38,7 +39,9 @@ export const useSaveGraph = (showMessage: boolean = true) => {
         params.release = 'true';
       }
 
-      return setAgent(params);
+      const saved = await setAgent(params);
+      applySavedCanvasDsl(saved?.data?.dsl, useGraphStore.getState());
+      return saved;
     },
     [setAgent, data, id, buildDslData],
   );

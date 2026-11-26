@@ -101,6 +101,30 @@ export function mapGoCanvasSseEvent(
       };
     }
 
+    case 'workflow_started':
+    case 'node_started':
+    case 'node_finished':
+    case 'message_end':
+    case 'workflow_finished':
+      return {
+        events: [
+          {
+            event: goEvent as MessageEventType,
+            data: payload,
+          },
+        ],
+      };
+
+    case 'cancelled':
+      return {
+        events: [
+          {
+            event: MessageEventType.WorkflowFinished,
+            data: { ...payload, cancelled: true },
+          },
+        ],
+      };
+
     case 'done': {
       return {
         events: [

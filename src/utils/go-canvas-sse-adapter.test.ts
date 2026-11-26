@@ -32,6 +32,31 @@ describe('mapGoCanvasSseEvent (phase-b prep)', () => {
     expect(out.streamError).toBeUndefined();
   });
 
+  it('keeps node and workflow events for the timeline', () => {
+    for (const name of [
+      'workflow_started',
+      'node_started',
+      'node_finished',
+      'message_end',
+      'workflow_finished',
+    ] as const) {
+      const out = mapGoCanvasSseEvent(name, { id: 'e2e-node' });
+      expect(out.events).toEqual([
+        { event: name, data: { id: 'e2e-node' } },
+      ]);
+      expect(out.streamError).toBeUndefined();
+    }
+  });
+
+  it('maps cancelled to a finished timeline event', () => {
+    const out = mapGoCanvasSseEvent('cancelled', { message: 'stopped' });
+    expect(out.events[0].event).toBe(MessageEventType.WorkflowFinished);
+    expect(out.events[0].data).toMatchObject({
+      cancelled: true,
+      message: 'stopped',
+    });
+  });
+
   it('waiting_for_user accepts user_inputs alias', () => {
     const out = mapGoCanvasSseEvent('waiting_for_user', {
       user_inputs: { a: 1 },
@@ -58,8 +83,8 @@ describe('mapGoCanvasSseEvent (phase-b prep)', () => {
     });
   });
 
-  it('unknown → empty', () => {
-    expect(mapGoCanvasSseEvent('node_started', {})).toEqual({ events: [] });
+  it('unknown names stay empty', () => {
+    expect(mapGoCanvasSseEvent('node_logs', {})).toEqual({ events: [] });
   });
 });
 
