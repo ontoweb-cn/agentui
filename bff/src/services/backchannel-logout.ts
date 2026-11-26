@@ -42,9 +42,17 @@ async function getRemoteJwks(issuer: string) {
   if (!resp.ok) {
     throw new LogoutTokenVerifyError(`IdP discovery unavailable: ${resp.status}`);
   }
-  const discovery = (await resp.json()) as { jwks_uri?: string };
+  const discovery = (await resp.json()) as { issuer?: string; jwks_uri?: string };
   if (!discovery.jwks_uri) {
     throw new LogoutTokenVerifyError('IdP discovery missing jwks_uri');
+  }
+  // M6:discovery 自报的 issuer 必须与配置一致(OIDC Discovery §4.3 要求精确匹配;
+  // 末尾斜杠按 auth 的口径归一化)。防止信任锚被指向一个自称别名的 JWKS 源。
+  const normalize = (v: string) => v.trim().replace(/\/+$/, '');
+  if (!discovery.issuer || normalize(discovery.issuer) !== normalize(issuer)) {
+    throw new LogoutTokenVerifyError(
+      `IdP discovery issuer mismatch: ${discovery.issuer ?? '(missing)'} != ${issuer}`,
+    );
   }
   const jwks = createRemoteJWKSet(new URL(discovery.jwks_uri));
   jwksCache.set(issuer, jwks);

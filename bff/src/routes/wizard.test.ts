@@ -172,6 +172,9 @@ describe('wizard 路由 (B-3)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks 不清除实现,显式重置 safeFetch,避免上一个用例的
+    // mockRejectedValue 泄漏到后续用例(联合验证会因此永久 skip)
+    vi.mocked(safeFetch).mockReset();
     // 默认 mock:isUrlSafe 返回 true(安全 URL),SSRF 拦截测试用例显式覆盖为 false
     vi.mocked(isUrlSafe).mockResolvedValue(true);
     stores = createMockStores();
@@ -255,29 +258,33 @@ describe('wizard 路由 (B-3)', () => {
   // -------------------------------------------------------------------------
 
   describe('GET /admin/wizard/backend-types', () => {
-    it('v1.4: 返回 4 个选项(单一企业卡 + community/hermes/agent-scope;SSO 卡已移除)', async () => {
+    it('v1.4 §14: 返回 5 个选项(企业双卡 + community/hermes/agent-scope)', async () => {
       const res = await app.request('/admin/wizard/backend-types', {
         headers: { Authorization: 'Bearer test' },
       });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.options).toHaveLength(4);
+      expect(body.options).toHaveLength(5);
 
       const optionIds = body.options.map((o: { optionId: string }) => o.optionId);
       expect(optionIds).toEqual([
-        'enterprise-password',
+        'enterprise-sso',
+        'enterprise-non-sso',
         'intellect-community',
         'hermes',
         'agent-scope',
       ]);
       expect(body.options[0].type).toBe('intellect-enterprise');
-      expect(body.options[0].setupProfile).toBe('enterprise-password');
+      expect(body.options[0].setupProfile).toBe('enterprise-sso');
+      expect(body.options[1].type).toBe('intellect-enterprise');
+      expect(body.options[1].setupProfile).toBe('enterprise-non-sso');
 
       const types = body.options.map((o: { type: string }) => o.type);
       expect(types).not.toContain('intellect-rag');
       expect(types).not.toContain('kag');
-      // v1.4:SSO 卡从选项表移除(SSO 配置移交管理页,设计 §11)
-      expect(optionIds).not.toContain('enterprise-sso');
+      // 2026-11-26:企业双卡命名 enterprise-sso / enterprise-non-sso;
+      // enterprise-password 仅作 deprecated 别名,不再出现在选项表。
+      expect(optionIds).not.toContain('enterprise-password');
     });
 
     it('每个选项含 optionId + capabilities + credentialKind', async () => {
@@ -293,14 +300,18 @@ describe('wizard 路由 (B-3)', () => {
         expect(opt.label).toBeTruthy();
       }
     });
-    it('v1.4: 单一企业卡说明只讲密码登录,不含 SSO 字样', async () => {
+    it('v1.4 §14: 非 SSO 卡只讲密码登录;SSO 卡 setupProfile 与描述正确', async () => {
       const res = await app.request('/admin/wizard/backend-types', {
         headers: { Authorization: 'Bearer test' },
       });
       const body = await res.json();
-      const enterpriseCard = body.options.find((o: { optionId: string }) => o.optionId === 'enterprise-password');
-      expect(enterpriseCard.description).toMatch(/member password/i);
-      expect(enterpriseCard.description).not.toMatch(/SSO/);
+      const nonSsoCard = body.options.find((o: { optionId: string }) => o.optionId === 'enterprise-non-sso');
+      expect(nonSsoCard.description).toMatch(/member password/i);
+      expect(nonSsoCard.description).not.toMatch(/SSO/);
+
+      const ssoCard = body.options.find((o: { optionId: string }) => o.optionId === 'enterprise-sso');
+      expect(ssoCard.setupProfile).toBe('enterprise-sso');
+      expect(ssoCard.description).toMatch(/SSO/);
     });
   });
 
@@ -386,24 +397,26 @@ describe('wizard 路由 (B-3)', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.success).toBe(true);
-      expect(body.envSnippet).toContain('BFF_SSO_ENABLED=true');
       expect(body.envSnippet).toContain('BFF_PUBLIC_ORIGIN=https://wizard.example.com');
-      expect(body.envSnippet).toContain('BFF_SSO_STATE_SECRET=<your-secret>');
+      expect(body.envSnippet).not.toContain('BFF_SSO_STATE_SECRET');
       expect(body.envSnippet).toContain('BFF_SSO_PROVIDERS=intellect-auth');
-      expect(body.envSnippet).toContain('BFF_SSO_SILENT_RELOGIN=true');
+      expect(body.envSnippet).not.toContain('BFF_SSO_ENABLED');
+      expect(body.envSnippet).not.toContain('BFF_SSO_SILENT_RELOGIN');
       // Token Security:整个响应(含 envSnippet)不得出现明文密钥
       expect(JSON.stringify(body)).not.toContain(SECRET);
     });
 
-    it('U-08: stateSecret 少于 32 字符 → 400', async () => {
+    it('U-08: stateSecret 已无消费方 → 短值不再 400,且不写入 envSnippet', async () => {
+      vi.mocked(validateTenantConfigs).mockResolvedValue(true);
       const res = await app.request('/admin/wizard/setup', {
         method: 'POST',
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...enterpriseSetupBody, sso: { ...enterpriseSetupBody.sso, stateSecret: 'short' } }),
       });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.error).toContain('32');
+      expect(body.success).toBe(true);
+      expect(body.envSnippet ?? '').not.toContain('BFF_SSO_STATE_SECRET');
     });
 
     it('U-09: publicOrigin 非法 URL → 400', async () => {
@@ -482,7 +495,6 @@ describe('wizard 路由 (B-3)', () => {
       const body = await res.json();
       expect(body.success).toBe(true);
       expect(body.envSnippet).toContain('BFF_PUBLIC_ORIGIN=https://wizard.example.com');
-      expect(body.envSnippet).toContain('BFF_SSO_SILENT_RELOGIN=false');
       expect(body.envSnippet).toContain('# BFF_SSO_PROVIDERS=');
     });
 
@@ -564,10 +576,25 @@ describe('wizard 路由 (B-3)', () => {
       });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.envSnippet).toContain('BFF_SSO_ENABLED=true');
+      // 模式推定启用：仍输出 SSO 片段（登录开关已移交管理页，不再输出 BFF_SSO_ENABLED）
+      expect(body.envSnippet).toContain('BFF_SSO_PROVIDERS=intellect-auth');
     });
 
-    it('U-18: setupProfile=enterprise-password + sso.enabled → 400', async () => {
+    it('U-18: setupProfile=enterprise-non-sso + sso.enabled → 400', async () => {
+      const res = await app.request('/admin/wizard/setup', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...enterpriseSetupBody,
+          setupProfile: 'enterprise-non-sso',
+        }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('enterprise-non-sso');
+    });
+
+    it('U-18b: deprecated 别名 enterprise-password 仍被接受(归一化为 enterprise-non-sso)', async () => {
       const res = await app.request('/admin/wizard/setup', {
         method: 'POST',
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
@@ -578,10 +605,11 @@ describe('wizard 路由 (B-3)', () => {
       });
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toContain('enterprise-password');
+      // 归一化后报的是新名字,说明别名映射生效
+      expect(body.error).toContain('enterprise-non-sso');
     });
 
-    it('U-19: setupProfile=enterprise-password 无 sso → 200 且无 BFF_SSO_ENABLED', async () => {
+    it('U-19: deprecated 别名 + 无 sso → 200,提示已废弃且不输出 envSnippet', async () => {
       vi.mocked(validateTenantConfigs).mockResolvedValue(true);
       const { sso: _sso, ...rest } = enterpriseSetupBody;
       const res = await app.request('/admin/wizard/setup', {
@@ -598,10 +626,13 @@ describe('wizard 路由 (B-3)', () => {
       expect(body.success).toBe(true);
       // v1.3 D4:凭据已存入 vault,不再输出任何 token 环境变量行
       expect(body.envSnippet).toBeUndefined();
+      expect(body.warnings.some((w: string) => w.includes('已废弃'))).toBe(true);
     });
 
     it('U-20: setupProfile=enterprise-sso + 合法 sso → 200 且含待写入 warning', async () => {
       vi.mocked(validateTenantConfigs).mockResolvedValue(true);
+      // 联合验证会回访 publicOrigin:单测里显式模拟不可达
+      vi.mocked(safeFetch).mockRejectedValue(new Error('offline'));
       vi.mocked(getLoginProviders).mockResolvedValue({
         providers: [
           { id: 'intellect-auth', displayName: '统一认证', icon: 'sso', clientId: 'c', authorizeUrl: 'u', scopes: 's' },
@@ -620,8 +651,19 @@ describe('wizard 路由 (B-3)', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.success).toBe(true);
-      expect(body.envSnippet).toContain('BFF_SSO_ENABLED=true');
-      expect(body.warnings.some((w: string) => w.includes('尚未生效') || w.includes('写入'))).toBe(true);
+      expect(body.envSnippet).toContain('BFF_SSO_PROVIDERS=intellect-auth');
+      expect(body.envSnippet).not.toContain('BFF_SSO_STATE_SECRET');
+      expect(body.warnings.some((w: string) => w.includes('已保存'))).toBe(true);
+      // 联合验证:公网回访在单测中不可达 → 全部降级为 skip,不阻断保存
+      expect(Array.isArray(body.checks)).toBe(true);
+      expect(body.checks).toHaveLength(4);
+      expect(body.checks.map((c: { id: string }) => c.id)).toEqual([
+        'channels',
+        'login_redirect',
+        'callback_reachable',
+        'callback_registered',
+      ]);
+      expect(body.checks.every((c: { status: string }) => c.status === 'skip')).toBe(true);
     });
 
     it('U-21(§9 S2): providers 含换行/等号 → snippet 不注入且 warning 剔除', async () => {
@@ -632,7 +674,7 @@ describe('wizard 路由 (B-3)', () => {
         ],
         misconfigured: [],
       });
-      const evil = 'evil\nBFF_SSO_ENABLED=false';
+      const evil = 'evil\nBFF_PUBLIC_ORIGIN=https://evil.test';
       const res = await app.request('/admin/wizard/setup', {
         method: 'POST',
         headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
@@ -649,7 +691,7 @@ describe('wizard 路由 (B-3)', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.envSnippet).toContain('BFF_SSO_PROVIDERS=intellect-auth');
-      expect(body.envSnippet).not.toContain('BFF_SSO_ENABLED=false');
+      expect(body.envSnippet).not.toContain('https://evil.test');
       expect(body.envSnippet.split('\n').some((l: string) => l.includes(evil))).toBe(false);
       expect(body.warnings.some((w: string) => w.includes('非法 id'))).toBe(true);
     });
@@ -730,8 +772,7 @@ describe('wizard 路由 (B-3)', () => {
       expect(status).toBe(200);
       expect(body.success).toBe(true);
       expect(body.backendId).toBe('intellect-enterprise-default');
-      expect(body.envSnippet).toContain('BFF_SSO_ENABLED=true');
-      // D4:服务密钥已入 vault,片段里没有 token 环境变量行
+      expect(body.envSnippet).toContain('BFF_PUBLIC_ORIGIN=');
       expect(body.envSnippet).not.toContain('HARNESS_');
 
       const saved = stores.saveConfigMock.mock.calls[0][0] as HarnessBackendConfig[];
@@ -752,14 +793,16 @@ describe('wizard 路由 (B-3)', () => {
       expect(JSON.stringify(body)).not.toContain(SECRET);
     });
 
-    it('W-R1(v1.4 §12 R-1): SSO 卡移除后,deprecated enterprise-sso setup 仍走通(选项查找回退)', async () => {
-      // 本用例即 W-01 的 R-1 断言版:选项表已无 enterprise-sso 条目,
-      // getWizardOption 回退企业卡,capabilities/校验链不受影响
+    it('W-R1(v1.4 §14): SSO 卡恢复后,enterprise-sso setup 命中 SSO 卡且走通', async () => {
+      // 选项表已恢复 enterprise-sso;本用例确认选项查找精确命中,校验链不受影响
       mockHealthyGateway();
       const types = await app.request('/admin/wizard/backend-types', {
         headers: { Authorization: 'Bearer test' },
       });
-      expect(((await types.json()).options ?? []).some((o: { optionId: string }) => o.optionId === 'enterprise-sso')).toBe(false);
+      const ssoOption = ((await types.json()).options ?? []).find(
+        (o: { optionId: string }) => o.optionId === 'enterprise-sso',
+      );
+      expect(ssoOption?.setupProfile).toBe('enterprise-sso');
 
       const { status, body } = await callSetup(ssoMinimalBody);
       expect(status).toBe(200);
@@ -795,7 +838,7 @@ describe('wizard 路由 (B-3)', () => {
       expect(saved[0].intellectTenantId).toBe(TENANT_ID);
     });
 
-    it('W-05: 非 SSO 模式显式携带 sso(即使 enabled=false)→ 400(D2)', async () => {
+    it('W-05: 非 SSO 模式(含 deprecated 别名)显式携带 sso → 400(D2)', async () => {
       const { status, body } = await callSetup({
         ...ssoMinimalBody,
         name: 'e2e-password-with-sso',
@@ -804,7 +847,7 @@ describe('wizard 路由 (B-3)', () => {
         sso: { enabled: false, publicOrigin: 'https://wizard.example.com', stateSecret: SECRET },
       });
       expect(status).toBe(400);
-      expect(body.error).toContain('enterprise-password');
+      expect(body.error).toContain('enterprise-non-sso');
       expect(stores.saveConfigMock).not.toHaveBeenCalled();
     });
 

@@ -56,6 +56,7 @@ import { isImtCanvasAgentsEnabled } from '../utils/feature-flags';
 // 供本路由(deprecated enterprise-sso 验证分支)与 sso-admin(?check=1)复用
 import {
   verifyEnterpriseSso,
+  verifySsoLoginFlow,
   GATEWAY_BASE_HINT,
   TENANT_ID_RE,
 } from '../services/enterprise-sso-check';
@@ -71,6 +72,7 @@ import type {
   WizardProbeResponse,
   WizardSetupRequest,
   WizardSetupResponse,
+  WizardSetupCheck,
   WizardSetupProfile,
   WizardSsoProvidersResponse,
 } from '../types/wizard';
@@ -103,16 +105,27 @@ const ENTERPRISE_CAPABILITIES = {
 } as const;
 
 const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
-  // wizard-ent-sso-mode v1.4(设计 §11):企业回归**单张卡**——SSO 配置移交管理页
-  // (系统管理 → 统一认证设置),setupProfile=enterprise-sso 仅作 deprecated 兼容
-  // (§12 R-1:选项查找回退本卡,历史向导请求不 400)。
+  // wizard-ent-sso-mode:企业双卡(2026-11-26 命名调整)——
+  // enterprise-sso 走统一认证;enterprise-non-sso 覆盖密码/邮箱/服务密钥等方式。
+  // enterprise-password 作为 deprecated 别名仍在入口归一化,历史请求不 400。
   // D-02/X-01(P1):kag 已从向导选项下架;类型联合与 Adapter 保留。
+  // §14 恢复:enterprise-sso 卡回归,首装即可配置统一认证(写入同一份 sso-config.json)。
   {
-    optionId: 'enterprise-password',
+    optionId: 'enterprise-sso',
     type: 'intellect-enterprise',
-    setupProfile: 'enterprise-password',
-    label: 'Intellect Enterprise',
-    description: 'Member password sign-in; teams/projects with multi-tenancy',
+    setupProfile: 'enterprise-sso',
+    label: 'Intellect Enterprise (SSO)',
+    description: 'Unified authentication (SSO) sign-in; teams/projects with multi-tenancy',
+    defaultEndpoint: 'http://localhost:9091',
+    capabilities: { ...ENTERPRISE_CAPABILITIES },
+    credentialKind: 'bearer-token',
+  },
+  {
+    optionId: 'enterprise-non-sso',
+    type: 'intellect-enterprise',
+    setupProfile: 'enterprise-non-sso',
+    label: 'Intellect Enterprise (Non-SSO)',
+    description: 'Member password/email sign-in; teams/projects with multi-tenancy',
     defaultEndpoint: 'http://localhost:9091',
     capabilities: { ...ENTERPRISE_CAPABILITIES },
     credentialKind: 'bearer-token',
@@ -153,17 +166,18 @@ const BACKEND_TYPE_OPTIONS: WizardBackendTypeOption[] = [
 // intellect-rag 仍不是独立向导类型(setup 保留显式拒绝,给出可读文案)。
 
 /**
- * 向导选项查找。v1.4 起企业为单卡;`setupProfile=enterprise-sso` 属 deprecated
- * 兼容路径(§12 R-1):卡片已从选项表移除,此时回退同能力集的企业卡,
- * 保证历史向导请求(setup/probe)不因选项表收缩而 400。
+ * 向导选项查找。企业双卡:`enterprise-sso` / `enterprise-non-sso`;
+ * `enterprise-password` 为 deprecated 别名,归一化后再查找。
  */
 function getWizardOption(
   type: BackendType,
   setupProfile?: WizardSetupProfile,
 ): WizardBackendTypeOption | undefined {
+  const normalized =
+    setupProfile === 'enterprise-password' ? 'enterprise-non-sso' : setupProfile;
   const profile =
     type === 'intellect-enterprise'
-      ? (setupProfile ?? 'enterprise-password')
+      ? (normalized ?? 'enterprise-non-sso')
       : undefined;
   const exact = BACKEND_TYPE_OPTIONS.find(
     (o) =>
@@ -171,7 +185,10 @@ function getWizardOption(
       (o.type !== 'intellect-enterprise' || o.setupProfile === profile),
   );
   if (exact || type !== 'intellect-enterprise') return exact;
-  return BACKEND_TYPE_OPTIONS.find((o) => o.type === 'intellect-enterprise');
+  // 未知 profile 一律回退非 SSO 卡,避免把未知/旧值当成 SSO(§14.1)。
+  return BACKEND_TYPE_OPTIONS.find(
+    (o) => o.type === 'intellect-enterprise' && o.setupProfile === 'enterprise-non-sso',
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -366,7 +383,12 @@ wizardRoutes.post('/admin/wizard/probe', async (c) => {
         400,
       );
     }
-    if (rawSetupProfile !== 'enterprise-sso' && rawSetupProfile !== 'enterprise-password') {
+    if (
+      rawSetupProfile !== 'enterprise-sso' &&
+      rawSetupProfile !== 'enterprise-non-sso' &&
+      // deprecated 别名,继续接受
+      rawSetupProfile !== 'enterprise-password'
+    ) {
       return c.json(
         { healthy: false, error: `未知 setupProfile: ${String(rawSetupProfile)}` } satisfies WizardProbeResponse,
         400,
@@ -581,7 +603,12 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
         400,
       );
     }
-    if (rawSetupProfile !== 'enterprise-sso' && rawSetupProfile !== 'enterprise-password') {
+    if (
+      rawSetupProfile !== 'enterprise-sso' &&
+      rawSetupProfile !== 'enterprise-non-sso' &&
+      // deprecated 别名,继续接受
+      rawSetupProfile !== 'enterprise-password'
+    ) {
       return c.json(
         {
           success: false,
@@ -596,17 +623,23 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   // 故先于基本校验。
   let resolvedSetupProfile: WizardSetupProfile | undefined;
   if (req.type === 'intellect-enterprise') {
-    if (req.setupProfile === 'enterprise-sso' || req.setupProfile === 'enterprise-password') {
+    if (req.setupProfile === 'enterprise-sso' || req.setupProfile === 'enterprise-non-sso') {
       resolvedSetupProfile = req.setupProfile;
+    } else if (req.setupProfile === 'enterprise-password') {
+      // deprecated 别名:按非 SSO 处理,并提示迁移
+      resolvedSetupProfile = 'enterprise-non-sso';
+      ssoWarnings.push(
+        'setupProfile=enterprise-password 已废弃,已按 enterprise-non-sso 处理;请更新调用方',
+      );
     } else if (req.sso?.enabled) {
       resolvedSetupProfile = 'enterprise-sso';
       ssoWarnings.push(
         '未传 setupProfile:已按 sso.enabled 推断为 enterprise-sso;请显式传 setupProfile',
       );
     } else {
-      resolvedSetupProfile = 'enterprise-password';
+      resolvedSetupProfile = 'enterprise-non-sso';
       ssoWarnings.push(
-        '未传 setupProfile:已默认 enterprise-password;请显式传 setupProfile',
+        '未传 setupProfile:已默认 enterprise-non-sso;请显式传 setupProfile',
       );
       // 旧客户端未启用时仍可能带 sso:{enabled:false}:视为未配置,
       // 不按"非 SSO 模式拒绝 sso 配置"处理
@@ -630,11 +663,11 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
   // ---------------------------------------------------------------------------
 
   // v1.3 D2:非 SSO 模式不接受任何统一认证配置
-  if (resolvedSetupProfile === 'enterprise-password' && req.sso) {
+  if (resolvedSetupProfile === 'enterprise-non-sso' && req.sso) {
     return c.json(
       {
         success: false,
-        error: 'enterprise-password 模式不接受 sso 配置;统一认证请改用 enterprise-sso 模式',
+        error: 'enterprise-non-sso 模式不接受 sso 配置;统一认证请改用 enterprise-sso 模式',
       } satisfies WizardSetupResponse,
       400,
     );
@@ -766,15 +799,8 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
         400,
       );
     }
-    if (!req.sso.stateSecret || req.sso.stateSecret.length < 32) {
-      return c.json(
-        {
-          success: false,
-          error: 'sso.stateSecret 至少 32 字符(与 BFF_SSO_STATE_SECRET 启动校验一致)',
-        } satisfies WizardSetupResponse,
-        400,
-      );
-    }
+    // 2026-11-26:stateSecret 已无消费方(V2 移除了启动强校验),不再要求;
+    // 请求里携带也直接忽略,避免旧客户端被 400 拦住。
     const rawProviderIds = Array.isArray(req.sso.providers)
       ? req.sso.providers.filter((p): p is string => typeof p === 'string')
       : [];
@@ -1053,21 +1079,32 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
       ssoSnippetLines.push('# 添加到 .env 文件');
     }
     ssoSnippetLines.push('# 统一认证(SSO)');
-    ssoSnippetLines.push('BFF_SSO_ENABLED=true');
     ssoSnippetLines.push(`BFF_PUBLIC_ORIGIN=${publicOrigin}`);
-    ssoSnippetLines.push('BFF_SSO_STATE_SECRET=<your-secret>');
     ssoSnippetLines.push(
       providerIds.length > 0
         ? `BFF_SSO_PROVIDERS=${providerIds.join(',')}`
         : '# BFF_SSO_PROVIDERS= 渠道白名单(留空=不过滤)',
     );
-    ssoSnippetLines.push(`BFF_SSO_SILENT_RELOGIN=${req.sso.silentRelogin === false ? 'false' : 'true'}`);
-    // §8 R8:完成页须明示「待写入 env 前渠道不会出现」
+    // 配置已写入运行时 sso-config.json,无需再等重启;仅 env 兜底场景需重启。
     ssoWarnings.push(
-      '统一认证尚未生效:请将上方 BFF_SSO_* 写入部署 .env 并重启 BFF 后,登录页才会出现统一认证渠道。',
+      '统一认证配置已保存;若使用 .env 兜底而非运行时配置,需重启 BFF 后生效。',
     );
   }
   const snippetLines = [...baseSnippetLines, ...ssoSnippetLines];
+
+  // 10. 联合验证(SSO 模式):服务端探测 + 人工确认项;失败不阻断保存
+  let setupChecks: WizardSetupCheck[] | undefined;
+  if (resolvedSetupProfile === 'enterprise-sso' && req.sso?.enabled) {
+    const publicOrigin = (req.sso.publicOrigin ?? '').trim().replace(/[\r\n\0]/g, '');
+    if (publicOrigin) {
+      const { ok: checkProviderIds } = sanitizeSsoProviderIds(
+        Array.isArray(req.sso.providers)
+          ? req.sso.providers.filter((p): p is string => typeof p === 'string')
+          : [],
+      );
+      setupChecks = await verifySsoLoginFlow(publicOrigin, checkProviderIds[0] ?? '');
+    }
+  }
 
   const allWarnings = [...warnings, ...ssoWarnings];
   return c.json({
@@ -1075,5 +1112,6 @@ wizardRoutes.post('/admin/wizard/setup', wizardSetupAuth, async (c) => {
     backendId,
     ...(snippetLines.length > 0 ? { envSnippet: snippetLines.join('\n') } : {}),
     ...(allWarnings.length > 0 ? { warnings: allWarnings } : {}),
+    ...(setupChecks ? { checks: setupChecks } : {}),
   } satisfies WizardSetupResponse);
 });

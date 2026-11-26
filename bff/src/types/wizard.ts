@@ -5,8 +5,12 @@
 import type { BackendType, HarnessCapabilities } from './harness';
 import type { CredentialKind } from '../services/token-vault';
 
-/** wizard-ent-sso-mode:企业双卡选型 profile(不写入 harness type / authMode) */
-export type WizardSetupProfile = 'enterprise-sso' | 'enterprise-password';
+/**
+ * wizard-ent-sso-mode:企业双卡选型 profile(不写入 harness type / authMode)。
+ * `enterprise-non-sso` 覆盖密码/邮箱/服务密钥等非 SSO 方式(2026-11-26 命名调整);
+ * `enterprise-password` 作为 deprecated 别名保留,后端入口统一归一化。
+ */
+export type WizardSetupProfile = 'enterprise-sso' | 'enterprise-non-sso' | 'enterprise-password';
 
 // Step 2: 选择后端类型
 export interface WizardBackendTypeOption {
@@ -64,7 +68,7 @@ export interface WizardSsoSettings {
   /** 兼容字段:enterprise-sso 模式下由 BFF 推定为 true,客户端传值被忽略 */
   enabled: boolean;
   publicOrigin: string;
-  /** 客户端生成的随机密钥(≥32 字符);响应 envSnippet 永以 <your-secret> 占位 */
+  /** @deprecated 已无消费方(2026-11-26);仅为旧客户端兼容保留,传入会被忽略 */
   stateSecret?: string;
   /** 登录渠道白名单;缺省/null/空 = 不过滤(与 BFF_SSO_PROVIDERS 语义一致) */
   providers?: string[] | null;
@@ -131,6 +135,16 @@ export interface WizardSetupResponse {
   error?: string;
   /** 非阻断告警(如新后端未就绪、默认租户绑定未更新),前端可展示 */
   warnings?: string[];
+  /** SSO 模式保存后的联合验证结果(失败不阻断保存) */
+  checks?: WizardSetupCheck[];
+}
+
+/** 保存后的联合验证项:服务端可自动判定的部分 + 需人工确认的部分 */
+export interface WizardSetupCheck {
+  id: 'channels' | 'login_redirect' | 'callback_reachable' | 'callback_registered';
+  label: string;
+  status: 'pass' | 'fail' | 'skip';
+  detail?: string;
 }
 
 // Wizard 状态

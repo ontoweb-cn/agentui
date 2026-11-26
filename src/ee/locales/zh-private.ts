@@ -37,6 +37,8 @@ export default {
           types: {
             enterprise: 'Intellect 企业版',
             enterpriseDesc: '团队/项目 + 多租户;成员账号密码登录',
+            enterpriseSso: 'Intellect 企业版(SSO)',
+            enterpriseSsoDesc: '统一认证(SSO)登录;团队/项目 + 多租户',
           },
           cap: {
             canvas: '画布',
@@ -50,11 +52,21 @@ export default {
             name: '后端名称',
             endpoint: '端点',
             token: 'Bearer Token',
+            serverKey: '网关服务密钥',
             email: '邮箱',
             password: '密码',
             intellectTenantId: 'Intellect 租户 ID',
             intellectTenantIdError: '格式错误:必须为 32 位 hex(0-9, a-f)',
             intellectTenantIdHint: '从 intellect-team 的 INTELLECT_TENANT_ID 环境变量复制(Rust 版本要求 32 位 hex)',
+            intellectTenantIdOptionalHint:
+              '可选:留空由 BFF 从网关 /api/tenant/info 自动识别(Rust 版本要求 32 位 hex)',
+            publicOrigin: '公开来源地址',
+            publicOriginError: '格式错误:必须为 http(s) 绝对 URL',
+            publicOriginHint:
+              'BFF 对外访问来源(用于拼接 SSO 回调与登出回跳);生产环境必须为 https。',
+            callbackLabel: '回调地址(需在 auth 应用 ia-intellect-team 的 redirectUris 中登记)',
+            callbackHint:
+              '本向导不代填:请自行在 auth 应用 ia-intellect-team 的 redirectUris 中登记上述地址。',
             probe: '探测连接',
           },
           probe: {
@@ -84,6 +96,15 @@ export default {
             description: '后端已成功配置,现在可以开始使用平台。',
             // wizard-ent-sso-mode v1.4: SSO moved to admin settings
             enterpriseSsoHint: '如需启用统一认证(SSO)登录,请安装后在「系统管理 → 统一认证设置」中开启。',
+            checks: '联合验证',
+            checkPass: '通过',
+            checkFail: '失败',
+            checkSkip: '跳过',
+            manualTitle: '以下 4 项需人工确认:',
+            manualLogin: 'AgentUI 完成 SSO 登录',
+            manualWebui: '打开 WebUI 点 SSO 无需密码',
+            manualApi: '成员令牌调 /v1/models 返回 200',
+            manualLogout: '登出后令牌失效',
             goHome: '返回首页',
             warnings: '提示',
           },
@@ -240,7 +261,8 @@ export default {
           stateSecretSet: '已设置',
           stateSecretInvalid: '已设置但长度不足 32 字符',
           stateSecretUnset: '未设置',
-          secretInvalid: '已启用统一认证,但 BFF_SSO_STATE_SECRET 长度不足 32 字符:重启后 BFF 将启动失败,请先在部署配置中更正。',
+          stateSecretDeprecated:
+            'BFF_SSO_STATE_SECRET 已不再使用(BFF-as-RP 登录链路已移除),无需配置或轮换。',
           enableDisabledHint: '默认租户未绑定企业后端,无法启用;请先完成企业版首装。',
           providersLoading: '渠道加载中...',
           providersError: '渠道预览不可用(后端未绑定或统一认证服务不可达);仍可通过下方手动输入兜底。',
@@ -253,8 +275,6 @@ export default {
         cardTitle: '生效配置',
         updatedAt: '运行时配置更新于 {{time}}',
         noRuntime: '当前无运行时配置,以下生效值来自部署环境变量。',
-        secretMissing:
-          '已启用统一认证,但部署配置缺少 BFF_SSO_STATE_SECRET:重启后 BFF 将启动失败,请先在 .env 设置(至少 32 字符)。',
         enable: '启用统一认证登录',
         enableHint: '登录页展示 SSO 渠道按钮;仅企业版租户生效。',
         publicOrigin: '公开来源地址',
@@ -264,6 +284,14 @@ export default {
         providersHint: '逗号分隔的渠道 ID;留空 = 不过滤(以网关 enabled/用途为准)。',
         silentRelogin: '静默重登',
         silentReloginHint: '会话过期后自动尝试免密恢复;主动登出后不自动重登。',
+        logoutTitle: '单点登出(可选)',
+        logoutHint:
+          '配置后登出会跳转 IdP 登出端点并支持 back-channel 验签;留空则仅做本地登出。',
+        oauthClientId: 'OAuth Client ID',
+        idpIssuer: 'IdP Issuer',
+        issuerPinnedHint:
+          '该值由部署配置(BFF_OAUTH_IDP_ISSUER)固定,运行时修改不生效;如需变更请更新部署配置。',
+        idpLogoutUrl: 'IdP Logout URL',
         secretNote:
           '引导密钥(BFF_SSO_STATE_SECRET)属部署级敏感配置,不在本页展示或修改,由部署配置文件管理。',
         save: '保存',
@@ -273,6 +301,7 @@ export default {
         resetDone: '已清除运行时配置,回落到部署环境变量',
         sourceRuntime: '运行时配置',
         sourceEnv: '环境变量',
+        sourceUnset: '未配置',
       },
       tenantBinding: {
         title: '租户绑定',

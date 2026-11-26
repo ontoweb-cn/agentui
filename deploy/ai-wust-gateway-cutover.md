@@ -181,28 +181,22 @@ done
 > 先确认网关 provider 已就绪（`intellect-auth`、exchange 开关、IdP client 回调 `https://ai.wust.edu.cn/api/bff/auth/oauth/callback`）。
 
 ```bash
-# 1) 创建密钥（只做一次）
-kubectl -n intellect create secret generic agentui-sso \
-  --from-literal=state-secret="$(openssl rand -base64 48 | tr -d '\n')"
-
-# 2) 在 Git 中把 deploy/k8s/agentui-config.yaml 的 BFF_SSO_ENABLED 改为 "true"
-#    提交后 Argo CD Hard Refresh + Sync
-
-# 3) 重启 Pod 使 env 生效：更新 Deployment 模板注解
-#    kubectl.kubernetes.io/restartedAt: "<新的 ISO 时间>"
+# 1) 在「系统管理 → 统一认证设置」开启 SSO：填写公开来源与渠道白名单后保存
+#    即时生效（运行时 sso-config.json），无需修改部署 env，也无需重启 Pod
 ```
 
 验证：
 
 ```bash
-curl -I "https://ai.wust.edu.cn/api/bff/auth/sso/authorize/intellect-auth?tenant=0"
+curl -I "https://ai.wust.edu.cn/api/bff/auth/login/intellect-auth?tenant=0"
 # 期望 302，Location 指向 https://ai.wust.edu.cn/auth/...
+# （SSO 关闭时该端点 302 回 /login-next?ssoError=sso_disabled）
 ```
 
 ## 5. 回滚
 
 1. 网关：恢复 `ai-wust.conf.bak.20261121` 并 `nginx -s reload`；
-2. SSO：Git 中把 `BFF_SSO_ENABLED` 改回 `"false"` 并同步；
+2. SSO：管理页关闭开关（即时生效）；或删除 `sso-config.json` 回落环境变量；
 3. 镜像：修改 `deploy/k8s/kustomization.yaml` 的 `images.newTag` 回退版本。
 
 ## 6. 责任边界

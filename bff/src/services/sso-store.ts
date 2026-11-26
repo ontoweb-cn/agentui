@@ -24,6 +24,10 @@ export const ssoRuntimeConfigSchema = z.object({
   /** null = 不过滤(以网关 enabled/usage 为准);数组 = 白名单 */
   providers: z.array(z.string().min(1)).nullable(),
   silentRelogin: z.boolean(),
+  /** §14 登出三项(可选;旧文件缺省仍可读) */
+  oauthClientId: z.string().min(1).optional(),
+  idpIssuer: z.string().min(1).optional(),
+  idpLogoutUrl: z.string().min(1).optional(),
   /** ISO 时间戳,管理页展示用 */
   updatedAt: z.string().min(1),
 });
@@ -57,6 +61,12 @@ export function readSsoRuntimeConfig(
   }
 }
 
+/** 可选字符串字段:trim 后空串归一为 undefined(不写入文件)。 */
+function normalizeOptionalString(value: unknown): string | undefined {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  return trimmed === '' ? undefined : trimmed;
+}
+
 /**
  * 归一化并写入运行时配置:
  * - publicOrigin 去首尾空白与尾部斜杠;
@@ -75,11 +85,18 @@ export function writeSsoRuntimeConfig(
         ),
       )
     : null;
+  const oauthClientId = normalizeOptionalString(input.oauthClientId);
+  const idpIssuer = normalizeOptionalString(input.idpIssuer);
+  const idpLogoutUrl = normalizeOptionalString(input.idpLogoutUrl);
   const config: SsoRuntimeConfig = {
     enabled: input.enabled,
     publicOrigin: input.publicOrigin.trim().replace(/\/+$/, ''),
     providers: providerList && providerList.length > 0 ? providerList : null,
     silentRelogin: input.silentRelogin,
+    // 空串归一为 undefined(不写入文件)
+    ...(oauthClientId ? { oauthClientId } : {}),
+    ...(idpIssuer ? { idpIssuer } : {}),
+    ...(idpLogoutUrl ? { idpLogoutUrl } : {}),
     updatedAt: new Date().toISOString(),
   };
   // 写前自校验(防御性):失败即抛,不产生半成品文件

@@ -1,10 +1,7 @@
 import message from '@/components/ui/message';
 import { AuthMode } from '@/constants/authorization';
 import authorizationUtil from '@/utils/authorization-util';
-import {
-  attemptSilentRelogin,
-  validateEnterpriseSession,
-} from '@/utils/enterprise-session';
+import { validateEnterpriseSession } from '@/utils/enterprise-session';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
@@ -88,14 +85,9 @@ const useEnterpriseCookieProbe = () => {
   return useQuery({
     queryKey: ['enterpriseCookieProbe'],
     queryFn: async () => {
-      // 与 401 拦截器共用同一复验口径（B3）：200 写标记；401 清标记并尝试静默重登；
+      // 与 401 拦截器共用同一复验口径（B3）：200 写标记；401 清标记；
       // 网络错误返回 unknown（视为未登录，但不清除标记）。
       const result = await validateEnterpriseSession();
-      if (result === 'invalid') {
-        // 优先尝试一次静默重登（spec-014 P2）；是否真正静默由 BFF 开关与
-        // sso_provider Cookie 决定。
-        attemptSilentRelogin();
-      }
       return result === 'valid';
     },
     enabled,

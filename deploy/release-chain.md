@@ -93,7 +93,7 @@ kubectl -n intellect create secret generic agentui-sso \
 
 注意：
 - **不要 kubectl edit**：本页是运行时配置（sso-config.json），部署 env 里无需 `BFF_SSO_ENABLED`；
-- 启用时后端未绑定/密钥未设会返回非阻断警示，按提示补齐；
+- 启用时后端未绑定会返回非阻断警示，按提示补齐；
 - 回滚：关闭开关（即时）或「回落环境变量」。
 
 ## 6. 冒烟
@@ -107,7 +107,7 @@ Jenkins 发版参数 `SMOKE_URL` 非空时自动执行同一脚本。
 ## 7. 回滚
 
 - 镜像：把 `kustomization.yaml` 的 `newTag` 改回上一版本（或 ArgoCD 回滚历史版本）；
-- SSO：`BFF_SSO_ENABLED=false` + 重启（ArgoCD 同步）；
+- SSO：管理页关闭开关（即时生效）；或删除 `sso-config.json` 回落环境变量；
 - 数据：PVC 保留，回滚镜像不丢配置。
 
 ## 8. 已知受限

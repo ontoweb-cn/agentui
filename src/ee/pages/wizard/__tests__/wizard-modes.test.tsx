@@ -1,6 +1,6 @@
-// wizard-ent-sso-mode v1.4:向导单卡形态的组件测试(设计 §11)。
-// 覆盖:4 张选型卡、企业连接步(纯后端表单,无任何统一认证内容)、切卡重置、
-// 探测请求不再携带 setupProfile/sso(已移交管理页)、第 3 步重渲染循环回归。
+// wizard-ent-sso-mode v1.4 + §14:向导双卡形态的组件测试。
+// 覆盖:5 张选型卡(含 SSO 卡)、非 SSO 连接步纯后端表单、SSO 连接步(公开来源/只读回调)、
+// 切卡重置、探测请求携带 setupProfile、第 3 步重渲染循环回归。
 // 断言用英文文案(jest 的 i18n 以 en 资源初始化,含 src/ee/locales/en-private.ts)。
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -37,10 +37,20 @@ const PLAIN_CAPS = { ...ENTERPRISE_CAPS, multiTenant: false, modelManagement: fa
 
 const OPTIONS = [
   {
-    optionId: 'enterprise-password',
+    optionId: 'enterprise-sso',
     type: 'intellect-enterprise',
-    setupProfile: 'enterprise-password',
-    label: 'Intellect Enterprise',
+    setupProfile: 'enterprise-sso',
+    label: 'Intellect Enterprise (SSO)',
+    description: 'Unified authentication (SSO) sign-in; teams/projects with multi-tenancy',
+    defaultEndpoint: 'http://localhost:9091',
+    capabilities: ENTERPRISE_CAPS,
+    credentialKind: 'bearer-token',
+  },
+  {
+    optionId: 'enterprise-non-sso',
+    type: 'intellect-enterprise',
+    setupProfile: 'enterprise-non-sso',
+    label: 'Intellect Enterprise (Non-SSO)',
     description: 'Member password sign-in; teams/projects with multi-tenancy',
     defaultEndpoint: 'http://localhost:9091',
     capabilities: ENTERPRISE_CAPS,
@@ -96,10 +106,20 @@ function seedCredentials(credentials: { token: string }) {
 
 function enterpriseDraft() {
   return {
-    selectedOptionId: 'enterprise-password',
+    selectedOptionId: 'enterprise-non-sso',
     selectedType: 'intellect-enterprise',
     endpoint: 'http://localhost:9091',
     credentialKind: 'bearer-token',
+  };
+}
+
+function enterpriseSsoDraft() {
+  return {
+    selectedOptionId: 'enterprise-sso',
+    selectedType: 'intellect-enterprise',
+    endpoint: 'http://localhost:9091',
+    credentialKind: 'bearer-token',
+    ssoPublicOrigin: 'https://ai.wust.edu.cn',
   };
 }
 
@@ -119,7 +139,7 @@ function renderWizard(entry: string) {
   );
 }
 
-describe('WizardPage 单卡形态(wizard-ent-sso-mode v1.4)', () => {
+describe('WizardPage 企业双卡形态(wizard-ent-sso-mode v1.4 / §14)', () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
@@ -135,23 +155,22 @@ describe('WizardPage 单卡形态(wizard-ent-sso-mode v1.4)', () => {
     Element.prototype.scrollIntoView = jest.fn();
   });
 
-  it('选型页:4 张卡,全部展示默认端点,企业卡说明不含 SSO 字样', async () => {
+  it('选型页:5 张卡(含 SSO 卡),全部展示默认端点,非 SSO 卡说明不含 SSO 字样', async () => {
     renderWizard('/wizard?step=2');
-    await screen.findByRole('radio', { name: /Intellect Enterprise/ });
+    await screen.findByRole('radio', { name: /Intellect Enterprise \(SSO\)/ });
 
+    expect(screen.getByRole('radio', { name: /member password sign-in/ })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /Intellect Community/ })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /HERMES/ })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /AgentScope/ })).toBeInTheDocument();
-    // 单卡:不存在 SSO 模式卡
-    expect(screen.queryByRole('radio', { name: /SSO mode/ })).not.toBeInTheDocument();
-    // 全部 4 卡都有默认端点(v1.3 时 SSO 卡不展示)
-    expect(screen.getAllByText(/Default endpoint/)).toHaveLength(4);
-    // 企业卡说明不含 SSO
+    // §14:SSO 卡恢复
+    expect(screen.getAllByRole('radio')).toHaveLength(5);
+    expect(screen.getAllByText(/Default endpoint/)).toHaveLength(5);
+    // 非 SSO 卡说明不含 SSO
     expect(screen.getByText(/member password sign-in/)).toBeInTheDocument();
-    expect(screen.queryByText(/Sign in with SSO/)).not.toBeInTheDocument();
   });
 
-  it('企业连接步:纯后端表单,没有任何统一认证内容', async () => {
+  it('企业连接步:非 SSO 卡为纯后端表单,没有任何统一认证内容', async () => {
     seedDraft(enterpriseDraft());
     seedCredentials({ token: 'ent-key' });
     renderWizard('/wizard?step=3');
@@ -161,18 +180,32 @@ describe('WizardPage 单卡形态(wizard-ent-sso-mode v1.4)', () => {
     expect(screen.getByLabelText('Bearer Token')).toBeInTheDocument();
     expect(screen.getByLabelText('Intellect Tenant ID')).toBeInTheDocument();
 
-    // 统一认证内容不出现(v1.3 的 SSO 面已移交管理页)
+    // 非 SSO 卡不展示统一认证内容
+    expect(screen.queryByLabelText('Public origin')).not.toBeInTheDocument();
+    expect(screen.queryByText('Callback URL (register it in the auth app ia-intellect-team under redirectUris)')).not.toBeInTheDocument();
     expect(screen.queryByText('Login channels')).not.toBeInTheDocument();
-    expect(screen.queryByText('Public origin')).not.toBeInTheDocument();
-    expect(screen.queryByText('Gateway service key')).not.toBeInTheDocument();
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+  });
+
+  it('企业连接步:SSO 卡隐藏后端名,展示公开来源与只读回调地址', async () => {
+    seedDraft(enterpriseSsoDraft());
+    seedCredentials({ token: 'ent-key' });
+    renderWizard('/wizard?step=3');
+
+    expect(await screen.findByLabelText('Public origin')).toBeInTheDocument();
+    // SSO 模式隐藏 Backend Name(BFF 用默认名)
+    expect(screen.queryByLabelText('Backend Name')).not.toBeInTheDocument();
+    // 回调地址只读展示
+    expect(
+      screen.getByText('https://ai.wust.edu.cn/api/bff/auth/oauth/callback'),
+    ).toBeInTheDocument();
   });
 
   it('切卡重置:企业卡与社区卡互切不串内容(第 3 步重渲染循环回归)', async () => {
     renderWizard('/wizard?step=2');
-    await screen.findByRole('radio', { name: /Intellect Enterprise/ });
+    await screen.findByRole('radio', { name: /member password sign-in/ });
 
-    fireEvent.click(screen.getByRole('radio', { name: /Intellect Enterprise/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /member password sign-in/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByLabelText('Intellect Tenant ID')).toBeInTheDocument();
 
@@ -185,7 +218,7 @@ describe('WizardPage 单卡形态(wizard-ent-sso-mode v1.4)', () => {
     expect(screen.queryByText('Intellect Tenant ID')).not.toBeInTheDocument();
   });
 
-  it('探测请求不再携带 setupProfile/sso(已移交管理页)', async () => {
+  it('探测请求携带所选卡的 setupProfile,非 SSO 不带 sso', async () => {
     seedDraft(enterpriseDraft());
     seedCredentials({ token: 'ent-key' });
     mockProbeWizardBackend.mockResolvedValue({
@@ -193,11 +226,13 @@ describe('WizardPage 单卡形态(wizard-ent-sso-mode v1.4)', () => {
     });
     renderWizard('/wizard?step=4');
 
-    // 自动探测已发出;v1.4 不再带 setupProfile/sso(BFF 对其仍兼容,但新 UI 不发)
+    // §14:probe 需带 setupProfile 以走 BFF 的模式判定
     await screen.findByText('Backend is reachable');
     const payload = mockProbeWizardBackend.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload).toMatchObject({ type: 'intellect-enterprise' });
-    expect(payload).not.toHaveProperty('setupProfile');
+    expect(payload).toMatchObject({
+      type: 'intellect-enterprise',
+      setupProfile: 'enterprise-non-sso',
+    });
     expect(payload).not.toHaveProperty('sso');
   });
 });

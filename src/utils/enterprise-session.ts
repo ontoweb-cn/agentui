@@ -13,10 +13,6 @@ import authorizationUtil, {
  *   需复验 /auth/me 后再决定「忽略本次 401」还是「回登录页」。
  */
 
-/** 静默重登节流：5 分钟内最多触发一次，避免探测/401 抖动造成重定向循环。 */
-const SSO_RELOGIN_THROTTLE_MS = 5 * 60 * 1000;
-const SSO_RELOGIN_STORAGE_KEY = 'sso_relogin_attempt';
-
 export type EnterpriseSessionResult = 'valid' | 'invalid' | 'unknown';
 
 export const isEnterpriseAuthMode = () =>
@@ -30,27 +26,6 @@ const isLoginOrAdminPath = () => {
     path.startsWith(`${base}/login-next`) ||
     path.startsWith(`${base}/admin`)
   );
-};
-
-/**
- * 触发一次 prompt=none 静默重登（spec-014 P2）。
- * 是否真正静默由 BFF 开关与 sso_provider Cookie 决定；登出后 BFF 会直接回登录页。
- * @returns 是否已发起跳转（节流命中时返回 false）
- */
-export const attemptSilentRelogin = (): boolean => {
-  try {
-    const last = Number(sessionStorage.getItem(SSO_RELOGIN_STORAGE_KEY) || 0);
-    if (Date.now() - last < SSO_RELOGIN_THROTTLE_MS) return false;
-    sessionStorage.setItem(SSO_RELOGIN_STORAGE_KEY, String(Date.now()));
-  } catch {
-    // sessionStorage 不可用时仍允许一次跳转（由 BFF 兜底）
-  }
-  const tenantId = localStorage.getItem(BackendId) || '0';
-  const returnTo = `${window.location.pathname}${window.location.search}`;
-  window.location.replace(
-    `/api/bff/auth/sso/relogin?tenant=${encodeURIComponent(tenantId)}&returnTo=${encodeURIComponent(returnTo)}`,
-  );
-  return true;
 };
 
 /**
@@ -109,7 +84,7 @@ const validateSingleFlight = () => {
 };
 
 /**
- * 401 拦截器统一入口：复验会话；仅在确认会话失效时静默重登或回登录页。
+ * 401 拦截器统一入口：复验会话；仅在确认会话失效时回登录页。
  * 登录页/管理页不触发跳转（与 cookie-probe 的启用条件保持一致）。
  */
 export const revalidateEnterpriseSession = async (): Promise<void> => {
@@ -118,9 +93,6 @@ export const revalidateEnterpriseSession = async (): Promise<void> => {
   }
   const result = await validateSingleFlight();
   if (result !== 'invalid') {
-    return;
-  }
-  if (attemptSilentRelogin()) {
     return;
   }
   authorizationUtil.removeAll();

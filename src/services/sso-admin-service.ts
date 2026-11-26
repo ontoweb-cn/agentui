@@ -13,6 +13,10 @@ export interface SsoAdminConfig {
   /** null = 不过滤(以网关 enabled/usage 为准) */
   providers: string[] | null;
   silentRelogin: boolean;
+  /** §14 单点登出(可选;未配置为空串) */
+  oauthClientId?: string;
+  idpIssuer?: string;
+  idpLogoutUrl?: string;
 }
 
 /** stateSecret 三态(§12 R-5):unset=未设置 / set=已设置且合规 / invalid=已设但 <32 字符 */
@@ -39,7 +43,7 @@ export interface SsoAdminView {
   config: SsoAdminConfig;
   /** 当前生效的运行时文件内容(无则 null) */
   runtime: SsoAdminConfig & { updatedAt: string } | null;
-  sources: Record<string, 'runtime' | 'env'>;
+  sources: Record<string, 'runtime' | 'env' | 'unset'>;
   /** 兼容位(v1.3):= stateSecretStatus === 'set' */
   stateSecretConfigured: boolean;
   /** v1.4 三态 */

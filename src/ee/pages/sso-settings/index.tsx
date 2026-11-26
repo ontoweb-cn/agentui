@@ -46,8 +46,19 @@ import {
   type SsoBackendCheckStatus,
 } from '@/services/sso-admin-service';
 
-function SourceBadge({ source }: { source: 'runtime' | 'env' }) {
+/** §14:单点登出三项(后端 GET/PUT 已支持,类型见 sso-admin-service) */
+type SsoAdminConfigForm = Required<Pick<SsoAdminConfig, 'oauthClientId' | 'idpIssuer' | 'idpLogoutUrl'>> &
+  SsoAdminConfig;
+
+function SourceBadge({ source }: { source: 'runtime' | 'env' | 'unset' }) {
   const { t } = useTranslation();
+  if (source === 'unset') {
+    return (
+      <Badge variant="outline" className="shrink-0 text-xs text-text-tertiary">
+        {t('admin.ssoSettings.sourceUnset', { defaultValue: '未配置' })}
+      </Badge>
+    );
+  }
   return (
     <Badge
       variant="outline"
@@ -140,11 +151,14 @@ function AdminSsoSettings() {
     retry: false,
   });
 
-  const [form, setForm] = useState<SsoAdminConfig>({
+  const [form, setForm] = useState<SsoAdminConfigForm>({
     enabled: false,
     publicOrigin: '',
     providers: null,
     silentRelogin: true,
+    oauthClientId: '',
+    idpIssuer: '',
+    idpLogoutUrl: '',
   });
   // §12 v1.4 评审 Q-1:手动输入用独立 text state——直接绑定归一化
   // join/split 会把用户敲的逗号立即剥掉,无法连续输入多个渠道 id
@@ -152,25 +166,36 @@ function AdminSsoSettings() {
 
   useEffect(() => {
     if (!data) return;
+    const cfg = data.config;
     setForm({
-      enabled: data.config.enabled,
-      publicOrigin: data.config.publicOrigin,
-      providers: data.config.providers,
-      silentRelogin: data.config.silentRelogin,
+      enabled: cfg.enabled,
+      publicOrigin: cfg.publicOrigin,
+      providers: cfg.providers,
+      silentRelogin: cfg.silentRelogin,
+      oauthClientId: cfg.oauthClientId ?? '',
+      idpIssuer: cfg.idpIssuer ?? '',
+      idpLogoutUrl: cfg.idpLogoutUrl ?? '',
     });
-    setProvidersText((data.config.providers ?? []).join(','));
+    setProvidersText((cfg.providers ?? []).join(','));
   }, [data]);
 
   const saveMutation = useMutation({
-    mutationFn: async () =>
-      (
-        await saveSsoAdminConfig({
-          enabled: form.enabled,
-          publicOrigin: form.publicOrigin,
-          providers: form.providers,
-          silentRelogin: form.silentRelogin,
-        })
-      ).data,
+    mutationFn: async () => {
+      // 额外字段随请求体透传(后端 PUT 已接受并持久化);空值不发送(→ 删除)
+      const oauthClientId = form.oauthClientId.trim();
+      const idpIssuer = form.idpIssuer.trim();
+      const idpLogoutUrl = form.idpLogoutUrl.trim();
+      const body: SsoAdminConfig = {
+        enabled: form.enabled,
+        publicOrigin: form.publicOrigin,
+        providers: form.providers,
+        silentRelogin: form.silentRelogin,
+        ...(oauthClientId ? { oauthClientId } : {}),
+        ...(idpIssuer ? { idpIssuer } : {}),
+        ...(idpLogoutUrl ? { idpLogoutUrl } : {}),
+      };
+      return (await saveSsoAdminConfig(body)).data;
+    },
     onSuccess: (resp) => {
       toast.success(
         t('admin.ssoSettings.saved', { defaultValue: '统一认证配置已保存并即时生效' }),
@@ -207,7 +232,6 @@ function AdminSsoSettings() {
     form.publicOrigin.trim().toLowerCase().startsWith('http://');
   // §12 R-5 三态:unset/invalid 都要黄字(set 才算就绪)
   const secretStatus = data?.stateSecretStatus ?? 'unset';
-  const secretNotReady = secretStatus !== 'set';
   // §12 R-3:后端未绑定 → 启用开关禁用(stores 缺失/undefined 时不禁用,兼容)
   const boundBackendMissing = data?.boundBackend === null;
   const checkStatus: SsoBackendCheckStatus | null | undefined =
@@ -390,17 +414,13 @@ function AdminSsoSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          {secretNotReady && form.enabled && (
-            <p className="text-xs text-state-warning break-words">
-              {secretStatus === 'invalid'
-                ? t('admin.ssoSettings.secretInvalid', {
-                    defaultValue:
-                      '已启用统一认证,但 BFF_SSO_STATE_SECRET 长度不足 32 字符:重启后 BFF 将启动失败,请先在部署配置中更正。',
-                  })
-                : t('admin.ssoSettings.secretMissing', {
-                    defaultValue:
-                      '已启用统一认证,但部署配置缺少 BFF_SSO_STATE_SECRET:重启后 BFF 将启动失败,请先在 .env 设置(≥32 字符)。',
-                  })}
+          {/* BFF-as-RP 移除后 stateSecret 不再参与签名,无需再提示重启失败 */}
+          {form.enabled && (
+            <p className="text-xs text-text-secondary break-words">
+              {t('admin.ssoSettings.stateSecretDeprecated', {
+                defaultValue:
+                  'BFF_SSO_STATE_SECRET 已不再使用(BFF-as-RP 登录链路已移除),无需配置或轮换。',
+              })}
             </p>
           )}
 
@@ -566,6 +586,74 @@ function AdminSsoSettings() {
                 id="sso-admin-relogin"
                 checked={form.silentRelogin}
                 onCheckedChange={(v) => setForm((p) => ({ ...p, silentRelogin: v }))}
+              />
+            </div>
+          </div>
+
+          {/* §14 单点登出(可选) */}
+          <div className="space-y-3 rounded-md border border-border p-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">
+                {t('admin.ssoSettings.logoutTitle', {
+                  defaultValue: '单点登出(可选)',
+                })}
+              </p>
+              <p className="text-xs text-text-secondary">
+                {t('admin.ssoSettings.logoutHint', {
+                  defaultValue:
+                    '配置后登出会跳转 IdP 登出端点并支持 back-channel 验签;留空则仅做本地登出。',
+                })}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sso-admin-oauth-client-id">
+                {t('admin.ssoSettings.oauthClientId', {
+                  defaultValue: 'OAuth Client ID',
+                })}
+              </Label>
+              <Input
+                id="sso-admin-oauth-client-id"
+                value={form.oauthClientId}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, oauthClientId: e.target.value }))
+                }
+                placeholder="ia-intellect-team"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sso-admin-idp-issuer">
+                {t('admin.ssoSettings.idpIssuer', { defaultValue: 'IdP Issuer' })}
+              </Label>
+              <Input
+                id="sso-admin-idp-issuer"
+                value={form.idpIssuer}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, idpIssuer: e.target.value }))
+                }
+                placeholder="https://ai.wust.edu.cn/auth"
+              />
+              {data?.sources.idpIssuer === 'env' && (
+                <p className="text-xs text-text-secondary break-words">
+                  {t('admin.ssoSettings.issuerPinnedHint', {
+                    defaultValue:
+                      '该值由部署配置(BFF_OAUTH_IDP_ISSUER)固定,运行时修改不生效;如需变更请更新部署配置。',
+                  })}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sso-admin-idp-logout-url">
+                {t('admin.ssoSettings.idpLogoutUrl', {
+                  defaultValue: 'IdP Logout URL',
+                })}
+              </Label>
+              <Input
+                id="sso-admin-idp-logout-url"
+                value={form.idpLogoutUrl}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, idpLogoutUrl: e.target.value }))
+                }
+                placeholder="https://ai.wust.edu.cn/auth/logout"
               />
             </div>
           </div>

@@ -88,6 +88,10 @@ function buildView(c: Context) {
       publicOrigin: effective.publicOrigin,
       providers: effective.providers,
       silentRelogin: effective.silentRelogin,
+      // §14 登出三项(未配置为空串)
+      oauthClientId: effective.oauthClientId ?? '',
+      idpIssuer: effective.idpIssuer ?? '',
+      idpLogoutUrl: effective.idpLogoutUrl ?? '',
     },
     runtime: runtime,
     sources: {
@@ -95,9 +99,26 @@ function buildView(c: Context) {
       publicOrigin: runtime ? 'runtime' : 'env',
       providers: runtime ? 'runtime' : 'env',
       silentRelogin: runtime ? 'runtime' : 'env',
+      // §14 登出三项:运行时文件 > 部署 env > 未配置(三态,避免把空值标成 env)。
+      // M6:idpIssuer 以 env 为信任锚——env 已设置时即使 runtime 有值也标记 env。
+      oauthClientId: runtime?.oauthClientId
+        ? 'runtime'
+        : process.env.BFF_OAUTH_CLIENT_ID?.trim()
+          ? 'env'
+          : 'unset',
+      idpIssuer: process.env.BFF_OAUTH_IDP_ISSUER?.trim()
+        ? 'env'
+        : runtime?.idpIssuer
+          ? 'runtime'
+          : 'unset',
+      idpLogoutUrl: runtime?.idpLogoutUrl
+        ? 'runtime'
+        : process.env.BFF_OAUTH_IDP_LOGOUT_URL?.trim()
+          ? 'env'
+          : 'unset',
       // 密钥永远来自部署配置(.env)
       stateSecret: 'env',
-    } as Record<string, 'runtime' | 'env'>,
+    } as Record<string, 'runtime' | 'env' | 'unset'>,
     /** 兼容位(v1.3 语义:=stateSecretStatus === 'set') */
     stateSecretConfigured: readStateSecretStatus() === 'set',
     /** v1.4 三态(§12 R-5):unset / set / invalid(已设但 <32 字符) */
@@ -192,6 +213,13 @@ interface SsoConfigPutBody {
   providers?: unknown;
   silentRelogin?: unknown;
   silent_relogin?: unknown;
+  // §14 登出三项(兼容 snake_case)
+  oauthClientId?: unknown;
+  oauth_client_id?: unknown;
+  idpIssuer?: unknown;
+  idp_issuer?: unknown;
+  idpLogoutUrl?: unknown;
+  idp_logout_url?: unknown;
 }
 
 ssoAdminRoutes.put('/admin/sso/config', async (c) => {
@@ -235,6 +263,46 @@ ssoAdminRoutes.put('/admin/sso/config', async (c) => {
     providers = body.providers;
   }
 
+  // §14 登出三项(空串 = 未配置,不写入文件)
+  const readOptionalString = (raw: unknown): string =>
+    typeof raw === 'string' ? raw.trim() : '';
+  const oauthClientId = readOptionalString(body.oauthClientId ?? body.oauth_client_id);
+  const idpIssuer = readOptionalString(body.idpIssuer ?? body.idp_issuer);
+  const idpLogoutUrl = readOptionalString(body.idpLogoutUrl ?? body.idp_logout_url);
+  // M5:oauthClientId 会拼进登出 URL 与 back-channel,限定安全字符集
+  if (oauthClientId && !/^[A-Za-z0-9._-]+$/.test(oauthClientId)) {
+    return c.json(fail(400, 'oauthClientId 仅允许字母、数字、点、下划线与连字符'), 400);
+  }
+  // M6:issuer 是 back-channel 验签信任锚;部署 env 已设置时拒绝运行时改写
+  //(与 auth 侧 issuer 口径对齐,避免把 JWKS discovery 指向任意地址)。
+  const envIssuer = process.env.BFF_OAUTH_IDP_ISSUER?.trim() || '';
+  const trimTrailingSlash = (v: string) => v.replace(/\/+$/, '');
+  if (
+    envIssuer &&
+    idpIssuer &&
+    trimTrailingSlash(idpIssuer) !== trimTrailingSlash(envIssuer)
+  ) {
+    return c.json(
+      fail(400, `idpIssuer 由部署配置固定为 ${envIssuer},运行时值必须与其一致或留空`),
+      400,
+    );
+  }
+  // issuer / logoutUrl 非空时必须是合法 http(s) URL
+  for (const [field, value] of [
+    ['idpIssuer', idpIssuer],
+    ['idpLogoutUrl', idpLogoutUrl],
+  ] as const) {
+    if (!value) continue;
+    try {
+      const url = new URL(value);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        return c.json(fail(400, `${field} 必须为 http(s) URL`), 400);
+      }
+    } catch {
+      return c.json(fail(400, `${field} 不是合法 URL: ${value}`), 400);
+    }
+  }
+
   let saved: SsoRuntimeConfig;
   try {
     saved = writeSsoRuntimeConfig({
@@ -242,26 +310,18 @@ ssoAdminRoutes.put('/admin/sso/config', async (c) => {
       publicOrigin,
       providers,
       silentRelogin,
+      ...(oauthClientId ? { oauthClientId } : {}),
+      ...(idpIssuer ? { idpIssuer } : {}),
+      ...(idpLogoutUrl ? { idpLogoutUrl } : {}),
     });
   } catch (err) {
     console.error('[sso-admin] failed to persist sso-config.json:', (err as Error).message);
     return c.json(fail(500, `Failed to persist sso config: ${(err as Error).message}`), 500);
   }
 
-  // 启用守卫(§12 R-3 双保险的服务端侧):密钥缺失/不合规 + 绑定后端缺失,
-  // 均为非阻断 warnings(写入成功,但提示管理员先补齐);stores 缺失时跳过后端校验
+  // 启用守卫(§12 R-3 双保险的服务端侧):仅校验绑定后端是否存在；
+  // BFF-as-RP 移除后 stateSecret 不再参与签名，不再对其做启用拦截或告警。
   const warnings: string[] = [];
-  const secretStatus = readStateSecretStatus();
-  if (saved.enabled && secretStatus === 'unset') {
-    warnings.push(
-      'BFF_SSO_STATE_SECRET 未配置:重启后 BFF 将启动失败,请先在部署配置中设置(≥32 字符)。',
-    );
-  }
-  if (saved.enabled && secretStatus === 'invalid') {
-    warnings.push(
-      'BFF_SSO_STATE_SECRET 长度不足 32 字符:重启后 BFF 将启动失败,请先在部署配置中更正。',
-    );
-  }
   if (saved.enabled) {
     const bound = resolveBoundEnterpriseBackend(c);
     if (bound === null) {

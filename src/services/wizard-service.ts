@@ -44,8 +44,8 @@ export interface WizardStatusResponse {
   hasEnterpriseBackend: boolean;
 }
 
-/** wizard-ent-sso-mode:企业双卡 profile(与 BFF 同步) */
-export type WizardSetupProfile = 'enterprise-sso' | 'enterprise-password';
+/** wizard-ent-sso-mode:企业双卡 profile(与 BFF 同步;enterprise-password 为 deprecated 别名) */
+export type WizardSetupProfile = 'enterprise-sso' | 'enterprise-non-sso' | 'enterprise-password';
 
 export interface WizardBackendTypeOption {
   /** 选型主键;企业双卡必不同 */
@@ -134,6 +134,15 @@ export interface WizardSetupResponse {
   error?: string;
   /** 非阻断告警(如新后端未就绪、RAG 未配置、SSO 白名单含未知渠道),前端展示于 Done 步骤 */
   warnings?: string[];
+  /** SSO 模式保存后的联合验证结果(失败不阻断保存) */
+  checks?: WizardSetupCheck[];
+}
+
+export interface WizardSetupCheck {
+  id: 'channels' | 'login_redirect' | 'callback_reachable' | 'callback_registered';
+  label: string;
+  status: 'pass' | 'fail' | 'skip';
+  detail?: string;
 }
 
 /** wizard-sso(P2): 渠道视图(评审 R2:字段裁剪,不透出 clientId/authorizeUrl/scopes) */

@@ -12,10 +12,9 @@
 // - Setup 成功:清空 wizard-draft,跳转 /
 //
 // wizard-ent-sso-mode v1.4(设计 docs/wizard-enterprise-sso-mode-design.md §11,
-// §12 评审通过):向导回归**单张企业卡**,统一认证(SSO)配置移交安装后管理页
-// (系统管理 → 统一认证设置)。v1.3 的双模式分支(SSO 第 3-6 步/setupProfile)
-// 全部移除;保留:选项数组 memo、[option] 条件写回(重渲染循环修复)、
-// 旧草稿兼容清理。BFF 对 deprecated enterprise-sso 请求仍兼容(§12 R-1)。
+// §12 评审通过):统一认证(SSO)配置可在安装后管理页调整
+// (系统管理 → 统一认证设置)。2026-11-26 起企业双卡命名统一为
+// enterprise-sso / enterprise-non-sso;旧值 enterprise-password 仍由 BFF 兼容。
 //
 // 路由:/wizard (不经过 AuthWrapper,首次安装无 admin token)
 // URL query:?step=N 控制步骤,?mode=add 从 Admin 页跳转过来(已有后端时新增)
@@ -76,7 +75,7 @@ const TENANT_ID_RE = /^[0-9a-fA-F]{32}$/;
 const WIZARD_STEPS = 6;
 
 interface WizardDraft {
-  /** 选型主键;v1.4 起企业为单卡(optionId=enterprise-password) */
+  /** 选型主键;企业双卡为 enterprise-sso / enterprise-non-sso */
   selectedOptionId: string | null;
   selectedType: BackendType | null;
   name: string;
@@ -86,6 +85,8 @@ interface WizardDraft {
   email: string;
   password: string;
   intellectTenantId: string;
+  /** §14:SSO 模式的 BFF 对外来源(写入运行时 sso-config 的 publicOrigin) */
+  ssoPublicOrigin: string;
   defaultForTenant: boolean;
 }
 
@@ -99,8 +100,22 @@ const INITIAL_DRAFT: WizardDraft = {
   email: '',
   password: '',
   intellectTenantId: '',
+  ssoPublicOrigin: '',
   defaultForTenant: true,
 };
+
+/** §14:SSO 回调地址固定路径(与 BFF SSO_CALLBACK_PATH 一致) */
+const SSO_CALLBACK_PATH = '/api/bff/auth/oauth/callback';
+
+/** §14:publicOrigin 必须是 http(s) 绝对 URL */
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 /** 前端按 optionId/type 覆盖 BFF 英文化 label(§8 R7) */
 function optionDisplayLabel(
@@ -108,6 +123,11 @@ function optionDisplayLabel(
   t: (key: string, opts?: { defaultValue: string }) => string,
 ): string {
   if (opt.type === 'intellect-enterprise') {
+    if (opt.setupProfile === 'enterprise-sso') {
+      return t('wizard.types.enterpriseSso', {
+        defaultValue: 'Intellect Enterprise (SSO)',
+      });
+    }
     return t('wizard.types.enterprise', { defaultValue: 'Intellect Enterprise' });
   }
   return opt.label;
@@ -118,6 +138,11 @@ function optionDisplayDescription(
   t: (key: string, opts?: { defaultValue: string }) => string,
 ): string {
   if (opt.type === 'intellect-enterprise') {
+    if (opt.setupProfile === 'enterprise-sso') {
+      return t('wizard.types.enterpriseSsoDesc', {
+        defaultValue: '统一认证(SSO)登录;团队/项目 + 多租户',
+      });
+    }
     return t('wizard.types.enterpriseDesc', {
       defaultValue: '团队/项目 + 多租户;成员账号密码登录',
     });
@@ -153,6 +178,10 @@ function loadDraft(): WizardDraft {
       delete parsed.sso;
       delete parsed.setupProfile;
       base = { ...INITIAL_DRAFT, ...parsed };
+      // §14:旧草稿无 ssoPublicOrigin 字段,缺省补空串
+      if (typeof base.ssoPublicOrigin !== 'string') {
+        base = { ...base, ssoPublicOrigin: '' };
+      }
     }
     try {
       const credRaw = sessionStorage.getItem(DRAFT_CREDENTIALS_STORAGE_KEY);
@@ -419,6 +448,8 @@ function StepConnectionForm({
 }) {
   const { t } = useTranslation();
   const isEnterprise = draft.selectedType === 'intellect-enterprise';
+  // §14:SSO 模式由所选卡片的 setupProfile 判定
+  const isSso = option?.setupProfile === 'enterprise-sso';
 
   // 自动填充默认 endpoint(首次进入时)
   // 注:adminTokenEnvVar 由 BFF 自动生成 HARNESS_<ID>_TOKEN,前端不再收集该字段
@@ -436,7 +467,9 @@ function StepConnectionForm({
   }, [option]);
 
   const valid = useMemo(() => {
-    if (!draft.name.trim() || !draft.endpoint.trim()) return false;
+    // §14:SSO 模式隐藏 Backend Name,由 BFF 使用默认名
+    if (!isSso && !draft.name.trim()) return false;
+    if (!draft.endpoint.trim()) return false;
     if (draft.credentialKind === 'bearer-token' && !draft.token.trim()) {
       return false;
     }
@@ -447,13 +480,20 @@ function StepConnectionForm({
       return false;
     }
     // m4 修复(P3):intellect-enterprise 的 intellectTenantId 必须为 32 位 hex
+    // §14:SSO 模式租户 ID 可选(留空=自动识别),非空仍需合规
     if (isEnterprise) {
       const tenantId = draft.intellectTenantId.trim();
-      if (!tenantId) return false;
-      if (!TENANT_ID_RE.test(tenantId)) return false;
+      if (isSso) {
+        if (tenantId && !TENANT_ID_RE.test(tenantId)) return false;
+      } else {
+        if (!tenantId) return false;
+        if (!TENANT_ID_RE.test(tenantId)) return false;
+      }
     }
+    // §14:SSO 模式 publicOrigin 必填且须为 http(s) 绝对 URL
+    if (isSso && !isHttpUrl(draft.ssoPublicOrigin)) return false;
     return true;
-  }, [draft, isEnterprise]);
+  }, [draft, isEnterprise, isSso]);
 
   return (
     <Card className="max-w-2xl mx-auto">
@@ -471,23 +511,25 @@ function StepConnectionForm({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="wizard-name">
-            {t('wizard.connection.name', { defaultValue: 'Backend Name' })}
-          </Label>
-          <Input
-            id="wizard-name"
-            value={draft.name}
-            onChange={(e) => update({ name: e.target.value })}
-            placeholder="Intellect Enterprise Default"
-          />
-          <p className="text-xs text-text-secondary">
-            {t('wizard.connection.nameHint', {
-              defaultValue:
-                '用于生成 backendId（kebab-case，如 intellect-rag-default）。BFF 会基于此自动生成 adminTokenEnvVar（HARNESS_<ID>_TOKEN）。仅允许字母、数字、连字符。',
-            })}
-          </p>
-        </div>
+        {!isSso && (
+          <div className="space-y-2">
+            <Label htmlFor="wizard-name">
+              {t('wizard.connection.name', { defaultValue: 'Backend Name' })}
+            </Label>
+            <Input
+              id="wizard-name"
+              value={draft.name}
+              onChange={(e) => update({ name: e.target.value })}
+              placeholder="Intellect Enterprise Default"
+            />
+            <p className="text-xs text-text-secondary">
+              {t('wizard.connection.nameHint', {
+                defaultValue:
+                  '用于生成 backendId（kebab-case，如 intellect-rag-default）。BFF 会基于此自动生成 adminTokenEnvVar（HARNESS_<ID>_TOKEN）。仅允许字母、数字、连字符。',
+              })}
+            </p>
+          </div>
+        )}
         <div className="space-y-2">
           <Label htmlFor="wizard-endpoint">
             {t('wizard.connection.endpoint', { defaultValue: 'Endpoint' })}
@@ -503,7 +545,11 @@ function StepConnectionForm({
         {draft.credentialKind === 'bearer-token' && (
           <div className="space-y-2">
             <Label htmlFor="wizard-token">
-              {t('wizard.connection.token', { defaultValue: 'Bearer Token' })}
+              {isSso
+                ? t('wizard.connection.serverKey', {
+                    defaultValue: 'Gateway Service Key',
+                  })
+                : t('wizard.connection.token', { defaultValue: 'Bearer Token' })}
             </Label>
             <Input
               id="wizard-token"
@@ -571,11 +617,68 @@ function StepConnectionForm({
                 </p>
               )}
             <p className="text-xs text-text-secondary">
-              {t('wizard.connection.intellectTenantIdHint', {
+              {isSso
+                ? t('wizard.connection.intellectTenantIdOptionalHint', {
+                    defaultValue:
+                      '可选:留空由 BFF 从网关 /api/tenant/info 自动识别(Rust 版本要求 32 位 hex)',
+                  })
+                : t('wizard.connection.intellectTenantIdHint', {
+                    defaultValue:
+                      '从 intellect-team INTELLECT_TENANT_ID env var 复制(Rust 版本要求 32 位 hex)',
+                  })}
+            </p>
+          </div>
+        )}
+
+        {isSso && (
+          <div className="space-y-2">
+            <Label htmlFor="wizard-public-origin">
+              {t('wizard.connection.publicOrigin', {
+                defaultValue: 'Public origin',
+              })}
+            </Label>
+            <Input
+              id="wizard-public-origin"
+              value={draft.ssoPublicOrigin}
+              onChange={(e) => update({ ssoPublicOrigin: e.target.value })}
+              placeholder="https://ai.wust.edu.cn"
+              aria-invalid={
+                draft.ssoPublicOrigin.trim().length > 0 &&
+                !isHttpUrl(draft.ssoPublicOrigin)
+              }
+            />
+            {draft.ssoPublicOrigin.trim().length > 0 &&
+              !isHttpUrl(draft.ssoPublicOrigin) && (
+                <p className="text-xs text-destructive">
+                  {t('wizard.connection.publicOriginError', {
+                    defaultValue:
+                      '格式错误:必须为 http(s) 绝对 URL',
+                  })}
+                </p>
+              )}
+            <p className="text-xs text-text-secondary">
+              {t('wizard.connection.publicOriginHint', {
                 defaultValue:
-                  '从 intellect-team INTELLECT_TENANT_ID env var 复制(Rust 版本要求 32 位 hex)',
+                  'BFF 对外访问来源(用于拼接 SSO 回调与登出回跳);生产环境必须为 https。',
               })}
             </p>
+            <div className="space-y-1 pt-1">
+              <p className="text-xs text-text-secondary">
+                {t('wizard.connection.callbackLabel', {
+                  defaultValue:
+                    'Callback URL (register in auth app ia-intellect-team → redirectUris)',
+                })}
+              </p>
+              <code className="block text-xs bg-bg-muted p-2 rounded-md break-all">
+                {`${draft.ssoPublicOrigin.trim().replace(/\/+$/, '') || '<publicOrigin>'}${SSO_CALLBACK_PATH}`}
+              </code>
+              <p className="text-xs text-text-secondary">
+                {t('wizard.connection.callbackHint', {
+                  defaultValue:
+                    '本向导不代填:请自行在 auth 应用 ia-intellect-team 的 redirectUris 中登记上述地址。',
+                })}
+              </p>
+            </div>
           </div>
         )}
       </CardContent>
@@ -792,6 +895,9 @@ function StepDone({
   const { t } = useTranslation();
   const warnings = setupResult?.warnings ?? [];
   const isEnterprise = draft.selectedType === 'intellect-enterprise';
+  // §14:SSO 卡保存后的联合验证结果(通过/跳过/失败)
+  const checks = setupResult?.checks ?? [];
+  const isSsoMode = draft.selectedOptionId === 'enterprise-sso';
   return (
     <Card className="max-w-2xl mx-auto">
       <CardHeader>
@@ -835,8 +941,75 @@ function StepDone({
           </ul>
         </CardContent>
       )}
-      {/* wizard-ent-sso-mode v1.4:企业版完成页指引统一认证入口(SSO 已移交管理页,§11.2) */}
-      {isEnterprise && (
+      {/* §14:联合验证(SSO 模式) —— 服务端自动探测 + 人工确认清单 */}
+      {checks.length > 0 && (
+        <CardContent className="space-y-2">
+          <p className="text-sm font-medium">
+            {t('wizard.done.checks', { defaultValue: '联合验证' })}
+          </p>
+          <ul className="space-y-1.5">
+            {checks.map((check) => (
+              <li key={check.id} className="flex flex-wrap items-baseline gap-2 text-xs">
+                <Badge
+                  variant="outline"
+                  className={
+                    check.status === 'pass'
+                      ? 'shrink-0 text-state-success'
+                      : check.status === 'fail'
+                        ? 'shrink-0 text-destructive'
+                        : 'shrink-0 text-text-secondary'
+                  }
+                >
+                  {check.status === 'pass'
+                    ? t('wizard.done.checkPass', { defaultValue: '通过' })
+                    : check.status === 'fail'
+                      ? t('wizard.done.checkFail', { defaultValue: '失败' })
+                      : t('wizard.done.checkSkip', { defaultValue: '跳过' })}
+                </Badge>
+                <span className="font-medium">{check.label}</span>
+                {check.detail && (
+                  <span className="text-text-secondary break-all">{check.detail}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+          {checks.some(
+            (check) => check.id === 'callback_registered' && check.status === 'skip',
+          ) && (
+            <div className="space-y-1 pt-1">
+              <p className="text-xs font-medium">
+                {t('wizard.done.manualTitle', {
+                  defaultValue: '以下 4 项需人工确认:',
+                })}
+              </p>
+              <ol className="list-decimal list-inside space-y-0.5 text-xs text-text-secondary">
+                <li>
+                  {t('wizard.done.manualLogin', {
+                    defaultValue: 'AgentUI 完成 SSO 登录',
+                  })}
+                </li>
+                <li>
+                  {t('wizard.done.manualWebui', {
+                    defaultValue: '打开 WebUI 点 SSO 无需密码',
+                  })}
+                </li>
+                <li>
+                  {t('wizard.done.manualApi', {
+                    defaultValue: '成员令牌调 /v1/models 返回 200',
+                  })}
+                </li>
+                <li>
+                  {t('wizard.done.manualLogout', {
+                    defaultValue: '登出后令牌失效',
+                  })}
+                </li>
+              </ol>
+            </div>
+          )}
+        </CardContent>
+      )}
+      {/* wizard-ent-sso-mode v1.4:非 SSO 企业版完成页指引统一认证入口(§11.2) */}
+      {isEnterprise && !isSsoMode && (
         <CardContent className="space-y-1">
           <p className="text-xs text-text-secondary break-words">
             {t('wizard.done.enterpriseSsoHint', {
@@ -896,6 +1069,13 @@ function WizardPage() {
     queryFn: async () => (await fetchWizardBackendTypes()).data,
     retry: false,
   });
+  // 后端配置状态:Step 2 起即需要(隐藏已有企业后端时的 SSO 卡;Step 5-6 用于刷新回退)
+  const { data: statusData } = useQuery({
+    queryKey: ['wizard/status'],
+    queryFn: async () => (await fetchWizardStatus()).data,
+    enabled: step >= 2,
+    retry: false,
+  });
   // intellect-rag 不作为独立向导类型(RAG 是 enterprise 插件)。BFF 已不返回该项;此处再过滤一次防止旧缓存。
   // useMemo 保持引用稳定:selectedOption 与 StepConnectionForm 的 [option] 副作用都依赖它,
   // 每次渲染新建数组会让该副作用反复触发(修复:第 3 步曾因此陷入重渲染循环)
@@ -903,11 +1083,19 @@ function WizardPage() {
     () =>
       (typesData?.options ?? [])
         .filter((o) => o.type !== 'intellect-rag')
+        // H1:已有企业后端时隐藏 SSO 卡,避免重复登记/改写默认租户绑定
+        .filter(
+          (o) =>
+            !(
+              o.setupProfile === 'enterprise-sso' &&
+              statusData?.hasEnterpriseBackend
+            ),
+        )
         .map((o) => ({
           ...o,
           optionId: o.optionId || o.type,
         })),
-    [typesData],
+    [typesData, statusData?.hasEnterpriseBackend],
   );
 
   // 当前选中 option 元数据(按 optionId,§8 R2)
@@ -927,14 +1115,7 @@ function WizardPage() {
     }
   }, [options, draft.selectedOptionId]);
 
-  // Step 5-6 刷新时检查后端是否已配置,有则跳 /
-  const { data: statusData } = useQuery({
-    queryKey: ['wizard/status'],
-    queryFn: async () => (await fetchWizardStatus()).data,
-    // Step 5-6 才启用
-    enabled: step >= 5,
-    retry: false,
-  });
+  // Step 5-6 刷新时检查后端是否已配置,有则跳 /(查询见上,Step 2 起启用)
 
   // 仅当页面以 step>=5 加载(刷新场景)时才执行重定向检测。
   // 用户从 Step 4 点击"继续"进入 Step 5 时,后端尚未创建(needsSetup=true 是预期行为),
@@ -999,11 +1180,17 @@ function WizardPage() {
               endpoint: draft.endpoint,
               email: draft.email,
               password: draft.password,
+              ...(selectedOption?.setupProfile
+                ? { setupProfile: selectedOption.setupProfile }
+                : {}),
             }
           : {
               type: draft.selectedType,
               endpoint: draft.endpoint,
               token: draft.token,
+              ...(selectedOption?.setupProfile
+                ? { setupProfile: selectedOption.setupProfile }
+                : {}),
             };
       // P3(wizard-sso):RAG 插件探测随向导 RAG 区块移除
       return (await probeWizardBackend(req)).data;
@@ -1035,17 +1222,31 @@ function WizardPage() {
       if (!draft.selectedType) {
         throw new Error('missing type');
       }
+      const isSso = selectedOption?.setupProfile === 'enterprise-sso';
+      const tenantId = draft.intellectTenantId.trim();
       const req = {
-        name: draft.name,
+        // §14:SSO 模式隐藏 Backend Name,交由 BFF 使用默认名
+        name: isSso ? '' : draft.name,
         type: draft.selectedType,
         endpoint: draft.endpoint,
         credentialKind: draft.credentialKind,
+        ...(selectedOption?.setupProfile
+          ? { setupProfile: selectedOption.setupProfile }
+          : {}),
         // adminTokenEnvVar 由 BFF 自动生成 HARNESS_<ID>_TOKEN,前端不再发送该字段
         ...(draft.credentialKind === 'bearer-token'
           ? { token: draft.token }
           : { email: draft.email, password: draft.password }),
-        ...(draft.intellectTenantId
-          ? { intellectTenantId: draft.intellectTenantId }
+        ...(tenantId ? { intellectTenantId: tenantId } : {}),
+        // §14:SSO 模式携带运行时配置(providers=null 表示不过滤)
+        ...(isSso
+          ? {
+              sso: {
+                enabled: true,
+                publicOrigin: draft.ssoPublicOrigin.trim(),
+                providers: null,
+              },
+            }
           : {}),
         defaultForTenant: draft.defaultForTenant,
       };
@@ -1097,6 +1298,7 @@ function WizardPage() {
       email: '',
       password: '',
       intellectTenantId: '',
+      ssoPublicOrigin: '',
     });
   };
 

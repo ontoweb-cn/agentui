@@ -38,6 +38,8 @@ export default {
           types: {
             enterprise: 'Intellect Enterprise',
             enterpriseDesc: 'Teams/projects with multi-tenancy; member password sign-in',
+            enterpriseSso: 'Intellect Enterprise (SSO)',
+            enterpriseSsoDesc: 'Unified authentication (SSO) sign-in; teams/projects with multi-tenancy',
           },
           cap: {
             canvas: 'Canvas',
@@ -52,12 +54,23 @@ export default {
             name: 'Backend Name',
             endpoint: 'Endpoint',
             token: 'Bearer Token',
+            serverKey: 'Gateway service key',
             email: 'Email',
             password: 'Password',
             intellectTenantId: 'Intellect Tenant ID',
             intellectTenantIdError: 'Invalid format: must be 32-char hex (0-9, a-f)',
             intellectTenantIdHint:
               'Copy from intellect-team INTELLECT_TENANT_ID env var (Rust version requires 32-char hex)',
+            intellectTenantIdOptionalHint:
+              'Optional: leave empty to auto-detect from the gateway /api/tenant/info (Rust version requires 32-char hex)',
+            publicOrigin: 'Public origin',
+            publicOriginError: 'Invalid format: must be an absolute http(s) URL',
+            publicOriginHint:
+              'Public origin of this BFF (used to build the SSO callback and logout redirect); must be https in production.',
+            callbackLabel:
+              'Callback URL (register it in the auth app ia-intellect-team under redirectUris)',
+            callbackHint:
+              'This wizard does not fill it in: register the URL above in the redirectUris of auth app ia-intellect-team yourself.',
             probe: 'Probe Connection',
           },
           probe: {
@@ -90,6 +103,15 @@ export default {
             // wizard-ent-sso-mode v1.4: SSO moved to admin settings
             enterpriseSsoHint:
               'To enable unified authentication (SSO) sign-in, go to System → Unified authentication settings after setup.',
+            checks: 'Joint verification',
+            checkPass: 'Pass',
+            checkFail: 'Fail',
+            checkSkip: 'Skip',
+            manualTitle: 'Confirm these 4 items manually:',
+            manualLogin: 'Complete SSO sign-in on AgentUI',
+            manualWebui: 'Open WebUI and click SSO without entering a password',
+            manualApi: 'Call /v1/models with a member token and get 200',
+            manualLogout: 'The token is invalid after logout',
             goHome: 'Go to Home',
             warnings: 'Notes',
           },
@@ -248,8 +270,8 @@ export default {
           stateSecretSet: 'Set',
           stateSecretInvalid: 'Set but shorter than 32 characters',
           stateSecretUnset: 'Not set',
-          secretInvalid:
-            'Unified authentication is enabled, but BFF_SSO_STATE_SECRET is shorter than 32 characters: the BFF will fail to start after a restart. Fix it in the deployment config first.',
+          stateSecretDeprecated:
+            'BFF_SSO_STATE_SECRET is no longer used (the BFF-as-RP flow was removed); no configuration or rotation is required.',
           enableDisabledHint:
             'No enterprise backend is bound to the default tenant; enabling is unavailable until the enterprise first-install is done.',
           providersLoading: 'Loading channels...',
@@ -269,8 +291,6 @@ export default {
           updatedAt: 'Runtime config updated at {{time}}',
           noRuntime:
             'No runtime config yet. The values below come from deployment env vars.',
-          secretMissing:
-            'SSO is enabled but BFF_SSO_STATE_SECRET is missing from the deployment config: BFF will fail to start after a restart. Set it in .env first (at least 32 characters).',
           enable: 'Enable unified authentication login',
           enableHint:
             'Shows SSO channel buttons on the login page; effective for enterprise tenants only.',
@@ -283,6 +303,14 @@ export default {
           silentRelogin: 'Silent re-login',
           silentReloginHint:
             'Automatically restores the session without prompting when it expires; explicit logout is not auto-relogged.',
+          logoutTitle: 'Single logout (optional)',
+          logoutHint:
+            'When configured, logout redirects to the IdP logout endpoint and back-channel tokens can be verified; leave empty for local-only logout.',
+          oauthClientId: 'OAuth Client ID',
+          idpIssuer: 'IdP Issuer',
+          issuerPinnedHint:
+            'Pinned by deployment config (BFF_OAUTH_IDP_ISSUER); runtime changes are ignored. Update the deployment config instead.',
+          idpLogoutUrl: 'IdP Logout URL',
           secretNote:
             'The bootstrap secret (BFF_SSO_STATE_SECRET) is deployment-level sensitive configuration. It is never shown or edited here and stays in the deployment config file.',
           save: 'Save',
@@ -292,6 +320,7 @@ export default {
           resetDone: 'Runtime config cleared; falling back to deployment env vars',
           sourceRuntime: 'Runtime config',
           sourceEnv: 'Env var',
+          sourceUnset: 'Not configured',
         },
         tenantBinding: {
           title: 'Tenant bindings',

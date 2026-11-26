@@ -125,6 +125,8 @@ export default {
         sso_rate_limited: 'Too many attempts. Please try again later.',
         sso_unavailable:
           'Authentication service is temporarily unavailable. Try again or use password sign-in.',
+        sso_disabled:
+          'Unified sign-in is not enabled. Use password sign-in or contact your administrator.',
         unknown_provider: 'This sign-in channel is unavailable.',
         tenant_not_found: 'The selected workspace is not available.',
         sso_pkce_unsupported: 'This sign-in channel is not supported.',

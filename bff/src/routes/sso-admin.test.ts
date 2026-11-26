@@ -97,6 +97,7 @@ beforeEach(() => {
   vi.stubEnv('BFF_SSO_ENABLED', 'false');
   vi.stubEnv('BFF_PUBLIC_ORIGIN', '');
   vi.stubEnv('BFF_SSO_PROVIDERS', '');
+  vi.stubEnv('BFF_OAUTH_IDP_ISSUER', '');
 });
 
 describe('sso-admin 路由 (A7)', () => {
@@ -171,7 +172,7 @@ describe('sso-admin 路由 (A7)', () => {
     expect(res.status).toBe(400);
   });
 
-  it('PUT 启用但 env 密钥缺失 → 200 + 非阻断 warning', async () => {
+  it('PUT 启用但 env 密钥缺失 → 200 且不再告警(V3:stateSecret 已无消费方)', async () => {
     vi.stubEnv('BFF_SSO_STATE_SECRET', '');
     vi.mocked(writeSsoRuntimeConfig).mockReturnValue(runtimeSample);
     const res = await createApp().request('/admin/sso/config', {
@@ -181,7 +182,7 @@ describe('sso-admin 路由 (A7)', () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.data.warnings.some((w: string) => w.includes('BFF_SSO_STATE_SECRET'))).toBe(true);
+    expect(body.data.warnings.some((w: string) => w.includes('BFF_SSO_STATE_SECRET'))).toBe(false);
   });
 
   it('PUT 不接受 secret 类字段(写入口不含 stateSecret)', async () => {
@@ -407,5 +408,87 @@ describe('sso-admin v1.4 管理页扩展', () => {
     body = await ready.json();
     expect(body.data.warnings.some((w: string) => w.includes('未绑定企业后端'))).toBe(false);
     expect(body.data.warnings.some((w: string) => w.includes('未就绪'))).toBe(false);
+  });
+
+  it('V-07(§14): PUT→GET 往返登出三项;旧配置缺字段时 GET 返回空串', async () => {
+    const withLogout = {
+      ...runtimeSample,
+      oauthClientId: 'ia-intellect-team',
+      idpIssuer: 'https://idp.example.com',
+      idpLogoutUrl: 'https://idp.example.com/logout',
+    };
+    vi.mocked(readSsoRuntimeConfig).mockReturnValue(withLogout);
+    vi.mocked(writeSsoRuntimeConfig).mockReturnValue(withLogout);
+
+    const put = await createApp().request('/admin/sso/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: true,
+        publicOrigin: 'https://rt.example.com',
+        oauth_client_id: 'ia-intellect-team',
+        idp_issuer: 'https://idp.example.com',
+        idp_logout_url: 'https://idp.example.com/logout',
+      }),
+    });
+    expect(put.status).toBe(200);
+    expect(writeSsoRuntimeConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        oauthClientId: 'ia-intellect-team',
+        idpIssuer: 'https://idp.example.com',
+        idpLogoutUrl: 'https://idp.example.com/logout',
+      }),
+    );
+
+    const getBody = await (await createApp().request('/admin/sso/config')).json();
+    expect(getBody.data.config).toMatchObject({
+      oauthClientId: 'ia-intellect-team',
+      idpIssuer: 'https://idp.example.com',
+      idpLogoutUrl: 'https://idp.example.com/logout',
+    });
+
+    // 旧配置(runtime 文件无三字段)仍可读,GET 返回空串
+    vi.mocked(readSsoRuntimeConfig).mockReturnValue(runtimeSample);
+    const legacy = await (await createApp().request('/admin/sso/config')).json();
+    expect(legacy.data.config.oauthClientId).toBe('');
+    expect(legacy.data.config.idpIssuer).toBe('');
+    expect(legacy.data.config.idpLogoutUrl).toBe('');
+  });
+
+  it('M6(§14): env issuer 为信任锚——运行时不同值 → 400,相同(含末尾斜杠)→ 200', async () => {
+    vi.mocked(writeSsoRuntimeConfig).mockReturnValue(runtimeSample);
+    vi.stubEnv('BFF_OAUTH_IDP_ISSUER', 'https://auth.example.com');
+
+    const rejected = await createApp().request('/admin/sso/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: true,
+        publicOrigin: 'https://rt.example.com',
+        idpIssuer: 'https://evil.example.com',
+      }),
+    });
+    expect(rejected.status).toBe(400);
+    expect(writeSsoRuntimeConfig).not.toHaveBeenCalled();
+
+    const accepted = await createApp().request('/admin/sso/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: true,
+        publicOrigin: 'https://rt.example.com',
+        idpIssuer: 'https://auth.example.com/',
+      }),
+    });
+    expect(accepted.status).toBe(200);
+
+    // 生效值以 env 为准,sources 标记 env(即使 runtime 文件记录了别的 issuer)
+    vi.mocked(readSsoRuntimeConfig).mockReturnValue({
+      ...runtimeSample,
+      idpIssuer: 'https://runtime.example.com',
+    });
+    const merged = await (await createApp().request('/admin/sso/config')).json();
+    expect(merged.data.config.idpIssuer).toBe('https://auth.example.com');
+    expect(merged.data.sources.idpIssuer).toBe('env');
   });
 });

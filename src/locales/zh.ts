@@ -109,6 +109,7 @@ export default {
         sso_forbidden: '无权限登录本应用，请联系管理员。',
         sso_rate_limited: '尝试过于频繁，请稍后再试。',
         sso_unavailable: '认证服务暂时不可用，请稍后重试或使用账号密码登录。',
+        sso_disabled: '统一认证未启用，请使用账号密码登录或联系管理员。',
         unknown_provider: '该登录渠道暂不可用。',
         tenant_not_found: '所选工作区不可用。',
         sso_pkce_unsupported: '暂不支持该登录渠道。',

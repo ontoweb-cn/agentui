@@ -32,33 +32,9 @@ import {
   removeImtSessions,
 } from '../services/imt-session-map';
 import { verifyLogoutToken } from '../services/backchannel-logout';
-import {
-  getSsoRedirectUri,
-  isSecureCookie,
-  loadSsoConfig,
-} from '../services/sso-config';
-import {
-  createSsoTransaction,
-  readAndClearSsoStateCookie,
-  readSsoProviderCookie,
-  clearSsoProviderCookie,
-  sanitizeReturnTo,
-  ssoStateMatches,
-  writeSsoProviderCookie,
-  writeSsoStateCookie,
-  SSO_STATE_COOKIE_NAME,
-} from '../services/sso-state';
+import { loadSsoConfig } from '../services/sso-config';
+import { clearSsoProviderCookie } from '../services/sso-state';
 import { getLoginProviders } from '../services/sso-providers';
-import {
-  exchangeAuthorizationCode,
-  exchangeIdTokenForMember,
-} from '../services/sso-exchange';
-import {
-  isIdpPassthroughUsable,
-  loadIdpPassthroughConfig,
-} from '../services/idp-config';
-import { exchangeCodeForIdpTokens } from '../services/idp-client';
-import { idpSessionKey, putIdpTokens } from '../services/idp-token-store';
 
 /**
  * OAuth state cookie 名(用于 CSRF 防护,在 /auth/login/:channel 时写入,
@@ -261,153 +237,6 @@ export async function enterpriseFetch(
       ...init?.headers,
     },
   });
-}
-
-/**
- * 解析 SSO 租户对应的企业版网关；tenant 不存在或非企业版返回 null。
- * 浏览器导航无法携带 X-Backend-Id，故 SSO 路由通过 query.tenant 显式传入。
- */
-function resolveSsoTenantBackend(
-  c: Context<{ Variables: AuthVariables }>,
-  tenantId: string,
-): { baseUrl: string; apiServerKey: string } | null {
-  const backendStore = c.get('backendStore');
-  const tenant = backendStore?.getBackend(tenantId);
-  if (!tenant || tenant.authMode !== 'intellect-enterprise') return null;
-  return getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
-}
-
-/** 前端基路径（支持子目录部署）；非法值回落根路径。 */
-function getFrontendBase(): string {
-  const raw = (process.env.BFF_FRONTEND_BASE ?? '').trim().replace(/\/+$/, '');
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '';
-  return raw;
-}
-
-function loginPagePath(): string {
-  return `${getFrontendBase()}/login`;
-}
-
-/** 浏览器可见的 SSO 失败统一回登录页，带可读错误码。 */
-function redirectToLoginError(c: Context<{ Variables: AuthVariables }>, code: string): Response {
-  c.header('Cache-Control', 'no-store');
-  return c.redirect(`${loginPagePath()}?error=${encodeURIComponent(code)}`, 302);
-}
-
-/** 网关 exchange 错误 → 前端错误码。 */
-function mapExchangeError(status: number, code: string): string {
-  switch (code) {
-    case 'too_many_requests':
-      return 'sso_rate_limited';
-    case 'account_disabled':
-      return 'account_disabled';
-    case 'member_not_provisioned':
-      return 'member_not_provisioned';
-    case 'identity_conflict':
-    case 'tenant_mismatch':
-      return 'sso_forbidden';
-    case 'unknown_provider':
-    case 'provider_disabled':
-    case 'invalid_provider':
-      return 'unknown_provider';
-    case 'timeout':
-    case 'network_error':
-    case 'invalid_response':
-      return 'sso_unavailable';
-    default:
-      return status >= 500 || status === 429 ? 'sso_unavailable' : 'sso_code_invalid';
-  }
-}
-
-/**
- * 构造并跳转 OIDC 授权请求（BFF 作为 RP）。
- * 开关关闭时返回 404；tenant/provider 异常统一 302 回登录页。
- */
-async function handleSsoAuthorize(
-  c: Context<{ Variables: AuthVariables }>,
-  providerId: string,
-  tenantId: string,
-  returnTo: string | undefined,
-  silent: boolean,
-): Promise<Response> {
-  const config = loadSsoConfig();
-  if (!config.enabled) {
-    // 关闭态被直接访问时回登录页，避免浏览器看到 JSON 404。
-    c.header('Cache-Control', 'no-store');
-    return c.redirect(loginPagePath(), 302);
-  }
-
-  const backend = resolveSsoTenantBackend(c, tenantId);
-  if (!backend) {
-    return redirectToLoginError(c, 'tenant_not_found');
-  }
-
-  let selection: Awaited<ReturnType<typeof getLoginProviders>>;
-  try {
-    selection = await getLoginProviders(backend.baseUrl, tenantId, config);
-  } catch (err) {
-    console.error('[auth] sso provider list failed:', (err as Error).message);
-    return redirectToLoginError(c, 'sso_unavailable');
-  }
-
-  const provider = selection.providers.find((item) => item.id === providerId);
-  if (!provider) {
-    return redirectToLoginError(
-      c,
-      selection.misconfigured.includes(providerId) ? 'sso_misconfigured' : 'unknown_provider',
-    );
-  }
-
-  const transaction = createSsoTransaction();
-  const nowSeconds = Math.floor(Date.now() / 1000);
-
-  await writeSsoStateCookie(
-    c,
-    {
-      state: transaction.state,
-      code_verifier: transaction.codeVerifier,
-      nonce: transaction.nonce,
-      provider_id: provider.id,
-      tenant_id: tenantId,
-      return_to: sanitizeReturnTo(returnTo),
-      issued_at: nowSeconds,
-      silent,
-    },
-    config.stateSecret,
-    isSecureCookie(config),
-  );
-
-  let authorizeUrl: URL;
-  try {
-    authorizeUrl = new URL(provider.authorizeUrl);
-  } catch {
-    console.error(`[auth] provider ${provider.id} has invalid authorize_url`);
-    return redirectToLoginError(c, 'sso_misconfigured');
-  }
-
-  authorizeUrl.searchParams.set('response_type', 'code');
-  // D2 option A: BFF 作为 IdP RP 时使用自有 client（ia-agentui），
-  // 回调后自行兑换 token，再把 id_token 交给网关换 member token。
-  const idpConfig = loadIdpPassthroughConfig();
-  const useIdpPassthrough = isIdpPassthroughUsable(idpConfig);
-  authorizeUrl.searchParams.set(
-    'client_id',
-    useIdpPassthrough ? idpConfig.clientId : provider.clientId,
-  );
-  authorizeUrl.searchParams.set('redirect_uri', getSsoRedirectUri(config));
-  authorizeUrl.searchParams.set(
-    'scope',
-    useIdpPassthrough ? 'openid profile' : provider.scopes,
-  );
-  authorizeUrl.searchParams.set('state', transaction.state);
-  authorizeUrl.searchParams.set('nonce', transaction.nonce);
-  authorizeUrl.searchParams.set('code_challenge', transaction.codeChallenge);
-  authorizeUrl.searchParams.set('code_challenge_method', 'S256');
-  authorizeUrl.searchParams.set('response_mode', 'query');
-  if (silent) authorizeUrl.searchParams.set('prompt', 'none');
-
-  c.header('Cache-Control', 'no-store');
-  return c.redirect(authorizeUrl.toString(), 302);
 }
 
 // ---------------------------------------------------------------------------
@@ -882,7 +711,9 @@ authRoutes.post('/auth/logout', async (c) => {
  * 白名单校验回跳，application_util.go:524）；未配置时维持旧行为（仅本地登出）。
  */
 function respondLogout(c: Context<{ Variables: AuthVariables }>) {
-  const idpLogoutUrl = getIdpLogoutUrl();
+  // §14:登出三项优先取运行时配置(sso-config.json),否则回落 env 兜底
+  const ssoConfig = loadSsoConfig();
+  const idpLogoutUrl = ssoConfig.idpLogoutUrl || getIdpLogoutUrl();
   if (!idpLogoutUrl) {
     return c.json(ok({ logged_out: true }));
   }
@@ -894,7 +725,9 @@ function respondLogout(c: Context<{ Variables: AuthVariables }>) {
     : resolvePublicOrigin(c);
   const redirectTarget = `${origin}/login-next`;
   const sep = idpLogoutUrl.includes('?') ? '&' : '?';
-  const idpLogoutRedirect = `${idpLogoutUrl}${sep}post_logout_redirect_uri=${encodeURIComponent(redirectTarget)}&client_id=${encodeURIComponent(getExpectedAud())}`;
+  // §14:client_id 用独立的 BFF_OAUTH_CLIENT_ID(运行时优先),未配置回落 EXPECTED_AUD
+  const clientId = ssoConfig.oauthClientId || getExpectedAud();
+  const idpLogoutRedirect = `${idpLogoutUrl}${sep}post_logout_redirect_uri=${encodeURIComponent(redirectTarget)}&client_id=${encodeURIComponent(clientId)}`;
   return c.json(ok({ logged_out: true, idp_logout_url: idpLogoutRedirect }));
 }
 
@@ -907,7 +740,8 @@ const backchannelLogoutHandler = async (
   // Hono Context 泛型;双挂载路径(Context 默认 P=string)对具体路径参数可赋值。
   c: Context<{ Variables: AuthVariables }>,
 ) => {
-  const idpIssuer = getIdpIssuer();
+  // §14:issuer 优先取运行时配置,否则回落 BFF_OAUTH_IDP_ISSUER
+  const idpIssuer = loadSsoConfig().idpIssuer || getIdpIssuer();
   if (!idpIssuer) {
     // 未启用：503（IdP outbox 按退避重试；运维未配置时明确可见）
     return c.json(fail(503, 'back-channel logout not configured (BFF_OAUTH_IDP_ISSUER missing)'), 503);
@@ -983,24 +817,6 @@ authRoutes.post('/api/bff/auth/backchannel-logout', backchannelLogoutHandler);
 // GET /api/bff/auth/login/channels — OAuth 渠道列表
 // ---------------------------------------------------------------------------
 
-interface OAuthProviderRaw {
-  id: string;
-  name: string;
-  usage: string;
-  auth_flow: string;
-  enabled: boolean;
-  logo_svg?: string;
-  is_builtin: boolean;
-  display_order: number;
-  description?: string;
-}
-
-interface OAuthProviderConverted {
-  channel: string;
-  display_name: string;
-  icon: string;
-}
-
 authRoutes.get('/auth/login/channels', async (c) => {
   // 公开端点:缺省 TenantID="0"(向后兼容)
   const tenantId = c.req.header('X-Backend-Id') || '0';
@@ -1008,73 +824,31 @@ authRoutes.get('/auth/login/channels', async (c) => {
   const authMode = getAuthMode(backendStore, tenantId);
 
   if (authMode === 'intellect-enterprise') {
-    // spec-014 P2:开关开启时走公开 provider 端点（不携带 API_SERVER_KEY）。
+    // V1:管理页「统一认证」开关关闭时渠道完全隐藏，不再回落到鉴权端点。
     const ssoConfig = loadSsoConfig();
-    if (ssoConfig.enabled) {
-      const backend = getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
-      if (!backend) {
-        return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
-      }
-      try {
-        const { providers } = await getLoginProviders(backend.baseUrl, tenantId, ssoConfig);
-        return c.json(
-          ok(
-            providers.map((provider) => ({
-              channel: provider.id,
-              display_name: provider.displayName,
-              icon: provider.icon,
-            })),
-          ),
-        );
-      } catch (err) {
-        console.error('[auth] sso provider list fetch error:', (err as Error).message);
-        return c.json(fail(502, 'SSO provider list unavailable'), 502);
-      }
+    if (!ssoConfig.enabled) {
+      return c.json(ok([]));
     }
-
-    // 企业版:调 intellect-team GET /api/oauth/providers,转换格式
+    // spec-014 P2:开关开启时走公开 provider 端点（不携带 API_SERVER_KEY）。
     const backend = getEnterpriseBackend(backendStore, c.get('harnessStore'), tenantId);
     if (!backend) {
       return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
     }
-    let resp: Response;
     try {
-      resp = await enterpriseFetch(backend, '/api/oauth/providers', {
-        method: 'GET',
-      });
+      const { providers } = await getLoginProviders(backend.baseUrl, tenantId, ssoConfig);
+      return c.json(
+        ok(
+          providers.map((provider) => ({
+            channel: provider.id,
+            display_name: provider.displayName,
+            icon: provider.icon,
+          })),
+        ),
+      );
     } catch (err) {
-      console.error('[auth] intellect-team /oauth/providers fetch error:', (err as Error).message);
-      return c.json(fail(502, 'intellect-team unreachable'), 502);
+      console.error('[auth] sso provider list fetch error:', (err as Error).message);
+      return c.json(fail(502, 'SSO provider list unavailable'), 502);
     }
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      console.error(`[auth] intellect-team /oauth/providers failed: ${resp.status}`, text);
-      // 审计缺陷 D 修复:上游鉴权失败原样透传(401),与"网关不可达"(502)区分
-      if (resp.status === 401 || resp.status === 403) {
-        return c.json(
-          fail(401, 'intellect-team rejected BFF credentials (check gateway token)'),
-          401,
-        );
-      }
-      return c.json(fail(502, 'intellect-team /oauth/providers failed'), 502);
-    }
-
-    const rawProviders = (await resp.json()) as OAuthProviderRaw[];
-    // 转换格式 + 过滤 enabled=true + usage 含 login
-    const channels: OAuthProviderConverted[] = rawProviders
-      .filter((p) => p.enabled && p.usage.includes('login'))
-      .map((p) => ({
-        channel: p.id,
-        display_name: p.name,
-        icon: p.logo_svg || 'sso',
-      }))
-      .sort((a, b) => {
-        // 按 display_order 排序(需回查原数组,简化:按 channel 字母序稳定)
-        return a.channel.localeCompare(b.channel);
-      });
-
-    return c.json(ok(channels));
   }
 
   // 社区版:透传到 intellect-rag /api/v1/auth/login/channels
@@ -1102,46 +876,6 @@ authRoutes.get('/auth/login/channels', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/bff/auth/sso/authorize/:provider — BFF 作为 OIDC RP 发起授权
-// ---------------------------------------------------------------------------
-
-authRoutes.get('/auth/sso/authorize/:provider', async (c) => {
-  // 浏览器导航无法携带 X-Backend-Id，租户经 query 传入（缺省 '0' 向后兼容）
-  const tenantId = c.req.query('tenant') || c.req.header('X-Backend-Id') || '0';
-  const silent = c.req.query('prompt') === 'none';
-  return handleSsoAuthorize(
-    c,
-    c.req.param('provider') ?? '',
-    tenantId,
-    c.req.query('returnTo'),
-    silent,
-  );
-});
-
-// ---------------------------------------------------------------------------
-// GET /api/bff/auth/sso/relogin — 静默重登（prompt=none）
-// ---------------------------------------------------------------------------
-
-authRoutes.get('/auth/sso/relogin', async (c) => {
-  const config = loadSsoConfig();
-  const tenantId = c.req.query('tenant') || c.req.header('X-Backend-Id') || '0';
-
-  if (!config.enabled || !config.silentRelogin) {
-    c.header('Cache-Control', 'no-store');
-    return c.redirect(loginPagePath(), 302);
-  }
-
-  // 登出会清除 sso_provider；缺失/租户不匹配即视为「用户已主动登出」，不自动重登。
-  const storedProvider = await readSsoProviderCookie(c, config.stateSecret);
-  if (!storedProvider || storedProvider.tenant_id !== tenantId) {
-    c.header('Cache-Control', 'no-store');
-    return c.redirect(loginPagePath(), 302);
-  }
-
-  return handleSsoAuthorize(c, storedProvider.provider_id, tenantId, c.req.query('returnTo'), true);
-});
-
-// ---------------------------------------------------------------------------
 // GET /api/bff/auth/login/:channel — OAuth 授权重定向
 // ---------------------------------------------------------------------------
 
@@ -1155,17 +889,13 @@ authRoutes.get('/auth/login/:channel', async (c) => {
   }
 
   const backendStore = c.get('backendStore');
-  const ssoConfig = loadSsoConfig();
-  // 开关开启时以导航参数 tenant 判定租户（浏览器无法携带 X-Backend-Id）；否则沿用 header。
-  const ssoTenantId = c.req.query('tenant') || tenantId;
-  const authMode = getAuthMode(backendStore, ssoConfig.enabled ? ssoTenantId : tenantId);
+  const authMode = getAuthMode(backendStore, tenantId);
 
   if (authMode === 'intellect-enterprise') {
-    // spec-014 P2:开关开启时由 BFF 作为 OIDC RP 发起授权；未知渠道 fail-closed。
-    if (ssoConfig.enabled) {
-      return handleSsoAuthorize(c, channel, ssoTenantId, c.req.query('returnTo'), false);
+    // V1:统一认证关闭时拒绝发起登录（与 /auth/login/channels 隐藏口径一致）
+    if (!loadSsoConfig().enabled) {
+      return ssoErrorRedirect(c, 'sso_disabled');
     }
-
     // 企业版:调 intellect-team GET /api/oauth/login/{provider}(P4a-4,直接 302 重定向)
     // 比 POST /api/oauth/authorize 更简单:intellect-team 直接返回 302 + Location,
     // BFF 透传 302 即可,无需先 POST 拿 redirect_uri 再 302。
@@ -1174,17 +904,21 @@ authRoutes.get('/auth/login/:channel', async (c) => {
       return c.json(fail(502, 'Enterprise backend not configured for tenant'), 502);
     }
     let resp: Response;
+    // M2:probe=1 为无副作用联检(AgentUI 向导/管理页的登录跳转校验),
+    // 透传给网关后不写 pending state;真实登录不受影响。
+    const isProbe = c.req.query('probe') === '1' || c.req.query('probe') === 'true';
     try {
       // D8:invite_code 透传(前端带 ?invite_code= 跳 OAuth 时随流携带,
       // 网关写入 state,callback 兑换注册;缺省不追加,保持 URL 干净)。
       const inviteCode = (c.req.query('invite_code') || '').trim();
       const inviteQuery = inviteCode ? `&invite_code=${encodeURIComponent(inviteCode)}` : '';
+      const probeQuery = isProbe ? '&probe=1' : '';
       // F-CB-01:显式声明 BFF 公开回调,使 IdP 回调落到本服务
       // (不传时 intellect-team 默认推导自身回调,SSO 无法闭环)。
       const redirectUri = resolveOAuthRedirectUri(c);
       resp = await enterpriseFetch(
         backend,
-        `/api/oauth/login/${encodeURIComponent(channel)}?usage=login${inviteQuery}&redirect_uri=${encodeURIComponent(redirectUri)}`,
+        `/api/oauth/login/${encodeURIComponent(channel)}?usage=login${inviteQuery}${probeQuery}&redirect_uri=${encodeURIComponent(redirectUri)}`,
         { method: 'GET', redirect: 'manual' },
       );
     } catch (err) {
@@ -1200,10 +934,11 @@ authRoutes.get('/auth/login/:channel', async (c) => {
         return ssoErrorRedirect(c, 'idp_invalid_response');
       }
 
-      // CSRF 防护:从 Location 中提取 state,存入短期 cookie,callback 时校验
+      // CSRF 防护:从 Location 中提取 state,存入短期 cookie,callback 时校验。
+      // M2:probe 由服务端发起,不落 state cookie(避免探活写入无主 Cookie)。
       const stateMatch = location.match(/[?&]state=([^&]+)/);
       const oauthState = stateMatch?.[1];
-      if (oauthState) {
+      if (oauthState && !isProbe) {
         setCookie(c, OAUTH_STATE_COOKIE_NAME, oauthState, {
           httpOnly: true,
           sameSite: 'Lax',
@@ -1244,145 +979,6 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
 
-  // spec-014 P2:新链路以签名 state Cookie 判定（与全局开关无关，保证切换/滚动发布时在途授权可收尾）。
-  const ssoConfig = loadSsoConfig();
-  const rawSsoStateCookie = getCookie(c, SSO_STATE_COOKIE_NAME);
-  const hasSsoStateCookie = Boolean(rawSsoStateCookie);
-  if (ssoConfig.enabled || hasSsoStateCookie) {
-    // 回滚场景：开关关闭且密钥已清空时，不再验签（空密钥会抛错），直接判定失效。
-    if (hasSsoStateCookie && ssoConfig.stateSecret.length < 32) {
-      deleteCookie(c, SSO_STATE_COOKIE_NAME, { path: '/' });
-      return redirectToLoginError(c, 'sso_state_invalid');
-    }
-
-    const read = await readAndClearSsoStateCookie(c, ssoConfig.stateSecret);
-
-    // 验签失败时 getSignedCookie 会退化为「无 Cookie」，需用原始 Cookie 存在性兜底判定。
-    if (read.status === 'invalid' || (read.status === 'absent' && hasSsoStateCookie)) {
-      deleteCookie(c, SSO_STATE_COOKIE_NAME, { path: '/' });
-      return redirectToLoginError(c, 'sso_state_invalid');
-    }
-
-    if (read.status === 'ok') {
-      const payload = read.payload;
-
-      if (!state || !ssoStateMatches(payload.state, state)) {
-        return redirectToLoginError(c, 'sso_state_invalid');
-      }
-
-      const idpError = c.req.query('error');
-      if (idpError) {
-        const isLoginRequired = idpError === 'login_required' || idpError === 'interaction_required';
-        if (isLoginRequired && payload.silent) {
-          // 最多一次交互式重试：新 state 的 silent=false，再次失败即回登录页。
-          return handleSsoAuthorize(c, payload.provider_id, payload.tenant_id, payload.return_to, false);
-        }
-        return redirectToLoginError(c, isLoginRequired ? 'sso_session_expired' : 'sso_code_invalid');
-      }
-
-      if (!code) {
-        return redirectToLoginError(c, 'sso_code_invalid');
-      }
-
-      const backend = resolveSsoTenantBackend(c, payload.tenant_id);
-      if (!backend) {
-        return redirectToLoginError(c, 'tenant_not_found');
-      }
-
-      // D2 option A: enabled → BFF 自行向 IdP 兑换 code，再用 id_token
-      // 调网关换取 member token；关闭 → 保持原有网关 code 兑换链路。
-      const idpConfig = loadIdpPassthroughConfig();
-      let result: Awaited<ReturnType<typeof exchangeAuthorizationCode>>;
-      if (isIdpPassthroughUsable(idpConfig)) {
-        const idp = await exchangeCodeForIdpTokens(idpConfig, {
-          code,
-          codeVerifier: payload.code_verifier,
-          redirectUri: getSsoRedirectUri(ssoConfig),
-        });
-        if (!idp.ok || !idp.idToken) {
-          console.error(
-            `[auth] idp direct exchange failed: tenant=${payload.tenant_id} provider=${payload.provider_id} ` +
-              (idp.ok ? 'missing id_token' : `status=${idp.status} code=${idp.code}`),
-          );
-          return redirectToLoginError(c, 'sso_code_invalid');
-        }
-
-        const gateway = await exchangeIdTokenForMember(
-          backend.baseUrl,
-          {
-            id_token: idp.idToken,
-            provider_id: payload.provider_id,
-            tenant_id: payload.tenant_id,
-          },
-          ssoConfig.exchangeTimeoutMs,
-        );
-        if (!gateway.ok) {
-          console.error(
-            `[auth] id_token exchange failed: tenant=${payload.tenant_id} provider=${payload.provider_id} status=${gateway.status} code=${gateway.code}`,
-          );
-          return redirectToLoginError(c, mapExchangeError(gateway.status, gateway.code));
-        }
-        // 服务端持有 IdP access/refresh（浏览器无感），供出站用户态调用使用。
-        putIdpTokens(idpSessionKey(payload.tenant_id, idp.tokens.subject), idp.tokens);
-        result = gateway;
-      } else {
-        result = await exchangeAuthorizationCode(
-          backend.baseUrl,
-          {
-            grant: 'authorization_code',
-            provider_id: payload.provider_id,
-            code,
-            code_verifier: payload.code_verifier,
-            redirect_uri: getSsoRedirectUri(ssoConfig),
-            nonce: payload.nonce,
-          },
-          ssoConfig.exchangeTimeoutMs,
-        );
-      }
-
-      if (!result.ok) {
-        console.error(
-          `[auth] sso exchange failed: tenant=${payload.tenant_id} provider=${payload.provider_id} status=${result.status} code=${result.code}`,
-        );
-        return redirectToLoginError(c, mapExchangeError(result.status, result.code));
-      }
-
-      console.log(
-        `[auth] sso login ok: tenant=${payload.tenant_id} provider=${payload.provider_id} member=${result.data.member?.id ?? 'unknown'}`,
-      );
-
-      const nowSeconds = Math.floor(Date.now() / 1000);
-      const tokenTtlSeconds = Number.isFinite(result.data.expires_at)
-        ? result.data.expires_at - nowSeconds
-        : AUTH_COOKIE_MAX_AGE;
-      const cookieMaxAge = Math.max(60, Math.min(AUTH_COOKIE_MAX_AGE, tokenTtlSeconds));
-
-      setCookie(c, AUTH_COOKIE_NAME, result.data.token, {
-        httpOnly: true,
-        sameSite: 'Lax',
-        path: '/',
-        maxAge: cookieMaxAge,
-        secure: isSecureCookie(ssoConfig),
-      });
-      await writeSsoProviderCookie(
-        c,
-        { provider_id: payload.provider_id, tenant_id: payload.tenant_id },
-        ssoConfig.stateSecret,
-        isSecureCookie(ssoConfig),
-      );
-
-      c.header('Cache-Control', 'no-store');
-      return c.redirect(sanitizeReturnTo(payload.return_to), 302);
-    }
-
-    // 开关开启但无 state Cookie：不再回落旧链路（避免绕过 BFF 的 state 绑定）。
-    if (ssoConfig.enabled) {
-      return redirectToLoginError(c, 'sso_state_invalid');
-    }
-    // 开关关闭且无 Cookie：保留一个发布周期的旧链路。
-  }
-
-  // ---- 旧链路（FR-024 回滚保留一个发布周期）----
   if (!code || !state) {
     return c.json(fail(400, 'Missing code or state query parameter'), 400);
   }
@@ -1468,7 +1064,8 @@ authRoutes.get('/auth/oauth/callback', async (c) => {
 
     // agentui-sso-logout-loop(A1+A4)：记录 idpSub → imt_token 映射，
     // 供 back-channel 登出通知按 sub 撤销（issuer 未配置时不记录）。
-    const idpIssuer = getIdpIssuer();
+    // §14:与 back-channel 验签同源(运行时优先,env 兜底),避免只配管理页时漏记映射。
+    const idpIssuer = loadSsoConfig().idpIssuer || getIdpIssuer();
     const idpSub = typeof cbData.claims?.sub === 'string' ? cbData.claims.sub : '';
     if (idpIssuer && idpSub) {
       recordImtSession(idpSub, cbData.token);
