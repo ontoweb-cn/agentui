@@ -131,8 +131,9 @@ function resolveLoginTenant(
   const header = (headerValue || '').trim();
   const tenants = backendStore?.listBackends() ?? [];
   if (header) {
-    // 多租户下显式选择必须命中已注册租户，避免拼写错误落到默认逻辑。
-    if (tenants.length > 1 && !tenants.some((t) => t.id === header)) {
+    // 只要存在已注册租户，显式选择就必须命中，否则会回落 community
+    // 认证模式，绕过企业登录（单租户部署同样适用）。
+    if (tenants.length > 0 && !tenants.some((t) => t.id === header)) {
       return { error: 'tenant_required' };
     }
     return { tenantId: header };
@@ -290,7 +291,7 @@ authRoutes.post('/auth/login', async (c) => {
   );
   if ('error' in tenantResolution) {
     return c.json(
-      fail(400, 'Multiple tenants are configured; select a tenant before login'),
+      fail(400, 'Tenant is unavailable; select a valid tenant before login'),
       400,
     );
   }

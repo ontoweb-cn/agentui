@@ -407,7 +407,23 @@ describe('auth 路由 (P4b US1)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(resp.status).toBe(400);
     const body = await resp.json();
-    expect(body.message).toContain('Multiple tenants');
+    expect(body.message).toContain('Tenant is unavailable');
+  });
+
+  it('US1:单租户 + 未注册的 X-Backend-Id → 400（不得降级 community）', async () => {
+    // 单租户部署同样不能接受任意 header，否则会走 RAG 本地登录。
+    const backendStore = createMockBackendStore([enterpriseTenant]);
+    const app = createApp(backendStore);
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const resp = await app.request('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Backend-Id': 'bogus' },
+      body: JSON.stringify({ login_name: 'alice', password: 'secret' }),
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(resp.status).toBe(400);
   });
 
   it('US1:多租户 + 未注册的 X-Backend-Id → 400 tenant_required', async () => {
