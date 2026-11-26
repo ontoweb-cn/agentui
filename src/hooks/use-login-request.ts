@@ -39,17 +39,18 @@ export interface ILoginChannel {
   icon: string;
 }
 
-/** 登录页租户解析：URL `?tenant=` 优先，其次 localStorage，最后缺省 '0'（与 useAuthMode 对齐）。 */
-const resolveLoginTenant = (): string => {
+/** 登录页租户解析：URL `?tenant=` 优先，其次 localStorage；无法确定时返回 undefined，
+ *  由 BFF 在多租户下拒绝，而不是静默落到 "0"。 */
+const resolveLoginTenant = (): string | undefined => {
   if (typeof window !== 'undefined') {
     const urlTenant = new URLSearchParams(window.location.search).get('tenant');
     if (urlTenant) return urlTenant;
   }
-  return localStorage.getItem(BackendId) || '0';
+  return localStorage.getItem(BackendId) || undefined;
 };
 
 export const useLoginChannels = () => {
-  const tenantId = resolveLoginTenant();
+  const tenantId = resolveLoginTenant() || '0';
   const { data, isLoading } = useQuery({
     queryKey: ['loginChannels', tenantId],
     queryFn: async () => {
@@ -85,7 +86,12 @@ export const useLogin = () => {
   } = useMutation({
     mutationKey: ['login'],
     mutationFn: async (params: { email?: string; login_name?: string; password: string }) => {
-      const { data: res = {}, response } = await userService.login(params);
+      // D-04: 登录必须显式携带租户；无明确租户时不发送 header，由 BFF 决定是否拒绝。
+      const tenantId = resolveLoginTenant();
+      const { data: res = {}, response } = await request.post(api.login, {
+        data: params,
+        headers: tenantId ? { 'X-Backend-Id': tenantId } : {},
+      });
       if (res?.code === 0) {
         saveSetting({ language: storage.getLanguage() });
         const { data } = res;
@@ -104,7 +110,8 @@ export const useLogin = () => {
           };
           authorizationUtil.setItems({
             [AuthMode]: 'intellect-enterprise',
-            [BackendId]: '0', // 当前阶段固定缺省后端,P5 多租户阶段扩展
+            // 使用 BFF 回显的租户，避免多租户部署落错后端。
+            [BackendId]: data.tenant_id || tenantId || '0',
             [UserInfo]: JSON.stringify(userInfo),
           });
         } else {

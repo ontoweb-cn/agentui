@@ -116,6 +116,33 @@ export function getAuthMode(backendStore: BackendStore | undefined, tenantId: st
 }
 
 /**
+ * D-04: resolve the tenant for a login request.
+ *
+ * - Explicit `X-Backend-Id` wins.
+ * - Without it, a single configured tenant is used explicitly.
+ * - Multiple tenants are ambiguous: return `tenant_required` instead of
+ *   silently authenticating against tenant '0'.
+ * - No tenants configured (community first run) keeps the '0' default.
+ */
+function resolveLoginTenant(
+  headerValue: string | undefined,
+  backendStore: BackendStore | undefined,
+): { tenantId: string } | { error: 'tenant_required' } {
+  const header = (headerValue || '').trim();
+  const tenants = backendStore?.listBackends() ?? [];
+  if (header) {
+    // 多租户下显式选择必须命中已注册租户，避免拼写错误落到默认逻辑。
+    if (tenants.length > 1 && !tenants.some((t) => t.id === header)) {
+      return { error: 'tenant_required' };
+    }
+    return { tenantId: header };
+  }
+  if (tenants.length === 1) return { tenantId: tenants[0].id };
+  if (tenants.length > 1) return { error: 'tenant_required' };
+  return { tenantId: '0' };
+}
+
+/**
  * 获取企业版后端 baseUrl + apiServerKey。
  * 从 HarnessStore 按 tenant.intellectBackendId 读取对应 intellect-team 实例的 endpoint。
  * 多租户隔离:不同 BffTenant 绑定不同 intellectBackendId,即不同 intellect-team 实例。
@@ -256,15 +283,24 @@ authRoutes.get('/auth/config', (c) => {
 // ---------------------------------------------------------------------------
 
 authRoutes.post('/auth/login', async (c) => {
-  // 公开端点:缺省 TenantID="0"(向后兼容)
-  const tenantId = c.req.header('X-Backend-Id') || '0';
+  const backendStore = c.get('backendStore');
+  const tenantResolution = resolveLoginTenant(
+    c.req.header('X-Backend-Id'),
+    backendStore,
+  );
+  if ('error' in tenantResolution) {
+    return c.json(
+      fail(400, 'Multiple tenants are configured; select a tenant before login'),
+      400,
+    );
+  }
+  const tenantId = tenantResolution.tenantId;
 
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
     return c.json(fail(400, 'Request body must be JSON'), 400);
   }
 
-  const backendStore = c.get('backendStore');
   const authMode = getAuthMode(backendStore, tenantId);
 
   if (authMode === 'intellect-enterprise') {
@@ -332,6 +368,8 @@ authRoutes.post('/auth/login', async (c) => {
         display_name: data.member?.display_name,
         role: data.member?.role,
         email: data.email ?? null,
+        // D-04: echo the tenant the BFF actually authenticated against.
+        tenant_id: tenantId,
       }),
     );
   }

@@ -120,6 +120,8 @@ describe('auth 路由 (P4b US1)', () => {
     // 默认环境变量
     process.env.INTELLECT_ENTERPRISE_BASE_URL = 'http://mock-enterprise:9381';
     process.env.INTELLECT_RAG_URL = 'http://mock-rag:9380';
+    // 渠道登录用例默认开启 SSO；关闭场景在各自用例内 delete。
+    process.env.BFF_SSO_ENABLED = 'true';
   });
 
   afterEach(() => {
@@ -223,6 +225,7 @@ describe('auth 路由 (P4b US1)', () => {
       display_name: 'Alice',
       role: 'member',
       email: null,
+      tenant_id: 'tenant-enterprise',
     });
     // 关键:token 不在 body(只在 cookie),email 透传(减少 /auth/me probe)
     expect(JSON.stringify(body)).not.toContain('imt_abc123');
@@ -357,14 +360,18 @@ describe('auth 路由 (P4b US1)', () => {
     expect(body.message).toContain('login_name');
   });
 
-  it('US1:无 X-Backend-Id header → 缺省租户 "0" 走社区版分支(向后兼容)', async () => {
-    // 公开端点缺省 TenantID="0",mock store 中无 id="0" 的 tenant → authMode=intellect-rag
+  it('US1:无 X-Backend-Id header + 单租户 → 自动使用该租户(企业版)', async () => {
+    // D-04: 只有一个租户时不再静默落 "0",直接使用唯一租户。
     const backendStore = createMockBackendStore([enterpriseTenant]);
     const app = createApp(backendStore);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
-        JSON.stringify({ access_token: 'rag-token', email: 'a@b.com' }),
+        JSON.stringify({
+          token: 'imt_single',
+          member: { id: 'm-001', display_name: 'Alice', role: 'member' },
+          email: null,
+        }),
         { status: 200 },
       ),
     );
@@ -372,16 +379,51 @@ describe('auth 路由 (P4b US1)', () => {
     const resp = await app.request('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'alice@example.com', password: 'secret' }),
+      body: JSON.stringify({ login_name: 'alice', password: 'secret' }),
     });
 
-    // 缺省租户走社区版分支,透传到 intellect-rag
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://mock-rag:9380/api/v1/auth/login',
+      'http://mock-enterprise:9381/api/members/login',
       expect.objectContaining({ method: 'POST' }),
     );
     expect(resp.status).toBe(200);
+    const body = await resp.json();
+    expect(body.data.tenant_id).toBe('tenant-enterprise');
+  });
+
+  it('US1:无 X-Backend-Id header + 多租户 → 400 tenant_required', async () => {
+    // D-04: 多租户部署必须显式选择，不能静默认证到默认租户。
+    const backendStore = createMockBackendStore([enterpriseTenant, ragTenant]);
+    const app = createApp(backendStore);
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const resp = await app.request('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ login_name: 'alice', password: 'secret' }),
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(resp.status).toBe(400);
+    const body = await resp.json();
+    expect(body.message).toContain('Multiple tenants');
+  });
+
+  it('US1:多租户 + 未注册的 X-Backend-Id → 400 tenant_required', async () => {
+    // 前端历史默认值 '0' 在多租户下不是合法选择。
+    const backendStore = createMockBackendStore([enterpriseTenant, ragTenant]);
+    const app = createApp(backendStore);
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const resp = await app.request('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Backend-Id': '0' },
+      body: JSON.stringify({ login_name: 'alice', password: 'secret' }),
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(resp.status).toBe(400);
   });
 
   // -------------------------------------------------------------------------
