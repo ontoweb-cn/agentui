@@ -152,6 +152,62 @@ describe('admin users backend proxy', () => {
     );
   });
 
+  it('C8.10 declared oversized body is rejected without reaching upstream', async () => {
+    process.env.KB_PLATFORM_ADMIN = 'go';
+    process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
+    const upstreamFetch = vi.fn<typeof fetch>(async () =>
+      jsonResponse(200, { code: 0, message: 'ok', data: [] }),
+    );
+    const res = await appWithFetch(upstreamFetch as typeof fetch).request(
+      '/api/v1/admin/users/user%40example.com/keys',
+      {
+        method: 'POST',
+        headers: { 'content-length': String(9 * 1024 * 1024) },
+        body: 'x',
+      },
+    );
+
+    expect(res.status).toBe(413);
+    expect((await res.json()).code).toBe(41300);
+    expect(upstreamFetch).not.toHaveBeenCalled();
+  });
+
+  it('C8.11 chunked body over the limit is aborted mid-read', async () => {
+    process.env.KB_PLATFORM_ADMIN = 'go';
+    process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
+    const chunk = new Uint8Array(1024 * 1024);
+    let sent = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent >= 9) {
+          controller.close();
+          return;
+        }
+        sent += 1;
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const upstreamFetch = vi.fn<typeof fetch>(async () =>
+      jsonResponse(200, { code: 0, message: 'ok', data: [] }),
+    );
+    const res = await appWithFetch(upstreamFetch as typeof fetch).request(
+      new Request('http://bff.test/api/v1/admin/users/user%40example.com/keys', {
+        method: 'POST',
+        body,
+        duplex: 'half',
+      } as RequestInit),
+    );
+
+    expect(res.status).toBe(413);
+    expect((await res.json()).code).toBe(41300);
+    expect(upstreamFetch).not.toHaveBeenCalled();
+    expect(cancelled).toBe(true);
+  });
+
   it.each(['go', 'python'])(
     'C8.9 %s receives Bearer and Cookie headers',
     async (mode) => {

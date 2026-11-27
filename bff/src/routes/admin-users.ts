@@ -27,6 +27,70 @@ type ProxyRequest = {
   body?: BodyInit;
 };
 
+type LimitedBody =
+  | { kind: 'none' }
+  | { kind: 'too-large' }
+  | { kind: 'body'; body: Uint8Array<ArrayBuffer> };
+
+function declaredLength(req: Request): number | undefined {
+  const raw = req.headers.get('content-length');
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+/**
+ * Read the request body while enforcing MAX_PROXY_BODY_BYTES *during* the read.
+ * This route is mounted before the BFF user authentication, so buffering first
+ * and checking the size afterwards would let an anonymous caller exhaust the
+ * process memory with a single oversized upload.
+ */
+async function readBodyLimited(req: Request): Promise<LimitedBody> {
+  const declared = declaredLength(req);
+  if (declared !== undefined && declared > MAX_PROXY_BODY_BYTES) {
+    return { kind: 'too-large' };
+  }
+  const stream = req.body;
+  if (!stream) return { kind: 'none' };
+
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+      total += value.byteLength;
+      if (total > MAX_PROXY_BODY_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        return { kind: 'too-large' };
+      }
+      chunks.push(value);
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // already released by cancel(); nothing left to unlock
+    }
+  }
+  const merged = new Uint8Array(total);
+  let written = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, written);
+    written += chunk.byteLength;
+  }
+  return { kind: 'body', body: merged };
+}
+
+function payloadTooLarge(): Response {
+  return new Response(
+    JSON.stringify({ code: 41300, message: 'payload too large', data: null }),
+    { status: 413, headers: { 'Content-Type': 'application/json' } },
+  );
+}
+
 async function fetchUpstream(
   upstreamFetch: AdminUserFetch,
   baseUrl: string,
@@ -98,15 +162,10 @@ export function createAdminUserRoutes(deps: AdminUserRouteDeps = {}): Hono {
     }
 
     let body: BodyInit | undefined;
-    if (method !== 'GET' && method !== 'HEAD' && c.req.raw.body) {
-      const buf = Buffer.from(await c.req.raw.arrayBuffer());
-      if (buf.length > MAX_PROXY_BODY_BYTES) {
-        return new Response(
-          JSON.stringify({ code: 41300, message: 'payload too large', data: null }),
-          { status: 413, headers: { 'Content-Type': 'application/json' } },
-        );
-      }
-      body = buf;
+    if (method !== 'GET' && method !== 'HEAD') {
+      const read = await readBodyLimited(c.req.raw);
+      if (read.kind === 'too-large') return payloadTooLarge();
+      if (read.kind === 'body') body = read.body;
     }
 
     const req: ProxyRequest = {
