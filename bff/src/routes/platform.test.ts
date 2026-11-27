@@ -140,6 +140,53 @@ describe('kbPlatformAdminAuthOK', () => {
       }),
     ).resolves.toBe(false);
   });
+
+  it('returns false on 403 forbidden', async () => {
+    const upstreamFetch = vi.fn(
+      async () => new Response('{}', { status: 403 }),
+    );
+    await expect(
+      kbPlatformAdminAuthOK({
+        upstreamFetch,
+        cookieHeader: 'kb_admin_session=not-super',
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('returns false when probe throws', async () => {
+    const upstreamFetch = vi.fn(async () => {
+      throw new Error('ECONNREFUSED');
+    });
+    await expect(
+      kbPlatformAdminAuthOK({
+        upstreamFetch,
+        cookieHeader: 'kb_admin_session=x',
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('caches successful auth for TTL and skips second probe', async () => {
+    process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
+    const upstreamFetch = vi.fn(
+      async () => new Response('{}', { status: 200 }),
+    );
+    const now = vi.fn(() => 1_000_000);
+    await expect(
+      kbPlatformAdminAuthOK({
+        upstreamFetch,
+        cookieHeader: 'kb_admin_session=cached-jwt',
+        now,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      kbPlatformAdminAuthOK({
+        upstreamFetch,
+        cookieHeader: 'kb_admin_session=cached-jwt',
+        now,
+      }),
+    ).resolves.toBe(true);
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('createPlatformRoutes', () => {
@@ -258,6 +305,27 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
     await app.request('/platform/catalog/overview', {
       method: 'GET',
       headers: { Cookie: 'kb_admin_session=bad' },
+    });
+    const catalogCall = upstreamFetch.mock.calls.find(([u]) =>
+      String(u).includes('/catalog/overview'),
+    ) as unknown as [string, RequestInit];
+    expect((catalogCall[1].headers as Headers).get('Authorization')).toBeNull();
+  });
+
+  it('does not inject when /admin/auth returns 403', async () => {
+    process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
+    process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
+    const upstreamFetch = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith('/api/v1/admin/auth')) {
+        return new Response('{}', { status: 403 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+    const app = new Hono();
+    app.route('/', createPlatformRoutes({ upstreamFetch }));
+    await app.request('/platform/catalog/overview', {
+      method: 'GET',
+      headers: { Cookie: 'kb_admin_session=user-jwt' },
     });
     const catalogCall = upstreamFetch.mock.calls.find(([u]) =>
       String(u).includes('/catalog/overview'),

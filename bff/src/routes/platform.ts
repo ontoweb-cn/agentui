@@ -13,6 +13,7 @@
  * inject-for-any-BFF-login behavior.
  */
 
+import { createHash } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import { getCookie } from 'hono/cookie';
 import {
@@ -88,7 +89,8 @@ export function clearKbPlatformAdminAuthCache(): void {
 }
 
 function cacheKey(kind: 'bearer' | 'cookie', value: string): string {
-  return `${kind}:${value}`;
+  const digest = createHash('sha256').update(value).digest('hex');
+  return `${kind}:${digest}`;
 }
 
 export async function kbPlatformAdminAuthOK(opts: {
