@@ -25,6 +25,7 @@ import type { BackendContext } from '../types/tenant';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
 import { resolveBackendContext } from '../middleware/backend-context';
 import { streamResponse } from '../utils/response';
+import { withSseCompat } from '../services/canvas-sse-compat';
 import {
   CanvasBackendNotBoundError,
   InvalidCanvasBackendError,
@@ -222,7 +223,46 @@ canvasRoutes.post('/canvas/chat/completions', async (c) => {
       resolveBackendContext(c),
       body,
     );
-    return streamResponse(upstream);
+    // Engine wire-format compatibility layer (plan §4.2): shape-compliant
+    // envelopes pass through byte-for-byte; the known engine differences
+    // (cancelled wording, waiting_for_user naming, duplicate [DONE]) are
+    // normalised here so the front end never sees an engine-specific shape.
+    const stats = { passthrough: 0, rewritten: 0, malformed: 0, droppedDone: 0 };
+    return streamResponse(withSseCompat(upstream, stats));
+  } catch (err) {
+    return handleCanvasError(c, err as Error);
+  }
+});
+
+/**
+ * Resume a paused run (wait-for-user). Registered before `/canvas/:id` so the
+ * literal `resume` segment is not captured as a canvas id.
+ *
+ * Body: `{ session_id, form?, engine? }`. `engine` overrides the backend's
+ * default dialect ('python' unless the backend declares 'go').
+ */
+canvasRoutes.post('/canvas/:id/resume', async (c) => {
+  const service = getCanvasService(c);
+  try {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      session_id?: unknown;
+      form?: unknown;
+      engine?: unknown;
+    };
+    const sessionId = typeof body.session_id === 'string' ? body.session_id.trim() : '';
+    if (sessionId === '') {
+      return c.json({ code: 400, message: 'session_id is required to resume a run' }, 400 as 200);
+    }
+    const form = (body.form ?? {}) as Record<string, unknown>;
+    const engine = body.engine === 'go' || body.engine === 'python' ? body.engine : undefined;
+    const upstream = await service.resumeCanvasRun(
+      resolveBackendContext(c),
+      { session_id: sessionId, form },
+      { engine },
+    );
+    return streamResponse(withSseCompat(upstream, {
+      passthrough: 0, rewritten: 0, malformed: 0, droppedDone: 0,
+    }));
   } catch (err) {
     return handleCanvasError(c, err as Error);
   }

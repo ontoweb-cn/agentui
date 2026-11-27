@@ -162,6 +162,31 @@ export class CanvasService {
     return this.resolveAdapter(ctx).deleteSession(ctx, agentId, sessionId);
   }
 
+  /**
+   * Resume a paused run (wait-for-user). The dialect depends on the engine
+   * serving this canvas backend: rag-python re-POSTs the completion, dsl-service
+   * carries `resume_from` + the `__resume_*__` sentinels.
+   */
+  async resumeCanvasRun(
+    ctx: BackendContext,
+    payload: ResumePayload,
+    dialect?: ResumeDialectInput,
+  ): Promise<Response> {
+    const engine = resolveEngineKind(dialect);
+    const body = buildResumeBody(engine, payload);
+    const adapter = this.resolveAdapter(ctx);
+    return adapter.proxy(
+      'POST',
+      '/api/v1/agents/chat/completions',
+      {
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body: new Response(JSON.stringify(body)).body,
+        query: '',
+      },
+      ctx,
+    );
+  }
+
   async streamAgentCompletion(ctx: BackendContext, body: unknown): Promise<Response> {
     const adapter = this.resolveAdapter(ctx);
     return adapter.proxy(
@@ -318,4 +343,67 @@ export class CanvasService {
     const adapter = this.resolveAdapter(ctx);
     return adapter.proxy('GET', '/api/v1/agents/download', req, ctx);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Engine-dialect resume (p0p2-closeout B5 / plan §4.3)
+// ---------------------------------------------------------------------------
+
+/** Which engine serves a canvas backend. */
+export type CanvasEngineKind = 'python' | 'go';
+
+/** Dialect the caller asked for, if any. */
+export interface ResumeDialectInput {
+  /** Explicit engine override from the backend config or the request. */
+  engine?: CanvasEngineKind;
+}
+
+/** Normalised resume request handed to the adapter. */
+export interface ResumePayload {
+  session_id: string;
+  /** Python: re-POST these; Go: carried through as-is. */
+  form: Record<string, unknown>;
+}
+
+/**
+ * Resolve which dialect to speak. Defaults to `python`, because a canvas
+ * backend that does not declare otherwise is the rag-python engine — the Go
+ * engine is opt-in per backend (rag-go instances).
+ */
+export function resolveEngineKind(input?: ResumeDialectInput): CanvasEngineKind {
+  return input?.engine === 'go' ? 'go' : 'python';
+}
+
+/**
+ * Build the upstream request body for a resume.
+ *
+ * Python (rag-python) resumes by re-POSTing the chat completion with the same
+ * session_id and the submitted form; the engine replays from its stored state
+ * (canvas_service.completion L308-375).
+ *
+ * Go (dsl-service) carries an explicit resume marker: `resume_from` plus the
+ * two sentinel keys the engine reads (`__resume_interrupt_id__` /
+ * `__resume_data__`, cmd/dsl-service handlers.go:263-266).
+ */
+export function buildResumeBody(
+  engine: CanvasEngineKind,
+  payload: ResumePayload,
+): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    session_id: payload.session_id,
+    ...payload.form,
+  };
+  if (engine === 'go') {
+    return {
+      ...base,
+      resume_from: payload.session_id,
+      __resume_interrupt_id__:
+        (payload.form.__resume_interrupt_id__ as string | undefined) ??
+        (payload.form.interrupt_id as string | undefined) ??
+        '',
+      __resume_data__:
+        payload.form.__resume_data__ ?? payload.form.inputs ?? {},
+    };
+  }
+  return base;
 }
