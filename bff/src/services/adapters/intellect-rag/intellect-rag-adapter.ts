@@ -11,7 +11,7 @@
  * - Principle IV (SSE Dual-Protocol): sendMessage 返回 AsyncIterable<StreamChunk>,
  *   Intellect RAG 用 parseCanvasWorkflowSSE(P1 主通道,US2 实现)
  * - Principle V (Tenant Isolation): Intellect RAG 单租户。D1.2 B 起注入
- *   X-Intellect-Team/X-Intellect-Project 头(intellect-rag-app 已消费这些头
+ *   X-Intellect-Team/X-Intellect-Project 头(intellect-kb-app 已消费这些头
  *   用于 KB ownership 字段写入)。仅在 BackendContext 提供非空值时注入。
  * - Principle VIII: 仅企业版用 API_SERVER_KEY,Intellect RAG 用 admin token(Bearer)
  *
@@ -222,7 +222,7 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
   async healthCheck(): Promise<boolean> {
     try {
       // RAG 匿名健康端点 /api/v1/system/healthz(无 @login_required,
-      // 见 intellect-rag-app/api/apps/restful_apis/system_api.py:230)。
+      // 见 intellect-kb-app/api/apps/restful_apis/system_api.py:230)。
       // 注意:根 /health 在 RAG 源码中不存在,勿改回。
       // 匿名端点无需注入 token,直接用 fetch(避免向公开端点发送 adminToken)。
       const response = await fetch(`${this.baseUrl}/api/v1/system/healthz`, {
@@ -495,7 +495,7 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
       'Content-Type': 'application/json',
     };
     // BFF-P0-1: 注入解析后的 member_id 为 X-Intellect-User header。
-    // 让 intellect-rag-app 在 KB/Chunk 创建时设置正确的 owner_user_id,
+    // 让 intellect-kb-app 在 KB/Chunk 创建时设置正确的 owner_user_id,
     // 替代之前的 current_user.id (RAG UUID) 回退。
     // 安全: member_id 来自服务端 token→/api/members/me 解析,非客户端 X-User-Id header。
     if (ctx?.intellectUserId) {
@@ -504,7 +504,7 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
     if (ctx?.intellectRole) {
       headers['X-Intellect-Role'] = ctx.intellectRole;
     }
-    // D1.2 B (identity-model-migration): intellect-rag-app 已开始消费
+    // D1.2 B (identity-model-migration): intellect-kb-app 已开始消费
     // X-Intellect-Team / X-Intellect-Project 头(visibility=team/project)。
     // 注入这些头让 KB ownership 字段能正确写入,避免静默降级为 private。
     // 仅在 BackendContext 提供非空值时注入(缺省租户 '0' 已被 backend-context

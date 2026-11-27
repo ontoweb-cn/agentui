@@ -3,7 +3,7 @@
 > **评审日期**: 2026-08-14
 > **评审对象**: [docs/enterprise-rag-admin-credential-analysis.md](./enterprise-rag-admin-credential-analysis.md)（初稿）
 > **修订**: 2026-08-14 分析已按下文 C1–C2 / I1–I6 / M1–M4 改写。本节保留为评审记录；实施以修订后的分析为准。
-> **评审范围**: AgentUI BFF 现有代码（`bff/src`）与 spec 011；intellect-rag-app / intellect-team 源码不在本仓，RAG 侧结论仍为待证
+> **评审范围**: AgentUI BFF 现有代码（`bff/src`）与 spec 011；intellect-kb-app / intellect-team 源码不在本仓，RAG 侧结论仍为待证
 > **结论（针对初稿）**: 方向正确，**不能按初稿直接开工**。须修正对「已登录即走 `imt_`」覆盖面的高估，并补上鉴权存在性检查带来的提权路径。
 
 ---

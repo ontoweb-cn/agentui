@@ -2,7 +2,7 @@
 
 > 评审日期：2026-07-26（初稿）/ 2026-07-27（增补 §九 Gateway 端缺口评审）
 > 评审对象：上一轮"Chat Session 直接通过 Gateway（不经过 RAG Backend）"的可行性分析
-> 评审范围：AgentUI BFF + intellect-team Rust Gateway + intellect-rag-app
+> 评审范围：AgentUI BFF + intellect-team Rust Gateway + intellect-kb-app
 > 关联文档：
 > - [chat-session-gap-analysis.md](file:///Users/simon/project/agentui/docs/chat-session-gap-analysis.md)（会话功能整体差距分析）
 > - [multi-harness-design.md](file:///Users/simon/project/agentui/docs/multi-harness-design.md)（多后端架构设计）
@@ -60,7 +60,7 @@
 
 **实际差异**：
 
-| 维度 | intellect-rag-app | intellect-team Gateway |
+| 维度 | intellect-kb-app | intellect-team Gateway |
 |---|---|---|
 | 鉴权方式 | BFF 注入 API key + `X-Intellect-Tenant` header | `Authorization: Bearer <token>`（Profile/Member/Project 三模式） |
 | 租户头 | `X-Intellect-Tenant` | **`X-Tenant-Id`**（32-hex 格式校验） |
@@ -164,14 +164,14 @@
 
 | 请求类型 | BFF 路径 | 实际上游 | 说明 |
 |---|---|---|---|
-| 普通 chat CRUD + session | `/proxy/v1/chats/*` | **intellect-rag-app** :9380 | 透传到 intellect-rag-app `/api/v1/chats/*` |
-| 普通 chat completions | `/proxy/v1/chat/completions` | **intellect-rag-app** :9380 | 透传到 intellect-rag-app `/api/v1/chat/completions` |
-| Agent session | `/agents/{id}/sessions/*` | **intellect-rag-app** :9380 | IntellectRagAdapter → intellect-rag-app |
+| 普通 chat CRUD + session | `/proxy/v1/chats/*` | **intellect-kb-app** :9380 | 透传到 intellect-kb-app `/api/v1/chats/*` |
+| 普通 chat completions | `/proxy/v1/chat/completions` | **intellect-kb-app** :9380 | 透传到 intellect-kb-app `/api/v1/chat/completions` |
+| Agent session | `/agents/{id}/sessions/*` | **intellect-kb-app** :9380 | IntellectRagAdapter → intellect-kb-app |
 | LLM providers/models | `/proxy/v1/providers*` | **intellect-team** :9091 | LLM 模型管理 |
 
-**认知纠正**：当前 chat 请求**全部走 intellect-rag-app**，而非 intellect-team Gateway。chat-session-gap-analysis 中提到的"透传到 intellect-team Gateway"实际上是透传到 intellect-rag-app（命名混淆）。
+**认知纠正**：当前 chat 请求**全部走 intellect-kb-app**，而非 intellect-team Gateway。chat-session-gap-analysis 中提到的"透传到 intellect-team Gateway"实际上是透传到 intellect-kb-app（命名混淆）。
 
-**影响**：迁移目标是把"普通 chat"从 intellect-rag-app 切换到 intellect-team Gateway，需要修改前端 API 路径或 BFF 路由。
+**影响**：迁移目标是把"普通 chat"从 intellect-kb-app 切换到 intellect-team Gateway，需要修改前端 API 路径或 BFF 路由。
 
 ---
 
@@ -198,17 +198,17 @@
   → Gateway /api/sessions/{id}/chat/stream
 
 RAG 增强对话 chat（kb_ids 非空）
-  → 继续走 /api/bff/proxy/v1/chats/* (intellect-rag-app)
-  → intellect-rag-app /api/v1/chats/* (保留现有路径)
+  → 继续走 /api/bff/proxy/v1/chats/* (intellect-kb-app)
+  → intellect-kb-app /api/v1/chats/* (保留现有路径)
 
 画布 Agent chat
   → 继续走 /api/bff/canvas/* (IntellectRagAdapter)
-  → intellect-rag-app /api/v1/agents/*
+  → intellect-kb-app /api/v1/agents/*
 ```
 
 **判断条件**：chat 创建时 `dataset_ids`（即 `kb_ids`）是否为空？
 - 是 → 走 Gateway（纯 LLM 对话）
-- 否 → 走 intellect-rag-app（RAG 增强）
+- 否 → 走 intellect-kb-app（RAG 增强）
 
 ### 3.3 实施工作量评估
 
@@ -235,7 +235,7 @@ RAG 增强对话 chat（kb_ids 非空）
    - 改为透传到前端，支持工具调用展示
 
 3. **不修改 proxy.ts**
-   - `/proxy/v1/*` 透传路由保持硬编码 intellect-rag-app，服务 RAG 增强 chat
+   - `/proxy/v1/*` 透传路由保持硬编码 intellect-kb-app，服务 RAG 增强 chat
    - 纯 LLM 对话走 `/agents/*` 路由（动态选择 adapter）
 
 ### 4.2 阶段 2：前端侧适配（本次实施）
@@ -246,11 +246,11 @@ RAG 增强对话 chat（kb_ids 非空）
 
 2. **前端按 kb_ids 分流**
    - 修改 `src/pages/next-chats/hooks/use-create-chat.ts`
-   - 创建 chat 时根据 `dataset_ids` 是否为空，选择走 intellect-rag-app（透传）或 Gateway（agent session）
+   - 创建 chat 时根据 `dataset_ids` 是否为空，选择走 intellect-kb-app（透传）或 Gateway（agent session）
 
 3. **SSE 解析适配**
    - 走 Gateway 的 chat 复用现有 `use-send-agent-message.ts`（已支持 StreamChunk）
-   - 走 intellect-rag-app 的 chat 保持现有 `use-send-chat-message.ts`
+   - 走 intellect-kb-app 的 chat 保持现有 `use-send-chat-message.ts`
 
 ### 4.3 阶段 3：RAG 能力集成到 Gateway（另立 TODO）
 
@@ -267,15 +267,15 @@ RAG 增强对话 chat（kb_ids 非空）
 
 ### 5.1 数据迁移风险
 
-**风险**：现有 intellect-rag-app 的 Dialog 数据无法直接迁移到 Gateway sessions 表（schema 差异大）。
+**风险**：现有 intellect-kb-app 的 Dialog 数据无法直接迁移到 Gateway sessions 表（schema 差异大）。
 
 **缓解**：
-- 阶段 1 不做数据迁移，新建 chat 走 Gateway，存量 chat 保留在 intellect-rag-app
+- 阶段 1 不做数据迁移，新建 chat 走 Gateway，存量 chat 保留在 intellect-kb-app
 - 前端在 chat 列表合并显示两个数据源（按 chat 来源标识分流）
 
 ### 5.2 用户体验一致性风险
 
-**风险**：两套 chat（Gateway vs intellect-rag-app）的 UI 行为可能不一致（如 SSE 事件、消息渲染）。
+**风险**：两套 chat（Gateway vs intellect-kb-app）的 UI 行为可能不一致（如 SSE 事件、消息渲染）。
 
 **缓解**：
 - BFF 统一转换为 `StreamChunk` 类型，前端无感知
@@ -299,7 +299,7 @@ RAG 增强对话 chat（kb_ids 非空）
 |---|---|
 | Gateway chat 能力分析 | ✅ 准确 |
 | Gateway 数据流分析 | ✅ 准确 |
-| "RAG 是 PlugIn" 现状 | ⚠️ 部分准确（未区分 intellect-rag-app 与 intellect-team Python plugin） |
+| "RAG 是 PlugIn" 现状 | ⚠️ 部分准确（未区分 intellect-kb-app 与 intellect-team Python plugin） |
 | 推荐按场景分流 | ✅ 方向正确 |
 | 实施难度评估 | ❌ 高估（未发现 BFF 已有完整基础设施） |
 | 鉴权/数据模型/SSE 差异 | ❌ 未分析 |
@@ -309,7 +309,7 @@ RAG 增强对话 chat（kb_ids 非空）
 1. **BFF 已有完整的 Gateway 集成基础设施**，无需新建路由，配置切换即可
 2. **数据模型差异是根本约束**：Gateway session 无 `kb_ids` 字段，决定了"按场景分流"的必要性
 3. **SSE 格式不兼容但 BFF 已解决**：通过 `StreamChunk` 统一抽象，前端无感知
-4. **当前 chat 实际走 intellect-rag-app**（非 Gateway），迁移需修改前端 API 路径
+4. **当前 chat 实际走 intellect-kb-app**（非 Gateway），迁移需修改前端 API 路径
 5. **bff-agents.ts TS 类型断言需修复**，否则配置切换后类型安全受损
 
 ### 6.3 实施路径选择
@@ -328,7 +328,7 @@ RAG 增强对话 chat（kb_ids 非空）
 
 ## 七、RAG 增强 chat 流程中 intellect-team 的参与情况
 
-> 本节回应一个关键追问：评审 §3.2 推荐"有 KB 时走 intellect-rag-app（RAG 增强）"，那么后续是否还会调用 intellect-team？还是全部由 intellect-rag-app 返回？
+> 本节回应一个关键追问：评审 §3.2 推荐"有 KB 时走 intellect-kb-app（RAG 增强）"，那么后续是否还会调用 intellect-team？还是全部由 intellect-kb-app 返回？
 >
 > 结论：**intellect-team 仍会被调用**，分为"模型配置查询"与"LLM 推理"两个环节。当前两个环节均存在缺口，本节同时给出修复路径。
 
@@ -451,18 +451,18 @@ elif model_config["model_type"] == LLMType.CHAT.value:
 ```
 前端 use-send-chat-message.ts
   ├─ dataset_ids 为空  → /api/bff/agents/{agentId}/sessions/* (Gateway 直连)
-  └─ dataset_ids 非空  → /api/bff/proxy/v1/chats/* (intellect-rag-app)
+  └─ dataset_ids 非空  → /api/bff/proxy/v1/chats/* (intellect-kb-app)
 ```
 
-本节补充的是**intellect-rag-app 内部数据流**：
+本节补充的是**intellect-kb-app 内部数据流**：
 
 ```
-intellect-rag-app /api/v1/chats/{id}/completions
+intellect-kb-app /api/v1/chats/{id}/completions
   ├─ 环节 ① 模型配置查询  → intellect-team /api/tenants/{tid}/model-config  (缺口 1)
   └─ 环节 ② LLM 推理     → intellect-team /v1/chat/completions              (缺口 2)
 ```
 
-即：**RAG 增强 chat 在前端入口走 intellect-rag-app，但 intellect-rag-app 内部仍需调用 intellect-team 完成 LLM 推理**。两个环节的缺口需独立修复，与本评审 §4.1-4.2 的 BFF/前端侧改造无依赖关系。
+即：**RAG 增强 chat 在前端入口走 intellect-kb-app，但 intellect-kb-app 内部仍需调用 intellect-team 完成 LLM 推理**。两个环节的缺口需独立修复，与本评审 §4.1-4.2 的 BFF/前端侧改造无依赖关系。
 
 ### 7.6 待办追踪
 
@@ -470,7 +470,7 @@ intellect-rag-app /api/v1/chats/{id}/completions
 
 - **缺口 1**（`model_config_client` 未实现）：建议作为 intellect-rag 独立 TODO，本评审不展开
 - **缺口 2**（`IntellectChatModel` 未注册）：建议采用方案 B 立即修复，方案 A 作为中期演进
-- 与 [intellect-team TODO 文档](file:///Users/simon/project/intellect-team/docs/plans/2026-07-26-rust-gateway-rag-integration-todo.md) 的关系：本节是"RAG 增强 chat 走 intellect-rag-app"路径的内部依赖分析，TODO 文档则是"RAG 能力直接集成到 Gateway"的演进规划，两者互补
+- 与 [intellect-team TODO 文档](file:///Users/simon/project/intellect-team/docs/plans/2026-07-26-rust-gateway-rag-integration-todo.md) 的关系：本节是"RAG 增强 chat 走 intellect-kb-app"路径的内部依赖分析，TODO 文档则是"RAG 能力直接集成到 Gateway"的演进规划，两者互补
 
 ---
 
@@ -565,5 +565,5 @@ G3/G4 已通过前端返回 not_supported / -1 降级,UI 隐藏对应按钮,但*
   - [rust-gateway-gap-analysis.md](file:///Users/simon/project/intellect-team/docs/plans/rust-gateway-gap-analysis.md)（Rust Gateway 差距分析，43 项中无 RAG 项）
 
 - **intellect-rag 侧**：
-  - [chat_api.py](file:///Users/simon/project/intellect-rag-app/api/apps/restful_apis/chat_api.py)（intellect-rag-app SSE 实现）
-  - [tenant_utils.py](file:///Users/simon/project/intellect-rag-app/api/utils/tenant_utils.py)（tenant_id 解析公共工具）
+  - [chat_api.py](file:///Users/simon/project/intellect-kb-app/api/apps/restful_apis/chat_api.py)（intellect-kb-app SSE 实现）
+  - [tenant_utils.py](file:///Users/simon/project/intellect-kb-app/api/utils/tenant_utils.py)（tenant_id 解析公共工具）

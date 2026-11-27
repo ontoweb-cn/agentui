@@ -5,7 +5,7 @@
  * 并将 snake_case 字段名转换为前端 camelCase 约定。
  *
  * 仅服务 gateway 路径（BFF `/agents/chat/completions` → IntellectEnterpriseAdapter /
- * IntellectRagAdapter）。其他调用方走 intellect-rag-app envelope-wrapped 格式，
+ * IntellectRagAdapter）。其他调用方走 intellect-kb-app envelope-wrapped 格式，
  * 继续使用 `useSendMessageWithSse`。
  *
  * Constitution Principle IV v1.3.0: BFF serializeChunk 输出 9 种 event:

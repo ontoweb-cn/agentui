@@ -1,5 +1,5 @@
 /**
- * KB visibility levels, aligned with intellect-rag-app `Knowledgebase.visibility` column.
+ * KB visibility levels, aligned with intellect-kb-app `Knowledgebase.visibility` column.
  *
  * Values mirror the backend `build_ownership_fields` / `_compute_visibility` contract:
  * - `private`: only owner can access (no team/project context)

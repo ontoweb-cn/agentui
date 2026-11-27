@@ -1,7 +1,7 @@
 # AgentUI 前端适配 — 身份同步与模型配置迁移影响分析
 
 > **日期**: 2026-07-24
-> **关联**: intellect-rag-app `docs/identity-database-technical-review.md` v3.0
+> **关联**: intellect-kb-app `docs/identity-database-technical-review.md` v3.0
 > **变更范围**: P0-1、方案 A、Phase 1-3 模型配置迁移
 
 ---

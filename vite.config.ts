@@ -153,8 +153,8 @@ export default defineConfig(({ mode }) => {
         });
       },
     },
-    // cognitive-wargame REST 端点(独立服务,端口 9385,非 intellect-rag-app)
-    // 统一前缀 /api/v1/wargame/*,与 intellect-rag-app 的 /api/v1/* 隔离
+    // cognitive-wargame REST 端点(独立服务,端口 9385,非 intellect-kb-app)
+    // 统一前缀 /api/v1/wargame/*,与 intellect-kb-app 的 /api/v1/* 隔离
     // rewrite 去掉 /wargame 前缀,后端仍监听 /api/v1/*
     '/api/v1/wargame': {
       target: `http://${wargameHost}:${wargamePort}`,

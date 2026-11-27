@@ -25,7 +25,7 @@
 
 已核实 6 个调用方中：
 - `use-send-chat-message.ts` L114-140 确实按 `isGatewayChat` 分流：gateway 走 `api.agentChatCompletion`，RAG 增强走 `api.completionUrl`
-- 其他 4 个调用方（`use-send-shared-message.ts` / `use-send-single-message.ts` / `next-search/hooks.ts` / `use-send-message.ts`）均走 `completionUrl` 或类似 intellect-rag-app 端点
+- 其他 4 个调用方（`use-send-shared-message.ts` / `use-send-single-message.ts` / `next-search/hooks.ts` / `use-send-message.ts`）均走 `completionUrl` 或类似 intellect-kb-app 端点
 
 **结论**：D4 决策（新增独立 hook）正确，零回归风险。
 
@@ -141,7 +141,7 @@ if (res && (res?.response.status !== 200 || (res?.data?.code !== undefined && re
 }
 ```
 
-或更优：新 hook 的 `send()` 在 gateway 路径流式成功时返回 `{ data: { code: 0 }, response }`，保持与 intellect-rag-app envelope 格式兼容。
+或更优：新 hook 的 `send()` 在 gateway 路径流式成功时返回 `{ data: { code: 0 }, response }`，保持与 intellect-kb-app envelope 格式兼容。
 
 ### 3.3 【注意】`resetAnswer` 的 1 秒延迟逻辑
 

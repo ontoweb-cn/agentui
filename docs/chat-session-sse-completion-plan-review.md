@@ -11,7 +11,7 @@
 | 维度 | 评级 | 说明 |
 |---|---|---|
 | 事实准确性 | ⚠️ **部分不准确** | §1.3 "前端 SSE 分发 bug" 描述过绝对；§4.3 数据源错误；遗漏 BFF `serializeChunk` 实际丢弃 `toolCallId` 的 bug |
-| 架构合理性 | ⚠️ **有偏差** | 忽略 `useSendMessageWithSse` 6 个调用方中 3 个走 intellect-rag-app 原生格式；INFLIGHT 合并逻辑异步顺序未说明 |
+| 架构合理性 | ⚠️ **有偏差** | 忽略 `useSendMessageWithSse` 6 个调用方中 3 个走 intellect-kb-app 原生格式；INFLIGHT 合并逻辑异步顺序未说明 |
 | 完整性 | ⚠️ **有遗漏** | `message_end.reference`、`assistant.completed` 事件、i18n、多消息容器、`StreamToolStart` 字段命名转换均未覆盖 |
 | 可实施性 | ⚠️ **有风险** | fetch monkey-patch 风险高；reasoning 双字符串用 useState 异步问题；tool call 卡片位置与 webui 实际行为不符 |
 | 约束一致性 | ✅ **基本对齐** | Constitution Principle IV/VIII、project_memory YAGNI 等约束遵守良好 |
@@ -31,13 +31,13 @@
 | 调用方 | 调用 URL | 上游 | SSE 格式 | `val?.data?.answer` 是否正确 |
 |---|---|---|---|---|
 | `use-send-chat-message.ts` (gateway 分支) | `api.agentChatCompletion` | BFF `/agents/chat/completions` → IntellectEnterpriseAdapter 或 IntellectRagAdapter | `{event, data}` (BFF serializeChunk 输出) | ⚠️ delta/reasoning 巧合地工作；tool_*/usage 错误 |
-| `use-send-chat-message.ts` (RAG 增强分支) | `api.completionUrl` | BFF proxy 透传 → intellect-rag-app `/api/v1/chat/completions` | `{code, message, data: {answer, ...}}` (envelope-wrapped) | ✅ 正确 |
+| `use-send-chat-message.ts` (RAG 增强分支) | `api.completionUrl` | BFF proxy 透传 → intellect-kb-app `/api/v1/chat/completions` | `{code, message, data: {answer, ...}}` (envelope-wrapped) | ✅ 正确 |
 | `use-send-shared-message.ts` | `completionUrl` | 同上 | envelope-wrapped | ✅ 正确 |
 | `use-send-single-message.ts` | `api.completionUrl` | 同上 | envelope-wrapped | ✅ 正确 |
-| `next-search/hooks.ts` | `api.askShare` / `api.searchCompletion` | intellect-rag-app 其他端点 | envelope-wrapped | ✅ 正确 |
+| `next-search/hooks.ts` | `api.askShare` / `api.searchCompletion` | intellect-kb-app 其他端点 | envelope-wrapped | ✅ 正确 |
 | `use-send-message.ts` (canvas) | — | 不调用此 hook | — | — |
 
-**结论**：方案 D3 决策"真正缺口在前端"**只对 gateway 分支成立**。其他 4 个调用方走 intellect-rag-app 原生 envelope-wrapped 格式，**现有 `val?.data?.answer` 逻辑是正确的，不应被重构破坏**。
+**结论**：方案 D3 决策"真正缺口在前端"**只对 gateway 分支成立**。其他 4 个调用方走 intellect-kb-app 原生 envelope-wrapped 格式，**现有 `val?.data?.answer` 逻辑是正确的，不应被重构破坏**。
 
 **修订建议**：
 - P0 重构 `useSendMessageWithSse` 时，**必须按调用 URL 区分分发逻辑**：仅当 URL 是 `api.agentChatCompletion` 时启用新 `dispatchSseFrame`，其他路径保持原逻辑
@@ -253,7 +253,7 @@ if (isCompletionError(ret)) {
 
 `send()` 返回 `{ data: await res, response }`，其中 `data` 是 envelope-wrapped JSON。如果 P0 重构改变了 `send()` 返回值结构（如 `data` 不再是 envelope-wrapped），此调用方会破坏。
 
-**修订建议**：P0 重构时明确 `send()` 返回值结构不变，保持与 intellect-rag-app envelope 格式兼容。
+**修订建议**：P0 重构时明确 `send()` 返回值结构不变，保持与 intellect-kb-app envelope 格式兼容。
 
 ### 3.2 多消息容器场景未说明
 
@@ -306,7 +306,7 @@ if (isCompletionError(ret)) {
 **方案 §9 风险表**："重构 `useSendMessageWithSse` 破坏现有调用方" 风险"高"，缓解措施"保留 `answer` 字段语义不变"。
 
 **实际风险**：
-- 6 个调用方中 4 个走 intellect-rag-app envelope 格式（无 `event` 字段）
+- 6 个调用方中 4 个走 intellect-kb-app envelope 格式（无 `event` 字段）
 - 新 `dispatchSseFrame` 按 `val.event` 分发，对 envelope 格式会走 fallback 分支
 - fallback 分支如何处理 `data: true` 哨兵、`data: {answer, start_to_think}` 等？方案未说明
 

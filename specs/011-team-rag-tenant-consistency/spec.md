@@ -53,7 +53,7 @@ intellect-team（企业版 gateway）与 intellect-rag（RAG/画布引擎）共�
 **目标**：让 RAG 三个 tenant_id 解析路径优先级一致。
 
 **实现**：
-- 修改 `intellect-rag-app/api/identity/context.py` 的 `SubjectContext.from_intellect_team_session`。
+- 修改 `intellect-kb-app/api/identity/context.py` 的 `SubjectContext.from_intellect_team_session`。
 - 新增 `headers: Mapping[str, str] | None = None` keyword-only 参数。
 - 解析优先级：`X-Intellect-Tenant` header（大小写不敏感）> `INTELLECT_TENANT_ID` env > None。
 - 保持"team_id/member_id 永不作为 tenant_id 回退"约束不变。
@@ -69,7 +69,7 @@ intellect-team（企业版 gateway）与 intellect-rag（RAG/画布引擎）共�
 **目标**：让 imt_ 路径下 tenant 管理 API 也能通过权限检查。
 
 **实现**：
-- 在 `intellect-rag-app/api/apps/restful_apis/tenant_api.py` 新增两个辅助函数：
+- 在 `intellect-kb-app/api/apps/restful_apis/tenant_api.py` 新增两个辅助函数：
   - `_get_member_role_in_tenant(member_id, tenant_id)`：返回 `'owner' / 'admin' / 'member' / None`。
   - `_is_tenant_admin(current_user_obj, tenant_id)`：判断当前用户是否对 tenant 有管理员权限。
 - 替换 3 处硬编码：
@@ -162,8 +162,8 @@ BFF 通过 `X-Intellect-Tenant` header 注入 tenant_id，无论 RAG 走哪个�
 | 改进 | 优先级 | 状态 | 实施位置 |
 |------|--------|------|----------|
 | 改进 1 | P0 | ✅ 完成 | `bff/src/services/tenant-validator.ts` + `bff/src/index.ts` |
-| 改进 2 | P0 | ✅ 完成 | `intellect-rag-app/api/identity/context.py` |
-| 改进 3 | P1 | ✅ 完成 | `intellect-rag-app/api/apps/restful_apis/tenant_api.py` |
+| 改进 2 | P0 | ✅ 完成 | `intellect-kb-app/api/identity/context.py` |
+| 改进 3 | P1 | ✅ 完成 | `intellect-kb-app/api/apps/restful_apis/tenant_api.py` |
 | 改进 4 | P1 | ✅ 完成 | 本 spec 第 4 节 |
 | 改进 5 | P2 | ✅ 完成 | 本 spec 文档 |
 | 改进 6 | P0 | ✅ 完成 | `intellect-team/plugins/platforms/api_server/adapter.py` |
@@ -176,7 +176,7 @@ BFF 通过 `X-Intellect-Tenant` header 注入 tenant_id，无论 RAG 走哪个�
 
 ### RAG 侧
 
-- `intellect-rag-app/api/identity/context.py` 的 `from_intellect_team_session` 已有 6 个测试（仅 intellect-rag-app 测试目录），未传 headers 时行为不变。
+- `intellect-kb-app/api/identity/context.py` 的 `from_intellect_team_session` 已有 6 个测试（仅 intellect-kb-app 测试目录），未传 headers 时行为不变。
 - `tenant_api.py` 的改造未新增测试（依赖 DB 集成测试，超出本 spec 范围）。
 
 ### 集成验证
@@ -221,12 +221,12 @@ imt_ token 路径
 
 3. **改进 2 的向后兼容**：`from_intellect_team_session` 的 `headers` 参数默认 None，现有调用方不传 headers 时行为不变。但**未来调用方应优先传 headers**，以利用 header 注入路径。
 
-4. **改进 3 的角色判断依赖**：`_is_tenant_admin` 查询 `tenant_membership` 表，如果 `ensure_team_user` 未及时创建 membership，会拒绝访问。需要保证 imt_ 首次访问时 `ensure_team_user` 被调用（已在 `intellect-rag-app/api/apps/__init__.py:269` 实现）。
+4. **改进 3 的角色判断依赖**：`_is_tenant_admin` 查询 `tenant_membership` 表，如果 `ensure_team_user` 未及时创建 membership，会拒绝访问。需要保证 imt_ 首次访问时 `ensure_team_user` 被调用（已在 `intellect-kb-app/api/apps/__init__.py:269` 实现）。
 
 ## 10. 相关文档
 
 - 方案 B 代码注释：`bff/src/types/tenant.ts`、`bff/src/types/harness.ts`、`bff/src/middleware/backend-context.ts`、`bff/src/services/rag-fetch.ts`、`bff/src/services/intellect-rag-client.ts`、`bff/src/services/adapters/intellect-rag/intellect-rag-adapter.ts`、`bff/src/routes/proxy.ts`
 - intellect-team 租户模型：`intellect-team/intellect-storage/src/tenants.rs`、`intellect-team/intellect-gateway/src/config.rs`
-- intellect-rag SubjectContext：`intellect-rag-app/api/identity/context.py`、`intellect-rag-app/api/utils/api_utils.py`、`intellect-rag-app/api/utils/sync_membership.py`
+- intellect-rag SubjectContext：`intellect-kb-app/api/identity/context.py`、`intellect-kb-app/api/utils/api_utils.py`、`intellect-kb-app/api/utils/sync_membership.py`
 - 现有 spec：`specs/005-bff-auth-default-tenant/spec.md`（缺省 TenantID=0）、`specs/006-frontend-login-adaptation/auth-flow.md`（imt_ token 流程）
 - 后续分析（是否取消 EMAIL/PASSWORD 超管兜底）：[docs/enterprise-rag-admin-credential-analysis.md](../../docs/enterprise-rag-admin-credential-analysis.md)

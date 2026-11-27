@@ -65,7 +65,7 @@ AgentUI 已完成与 Intellect 企业版的对接，具备以下能力：
 
 ### 1.4 项目合并说明(D3 + D4,v8 修正)
 
-**v8 修正(修改 5)**:原 v7 写"intellect-rag 项目代码已合并到 intellect-enterprise 仓库",实际当前 `intellect-rag-app/` 仍是独立项目目录,RAG Server(:9380)和 Rust Gateway(:9091)是两个独立部署的服务。改为:
+**v8 修正(修改 5)**:原 v7 写"intellect-rag 项目代码已合并到 intellect-enterprise 仓库",实际当前 `intellect-kb-app/` 仍是独立项目目录,RAG Server(:9380)和 Rust Gateway(:9091)是两个独立部署的服务。改为:
 
 **未来计划**:intellect-rag 项目代码计划合并到 intellect-enterprise 仓库,但当前仍独立部署。spec-010 的 BackendType 语义修订不依赖此合并,仅澄清命名。
 

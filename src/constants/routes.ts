@@ -109,6 +109,8 @@ export enum Routes {
   AdminMonitoring = `${Routes.Admin}/monitoring`,
   // Multi-Harness P2 (US3):Harness 后端配置 Admin 页面。
   AdminHarnessBackends = `${Routes.Admin}/harness-backends`,
+  /** kb-platform 1a catalog demo */
+  AdminPlatformCatalog = `${Routes.Admin}/platform-catalog`,
   // wizard-sso-followup(A7):统一认证运行时配置设置页。
   AdminSsoSettings = `${Routes.Admin}/sso-settings`,
   // Multi-Harness P5 (US1/US2/US3):Team/Project/Tenant-binding Admin 页面。

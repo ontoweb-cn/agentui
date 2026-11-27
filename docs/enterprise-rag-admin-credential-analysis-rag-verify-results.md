@@ -1,7 +1,7 @@
-# intellect-rag-app 侧验证结果（V1–V5 回填）
+# intellect-kb-app 侧验证结果（V1–V5 回填）
 
 > **日期**: 2026-08-14
-> **验证人**: 对照本机源码取证（`/home/admin/workspace/intellect-rag-app` 应用层 + `/home/admin/workspace/intellect-rag` 数据层 + `/home/admin/workspace/intellect-team` 网关侧）
+> **验证人**: 对照本机源码取证（`/home/admin/workspace/intellect-kb-app` 应用层 + `/home/admin/workspace/intellect-rag` 数据层 + `/home/admin/workspace/intellect-team` 网关侧）
 > **对应清单**: [rag-verify-checklist](./enterprise-rag-admin-credential-analysis-rag-verify-checklist.md)
 > **结论摘要**: V1 **FAIL（阻塞）**；V2 / V4 / V5 **PASS**（V5 附带 BFF 侧路径 bug）；V3 **PASS**（含一处「改进 2 实际生效函数与文档不符」的认知修正）。
 

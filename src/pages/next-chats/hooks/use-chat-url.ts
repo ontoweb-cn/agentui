@@ -65,7 +65,7 @@ export function useCreateConversationBeforeSendMessage() {
       let currentMessages: Array<IMessage> = [];
 
       // 评审文档 §3.2：Gateway chat 的 session 本身就是 conversation，
-      // 无需调用 intellect-rag-app 的 createSession 接口。
+      // 无需调用 intellect-kb-app 的 createSession 接口。
       // 直接用 chatId（URL 路由参数，即 Gateway session ID）作为 conversationId。
       if (conversationId === '' || isNew === 'true') {
         // Gateway chat 判定：(conversationId || chatId) === chatId（URL 结构特征）。

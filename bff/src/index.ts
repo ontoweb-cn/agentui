@@ -22,6 +22,7 @@ import { projectRoutes } from './routes/projects';
 import { tenantBindingRoutes } from './routes/tenant-bindings';
 import { hieduRoutes } from './routes/hiedu';
 import { aihubRoutes } from './routes/aihub';
+import { platformRoutes } from './routes/platform';
 import { aihubGate } from './middleware/aihub-gate';
 import { authSessionMiddleware } from './middleware/auth-session';
 import { requireValidImtSession } from './middleware/imt-session-guard';
@@ -161,6 +162,12 @@ app.use('/aihub/*', authSessionMiddleware);
 app.use('/api/bff/aihub/*', authSessionMiddleware);
 app.route('/', aihubRoutes);
 
+// kb-platform 1a: catalog / status 代理（与 RAG /proxy/v1 分离）。
+// 前端 /api/bff/platform/* → Vite rewrite 后 /platform/* → Go :9381。
+app.use('/platform/*', authMiddleware);
+app.use('/api/bff/platform/*', authMiddleware);
+app.route('/', platformRoutes);
+
 // Auth-protected routes
 app.use('/api/*', authMiddleware);
 app.route('/api/session', sessionRoutes);
@@ -190,7 +197,7 @@ app.use('/proxy/*', authSessionMiddleware);
 // 审计缺陷 A 修复:企业模式验证 imt_token 真实性(垃圾 cookie 不再旁路数据面)
 app.use('/proxy/*', requireValidImtSession);
 // LLM Gateway 代理:模型管理 /providers /models 等 → intellect-team :9091。
-// 智能体编排运行时仍读取 intellect-rag-app 模型配置；默认让模型提供商页面走 RAG。
+// 智能体编排运行时仍读取 intellect-kb-app 模型配置；默认让模型提供商页面走 RAG。
 // 仅当显式设置 BFF_MODEL_PROVIDER_SOURCE=gateway 时，才把模型管理路由转给 Gateway。
 const modelProviderSource = process.env.BFF_MODEL_PROVIDER_SOURCE || 'rag';
 if (modelProviderSource === 'gateway') {
