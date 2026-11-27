@@ -3,7 +3,7 @@
 // 维护 BffTenant 实体与后端绑定关系,只存绑定 refs,不存 Team/Project/Member。
 // setCanvasBinding 强制校验 canvasBackendId 对应的 HarnessBackend.type 必须是 'intellect-rag'。
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
@@ -285,9 +285,17 @@ export class JSONFileBackendStore implements BackendStore {
     if (backend.type !== 'intellect-rag') {
       throw new InvalidCanvasBackendError(tenantId, backendId, backend.type);
     }
+    const previousCanvasBackendId = tenant.canvasBackendId;
+    const previousUpdatedAt = tenant.updatedAt;
     tenant.canvasBackendId = backendId;
     tenant.updatedAt = new Date().toISOString();
-    await this.persist();
+    try {
+      await this.persist();
+    } catch (err) {
+      tenant.canvasBackendId = previousCanvasBackendId;
+      tenant.updatedAt = previousUpdatedAt;
+      throw err;
+    }
   }
 
   getCanvasBinding(tenantId: string): string | undefined {
@@ -303,6 +311,16 @@ export class JSONFileBackendStore implements BackendStore {
     if (!existsSync(DATA_DIR)) {
       mkdirSync(DATA_DIR, { recursive: true });
     }
-    writeFileSync(TENANTS_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    const tempFile = `${TENANTS_FILE}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
+      renameSync(tempFile, TENANTS_FILE);
+    } finally {
+      try {
+        rmSync(tempFile, { force: true });
+      } catch {
+        // 清理失败不改变写入结果,也不掩盖原始写入异常。
+      }
+    }
   }
 }

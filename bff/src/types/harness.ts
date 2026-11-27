@@ -143,6 +143,8 @@ export interface HarnessBackendConfig {
   ragBackendId?: string;
   /** 备注(可选,如 intellect-llm 共享 endpoint 说明) */
   comment?: string;
+  /** 配置修订号,用于租户级设置页的乐观锁;旧配置缺省按 0 处理。 */
+  revision?: number;
 }
 
 // ---------------------------------------------------------------------------

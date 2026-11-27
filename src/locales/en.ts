@@ -1642,6 +1642,56 @@ Example: Virtual Hosted Style`,
       avatar: 'Avatar',
       avatarTip: 'This will be displayed on your profile.',
       profileDescription: 'Update your photo and personal details here.',
+      knowledgeService: 'Knowledge base service',
+      kbConnection: {
+        title: 'Knowledge base service',
+        description:
+          'Configure the intellect-kb-app service URL and service access token.',
+        loading: 'Loading knowledge base service settings...',
+        loadFailed: 'Unable to load knowledge base service settings.',
+        retry: 'Retry',
+        forbidden:
+          'You do not have permission to manage the knowledge base service.',
+        forbiddenDetail:
+          'Contact an administrator to request access to these settings.',
+        notConfigured: 'Not configured',
+        notConfiguredHint:
+          'No knowledge base service is configured or bound. Enter the service URL and service access token, then save and enable it.',
+        enabled: 'Enabled',
+        endpoint: 'Service URL',
+        endpointPlaceholder: 'https://intellect-kb-app.example.com',
+        endpointHint:
+          'Enter the intellect-kb-app base URL without appending /api/v1.',
+        serviceToken: 'Service access token',
+        tokenPlaceholder: 'Enter a service access token',
+        tokenSavedPlaceholder: 'Saved; leave blank to keep it unchanged',
+        tokenHint:
+          'Used only by the BFF server to connect to the knowledge base and make management calls. It does not replace the member imt_ identity used by ordinary KB requests. Use a KB API token or JWT that identifies a service identity independently; do not use an imt_ member token or a token that depends on X-Intellect-User.',
+        endpointRequired: 'Service URL is required.',
+        tokenRequiredInitial:
+          'A service access token is required for initial configuration.',
+        tokenRequiredForUrlChange:
+          'The service URL has changed. Re-enter the service access token to test or save.',
+        test: 'Test connection',
+        testing: 'Testing...',
+        saveAndEnable: 'Save and enable',
+        saving: 'Saving...',
+        testSucceeded: 'Connection test succeeded.',
+        testFailed: 'Connection test failed.',
+        stage: 'Stage',
+        stageVersion: 'Version',
+        stageAuthentication: 'Authentication',
+        message: 'Message',
+        version: 'Version',
+        upstreamStatus: 'Upstream status',
+        savedUnverified:
+          'Saved successfully, but not verified yet. The configuration is enabled; run a connection test to verify it.',
+        saveFailed: 'Failed to save knowledge base service settings.',
+        testRequestFailed: 'Connection test request failed.',
+        conflict:
+          'The configuration has changed, or an active Run is preventing the binding change. Reload the latest configuration before trying again.',
+        reload: 'Reload',
+      },
       maxTokens: 'Max tokens',
       maxTokensMessage: 'Max tokens is required',
       maxTokensTip: `The maximum context size of the model; an invalid or incorrect value will cause an error. Defaults to 512.`,

@@ -12,6 +12,7 @@ import { capabilitiesRoutes } from './routes/capabilities';
 import { featuresRoutes } from './routes/features';
 import { intellectAuthGate } from './middleware/intellect-auth-gate';
 import { harnessAdminRoutes } from './routes/harness-admin';
+import { kbConnectionRoutes } from './routes/kb-connection';
 import { inviteRoutes } from './routes/invites';
 import { sessionRoutes } from './routes/session';
 import { healthRoutes } from './routes/health';
@@ -235,6 +236,14 @@ app.route('/', bffAgentRoutes);
 app.use('/admin/harness-backends/*', authMiddleware);
 app.use('/admin/harness-backends/*', requireValidImtSession);
 app.route('/', harnessAdminRoutes);
+
+// 租户级知识库服务设置。路由内对所选 tenant 实校 owner/admin(社区为超管),
+// 因此不再叠加只验证企业 cookie 的 requireValidImtSession。
+for (const path of ['/settings/kb-connection', '/settings/kb-connection/*']) {
+  app.use(path, authMiddleware);
+  app.use(path, authSessionMiddleware);
+}
+app.route('/', kbConnectionRoutes);
 
 // Multi-Harness P2 (US2): Capabilities 路由 /capabilities/*
 // Constitution Principle I + II + V + VIII: 前端经 BFF 查询能力,按 tenant 隔离。

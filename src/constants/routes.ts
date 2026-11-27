@@ -52,6 +52,7 @@ export enum Routes {
   DataSource = '/data-source',
   DataSourceDetailPage = '/data-source-detail-page',
   ChatChannel = '/chat-channel',
+  KnowledgeService = '/knowledge-service',
   ProfileMcp = `${Routes.ProfileSetting}${Routes.Mcp}`,
   ProfileTeam = `${Routes.ProfileSetting}${Routes.Team}`,
   ProfilePlan = `${Routes.ProfileSetting}${Routes.Plan}`,

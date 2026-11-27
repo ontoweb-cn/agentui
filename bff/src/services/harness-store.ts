@@ -3,9 +3,10 @@
 // 从 JSON 文件(无 token)+ 环境变量(token 明文)合并为运行时 HarnessBackend[]。
 // P4+ 可替换为 SQLite/Postgres 实现,只要实现相同接口(Principle VII YAGNI)。
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type {
   HarnessBackend,
@@ -75,6 +76,7 @@ const backendConfigSchema = z.object({
   intellectTenantId: z.string().regex(/^[0-9a-fA-F]{32}$/).optional(),
   ragBackendId: z.string().min(1).optional(),
   comment: z.string().optional(),
+  revision: z.number().int().nonnegative().optional(),
 });
 
 const configFileSchema = z.object({
@@ -228,12 +230,23 @@ export class JSONFileHarnessStore implements HarnessStore, HarnessStoreListConfi
   }
 
   async saveConfig(config: HarnessBackendConfig[]): Promise<void> {
-    // 只持久化 HarnessBackendConfig(无 token),运行时内存对象不写回
+    // 只持久化 HarnessBackendConfig(无 token),运行时内存对象不写回。
+    // temp + rename 避免进程中断留下半截 JSON;唯一 temp 名避免并发写互相覆盖。
     const data = { backends: config };
     if (!existsSync(DATA_DIR)) {
       mkdirSync(DATA_DIR, { recursive: true });
     }
-    writeFileSync(CONFIG_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    const tempFile = `${CONFIG_FILE}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
+      renameSync(tempFile, CONFIG_FILE);
+    } finally {
+      try {
+        rmSync(tempFile, { force: true });
+      } catch {
+        // 清理失败不改变写入结果,也不掩盖原始写入异常。
+      }
+    }
     // P2:同步更新内存 allConfigs(保证 listConfigs 立即反映新配置)
     this.allConfigs = config;
   }

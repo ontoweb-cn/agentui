@@ -140,6 +140,11 @@ function renderWizard(entry: string) {
 }
 
 describe('WizardPage 企业双卡形态(wizard-ent-sso-mode v1.4 / §14)', () => {
+  // 本套件每条用例都要渲染完整向导页(5 卡 + radix ScrollArea/RadioGroup),
+  // 单条耗时 1.8–3.5s;全量并行(--maxWorkers=4)时 CPU 争抢会超过 jest 默认
+  // 5s 超时导致假失败。此处给足余量,断言本身不变。
+  jest.setTimeout(30000);
+
   beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();

@@ -148,6 +148,10 @@ const routeConfigOptions = [
             Component: () => import('@/pages/user-setting/data-source'),
           },
           {
+            path: `${Routes.UserSetting}${Routes.KnowledgeService}`,
+            Component: () => import('@/pages/user-setting/knowledge-service'),
+          },
+          {
             path: `${Routes.UserSetting}${Routes.ChatChannel}`,
             Component: () => import('@/pages/user-setting/chat-channel'),
           },

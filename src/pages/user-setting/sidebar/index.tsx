@@ -10,6 +10,7 @@ import { TFunction } from 'i18next';
 import {
   LucideBox,
   LucideCircleHelp,
+  LucideDatabase,
   LucideMessagesSquare,
   LucideLogOut,
   LucidePanelLeftClose,
@@ -32,6 +33,11 @@ const menuItems = (t: TFunction, intellectAuthEnabled: boolean) => {
       icon: <LucideServer className="size-[1em]" />,
       label: t('setting.dataSources'),
       key: Routes.DataSource,
+    },
+    {
+      icon: <LucideDatabase className="size-[1em]" />,
+      label: t('setting.knowledgeService'),
+      key: Routes.KnowledgeService,
     },
     {
       icon: <LucideMessagesSquare className="size-[1em]" />,

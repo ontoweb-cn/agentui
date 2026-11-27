@@ -11,6 +11,8 @@ const { mockFs } = vi.hoisted(() => ({
     existsSync: vi.fn(),
     readFileSync: vi.fn(),
     writeFileSync: vi.fn(),
+    renameSync: vi.fn(),
+    rmSync: vi.fn(),
     mkdirSync: vi.fn(),
   },
 }));
@@ -373,6 +375,12 @@ describe('JSONFileHarnessStore', () => {
       expect(content as string).not.toContain('"adminToken":');
       expect(content as string).not.toContain('"projectToken":');
       expect(content as string).not.toContain('secret-token');
+      const [tempFile] = (mockFs.writeFileSync as Mock).mock.calls[0];
+      expect(tempFile).toContain('.tmp');
+      expect(mockFs.renameSync).toHaveBeenCalledWith(
+        tempFile,
+        expect.stringMatching(/harness-backends\.json$/),
+      );
     });
 
     it('DATA_DIR 不存在时先创建目录再写文件', async () => {

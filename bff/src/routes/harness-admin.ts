@@ -107,9 +107,15 @@ function upsertCompanion(
   });
   enterprise.ragBackendId = companion.id;
   const byId = new Map(configs.map((cfg) => [cfg.id, cfg]));
+  const previousCompanion = byId.get(companion.id);
+  const nextCompanion: HarnessBackendConfig = {
+    ...previousCompanion,
+    ...companion,
+    revision: (previousCompanion?.revision ?? 0) + 1,
+  };
   byId.set(enterprise.id, enterprise);
-  byId.set(companion.id, companion);
-  return { next: [...byId.values()], companion };
+  byId.set(companion.id, nextCompanion);
+  return { next: [...byId.values()], companion: nextCompanion };
 }
 
 /**
@@ -247,6 +253,7 @@ harnessAdminRoutes.post('/admin/harness-backends', async (c) => {
     endpoint: form.endpoint,
     adminTokenEnvVar,
     capabilities: form.capabilities,
+    revision: 1,
     ...(form.defaultForTenant !== undefined ? { defaultForTenant: form.defaultForTenant } : {}),
   };
 
@@ -367,6 +374,7 @@ harnessAdminRoutes.put('/admin/harness-backends/:id', async (c) => {
     endpoint: form.endpoint,
     adminTokenEnvVar,
     capabilities: form.capabilities,
+    revision: (prev.revision ?? 0) + 1,
     ...(form.defaultForTenant !== undefined ? { defaultForTenant: form.defaultForTenant } : {}),
     ...(prev.intellectTenantId ? { intellectTenantId: prev.intellectTenantId } : {}),
     ...(prev.comment ? { comment: prev.comment } : {}),

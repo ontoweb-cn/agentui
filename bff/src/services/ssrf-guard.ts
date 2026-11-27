@@ -46,7 +46,7 @@ function isPrivateIP(ip: string): boolean {
 export interface SafeFetchOptions extends RequestInit {
   /** 超时毫秒,默认 10000 */
   timeoutMs?: number;
-  /** 允许私有 IP(开发环境,默认 false) */
+  /** 允许私有 IP;缺省继承 SSRF_ALLOW_PRIVATE_IP(未设置时为 true)。 */
   allowPrivateIP?: boolean;
 }
 

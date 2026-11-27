@@ -25,6 +25,7 @@ const bffAuth = `/api/bff/auth`;
 // spec-008: Canvas routes — 画布脱离 Proxy 路由
 // Constitution Principle I + III: 前端画布操作经 BFF /canvas/*
 const bffCanvas = '/api/bff/canvas';
+const bffKbConnection = '/api/bff/settings/kb-connection';
 // spec-010 v8 B-7: Wizard routes — 首次安装向导
 // Constitution Principle I (BFF-Mediated Frontend): 前端经 BFF Wizard 路由完成首次配置。
 // 不带 X-Backend-Id(运维全局操作),首次安装场景无 admin token。
@@ -269,6 +270,10 @@ export default {
   connectFileToKnowledge: `${restAPIv1}/files/link-to-datasets`,
   getFile: `${restAPIv1}/files`,
   moveFile: `${restAPIv1}/files/move`,
+
+  // knowledge base service connection
+  kbConnection: bffKbConnection,
+  kbConnectionTest: `${bffKbConnection}/test`,
 
   // system
   getSystemVersion: `${restAPIv1}/system/version`,

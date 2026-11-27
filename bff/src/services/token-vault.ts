@@ -7,8 +7,8 @@
 //
 // M3 异步:setCredentials 返回 Promise<void>(加密文件写入是 async)。
 
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -228,7 +228,17 @@ export class EncryptedFileTokenVault implements ITokenVault {
     for (const [id, entry] of this.cache) {
       obj[id] = entry;
     }
-    writeFileSync(this.vaultFile, JSON.stringify(obj, null, 2));
+    const tempFile = `${this.vaultFile}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      writeFileSync(tempFile, JSON.stringify(obj, null, 2), { mode: 0o600 });
+      renameSync(tempFile, this.vaultFile);
+    } finally {
+      try {
+        rmSync(tempFile, { force: true });
+      } catch {
+        // 清理失败不改变写入结果,也不掩盖原始写入异常。
+      }
+    }
   }
 
   private encrypt(data: string): EncryptedEntry {
@@ -271,13 +281,26 @@ export class EncryptedFileTokenVault implements ITokenVault {
   async setCredentials(backendId: string, credential: Credential): Promise<void> {
     const json = JSON.stringify(credential);
     const entry = this.encrypt(json);
+    const previous = this.cache.get(backendId);
     this.cache.set(backendId, entry);
-    this.save();
+    try {
+      this.save();
+    } catch (err) {
+      if (previous) this.cache.set(backendId, previous);
+      else this.cache.delete(backendId);
+      throw err;
+    }
   }
 
   async deleteCredentials(backendId: string): Promise<void> {
+    const previous = this.cache.get(backendId);
     this.cache.delete(backendId);
-    this.save();
+    try {
+      this.save();
+    } catch (err) {
+      if (previous) this.cache.set(backendId, previous);
+      throw err;
+    }
   }
 
   async listBackendIds(): Promise<string[]> {

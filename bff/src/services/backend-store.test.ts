@@ -14,6 +14,8 @@ const { mockFs } = vi.hoisted(() => ({
     existsSync: vi.fn(),
     readFileSync: vi.fn(),
     writeFileSync: vi.fn(),
+    renameSync: vi.fn(),
+    rmSync: vi.fn(),
     mkdirSync: vi.fn(),
   },
 }));
@@ -500,6 +502,24 @@ describe('JSONFileBackendStore', () => {
       await store.setCanvasBinding(tenant.id, 'intellect-rag-default');
 
       expect(store.getCanvasBinding(tenant.id)).toBe('intellect-rag-default');
+    });
+
+    it('持久化失败时恢复原 canvas binding 与 updatedAt', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      const harnessStore = createMockHarnessStore([ragBackend]);
+      const store = new JSONFileBackendStore(harnessStore);
+      const tenant = await store.createBackend('T', 'intellect-rag-default');
+      const previousUpdatedAt = tenant.updatedAt;
+      mockFs.renameSync.mockImplementation(() => {
+        throw new Error('disk full');
+      });
+
+      await expect(
+        store.setCanvasBinding(tenant.id, 'intellect-rag-default'),
+      ).rejects.toThrow('disk full');
+
+      expect(store.getCanvasBinding(tenant.id)).toBeUndefined();
+      expect(tenant.updatedAt).toBe(previousUpdatedAt);
     });
   });
 
