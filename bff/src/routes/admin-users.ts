@@ -4,7 +4,52 @@ import { streamResponse } from '../utils/response';
 
 const UPSTREAM_TIMEOUT_MS = 30_000;
 const MAX_PROXY_BODY_BYTES = 8 * 1024 * 1024;
-const DELETE_USER_PATH = /^\/api\/v1\/admin\/users\/[^/]+$/;
+
+/**
+ * Which (method, path) pairs kb-platform (Go) owns. Everything else under the
+ * proxied prefixes is passed straight through to the Flask admin, so widening the
+ * gateway to these prefixes cannot accidentally break a Flask-only endpoint
+ * (sandbox schema/config/test, service stop/restart, roles, ...).
+ *
+ * 1b-rest: GET /services, /configs, /environments, /version, /variables,
+ * /sandbox/providers are Go-owned; the rest of the sandbox and service surface
+ * stays on Flask because it depends on the Python runtime.
+ */
+const GO_OWNED: Array<{ methods: string[]; matches: (path: string) => boolean }> = [
+  {
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    matches: (p) => p === '/api/v1/admin/users' || p.startsWith('/api/v1/admin/users/'),
+  },
+  {
+    methods: ['GET'],
+    matches: (p) => p === '/api/v1/admin/services' || /^\/api\/v1\/admin\/services\/[^/]+$/.test(p),
+  },
+  { methods: ['GET'], matches: (p) => p === '/api/v1/admin/configs' },
+  { methods: ['GET'], matches: (p) => p === '/api/v1/admin/environments' },
+  { methods: ['GET'], matches: (p) => p === '/api/v1/admin/version' },
+  { methods: ['GET', 'PUT'], matches: (p) => p === '/api/v1/admin/variables' },
+  { methods: ['GET'], matches: (p) => p === '/api/v1/admin/sandbox/providers' },
+];
+
+export function ownedByGo(method: string, path: string): boolean {
+  const upper = method.toUpperCase();
+  return GO_OWNED.some((rule) => rule.methods.includes(upper) && rule.matches(path));
+}
+
+/**
+ * Prefixes routed into this module by nginx/vite. A prefix is listed here as soon
+ * as part of it is Go-owned; handle() decides per request whether to use Go or
+ * Flask.
+ */
+const ADMIN_PROXIED_PATHS = [
+  '/api/v1/admin/users',
+  '/api/v1/admin/services',
+  '/api/v1/admin/configs',
+  '/api/v1/admin/environments',
+  '/api/v1/admin/version',
+  '/api/v1/admin/variables',
+  '/api/v1/admin/sandbox',
+];
 
 export type AdminUserFetch = typeof fetch;
 
@@ -177,13 +222,9 @@ export function createAdminUserRoutes(deps: AdminUserRouteDeps = {}): Hono {
     };
     const mode = process.env.KB_PLATFORM_ADMIN?.trim().toLowerCase() || 'go';
 
-    if (mode === 'python') {
-      try {
-        const flask = await fetchUpstream(upstreamFetch, getFlaskAdminBaseUrl(), req);
-        return streamResponse(flask);
-      } catch (err) {
-        return upstreamError(err);
-      }
+    // python mode, or a path Go does not ship yet: Flask stays authoritative.
+    if (mode === 'python' || !ownedByGo(method, req.path)) {
+      return forwardToFlask(upstreamFetch, req);
     }
 
     let go: Response;
@@ -193,20 +234,32 @@ export function createAdminUserRoutes(deps: AdminUserRouteDeps = {}): Hono {
       return upstreamError(err);
     }
 
-    if (go.status === 501 && method === 'DELETE' && DELETE_USER_PATH.test(req.path)) {
-      try {
-        const flask = await fetchUpstream(upstreamFetch, getFlaskAdminBaseUrl(), req);
-        return streamResponse(flask);
-      } catch (err) {
-        return upstreamError(err);
-      }
+    // 50101 means "kb-platform cannot serve this" (store not configured, or a
+    // capability deliberately left on Flask such as user deletion). Flask owns the
+    // real answer, so fall back rather than surfacing a stub.
+    if (go.status === 501) {
+      return forwardToFlask(upstreamFetch, req);
     }
     return adaptV2ToFlask(go);
   };
 
-  routes.all('/api/v1/admin/users', handle);
-  routes.all('/api/v1/admin/users/*', handle);
+  for (const path of ADMIN_PROXIED_PATHS) {
+    routes.all(path, handle);
+    routes.all(`${path}/*`, handle);
+  }
   return routes;
+}
+
+async function forwardToFlask(
+  upstreamFetch: AdminUserFetch,
+  req: ProxyRequest,
+): Promise<Response> {
+  try {
+    const flask = await fetchUpstream(upstreamFetch, getFlaskAdminBaseUrl(), req);
+    return streamResponse(flask);
+  } catch (err) {
+    return upstreamError(err);
+  }
 }
 
 export const adminUserRoutes = createAdminUserRoutes();

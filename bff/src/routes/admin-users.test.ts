@@ -66,7 +66,6 @@ describe('admin users backend proxy', () => {
   it.each([
     ['C8.4', 404, 40401, '/api/v1/admin/users/missing%40example.com', 'GET'],
     ['C8.5', 409, 40901, '/api/v1/admin/users/admin%40example.com/admin', 'PUT'],
-    ['C8.6', 501, 50101, '/api/v1/admin/users', 'POST'],
   ])(
     '%s Go business error becomes HTTP 200 with data null',
     async (_name, goStatus, goCode, path, method) => {
@@ -122,21 +121,36 @@ describe('admin users backend proxy', () => {
     );
   });
 
-  it('C8.7 DELETE key 501 does not fall back', async () => {
+  it('C8.7 any 501 falls back to Flask', async () => {
+    // 1b-rest: the fallback used to be limited to DELETE /users/:u. A 501 from
+    // kb-platform always means "this build cannot serve it" (unconfigured store or
+    // a capability left on Flask), so every Go-owned path falls back the same way.
     process.env.KB_PLATFORM_ADMIN = 'go';
     process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
     process.env.INTELLECT_ADMIN_URL = 'http://flask-admin.test:9381';
-    const upstreamFetch = vi.fn<typeof fetch>(async () =>
-      jsonResponse(501, { code: 50101, message: 'not configured', data: {} }),
-    );
+    const upstreamFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse(501, { code: 50101, message: 'not configured', data: {} }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, { code: 0, message: 'served by Flask', data: null }),
+      );
     const res = await appWithFetch(upstreamFetch as typeof fetch).request(
       '/api/v1/admin/users/user%40example.com/keys/key',
       { method: 'DELETE' },
     );
 
     expect(res.status).toBe(200);
-    expect((await res.json()).code).toBe(50101);
-    expect(upstreamFetch).toHaveBeenCalledOnce();
+    expect(await res.json()).toEqual({
+      code: 0,
+      message: 'served by Flask',
+      data: null,
+    });
+    expect(upstreamFetch).toHaveBeenCalledTimes(2);
+    expect(String(upstreamFetch.mock.calls[1][0])).toBe(
+      'http://flask-admin.test:9381/api/v1/admin/users/user%40example.com/keys/key',
+    );
   });
 
   it('C8.8 missing KB_PLATFORM_ADMIN defaults to go', async () => {
