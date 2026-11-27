@@ -512,6 +512,17 @@ kbConnectionRoutes.put('/settings/kb-connection', async (c) => {
     }
     const current = getBoundRagConfig(store, tenant);
     const currentRevision = current?.revision ?? 0;
+    // fail-closed:canvasBackendId 已设置但解析不到有效 intellect-rag 后端时,
+    // 禁止把失效绑定当未绑定静默覆盖;管理员需先到 Harness Admin 修复绑定。
+    if (tenant.canvasBackendId && !current) {
+      return c.json(
+        fail(
+          400,
+          '当前租户存在指向无效 RAG 后端的画布绑定,请先到 Harness Admin 修复绑定后再配置知识库服务',
+        ),
+        400,
+      );
+    }
     if (revision !== currentRevision) {
       return c.json(
         fail(409, '配置已被其他管理员修改,请重新加载后再保存'),

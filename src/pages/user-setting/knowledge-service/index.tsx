@@ -116,15 +116,21 @@ export default function KnowledgeServicePage() {
     void load();
   }, [load]);
 
-  const invalidateTestResult = () => {
+  const invalidateTestResult = (clearVersion = false) => {
     setTestResult(null);
     setSavedUnverified(false);
     setValidationError(null);
     setActionError(null);
-    setVersionInfo({
-      version: connection?.version ?? null,
-      versionError: connection?.versionError ?? null,
-    });
+    // URL 变更后,已显示的版本属于旧端点,必须清空避免误导;仅改 Token 时 URL 未变,
+    // 可回显上次加载的版本。
+    if (clearVersion) {
+      setVersionInfo({ version: null, versionError: null });
+    } else {
+      setVersionInfo({
+        version: connection?.version ?? null,
+        versionError: connection?.versionError ?? null,
+      });
+    }
   };
 
   const validatePayload = (): TestKbConnectionPayload | null => {
@@ -388,7 +394,7 @@ export default function KnowledgeServicePage() {
                   disabled={testing || saving}
                   onChange={(event) => {
                     setEndpoint(event.target.value);
-                    invalidateTestResult();
+                    invalidateTestResult(true);
                   }}
                   data-testid="kb-service-endpoint-input"
                 />
