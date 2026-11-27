@@ -22,7 +22,7 @@ share/index.tsx
   → useFetchExternalChatInfo (use-chat-request.ts L868)
   → chatService.fetchExternalChatInfo
   → GET /api/bff/proxy/v1/chatbots/{shared_id}/info
-  → BFF proxy.ts catch-all → intellect-rag-app GET /api/v1/chatbots/{id}/info
+  → BFF proxy.ts catch-all → intellect-kb-app GET /api/v1/chatbots/{id}/info
   → 仅返回 has_tavily_key=bool(tavily_api_key.strip())
 ```
 
@@ -69,4 +69,4 @@ BFF 已有枚举/keyless 集合于 `web-search-validation.ts`,可复用派生聚
 | Gateway session 与 RAG dialog id 不一致导致 info 404 | enrich 优先 Gateway;失败回落 RAG;双 miss 如实 4xx,R6 注记 |
 | 聚合函数前后端漂移 | BFF 纯函数单测覆盖 14 provider + keyless + legacy Tavily + 清除态 |
 | 写侧过滤误伤体验 | 明确排除本批;手册写明"切换服务商 Key 仍保留" |
-| intellect-rag-app 未改 | 不阻塞(BFF 聚合);T4.1b/Phase C 再做检索分发 |
+| intellect-kb-app 未改 | 不阻塞(BFF 聚合);T4.1b/Phase C 再做检索分发 |

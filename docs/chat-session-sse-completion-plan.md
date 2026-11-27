@@ -20,7 +20,7 @@
 | D1 | **不修改 Constitution Principle IV 的 8 值 StreamChunk 枚举** | 枚举锁定为 `delta\|reasoning\|tool_start\|tool_complete\|tool_progress\|usage\|done\|error`，NON-NEGOTIABLE。approval/clarify 不在枚举内 |
 | D2 | **Approval/Clarify 推迟到 P3 之后** | `/api/sessions/{id}/chat/stream` 端点本身不发出 approval/clarify 事件（见 §1.2 调研结论）。Approval 走 `/v1/runs/{run_id}/events` 独立 SSE 通道，但 Constitution Principle VIII 锁定 IntellectEnterpriseAdapter 主通道为 `/api/sessions/{id}/chat/stream`，切换到 `/v1/runs/*` 路径需要宪法修正。BFF 旁路端点不可行（前端无法知道 approval 何时 pending，需要额外轮询）。推迟到独立 spec 推进宪法修正 |
 | D3 | **BFF 做最小必要改动** | gap-analysis §1.3 "BFF serializeChunk 过滤 tool_* 事件" 是过期描述，`serializeChunk` 已透传全部 8 类事件。但 `error` 分支丢弃 `chunk.toolCallId`（见 §1.2），需补充透传。**不引入有状态序列化**（reasoning 开闭状态由前端维护） |
-| D4 | **P0 改为新增独立 hook，不重构 `useSendMessageWithSse`** | `useSendMessageWithSse` 有 6 个调用方，其中 4 个走 intellect-rag-app envelope-wrapped 格式（`{code, message, data: {answer}}`），现有 `val?.data?.answer` 逻辑对它们是正确的。仅 gateway 路径（`use-send-chat-message.ts` 的 gateway 分支）走 BFF `{event, data}` 格式存在 bug。新增 `useSendAgentMessageWithSse` 独立 hook 仅服务 gateway 路径，零回归风险 |
+| D4 | **P0 改为新增独立 hook，不重构 `useSendMessageWithSse`** | `useSendMessageWithSse` 有 6 个调用方，其中 4 个走 intellect-kb-app envelope-wrapped 格式（`{code, message, data: {answer}}`），现有 `val?.data?.answer` 逻辑对它们是正确的。仅 gateway 路径（`use-send-chat-message.ts` 的 gateway 分支）走 BFF `{event, data}` 格式存在 bug。新增 `useSendAgentMessageWithSse` 独立 hook 仅服务 gateway 路径，零回归风险 |
 | D5 | **UI 借鉴 webui 的模式，不复用其代码** | webui 是 Python + 原生 JS，无法直接复用；HTML/CSS 模式需用 React + Tailwind + shadcn/ui 重写 |
 | D6 | **不动 canvas-plugin 的 SSE 路径** | 画布 chat 走 IntellectRagAdapter (Canvas Workflow SSE)，与本文档无关。本文档仅针对 `src/pages/next-chats/` 独立聊天页 |
 | D7 | **Tool call UI 渲染在消息内联，不进 LogSheet** | webui 模式：每条 tool call 渲染为可折叠卡片，附在 assistant 消息内。AgentUI 现有 LogSheet/workflow-timeline 用于画布节点调试，不混用 |
@@ -112,13 +112,13 @@ if (typeof d !== 'boolean') {
 | 调用方 | 调用 URL | 上游 | SSE 格式 | `val?.data?.answer` 是否正确 |
 |---|---|---|---|---|
 | `use-send-chat-message.ts` (gateway 分支) | `api.agentChatCompletion` | BFF `/agents/chat/completions` → IntellectEnterpriseAdapter / IntellectRagAdapter | `{event, data}` (BFF serializeChunk 输出) | ⚠️ delta/reasoning 巧合地工作；tool_*/usage 错误 |
-| `use-send-chat-message.ts` (RAG 增强分支) | `api.completionUrl` | BFF proxy 透传 → intellect-rag-app `/api/v1/chat/completions` | `{code, message, data: {answer, ...}}` (envelope-wrapped) | ✅ 正确 |
+| `use-send-chat-message.ts` (RAG 增强分支) | `api.completionUrl` | BFF proxy 透传 → intellect-kb-app `/api/v1/chat/completions` | `{code, message, data: {answer, ...}}` (envelope-wrapped) | ✅ 正确 |
 | `use-send-shared-message.ts` | `completionUrl` | 同上 | envelope-wrapped | ✅ 正确 |
 | `use-send-single-message.ts` | `api.completionUrl` | 同上 | envelope-wrapped | ✅ 正确 |
-| `next-search/hooks.ts` | `api.askShare` / `api.searchCompletion` | intellect-rag-app 其他端点 | envelope-wrapped | ✅ 正确 |
+| `next-search/hooks.ts` | `api.askShare` / `api.searchCompletion` | intellect-kb-app 其他端点 | envelope-wrapped | ✅ 正确 |
 | `use-send-message.ts` (canvas) | — | 不调用此 hook | — | — |
 
-**结论**：仅 gateway 路径（`use-send-chat-message.ts` 的 gateway 分支）存在 bug。其他 4 个调用方走 intellect-rag-app envelope-wrapped 格式，**现有 `val?.data?.answer` 逻辑是正确的，不应被重构破坏**。P0 采用 D4 决策（新增独立 hook）。
+**结论**：仅 gateway 路径（`use-send-chat-message.ts` 的 gateway 分支）存在 bug。其他 4 个调用方走 intellect-kb-app envelope-wrapped 格式，**现有 `val?.data?.answer` 逻辑是正确的，不应被重构破坏**。P0 采用 D4 决策（新增独立 hook）。
 
 **Gateway 路径的实际 bug**：
 - 收到 `tool_start` 事件：`d = {tool_name, tool_call_id, args}`，`d.answer` undefined，`currentAnswer = ''`，answer 被设为 `''` —— **覆盖已生成内容**

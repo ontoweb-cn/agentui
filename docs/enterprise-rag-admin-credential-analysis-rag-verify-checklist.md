@@ -1,7 +1,7 @@
-# intellect-rag-app 侧验证清单（方案 A 授权前置）
+# intellect-kb-app 侧验证清单（方案 A 授权前置）
 
 > **日期**: 2026-08-14
-> **交付对象**: intellect-rag-app 仓维护者（本文档从 AgentUI BFF 仓发出，RAG 源码不在本仓）
+> **交付对象**: intellect-kb-app 仓维护者（本文档从 AgentUI BFF 仓发出，RAG 源码不在本仓）
 > **用途**: 方案 A（企业版用户路径只认 `imt_`、禁 RAG 超管降级）的 **授权正确性前置核对**。BFF 侧的认证改造可独立推进，但「挂上 `imt_` 后用户能正确访问、TEAM admin 能正确管理」取决于本清单的 5 个结论。
 > **上游依赖**: [enterprise-rag-admin-credential-analysis.md](./enterprise-rag-admin-credential-analysis.md)（方案 A，§9 待核对项）、[specs/011-team-rag-tenant-consistency/spec.md](../specs/011-team-rag-tenant-consistency/spec.md)（已落地的 RAG 侧改动）
 > **回传方式**: 每项按「期望结论 / 实际结论 / 证据（文件:行或测试名）」回填；阻塞项（V1、V2、V4）需给出明确 yes/no。
@@ -33,7 +33,7 @@
 - 这会直接决定方案 A 能否在不破坏企业版管理功能的前提下落地。
 
 **验证位置**：
-- `ensure_team_user` 的定义与调用点。spec 011 指向 `intellect-rag-app/api/apps/__init__.py:269`（首次访问创建 membership 的调用）。
+- `ensure_team_user` 的定义与调用点。spec 011 指向 `intellect-kb-app/api/apps/__init__.py:269`（首次访问创建 membership 的调用）。
 - `tenant_membership` 表结构与 `role` 列的允许取值（`owner` / `admin` / `member`）。
 - TEAM member 的 role 信息来源：imt_ token 的 claims，还是 BFF 注入的 `X-Intellect-User` / 某个 header，还是 RAG 反向调 intellect-team 查询。
 
@@ -113,7 +113,7 @@
 - 011 改进 2 只改了一个函数，但**该函数是否被所有请求入口调用**未经证实。
 
 **验证位置**：
-- `intellect-rag-app/api/identity/context.py`：`from_intellect_team_session` 与 `get_subject_context_from_request`（或等价入口）。
+- `intellect-kb-app/api/identity/context.py`：`from_intellect_team_session` 与 `get_subject_context_from_request`（或等价入口）。
 - 三个 tenant_id 解析路径：`api/utils/api_utils.py`（HTTP 主路径）、`api/utils/sync_membership.py`、`context.py`。
 
 **验证方法**：
@@ -131,13 +131,13 @@
 
 ## V4. 首次 `imt_` 访问是否保证 `ensure_team_user`（阻塞项）
 
-**问题**：`imt_` 用户**首次**访问任一 RAG 接口时，是否保证调用 `ensure_team_user` 创建/更新 `tenant_membership`？spec 011 指向 `intellect-rag-app/api/apps/__init__.py:269`，需确认它是否在**所有 imt_ 请求**的公共路径上（而非仅部分路由）。
+**问题**：`imt_` 用户**首次**访问任一 RAG 接口时，是否保证调用 `ensure_team_user` 创建/更新 `tenant_membership`？spec 011 指向 `intellect-kb-app/api/apps/__init__.py:269`，需确认它是否在**所有 imt_ 请求**的公共路径上（而非仅部分路由）。
 
 **为什么重要**：
 - 011 改进 3 的 `_is_tenant_admin` 查 `tenant_membership`，若首次访问未建 membership，会拒绝访问（011 §9 风险 4 已提示）。
 - 若 `ensure_team_user` 只在个别端点调用，首次访问画布可能建了、首次访问 tenant 管理可能没建，行为不一致。
 
-**验证位置**：`intellect-rag-app/api/apps/__init__.py`（`ensure_team_user` 的挂载/调用链）。
+**验证位置**：`intellect-kb-app/api/apps/__init__.py`（`ensure_team_user` 的挂载/调用链）。
 
 **验证方法**：
 1. 确认 `ensure_team_user` 是挂在 app 级中间件 / 请求前置，而非某个端点 handler 内。
@@ -189,8 +189,8 @@
 
 | 改进 | 位置 | 已落地行为 |
 |---|---|---|
-| 改进 2 (P0) | `intellect-rag-app/api/identity/context.py` | `from_intellect_team_session` 新增 `headers` 参数，解析优先级 `X-Intellect-Tenant` header > env > None |
-| 改进 3 (P1) | `intellect-rag-app/api/apps/restful_apis/tenant_api.py` | 新增 `_get_member_role_in_tenant` / `_is_tenant_admin`，替换 `user_list`/`create`/`rm` 三处 UUID 判断 |
+| 改进 2 (P0) | `intellect-kb-app/api/identity/context.py` | `from_intellect_team_session` 新增 `headers` 参数，解析优先级 `X-Intellect-Tenant` header > env > None |
+| 改进 3 (P1) | `intellect-kb-app/api/apps/restful_apis/tenant_api.py` | 新增 `_get_member_role_in_tenant` / `_is_tenant_admin`，替换 `user_list`/`create`/`rm` 三处 UUID 判断 |
 | 改进 6 (P0) | `intellect-team/plugins/platforms/api_server/adapter.py` | 新增公开端点 `GET /api/tenant/info`（本清单不涉及，供 BFF 启动校验用） |
 
 ---

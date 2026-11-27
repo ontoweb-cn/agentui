@@ -895,7 +895,7 @@ export function serializeChunk(chunk: import('../types/stream').StreamChunk): st
       payload = { event: 'message_end', data: { usage: chunk.usage } };
       break;
     case 'done':
-      // data: true 匹配 intellect-rag-app 的 done 信号格式，
+      // data: true 匹配 intellect-kb-app 的 done 信号格式，
       // useSendMessageWithSse 通过 typeof d !== 'boolean' 跳过更新并关闭流。
       payload = { event: 'workflow_finished', data: true };
       break;

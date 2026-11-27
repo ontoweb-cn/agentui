@@ -20,7 +20,7 @@ export interface ProxyRequest {
   query: string;
   /**
    * BFF-P0-1: 解析后的 member_id (来自 token → /api/members/me 解析)。
-   * 设置后注入 X-Intellect-User header,让 intellect-rag-app 获知调用方身份。
+   * 设置后注入 X-Intellect-User header,让 intellect-kb-app 获知调用方身份。
    * 仅企业版 (authMode=intellect-enterprise) 下传入,RAG 版为 undefined。
    */
   intellectUserId?: string;
@@ -33,7 +33,7 @@ export interface ProxyRequest {
   /**
    * D1.2 B (identity-model-migration): 实例内 Team 组织隔离 ID。
    * 来自 BffTenant.intellectTenantId(经 backend-context 中间件过滤 "0" 缺省值)。
-   * 设置后注入 X-Intellect-Team header,让 intellect-rag-app 在 KB ownership
+   * 设置后注入 X-Intellect-Team header,让 intellect-kb-app 在 KB ownership
    * 字段写入时使用正确的 team_id(visibility=team)。
    */
   intellectTeamId?: string;
@@ -92,7 +92,7 @@ export async function proxy(path: string, req: ProxyRequest): Promise<Response> 
   headers.delete('Authorization');
 
   // BFF-P0-1 / D1.2 B / 方案 B: 注入服务端解析的 member_id / team_id / project_id / tenant_id
-  // (intellect-rag-app 据此设置 KB ownership 字段,避免静默降级为 private)
+  // (intellect-kb-app 据此设置 KB ownership 字段,避免静默降级为 private)
   // P1-b(§4.1): 强制服务令牌时跳过全部身份注入——租户/团队隔离由服务令牌
   // 自己的上下文决定,成员身份头与令牌身份不一致会让 RAG 归属判断混乱。
   if (!req.forceServiceToken) {

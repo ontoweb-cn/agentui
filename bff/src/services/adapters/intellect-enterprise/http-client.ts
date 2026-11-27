@@ -321,7 +321,7 @@ export class IntellectEnterpriseHttpClient {
       headers['Authorization'] = `Bearer ${this.apiServerKey}`;
     }
     // BFF-P0-1: 注入解析后的 member_id 为 X-Intellect-User header。
-    // 让下游 intellect-rag-app 在 KB/Chunk 创建时设置正确的 owner_user_id。
+    // 让下游 intellect-kb-app 在 KB/Chunk 创建时设置正确的 owner_user_id。
     // 安全: member_id 来自服务端 token→/api/members/me 解析,非客户端 X-User-Id header。
     if (ctx.intellectUserId) {
       headers['X-Intellect-User'] = ctx.intellectUserId;

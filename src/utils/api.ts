@@ -226,7 +226,7 @@ export default {
   // chat
   // 双路径架构（评审文档 chat-session-gateway-migration-review.md §3.2）：
   // - 纯 LLM 对话（kb_ids 为空）→ 走 Gateway session API（bffAgents/*）
-  // - RAG 增强对话（kb_ids 非空）→ 走 intellect-rag-app（restAPIv1/chats/*）
+  // - RAG 增强对话（kb_ids 非空）→ 走 intellect-kb-app（restAPIv1/chats/*）
   // 前端按 chat.dataset_ids 是否为空选择路径。
   // Gateway session 复用 agent session 路径（createAgentSession/fetchAgentSessions 等），
   // completions 路径为 agentChatCompletion。

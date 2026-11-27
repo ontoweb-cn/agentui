@@ -5,7 +5,7 @@
  * IntellectRagAdapter），按 `val.event` 路由到不同处理器，避免 tool/usage 事件污染 answer 状态。
  *
  * 其他调用方（use-send-shared-message.ts / use-send-single-message.ts / next-search/hooks.ts /
- * RAG 增强分支）走 intellect-rag-app envelope-wrapped 格式，继续使用 `useSendMessageWithSse`。
+ * RAG 增强分支）走 intellect-kb-app envelope-wrapped 格式，继续使用 `useSendMessageWithSse`。
  *
  * 关键设计：
  * - `answer` 字段语义与 `useSendMessageWithSse` 保持一致，便于 use-send-chat-message.ts 无缝切换

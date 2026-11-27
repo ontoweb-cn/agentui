@@ -94,7 +94,7 @@ export interface IDialog {
   /**
    * Chat 来源标识（评审文档 chat-session-gateway-migration-review.md §3.2）。
    * - 'gateway': 纯 LLM 对话，走 intellect-team Gateway session
-   * - 'rag'（默认/未设置）: RAG 增强对话，走 intellect-rag-app Dialog
+   * - 'rag'（默认/未设置）: RAG 增强对话，走 intellect-kb-app Dialog
    * 前端按此字段选择 API 路径（createSession/sendMessage/listSessions 等）。
    */
   source?: 'gateway' | 'rag';
