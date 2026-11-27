@@ -35,6 +35,7 @@ import {
 } from './http-client';
 import { parseIntellectEnterpriseRunEventsSSE } from './parse-intellect-enterprise-run-events-sse';
 import { redactWebSearchSecretsFromPromptConfig } from '../../../utils/web-search-capability';
+import { omitBlankWebSearchApiKeys } from '../../../utils/web-search-validation';
 
 /**
  * 企业版默认能力(当 /v1/capabilities 端点不存在时降级返回)。
@@ -256,7 +257,9 @@ export class IntellectEnterpriseAdapter implements IHarnessAdapter {
       body.kb_ids = params.kbIds;
     }
     if (params.promptConfig !== undefined) {
-      body.prompt_config = params.promptConfig;
+      // Blank keys are "leave empty to keep". Non-empty keys stay for
+      // Gateway PATCH to store and strip in one transaction.
+      body.prompt_config = omitBlankWebSearchApiKeys(params.promptConfig);
     }
     const data = await this.httpClient.request<unknown>(
       'PATCH',

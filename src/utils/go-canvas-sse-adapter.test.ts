@@ -1,5 +1,6 @@
 import { MessageEventType } from '@/hooks/use-send-message';
 import {
+  adaptCanvasLiveSsePayload,
   mapGoCanvasSseEvent,
   mapGoCanvasSseEventToMessageEvents,
 } from './go-canvas-sse-adapter';
@@ -97,5 +98,96 @@ describe('mapGoCanvasSseEventToMessageEvents (compat)', () => {
       mapGoCanvasSseEventToMessageEvents('message', { content: 'c' })[0]
         .event,
     ).toBe(MessageEventType.Message);
+  });
+});
+
+describe('adaptCanvasLiveSsePayload', () => {
+  const envelope = {
+    message_id: 'm1',
+    session_id: 's1',
+    created_at: 1,
+    task_id: 't1',
+  };
+
+  it('passes Python node_started through unchanged', () => {
+    const raw = {
+      ...envelope,
+      event: 'node_started',
+      data: { component_id: 'begin' },
+    };
+    expect(adaptCanvasLiveSsePayload(raw)).toEqual({ events: [raw] });
+  });
+
+  it('copies Go message.answer into content and keeps the envelope', () => {
+    const out = adaptCanvasLiveSsePayload({
+      ...envelope,
+      event: 'message',
+      data: { answer: 'hi' },
+    });
+    expect(out.events).toEqual([
+      {
+        ...envelope,
+        event: MessageEventType.Message,
+        data: { answer: 'hi', content: 'hi', audio_binary: '', outputs: {} },
+      },
+    ]);
+  });
+
+  it('maps waiting_for_user onto the fill-up event', () => {
+    const out = adaptCanvasLiveSsePayload({
+      ...envelope,
+      event: 'waiting_for_user',
+      data: { cpn_id: 'n1', tips: 'fill', inputs: { q: 1 } },
+    });
+    expect(out.events).toHaveLength(1);
+    expect(out.events[0]).toMatchObject({
+      message_id: 'm1',
+      task_id: 't1',
+      event: MessageEventType.UserInputs,
+      data: { cpn_id: 'n1', tips: 'fill', inputs: { q: 1 } },
+    });
+  });
+
+  it('expands done into message_end and workflow_finished', () => {
+    const out = adaptCanvasLiveSsePayload({
+      ...envelope,
+      event: 'done',
+      data: {},
+    });
+    expect(out.events.map((ev) => (ev as { event: string }).event)).toEqual([
+      MessageEventType.MessageEnd,
+      MessageEventType.WorkflowFinished,
+    ]);
+  });
+
+  it('ignores trailing done after workflow_finished', () => {
+    expect(
+      adaptCanvasLiveSsePayload(
+        { ...envelope, event: 'done', data: {} },
+        { workflowFinishedSeen: true },
+      ),
+    ).toEqual({ events: [] });
+  });
+
+  it('maps cancelled to workflow_finished with cancelled=true', () => {
+    const out = adaptCanvasLiveSsePayload({
+      ...envelope,
+      event: 'cancelled',
+      data: { message: 'stopped' },
+    });
+    expect(out.events[0]).toMatchObject({
+      event: MessageEventType.WorkflowFinished,
+      data: { message: 'stopped', cancelled: true },
+    });
+  });
+
+  it('sends Go error to the toast channel and not the timeline', () => {
+    expect(
+      adaptCanvasLiveSsePayload({
+        ...envelope,
+        event: 'error',
+        data: { error: 'boom' },
+      }),
+    ).toEqual({ events: [], streamError: 'boom' });
   });
 });

@@ -1,11 +1,13 @@
 /**
- * Phase B 预备:Go StreamAgent 事件名 → 画布 MessageEventType 序列。
+ * Phase B:Go StreamAgent 事件名 → 画布 MessageEventType 序列。
  * 真源:agent-go-port-design §11 + docs/phase-bc-frontend-alignment-prep.md。
  *
- * **未接线** useSendMessageBySSE / canvas-plugin live 路径(L-PHASEB-01)。
+ * Live 入口:`adaptCanvasLiveSsePayload`,由 `useSendMessageBySSE` 调用。
+ * Python 画布原事件名原样透传;只改写 Go 专有名(`waiting_for_user`/`done`/`error`/`cancelled`)
+ * 以及仅带 `answer` 的 `message`。
  */
 
-import { MessageEventType } from '@/hooks/use-send-message';
+import { MessageEventType } from '@/hooks/message-event-type';
 
 export type GoCanvasMappedEvent = {
   event: MessageEventType;
@@ -151,6 +153,91 @@ export function mapGoCanvasSseEvent(
     default:
       return { events: [] };
   }
+}
+
+const NATIVE_CANVAS_EVENTS = new Set<string>([
+  MessageEventType.WorkflowStarted,
+  MessageEventType.NodeStarted,
+  MessageEventType.NodeFinished,
+  MessageEventType.Message,
+  MessageEventType.MessageEnd,
+  MessageEventType.WorkflowFinished,
+  MessageEventType.UserInputs,
+  MessageEventType.NodeLogs,
+]);
+
+export type AdaptCanvasLiveOptions = {
+  /**
+   * Go canvas appends `done` after `workflow_finished`. Expanding that
+   * trailing `done` would emit a second end pair.
+   */
+  workflowFinishedSeen?: boolean;
+};
+
+/**
+ * Normalize one canvas SSE JSON payload before it enters the live answer list.
+ * Python event envelopes pass through. Go-only names expand into that envelope
+ * (message_id / session_id / task_id kept). `error` is a toast, not a timeline event.
+ * A `done` after `workflow_finished` is ignored.
+ */
+export function adaptCanvasLiveSsePayload(
+  raw: unknown,
+  options: AdaptCanvasLiveOptions = {},
+): {
+  events: unknown[];
+  streamError?: string;
+} {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { events: [raw] };
+  }
+  const record = raw as Record<string, unknown>;
+  const eventName = typeof record.event === 'string' ? record.event : '';
+  if (!eventName) {
+    return { events: [raw] };
+  }
+
+  if (eventName === 'done' && options.workflowFinishedSeen) {
+    return { events: [] };
+  }
+
+  if (eventName === MessageEventType.Message) {
+    const data = asRecord(record.data) ?? {};
+    if (typeof data.content !== 'string' && typeof data.answer === 'string') {
+      return {
+        events: [
+          {
+            ...record,
+            data: {
+              ...data,
+              content: data.answer,
+              audio_binary: data.audio_binary ?? '',
+              outputs: data.outputs ?? {},
+            },
+          },
+        ],
+      };
+    }
+    return { events: [raw] };
+  }
+
+  if (NATIVE_CANVAS_EVENTS.has(eventName)) {
+    return { events: [raw] };
+  }
+
+  const mapped = mapGoCanvasSseEvent(eventName, asRecord(record.data) ?? {});
+  if (mapped.events.length === 0) {
+    return mapped.streamError
+      ? { events: [], streamError: mapped.streamError }
+      : { events: [raw] };
+  }
+  return {
+    events: mapped.events.map((ev) => ({
+      ...record,
+      event: ev.event,
+      data: ev.data,
+    })),
+    streamError: mapped.streamError,
+  };
 }
 
 /**

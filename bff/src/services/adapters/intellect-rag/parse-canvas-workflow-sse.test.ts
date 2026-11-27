@@ -111,6 +111,42 @@ describe('parseCanvasWorkflowSSE', () => {
     expect(chunks[0].type).toBe('done');
   });
 
+  it('Go message.answer 产出 StreamDelta', async () => {
+    const sse = toReadableStream(
+      'data: {"event":"message","message_id":"m1","session_id":"s1","created_at":1,"data":{"answer":"from-go"}}\n\n',
+    );
+    const chunks = await collect(parseCanvasWorkflowSSE(sse));
+    expect(chunks).toEqual([{ type: 'delta', content: 'from-go' }]);
+  });
+
+  it('waiting_for_user 透传 metadata,不结束流', async () => {
+    const sse = toReadableStream(
+      'data: {"event":"waiting_for_user","data":{"cpn_id":"n1","tips":"fill","inputs":{"q":1}}}\n\n' +
+        'data: {"event":"message","data":{"content":"after"}}\n\n',
+    );
+    const chunks = await collect(parseCanvasWorkflowSSE(sse));
+    expect(chunks[0]).toMatchObject({
+      type: 'delta',
+      metadata: { waiting_for_user: true, cpn_id: 'n1', tips: 'fill' },
+    });
+    expect(chunks[1]).toEqual({ type: 'delta', content: 'after' });
+  });
+
+  it('Go error 与 done 分别产出 error / done', async () => {
+    const err = await collect(
+      parseCanvasWorkflowSSE(
+        toReadableStream('data: {"event":"error","data":{"error":"boom"}}\n\n'),
+      ),
+    );
+    expect(err).toEqual([{ type: 'error', message: 'boom' }]);
+    const done = await collect(
+      parseCanvasWorkflowSSE(
+        toReadableStream('data: {"event":"done","data":{}}\n\n'),
+      ),
+    );
+    expect(done).toEqual([{ type: 'done' }]);
+  });
+
   it('node_started / node_finished 不产出 StreamChunk(内部状态)', async () => {
     const sse = toReadableStream(
       'data: {"event":"node_started","message_id":"m1","session_id":"s1","created_at":1,"data":{"component_id":"begin","component_name":"Begin","component_type":"begin"}}\n\n' +

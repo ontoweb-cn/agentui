@@ -43,7 +43,7 @@
 
 Go 画布实际发出的事件已冻结在 `ragflow/internal/agent/canvas/events_contract.go`(2026-11-25):`workflow_started`、`node_started`、`node_finished`、`message`、`message_end`、`workflow_finished`、`waiting_for_user`、`error`、`cancelled`、`done`。其中 `done` 由 handler 在流结束时补上,不是 runner 内部事件。`node_logs` 与 `user_inputs` 不是 Go 画布事件名;填表对应 `waiting_for_user`。
 
-canvas-plugin 依赖 `node_started` / `node_finished`。适配器 `mapGoCanvasSseEvent` 已按原名透传这些事件,取消映射为带 `cancelled: true` 的 `workflow_finished`。**仍未**接到 `parseCanvasWorkflowSSE`(L-PHASEB-01)。禁止删除 `NodeStarted` / `NodeFinished` 的消费。
+canvas-plugin 依赖 `node_started` / `node_finished`。这些 Python 事件名在 live 路径原样透传。Go 专有名由 `adaptCanvasLiveSsePayload`(2026-11-26)改写后再进入时间线:`waiting_for_user`→填表,未见流程结束时 `done`→`message_end`+`workflow_finished`,已见过则忽略尾部 `done`,`cancelled`→带 `cancelled: true` 的 `workflow_finished`,`error`→错误提示。BFF `parseCanvasWorkflowSSE` 对同一组事件产出 StreamChunk。禁止删除 `NodeStarted` / `NodeFinished` 的消费。本机没有 Go 画布进程,取消后 5 秒内停节点的可见态未实测。
 
 ### 2.4 Cancel(两段式 §7.5)
 

@@ -192,6 +192,46 @@ export function sanitizePromptConfigWebSearchKeys(
   return out;
 }
 
+function providerFromKeyField(field: string): string | undefined {
+  if (/_api_key$/i.test(field)) {
+    const provider = field.slice(0, -'_api_key'.length).toLowerCase();
+    return WEB_SEARCH_PROVIDERS.has(provider) ? provider : undefined;
+  }
+  if (/ApiKey$/.test(field)) {
+    const base = field.slice(0, -'ApiKey'.length).toLowerCase();
+    return WEB_SEARCH_PROVIDERS.has(base) ? base : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Drop blank provider key fields before PATCH.
+ * Non-empty keys stay so Gateway §3.4 can store and strip them in one transaction.
+ * BFF does not PUT secrets itself: a separate PUT then PATCH can commit the key
+ * while the save still fails, and every PUT bumps key_version.
+ */
+export function omitBlankWebSearchApiKeys(promptConfig: unknown): unknown {
+  if (
+    promptConfig === undefined ||
+    promptConfig === null ||
+    typeof promptConfig !== 'object' ||
+    Array.isArray(promptConfig)
+  ) {
+    return promptConfig;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(promptConfig as Record<string, unknown>)) {
+    if (providerFromKeyField(key)) {
+      if (typeof value === 'string' && value.trim()) {
+        out[key] = value;
+      }
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
 /**
  * 分享页聚合位:任一可用 provider 配置即 true。
  * - keyless provider 已选 → true

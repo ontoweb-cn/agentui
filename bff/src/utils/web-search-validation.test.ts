@@ -3,6 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeHasWebSearchProvider,
+  omitBlankWebSearchApiKeys,
   sanitizePromptConfigWebSearchKeys,
   validateWebSearchPromptConfig,
 } from './web-search-validation';
@@ -200,5 +201,32 @@ describe('computeHasWebSearchProvider (T4.1a)', () => {
   it('无配置 → false', () => {
     expect(computeHasWebSearchProvider({ system: 's' })).toBe(false);
     expect(computeHasWebSearchProvider(null)).toBe(false);
+  });
+});
+
+describe('omitBlankWebSearchApiKeys (T4.2)', () => {
+  it('去掉空白 key,非空 key 和其余字段保留', () => {
+    expect(
+      omitBlankWebSearchApiKeys({
+        web_search_provider: 'tavily',
+        tavily_api_key: ' tvly ',
+        exa_api_key: '   ',
+        exaApiKey: '',
+        prologue: 'hi',
+      }),
+    ).toEqual({
+      web_search_provider: 'tavily',
+      tavily_api_key: ' tvly ',
+      prologue: 'hi',
+    });
+  });
+
+  it('仅空白 key 时 PATCH 体不再带该字段', () => {
+    expect(
+      omitBlankWebSearchApiKeys({
+        web_search_provider: 'tavily',
+        tavily_api_key: '',
+      }),
+    ).toEqual({ web_search_provider: 'tavily' });
   });
 });

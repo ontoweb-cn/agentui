@@ -1,9 +1,9 @@
 /**
- * Phase B 预备:Go StreamAgent SSE 事件 → BFF StreamChunk。
+ * Phase B:Go StreamAgent SSE 事件 → BFF StreamChunk。
  * 真源:intellect-rag docs/develop/agent-go-port-design.md §11。
  *
- * **未接线** parseCanvasWorkflowSSE / 画布 live 路径。
- * 待 Go SSE 可探测且契约稳定后,由 phase-b-sse-adapter 批合入解析器。
+ * 由 `parseCanvasWorkflowSSE` 在 Go 专有事件(`waiting_for_user` / `error` /
+ * `done` / `cancelled`)上调用。Python 原事件仍由解析器自己处理。
  */
 
 import type { StreamChunk, StreamDelta } from '../types/stream';
@@ -83,7 +83,8 @@ export function mapGoStreamAgentEventToChunks(
       return [{ type: 'error', message }];
     }
 
-    case 'done': {
+    case 'done':
+    case 'cancelled': {
       return [{ type: 'done' }];
     }
 

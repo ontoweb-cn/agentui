@@ -2,8 +2,8 @@
  * T4.2 M1 预备:Gateway `web_search_secrets` HTTP 客户端(契约见
  * docs/web-search-secrets-gateway-api-contract.md)。
  *
- * **未接线** PATCH / list / getSession。仅供探测与未来 `t42-m1-wire` 复用。
- * 探测失败(404/网络)→ unavailable,调用方不得启用 sanitizePromptConfigWebSearchKeys。
+ * Enterprise `updateSession` 不调用本客户端。密钥写入由 Gateway PATCH 同一事务完成。
+ * 本客户端仍是探测/拼 URL 辅助。
  */
 
 export type WebSearchSecretStatusItem = {

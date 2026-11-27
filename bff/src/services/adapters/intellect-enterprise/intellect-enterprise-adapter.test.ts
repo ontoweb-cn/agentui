@@ -447,6 +447,50 @@ describe('IntellectEnterpriseAdapter', () => {
         prompt_config: { system: 'sys', web_search: { provider: 'tavily' } },
       });
     });
+
+    it('T4.2: 只发一次 PATCH,空白 key 去掉,非空 key 留给 Gateway', async () => {
+      httpClientMock.request.mockResolvedValueOnce({ id: 'sess-1', title: 't' });
+      await adapter.updateSession(ctx, 'agent-1', 'sess-1', {
+        promptConfig: {
+          web_search_provider: 'tavily',
+          tavily_api_key: 'tvly-secret',
+          exa_api_key: '   ',
+          prologue: 'hi',
+        },
+      });
+      expect(httpClientMock.request).toHaveBeenCalledTimes(1);
+      expect(httpClientMock.request).toHaveBeenCalledWith(
+        'PATCH',
+        '/api/sessions/sess-1',
+        ctx,
+        {
+          prompt_config: {
+            web_search_provider: 'tavily',
+            tavily_api_key: 'tvly-secret',
+            prologue: 'hi',
+          },
+        },
+      );
+    });
+
+    it('T4.2: 仅空白 key 时 PATCH 不含该字段,也不另发 PUT', async () => {
+      httpClientMock.request.mockResolvedValueOnce({ id: 'sess-1', title: 't' });
+      await adapter.updateSession(ctx, 'agent-1', 'sess-1', {
+        promptConfig: {
+          web_search_provider: 'tavily',
+          tavily_api_key: '',
+        },
+      });
+      expect(httpClientMock.request).toHaveBeenCalledTimes(1);
+      expect(httpClientMock.request).toHaveBeenCalledWith(
+        'PATCH',
+        '/api/sessions/sess-1',
+        ctx,
+        {
+          prompt_config: { web_search_provider: 'tavily' },
+        },
+      );
+    });
   });
 
   describe('listSessions', () => {

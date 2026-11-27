@@ -15,6 +15,8 @@
 > **v9.1(2026-11-23)**:质量/安全评审跟进——BFF `resolveWebSearchProvider` 与前端对齐(非法 provider 不回落 Tavily);补齐 `redactSessionWebSearchSecrets` 供 rag/mcp/openai-base `listSessions`;设计 §10 明确 GET 详情明文为 T4.2 过渡债与缓解面。
 > **v9.2(2026-11-23)**:九步 `exec-triad-20261123` 复证三连闸门——Gateway secrets **仍无路由**(L-T42-01 不关闭);kubectl 缺失(L-09/L-10);Go SSE 未稳定(L-PHASEB-01)。交付 secrets probe 客户端 + Go SSE↔StreamChunk/MessageEventType 映射预备(**未接线** live)。报告 [REPORT-exec-triad-20261123.md](../tests/e2e-tests/reports/REPORT-exec-triad-20261123.md)。
 > **v9.3(2026-11-23)**:九步 `gate-reverify-20261123` **再次复证**三连仍关——不伪关闭 L-*;增量 `npm run check:exec-gates`([scripts/check-exec-gates.mjs](../scripts/check-exec-gates.mjs))。报告 [REPORT-gate-reverify-20261123.md](../tests/e2e-tests/reports/REPORT-gate-reverify-20261123.md)。
+> **v9.12(2026-11-26)**:评审修订——BFF 不再单独 PUT secrets。空白 key 在 PATCH 前去掉;非空 key 仍交给 Gateway,由它在同一次 PATCH 里入库并剥离。画布 live 路径在已经收到 `workflow_finished` 之后忽略尾部 `done`。
+> **v9.11(2026-11-26)**:九步 `t42-phaseb-closeout`——画布 live SSE 接入 `adaptCanvasLiveSsePayload`(`waiting_for_user`/`done`/`error`/`cancelled`/`message.answer`);BFF `parseCanvasWorkflowSSE` 识别同一组 Go 事件。Enterprise `updateSession` 曾对非空 key 先 PUT(v9.12 已撤回,避免与 PATCH 拆成两次提交)。**T4.2 仍未关闭**:M2 生产回填、M4 主密钥(Rust,本机无仓库)、其余 provider 真实消费、真实浏览器。报告 [REPORT-t42-phaseb-closeout-20261126.md](../tests/e2e-tests/reports/REPORT-t42-phaseb-closeout-20261126.md)。
 > **v9.10(2026-11-25)**:M1 运行时密钥边界收口——`AgentConfig.web_search_api_key` 使用 `RuntimeSecret`(Debug redacted + zeroize),不再注入 PC;M2 CLI 增加 `--verify`(明文/非 v2 清零);provider guard 纳入 `npm run type-check`;member-token legacy 越权改 strict/404。仍待 native/Python consumer、M2 生产回填、M4 代码、真实浏览器/provider。
 > **v9.9(2026-11-25)**:M3 安全评审修复——GET session 仅 owner 返回 PC;匿名/None owner 判定收紧;member token 对 legacy session 改 strict(secrets/PATCH 404);BFF 仅缺 key 时查 secrets;M2 回填补 camelCase/CAS/审计;新增主密钥轮换设计。M1 Gateway→Python `web_search`(仅 Tavily)注入已接;managed check 已开;仍待 `web_extract`/真实 provider、M2 生产回填、M4 代码;provider guard 已入 type-check。评审 [t42-m3-configured-ui-code-review.md](./t42-m3-configured-ui-code-review.md)。
 > **v9.8(2026-11-25)**:M3 落地——Gateway GET/PATCH/fork 返回 **sanitized prompt_config + `web_search_configured_providers`**;BFF PATCH 先查 secrets 状态,已配置 provider 允许空 key;前端设置页显示「已配置 — 留空保持」,Internet 开关按 configured 判定;运行时 `apply_session_rag_config` resolve secret 注入内存(不写回 PC)。前端 809 tests/BFF 1271 tests/tsc/build 全绿;真实浏览器截图、真实 provider 与 M2 生产回填仍受限。报告 [REPORT-t42-m3-configured-ui-20261125.md](../tests/e2e-tests/reports/REPORT-t42-m3-configured-ui-20261125.md)。
@@ -162,9 +164,9 @@
 ### T4.2 密钥存储架构评估— **Gateway API✓(v9.5);BFF/前端 M1+ 待接线**
 - 设计:[web-search-secret-storage-design.md](./web-search-secret-storage-design.md) 方案 C,M0–M4。
 - **v9 契约草案**:[web-search-secrets-gateway-api-contract.md](./web-search-secrets-gateway-api-contract.md)(PUT/GET/DELETE secrets、PC 剥离时机、禁止无表 prune)。
-- **M1/M2 接线**:Gateway API 已实现(2026-11-25);下一步开 module `t42-m1-wire` 接 BFF/前端;T4.2 仍未完成。
-- **v9.2 预备**:`bff/src/utils/web-search-secrets-client.ts`(probe);未挂路由。
-- Phase B/C 前端准备:[phase-bc-frontend-alignment-prep.md](./phase-bc-frontend-alignment-prep.md);Go 映射预备 `map-go-stream-agent-event.ts` / `go-canvas-sse-adapter.ts`(**L-PHASEB-01** 未接线)。
+- **M1 接线(v9.12)**:enterprise `updateSession` 去掉空白 provider key 后整包 PATCH。非空 key 由 Gateway §3.4 在同一次保存里入库并剥离。BFF 不再单独 PUT。
+- **仍未关闭**:M2 生产回填、M4 主密钥轮换(实现在 Gateway Rust,本仓库无源码)、native/Python 其余 provider 真实调用、真实浏览器/provider。
+- Phase B live(v9.12):`useSendMessageBySSE` → `adaptCanvasLiveSsePayload`;已见 `workflow_finished` 时忽略尾部 `done`。`parseCanvasWorkflowSSE` 识别 Go 专有事件。Python 事件名不变。无本机 Go 运行时,取消 5 秒可见态未实测。
 
 ---
 
@@ -173,7 +175,7 @@
 | 阶段 | 内容 | 量级 | 并行前端任务 |
 |---|---|---|---|
 | Phase A | intellect-mem → Go(复用上游 memory,作 Go 服务化样板) | 2-4 人周 | — |
-| Phase B | intellect-dsl → Go。完成度与剩余项:`ragflow/docs/plans/agent-dsl-go-development-plan.md`(约七成可跑主流画布;与 Python `1718fd9` 约六成)。设计真源仍是 `agent-go-port-design.md` | 3-6 人月 | **画布页面对齐**:事件适配 + `NormalizeForCanvas`。对接任务 F-01～F-03 在该计划第 7 节。`go-canvas-sse-adapter.ts` 仍是 **L-PHASEB-01 未接线**;G-01 冻结 SSE 事件前不打开 Phase B live |
+| Phase B | intellect-dsl → Go。完成度与剩余项:`ragflow/docs/plans/agent-dsl-go-development-plan.md`(约七成可跑主流画布;与 Python `1718fd9` 约六成)。设计真源仍是 `agent-go-port-design.md` | 3-6 人月 | **画布页面对齐**:v9.11 已把 Go 事件映射接进 live SSE 与 `parseCanvasWorkflowSSE`。保存回填已有 `applySavedCanvasDsl`。仍缺本机 Go 运行时上的取消可见态与 F-03-1 夹具 |
 | Phase C | intellect-rag:上游 Go 基座 + 回植多租户 scope/deepdoc 定制/chunk 过滤;`cmd/` 多入口 | 3-6 人月 | dev proxy 切 Go API;T3.3 的 pipeline API 在此到位 |
 | Phase D | 删 Python、CI 全面切 Go、docs 去迁移化表述 | ~1 个月 | 全量前端回归 |
 
@@ -182,12 +184,12 @@
 ## 依赖关系与建议节奏
 
 ```text
-T4.2 契约草案 ──▶ Gateway 实现 ──▶ t42-m1-wire(BFF sanitize + GET 标志)
-Phase B 准备文档 ──▶ Go SSE 稳定 ──▶ phase-b-sse-adapter
-D1 手册 ──▶ 持权 kubeconfig ──▶ prod-d1-exec
+T4.2 Gateway API ──▶ BFF 去掉空白 key 后 PATCH(v9.12;入库由 Gateway 同一次 PATCH 完成)
+Phase B 事件映射 ──▶ live SSE + parseCanvasWorkflowSSE(v9.11)
+仍关: M2 生产回填 / M4 Rust / 真实 provider / D1 / Go 运行时取消验收
 ```
 
-建议节奏(**v9.4**):~~设计/契约/probe/映射预备/闸门探测脚本~~ **已完成**;2026-11-25 复验闸门 **仍关**(`npm run check:exec-gates`)。余 **T4.2 M1 真接线**、**D1 真执行**、**Phase B live**、**T3.3 / T4.1b / T5**(均依赖跨仓/生产闸门 OPEN)。
+建议节奏(**v9.12**):agentui 侧不再单独 PUT 密钥;空白 key 已从 PATCH 去掉;Phase B 事件接线已落地,尾部 `done` 不重复结束。`npm run check:exec-gates` 在本机仍会 BLOCK(旁边没有 intellect-team / intellect-rag 源码树)。余 **M2 生产回填**、**M4 主密钥**、**真实 provider**、**D1**、**T3.3 / T4.1b / T5**。
 
 ## 工作量汇总
 
@@ -196,5 +198,5 @@ D1 手册 ──▶ 持权 kubeconfig ──▶ prod-d1-exec
 | T1 立即可做 | 4(**全部完成**) | ~1 天 ✓ |
 | T2 P1 | 10(**T2.1–T2.3/T2.5–T2.10 完成;T2.4 收口→T4.2**) | 余 T4.2 接线 |
 | T3 P2 | 7(**T3.1/2/4/5/6/7✓;T3.3 等 Go**) | 随 Phase C |
-| T4 跨仓库 | T4.1a✓ / T4.2 Gateway API✓ / T4.1b→Phase C / T4.2 BFF/UI 待接线 | **t42-m1-wire** |
+| T4 跨仓库 | T4.1a✓ / T4.2 Gateway API✓ / BFF 只去空白 key(v9.12) / T4.1b→Phase C / M2·M4·真实 provider 未做 | 跨仓 |
 | T5 Go 化 | 4 阶段 | 3-5 人 × 6-9 个月 |
