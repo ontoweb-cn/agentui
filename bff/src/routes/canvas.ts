@@ -25,7 +25,7 @@ import type { BackendContext } from '../types/tenant';
 import type { IAdapterRegistry } from '../services/adapter-registry-types';
 import { resolveBackendContext } from '../middleware/backend-context';
 import { streamResponse } from '../utils/response';
-import { withSseCompat } from '../services/canvas-sse-compat';
+import { createSseAuditStats, withSseAudit } from '../services/canvas-sse-audit';
 import {
   CanvasBackendNotBoundError,
   InvalidCanvasBackendError,
@@ -223,12 +223,18 @@ canvasRoutes.post('/canvas/chat/completions', async (c) => {
       resolveBackendContext(c),
       body,
     );
-    // Engine wire-format compatibility layer (plan §4.2): shape-compliant
-    // envelopes pass through byte-for-byte; the known engine differences
-    // (cancelled wording, waiting_for_user naming, duplicate [DONE]) are
-    // normalised here so the front end never sees an engine-specific shape.
-    const stats = { passthrough: 0, rewritten: 0, malformed: 0, droppedDone: 0 };
-    return streamResponse(withSseCompat(upstream, stats));
+    // Audit only, never rewrite (plan §4.2). Event mapping belongs to the
+    // front end (go-canvas-sse-adapter.ts via useSendMessageBySSE): it owns the
+    // UI semantics, so a second mapper here would pre-empt or duplicate it.
+    // Every byte is forwarded unchanged; the counters are logged for diagnosis.
+    const stats = createSseAuditStats();
+    return streamResponse(
+      withSseAudit(upstream, stats, (final) => {
+        if (final.malformed > 0 || final.duplicateDone > 0) {
+          console.warn('[canvas-sse-audit] stream anomalies', JSON.stringify(final));
+        }
+      }),
+    );
   } catch (err) {
     return handleCanvasError(c, err as Error);
   }
@@ -260,8 +266,10 @@ canvasRoutes.post('/canvas/:id/resume', async (c) => {
       { session_id: sessionId, form },
       { engine },
     );
-    return streamResponse(withSseCompat(upstream, {
-      passthrough: 0, rewritten: 0, malformed: 0, droppedDone: 0,
+    return streamResponse(withSseAudit(upstream, createSseAuditStats(), (final) => {
+      if (final.malformed > 0 || final.duplicateDone > 0) {
+        console.warn('[canvas-sse-audit] resume stream anomalies', JSON.stringify(final));
+      }
     }));
   } catch (err) {
     return handleCanvasError(c, err as Error);
