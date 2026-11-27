@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Hono } from 'hono';
-import { createPlatformRoutes, resolvePlatformSuffix } from './platform';
+import {
+  createPlatformRoutes,
+  resolvePlatformSuffix,
+  shouldInjectKbPlatformAdminToken,
+} from './platform';
 
 describe('resolvePlatformSuffix', () => {
   it('剥 /platform 前缀', () => {
@@ -18,9 +22,46 @@ describe('resolvePlatformSuffix', () => {
   });
 });
 
+describe('shouldInjectKbPlatformAdminToken', () => {
+  it('allowlists exact catalog GET paths', () => {
+    expect(shouldInjectKbPlatformAdminToken('GET', '/catalog/overview')).toBe(
+      true,
+    );
+    expect(shouldInjectKbPlatformAdminToken('GET', '/catalog/instances')).toBe(
+      true,
+    );
+    expect(
+      shouldInjectKbPlatformAdminToken('GET', '/catalog/schemas/md'),
+    ).toBe(true);
+    expect(
+      shouldInjectKbPlatformAdminToken('GET', '/catalog/instances/kid_1'),
+    ).toBe(true);
+    expect(
+      shouldInjectKbPlatformAdminToken(
+        'GET',
+        '/catalog/instances/kid_1/config',
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects writes, probes, and extra segments', () => {
+    expect(
+      shouldInjectKbPlatformAdminToken('POST', '/catalog/instances'),
+    ).toBe(false);
+    expect(shouldInjectKbPlatformAdminToken('GET', '/status')).toBe(false);
+    expect(
+      shouldInjectKbPlatformAdminToken(
+        'GET',
+        '/catalog/instances/kid_1/heartbeat',
+      ),
+    ).toBe(false);
+  });
+});
+
 describe('createPlatformRoutes', () => {
   afterEach(() => {
     delete process.env.KB_PLATFORM_URL;
+    delete process.env.KB_PLATFORM_ADMIN_TOKEN;
     vi.restoreAllMocks();
   });
 
@@ -69,5 +110,73 @@ describe('createPlatformRoutes', () => {
     expect(res.status).toBe(502);
     const body = await res.json();
     expect(body.code).toBe(50200);
+  });
+});
+
+describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
+  afterEach(() => {
+    delete process.env.KB_PLATFORM_URL;
+    delete process.env.KB_PLATFORM_ADMIN_TOKEN;
+    vi.restoreAllMocks();
+  });
+
+  it('injects admin Bearer on allowlisted GET when client omits Authorization', async () => {
+    process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
+    process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
+    const upstreamFetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ code: 0 }), { status: 200 }),
+    );
+    const app = new Hono();
+    app.route('/', createPlatformRoutes({ upstreamFetch }));
+    await app.request('/platform/catalog/overview', { method: 'GET' });
+    const [, init] = upstreamFetch.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Headers).get('Authorization')).toBe(
+      'Bearer bff-admin',
+    );
+  });
+
+  it('does not overwrite client Authorization', async () => {
+    process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
+    const upstreamFetch = vi.fn(
+      async () => new Response('{}', { status: 200 }),
+    );
+    const app = new Hono();
+    app.route('/', createPlatformRoutes({ upstreamFetch }));
+    await app.request('/platform/catalog/overview', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer client-tok' },
+    });
+    const [, init] = upstreamFetch.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Headers).get('Authorization')).toBe(
+      'Bearer client-tok',
+    );
+  });
+
+  it('does not inject on POST instances', async () => {
+    process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
+    const upstreamFetch = vi.fn(
+      async () => new Response('{}', { status: 200 }),
+    );
+    const app = new Hono();
+    app.route('/', createPlatformRoutes({ upstreamFetch }));
+    await app.request('/platform/catalog/instances', {
+      method: 'POST',
+      body: '{}',
+    });
+    const [, init] = upstreamFetch.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Headers).get('Authorization')).toBeNull();
+  });
+
+  it('does not inject on GET /status', async () => {
+    process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
+    const upstreamFetch = vi.fn(
+      async () => new Response('{}', { status: 200 }),
+    );
+    const app = new Hono();
+    app.route('/', createPlatformRoutes({ upstreamFetch }));
+    await app.request('/platform/status', { method: 'GET' });
+    const [, init] = upstreamFetch.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Headers).get('Authorization')).toBeNull();
   });
 });

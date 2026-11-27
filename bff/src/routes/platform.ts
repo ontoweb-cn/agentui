@@ -4,8 +4,9 @@
  * 前端 `/api/bff/platform/*`（Vite rewrite 后为 `/platform/*`）
  * → `${KB_PLATFORM_URL}/api/v1/platform/*`。
  *
- * 与 intellect-rag `/proxy/v1/*` 分离：不注入 RAG admin token；
- * 仅转发客户端已有的 `Authorization`（若有）。
+ * 与 intellect-rag `/proxy/v1/*` 分离：不注入 RAG admin token。
+ * 客户端已有 Authorization 则原样转发；否则仅对白名单 catalog GET/HEAD
+ * 注入 `KB_PLATFORM_ADMIN_TOKEN`（禁止写/heartbeat/probe 注入）。
  */
 
 import { Hono, type Context } from 'hono';
@@ -38,6 +39,21 @@ export function resolvePlatformSuffix(requestPath: string): string | undefined {
     }
   }
   return undefined;
+}
+
+/** Exact allowlist for default-injecting KB_PLATFORM_ADMIN_TOKEN (GET/HEAD only). */
+export function shouldInjectKbPlatformAdminToken(
+  method: string,
+  platformSuffix: string,
+): boolean {
+  const m = method.toUpperCase();
+  if (m !== 'GET' && m !== 'HEAD') return false;
+  const path = platformSuffix.split('?')[0] || '';
+  if (path === '/catalog/instances' || path === '/catalog/overview') return true;
+  if (/^\/catalog\/schemas\/[^/]+$/.test(path)) return true;
+  if (/^\/catalog\/instances\/[^/]+$/.test(path)) return true;
+  if (/^\/catalog\/instances\/[^/]+\/config$/.test(path)) return true;
+  return false;
 }
 
 export interface PlatformRouteDeps {
@@ -83,6 +99,14 @@ export function createPlatformRoutes(deps: PlatformRouteDeps = {}): Hono {
     const authorization = c.req.header('authorization');
     if (authorization) {
       headers.set('Authorization', authorization);
+    } else if (
+      shouldInjectKbPlatformAdminToken(method, suffix) &&
+      process.env.KB_PLATFORM_ADMIN_TOKEN?.trim()
+    ) {
+      headers.set(
+        'Authorization',
+        `Bearer ${process.env.KB_PLATFORM_ADMIN_TOKEN.trim()}`,
+      );
     }
 
     let body: BodyInit | undefined;
