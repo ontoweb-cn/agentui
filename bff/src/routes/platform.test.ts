@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Hono } from 'hono';
 import {
+  clearKbPlatformAdminAuthCache,
   createPlatformRoutes,
+  injectRequiresAdminAuth,
+  kbPlatformAdminAuthOK,
   resolvePlatformSuffix,
   shouldInjectKbPlatformAdminToken,
 } from './platform';
@@ -58,10 +61,93 @@ describe('shouldInjectKbPlatformAdminToken', () => {
   });
 });
 
+describe('injectRequiresAdminAuth', () => {
+  afterEach(() => {
+    delete process.env.KB_PLATFORM_INJECT_REQUIRE_ADMIN_AUTH;
+  });
+
+  it('defaults to true', () => {
+    delete process.env.KB_PLATFORM_INJECT_REQUIRE_ADMIN_AUTH;
+    expect(injectRequiresAdminAuth()).toBe(true);
+  });
+
+  it('false/0/no/off disable the gate', () => {
+    process.env.KB_PLATFORM_INJECT_REQUIRE_ADMIN_AUTH = 'false';
+    expect(injectRequiresAdminAuth()).toBe(false);
+  });
+});
+
+describe('kbPlatformAdminAuthOK', () => {
+  afterEach(() => {
+    delete process.env.KB_PLATFORM_URL;
+    clearKbPlatformAdminAuthCache();
+    vi.restoreAllMocks();
+  });
+
+  it('returns false without proof', async () => {
+    const upstreamFetch = vi.fn();
+    await expect(
+      kbPlatformAdminAuthOK({ upstreamFetch }),
+    ).resolves.toBe(false);
+    expect(upstreamFetch).not.toHaveBeenCalled();
+  });
+
+  it('probes /api/v1/admin/auth with cookie', async () => {
+    process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
+    const upstreamFetch = vi.fn(
+      async () => new Response('{}', { status: 200 }),
+    );
+    await expect(
+      kbPlatformAdminAuthOK({
+        upstreamFetch,
+        cookieHeader: 'kb_admin_session=jwt-here; other=1',
+      }),
+    ).resolves.toBe(true);
+    expect(String(upstreamFetch.mock.calls[0][0])).toBe(
+      'http://kb-platform.test:9381/api/v1/admin/auth',
+    );
+    const init = upstreamFetch.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Headers).get('Cookie')).toBe(
+      'kb_admin_session=jwt-here',
+    );
+  });
+
+  it('probes with Bearer authorization', async () => {
+    process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
+    const upstreamFetch = vi.fn(
+      async () => new Response('{}', { status: 200 }),
+    );
+    await expect(
+      kbPlatformAdminAuthOK({
+        upstreamFetch,
+        authorization: 'Bearer admin-jwt',
+      }),
+    ).resolves.toBe(true);
+    const init = upstreamFetch.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Headers).get('Authorization')).toBe(
+      'Bearer admin-jwt',
+    );
+  });
+
+  it('returns false on non-200', async () => {
+    const upstreamFetch = vi.fn(
+      async () => new Response('{}', { status: 401 }),
+    );
+    await expect(
+      kbPlatformAdminAuthOK({
+        upstreamFetch,
+        cookieHeader: 'kb_admin_session=bad',
+      }),
+    ).resolves.toBe(false);
+  });
+});
+
 describe('createPlatformRoutes', () => {
   afterEach(() => {
     delete process.env.KB_PLATFORM_URL;
     delete process.env.KB_PLATFORM_ADMIN_TOKEN;
+    delete process.env.KB_PLATFORM_INJECT_REQUIRE_ADMIN_AUTH;
+    clearKbPlatformAdminAuthCache();
     vi.restoreAllMocks();
   });
 
@@ -114,12 +200,75 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
   afterEach(() => {
     delete process.env.KB_PLATFORM_URL;
     delete process.env.KB_PLATFORM_ADMIN_TOKEN;
+    delete process.env.KB_PLATFORM_INJECT_REQUIRE_ADMIN_AUTH;
+    clearKbPlatformAdminAuthCache();
     vi.restoreAllMocks();
   });
 
-  it('injects admin Bearer on allowlisted GET when client omits Authorization', async () => {
+  it('does not inject without admin session when gate is on (default)', async () => {
     process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
     process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
+    const upstreamFetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ code: 0 }), { status: 200 }),
+    );
+    const app = new Hono();
+    app.route('/', createPlatformRoutes({ upstreamFetch }));
+    await app.request('/platform/catalog/overview', { method: 'GET' });
+    const [, init] = upstreamFetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Headers).get('Authorization')).toBeNull();
+  });
+
+  it('injects after /admin/auth 200 with kb_admin_session cookie', async () => {
+    process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
+    process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
+    const upstreamFetch = vi.fn(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.endsWith('/api/v1/admin/auth')) {
+        return new Response(JSON.stringify({ code: 0 }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ code: 0 }), { status: 200 });
+    });
+    const app = new Hono();
+    app.route('/', createPlatformRoutes({ upstreamFetch }));
+    await app.request('/platform/catalog/overview', {
+      method: 'GET',
+      headers: { Cookie: 'kb_admin_session=super-jwt' },
+    });
+    expect(upstreamFetch.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const catalogCall = upstreamFetch.mock.calls.find(([u]) =>
+      String(u).includes('/api/v1/platform/catalog/overview'),
+    ) as unknown as [string, RequestInit];
+    expect((catalogCall[1].headers as Headers).get('Authorization')).toBe(
+      'Bearer bff-admin',
+    );
+  });
+
+  it('does not inject when /admin/auth fails', async () => {
+    process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
+    process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
+    const upstreamFetch = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith('/api/v1/admin/auth')) {
+        return new Response('{}', { status: 401 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+    const app = new Hono();
+    app.route('/', createPlatformRoutes({ upstreamFetch }));
+    await app.request('/platform/catalog/overview', {
+      method: 'GET',
+      headers: { Cookie: 'kb_admin_session=bad' },
+    });
+    const catalogCall = upstreamFetch.mock.calls.find(([u]) =>
+      String(u).includes('/catalog/overview'),
+    ) as unknown as [string, RequestInit];
+    expect((catalogCall[1].headers as Headers).get('Authorization')).toBeNull();
+  });
+
+  it('flag false restores 1a inject without admin session', async () => {
+    process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
+    process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
+    process.env.KB_PLATFORM_INJECT_REQUIRE_ADMIN_AUTH = 'false';
     const upstreamFetch = vi.fn(
       async () =>
         new Response(JSON.stringify({ code: 0 }), { status: 200 }),
@@ -152,6 +301,7 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
 
   it('does not inject on POST instances', async () => {
     process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
+    process.env.KB_PLATFORM_INJECT_REQUIRE_ADMIN_AUTH = 'false';
     const upstreamFetch = vi.fn(
       async () => new Response('{}', { status: 200 }),
     );
@@ -167,6 +317,7 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
 
   it('does not inject on GET /status', async () => {
     process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
+    process.env.KB_PLATFORM_INJECT_REQUIRE_ADMIN_AUTH = 'false';
     const upstreamFetch = vi.fn(
       async () => new Response('{}', { status: 200 }),
     );

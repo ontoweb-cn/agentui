@@ -1,16 +1,24 @@
 /**
- * kb-platform (Go) 透明代理 — Phase 1a catalog demo。
+ * kb-platform (Go) 透明代理 — Phase 1a catalog demo + 1b-ζ admin inject gate.
  *
  * 前端 `/api/bff/platform/*`（Vite rewrite 后为 `/platform/*`）
  * → `${KB_PLATFORM_URL}/api/v1/platform/*`。
  *
  * 与 intellect-rag `/proxy/v1/*` 分离：不注入 RAG admin token。
  * 客户端已有 Authorization 则原样转发；否则仅对白名单 catalog GET/HEAD
- * 注入 `KB_PLATFORM_ADMIN_TOKEN`（禁止写/heartbeat/probe 注入）。
+ * 在通过 kb-platform `/api/v1/admin/auth`（1b-α 超管）后注入
+ * `KB_PLATFORM_ADMIN_TOKEN`（禁止写/heartbeat/probe 注入）。
+ *
+ * Emergency: `KB_PLATFORM_INJECT_REQUIRE_ADMIN_AUTH=false` restores 1a
+ * inject-for-any-BFF-login behavior.
  */
 
 import { Hono, type Context } from 'hono';
-import { buildKbPlatformUpstreamUrl } from '../utils/kb-platform-base-url';
+import { getCookie } from 'hono/cookie';
+import {
+  buildKbPlatformUpstreamUrl,
+  getKbPlatformBaseUrl,
+} from '../utils/kb-platform-base-url';
 import { streamResponse } from '../utils/response';
 
 const PLATFORM_PATH_PREFIXES = ['/api/bff/platform', '/platform'] as const;
@@ -26,6 +34,7 @@ const ALLOWED_METHODS = new Set([
 
 const UPSTREAM_TIMEOUT_MS = 30_000;
 const MAX_PROXY_BODY_BYTES = 8 * 1024 * 1024;
+const ADMIN_AUTH_CACHE_TTL_MS = 30_000;
 
 export type PlatformFetch = typeof fetch;
 
@@ -54,6 +63,111 @@ export function shouldInjectKbPlatformAdminToken(
   if (/^\/catalog\/instances\/[^/]+$/.test(path)) return true;
   if (/^\/catalog\/instances\/[^/]+\/config$/.test(path)) return true;
   return false;
+}
+
+/** Default on; only explicit false/0/no/off disables the 1b-ζ gate. */
+export function injectRequiresAdminAuth(): boolean {
+  const v = process.env.KB_PLATFORM_INJECT_REQUIRE_ADMIN_AUTH?.trim().toLowerCase();
+  if (!v) return true;
+  return !(v === 'false' || v === '0' || v === 'no' || v === 'off');
+}
+
+export function kbPlatformAdminCookieName(): string {
+  return (
+    process.env.KB_PLATFORM_ADMIN_COOKIE_NAME?.trim() || 'kb_admin_session'
+  );
+}
+
+type AuthCacheEntry = { ok: boolean; expiresAt: number };
+
+const adminAuthCache = new Map<string, AuthCacheEntry>();
+
+/** Test helper: clear in-process auth probe cache. */
+export function clearKbPlatformAdminAuthCache(): void {
+  adminAuthCache.clear();
+}
+
+function cacheKey(kind: 'bearer' | 'cookie', value: string): string {
+  return `${kind}:${value}`;
+}
+
+export async function kbPlatformAdminAuthOK(opts: {
+  upstreamFetch: PlatformFetch;
+  authorization?: string | null;
+  cookieHeader?: string | null;
+  cookieName?: string;
+  now?: () => number;
+}): Promise<boolean> {
+  const now = opts.now ?? Date.now;
+  const cookieName = opts.cookieName ?? kbPlatformAdminCookieName();
+  let proofKind: 'bearer' | 'cookie' | null = null;
+  let proofValue = '';
+  let authHeader = '';
+
+  const auth = opts.authorization?.trim();
+  if (auth) {
+    proofKind = 'bearer';
+    proofValue = auth;
+    authHeader = auth.toLowerCase().startsWith('bearer ')
+      ? auth
+      : `Bearer ${auth}`;
+  } else if (opts.cookieHeader) {
+    // Parse Cookie header for the admin session cookie without depending on Hono Context.
+    const parts = opts.cookieHeader.split(';');
+    for (const part of parts) {
+      const idx = part.indexOf('=');
+      if (idx <= 0) continue;
+      const name = part.slice(0, idx).trim();
+      if (name === cookieName) {
+        proofKind = 'cookie';
+        proofValue = part.slice(idx + 1).trim();
+        break;
+      }
+    }
+  }
+
+  if (!proofKind || !proofValue) {
+    return false;
+  }
+
+  const key = cacheKey(proofKind, proofValue);
+  const cached = adminAuthCache.get(key);
+  if (cached && cached.expiresAt > now()) {
+    return cached.ok;
+  }
+
+  const url = `${getKbPlatformBaseUrl()}/api/v1/admin/auth`;
+  const headers = new Headers();
+  if (proofKind === 'bearer') {
+    headers.set('Authorization', authHeader);
+  } else {
+    headers.set('Cookie', `${cookieName}=${proofValue}`);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  try {
+    const res = await opts.upstreamFetch(url, {
+      method: 'GET',
+      headers,
+      signal: controller.signal,
+    });
+    const ok = res.status === 200;
+    if (ok) {
+      adminAuthCache.set(key, {
+        ok: true,
+        expiresAt: now() + ADMIN_AUTH_CACHE_TTL_MS,
+      });
+    } else {
+      adminAuthCache.delete(key);
+    }
+    return ok;
+  } catch {
+    adminAuthCache.delete(key);
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export interface PlatformRouteDeps {
@@ -103,10 +217,26 @@ export function createPlatformRoutes(deps: PlatformRouteDeps = {}): Hono {
       shouldInjectKbPlatformAdminToken(method, suffix) &&
       process.env.KB_PLATFORM_ADMIN_TOKEN?.trim()
     ) {
-      headers.set(
-        'Authorization',
-        `Bearer ${process.env.KB_PLATFORM_ADMIN_TOKEN.trim()}`,
-      );
+      let allowInject = !injectRequiresAdminAuth();
+      if (!allowInject) {
+        const cookieName = kbPlatformAdminCookieName();
+        const sessionCookie = getCookie(c, cookieName);
+        allowInject = await kbPlatformAdminAuthOK({
+          upstreamFetch,
+          // Prefer dedicated admin Bearer if client sent one under another header? Spec: only Cookie or we need a way to pass α JWT when Authorization is reserved for inject.
+          // When Authorization is absent, α proof is the kb_admin_session cookie (or optional X-Kb-Admin-Authorization — keep cookie-only for inject path per spec A).
+          cookieHeader: sessionCookie
+            ? `${cookieName}=${sessionCookie}`
+            : c.req.header('cookie') ?? null,
+          cookieName,
+        });
+      }
+      if (allowInject) {
+        headers.set(
+          'Authorization',
+          `Bearer ${process.env.KB_PLATFORM_ADMIN_TOKEN.trim()}`,
+        );
+      }
     }
 
     let body: BodyInit | undefined;
