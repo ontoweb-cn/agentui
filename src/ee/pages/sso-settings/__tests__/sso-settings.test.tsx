@@ -120,7 +120,9 @@ describe('AdminSsoSettings v1.4 管理页扩展', () => {
     expect(screen.getAllByText(/No enterprise backend is bound/).length).toBeGreaterThanOrEqual(2);
   });
 
-  it('P-03: 密钥三态——invalid 黄字;启用后出现重启失败警示', async () => {
+  // §14(BFF-as-RP 移除):stateSecret 不再参与签名/启动校验,重启失败警示已废弃;
+  // 本用例固化为"三态徽章照常展示 + 启用后提示该密钥已不再使用"
+  it('P-03: 密钥三态显示;启用后提示 stateSecret 已废弃(不再有重启失败警示)', async () => {
     mockGetSsoAdminConfig.mockResolvedValue({
       data: baseView({
         stateSecretStatus: 'invalid',
@@ -134,13 +136,14 @@ describe('AdminSsoSettings v1.4 管理页扩展', () => {
     renderPage();
 
     expect(await screen.findByText('Set but shorter than 32 characters')).toBeInTheDocument();
-    // 未启用时不警示
-    expect(screen.queryByText(/shorter than 32 characters: the BFF will fail/)).not.toBeInTheDocument();
+    // 未启用时无提示
+    expect(screen.queryByText(/no longer used/i)).not.toBeInTheDocument();
+    // 废弃的重启失败警示不应再出现
+    expect(screen.queryByText(/the BFF will fail/)).not.toBeInTheDocument();
 
-    // 启用 → 黄字警示出现
     fireEvent.click(screen.getByRole('switch', { name: /Enable unified authentication/ }));
     expect(
-      await screen.findByText(/shorter than 32 characters: the BFF will fail/),
+      await screen.findByText(/no longer used/i),
     ).toBeInTheDocument();
   });
 

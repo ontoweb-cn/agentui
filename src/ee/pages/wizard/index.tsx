@@ -1207,13 +1207,21 @@ function WizardPage() {
     retry: false,
   });
 
-  // 进入 Step 4 时自动触发 probe
+  // 进入 Step 4 时自动触发 probe。
+  // 必须等选项表加载完成:probe 请求的 setupProfile 来自 selectedOption(§14 模式判定),
+  // 以 step=4 直接打开(刷新场景)时 options 尚未返回,提前探测会丢 setupProfile,
+  // 导致 BFF 按缺省 profile 判定模式(SSO 卡被当成非 SSO)。
   useEffect(() => {
-    if (step === 4 && !probeResult && !probeMutation.isPending) {
+    if (
+      step === 4 &&
+      options.length > 0 &&
+      !probeResult &&
+      !probeMutation.isPending
+    ) {
       probeMutation.mutate();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
+  }, [step, options.length]);
 
   // ----- Setup mutation -----
   const queryClient = useQueryClient();

@@ -89,10 +89,7 @@ describe('createPlatformRoutes', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(envelope);
     expect(upstreamFetch).toHaveBeenCalledOnce();
-    const [, init] = upstreamFetch.mock.calls[0] as [
-      string,
-      RequestInit | undefined,
-    ];
+    const [, init] = upstreamFetch.mock.calls[0] as unknown as [string, RequestInit | undefined];
     expect(init?.headers).toBeInstanceOf(Headers);
     expect((init?.headers as Headers).get('Authorization')).toBe(
       'Bearer platform-admin',
@@ -130,7 +127,7 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
     const app = new Hono();
     app.route('/', createPlatformRoutes({ upstreamFetch }));
     await app.request('/platform/catalog/overview', { method: 'GET' });
-    const [, init] = upstreamFetch.mock.calls[0] as [string, RequestInit];
+    const [, init] = upstreamFetch.mock.calls[0] as unknown as [string, RequestInit];
     expect((init.headers as Headers).get('Authorization')).toBe(
       'Bearer bff-admin',
     );
@@ -147,7 +144,7 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
       method: 'GET',
       headers: { Authorization: 'Bearer client-tok' },
     });
-    const [, init] = upstreamFetch.mock.calls[0] as [string, RequestInit];
+    const [, init] = upstreamFetch.mock.calls[0] as unknown as [string, RequestInit];
     expect((init.headers as Headers).get('Authorization')).toBe(
       'Bearer client-tok',
     );
@@ -164,7 +161,7 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
       method: 'POST',
       body: '{}',
     });
-    const [, init] = upstreamFetch.mock.calls[0] as [string, RequestInit];
+    const [, init] = upstreamFetch.mock.calls[0] as unknown as [string, RequestInit];
     expect((init.headers as Headers).get('Authorization')).toBeNull();
   });
 
@@ -176,7 +173,7 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
     const app = new Hono();
     app.route('/', createPlatformRoutes({ upstreamFetch }));
     await app.request('/platform/status', { method: 'GET' });
-    const [, init] = upstreamFetch.mock.calls[0] as [string, RequestInit];
+    const [, init] = upstreamFetch.mock.calls[0] as unknown as [string, RequestInit];
     expect((init.headers as Headers).get('Authorization')).toBeNull();
   });
 });
