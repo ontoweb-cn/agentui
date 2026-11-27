@@ -1666,7 +1666,7 @@ Example: Virtual Hosted Style`,
         tokenPlaceholder: 'Enter a service access token',
         tokenSavedPlaceholder: 'Saved; leave blank to keep it unchanged',
         tokenHint:
-          'Used only by the BFF server to connect to the knowledge base and make management calls. It does not replace the member imt_ identity used by ordinary KB requests. Use a KB API token or JWT that identifies a service identity independently; do not use an imt_ member token or a token that depends on X-Intellect-User.',
+          'Used by the BFF server to connect to the knowledge base and make management calls. In enterprise deployments it does not replace the member imt_ identity used by ordinary KB requests; in community deployments it also serves as the BFF proxy\'s static service credential for RAG requests. Use a KB API token or JWT that identifies a service identity independently; do not use an imt_ member token or a token that depends on X-Intellect-User.',
         endpointRequired: 'Service URL is required.',
         tokenRequiredInitial:
           'A service access token is required for initial configuration.',

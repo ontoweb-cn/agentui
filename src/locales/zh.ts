@@ -1384,7 +1384,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取实体和关系
         tokenPlaceholder: '请输入服务访问 Token',
         tokenSavedPlaceholder: '已保存，留空保持不变',
         tokenHint:
-          '该 Token 仅供 BFF 服务端连接知识库并执行管理调用，不替代普通知识库请求使用的成员 imt_ 身份。请使用可独立识别服务身份的 KB API Token 或 JWT；请勿使用 imt_ 成员 Token 或依赖 X-Intellect-User 请求头的 Token。',
+          '该 Token 用于 BFF 服务端连接知识库并执行管理调用。企业版中它不会替代普通知识库请求使用的成员 imt_ 身份；社区版部署下它还会作为 BFF 代理访问 RAG 的静态服务凭据。请使用可独立识别服务身份的 KB API Token 或 JWT；请勿使用 imt_ 成员 Token 或依赖 X-Intellect-User 请求头的 Token。',
         endpointRequired: '请输入服务 URL。',
         tokenRequiredInitial: '初次配置必须输入服务访问 Token。',
         tokenRequiredForUrlChange:

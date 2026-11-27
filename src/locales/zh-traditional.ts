@@ -601,7 +601,7 @@ export default {
         tokenPlaceholder: '請輸入服務存取 Token',
         tokenSavedPlaceholder: '已儲存，留空保持不變',
         tokenHint:
-          '該 Token 僅供 BFF 服務端連接知識庫並執行管理調用，不替代普通知識庫請求使用的成員 imt_ 身份。請使用可獨立識別服務身份的 KB API Token 或 JWT；請勿使用 imt_ 成員 Token 或依賴 X-Intellect-User 請求頭的 Token。',
+          '該 Token 用於 BFF 服務端連接知識庫並執行管理調用。企業版中它不會替代普通知識庫請求使用的成員 imt_ 身份；社區版部署下它還會作為 BFF 代理存取 RAG 的靜態服務憑證。請使用可獨立識別服務身份的 KB API Token 或 JWT；請勿使用 imt_ 成員 Token 或依賴 X-Intellect-User 請求頭的 Token。',
         endpointRequired: '請輸入服務 URL。',
         tokenRequiredInitial: '初次配置必須輸入服務存取 Token。',
         tokenRequiredForUrlChange:

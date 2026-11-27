@@ -850,6 +850,33 @@ describe('kb-connection PUT 保存、绑定与活跃 Run', () => {
     expect(rig.setCredentials).not.toHaveBeenCalled();
     expect(rig.setCanvasBinding).not.toHaveBeenCalled();
   });
+
+  it('canvasBackendId 指向非 RAG 后端时 fail-closed,不静默覆盖绑定', async () => {
+    const rig = createRig({
+      configs: [mainConfig({ ragBackendId: RAG_ID }), ragConfig()],
+      tenants: [enterpriseTenant({ canvasBackendId: MAIN_ID })],
+      credentials: { [RAG_ID]: { kind: 'bearer-token', token: OLD_TOKEN } },
+    });
+    const app = createApp(rig);
+
+    const response = await jsonRequest(app, 'PUT', CONNECTION_PATH, {
+      endpoint: NEW_ENDPOINT,
+      serviceToken: NEW_TOKEN,
+      revision: 0,
+    });
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.code).toBe(400);
+    expect(body.message).toContain('画布绑定');
+    expect(rig.saveConfig).not.toHaveBeenCalled();
+    expect(rig.load).not.toHaveBeenCalled();
+    expect(rig.setCredentials).not.toHaveBeenCalled();
+    expect(rig.deleteCredentials).not.toHaveBeenCalled();
+    expect(rig.setCanvasBinding).not.toHaveBeenCalled();
+    expect(rig.invalidate).not.toHaveBeenCalled();
+    expect(rig.state.tenants[0].canvasBackendId).toBe(MAIN_ID);
+  });
 });
 
 describe('kb-connection PUT 串行化', () => {
