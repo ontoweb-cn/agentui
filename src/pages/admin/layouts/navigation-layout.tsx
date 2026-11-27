@@ -7,6 +7,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   LucideFolderKanban,
   LucideKeyRound,
+  LucideLayers,
   LucideLink,
   LucideMonitor,
   LucideServerCrash,
@@ -55,6 +56,13 @@ const AdminNavigationLayout = () => {
         path: Routes.AdminSandboxSettings,
         name: t('admin.sandboxSettings'),
         icon: <LucideZap className="size-[1em]" />,
+      },
+      {
+        path: Routes.AdminPlatformCatalog,
+        name: t('admin.platformCatalog.nav', {
+          defaultValue: 'Platform catalog',
+        }),
+        icon: <LucideLayers className="size-[1em]" />,
       },
       // Multi-Harness P5 (US1/US2/US3):Team/Project/Tenant-binding Admin 页面。
       {

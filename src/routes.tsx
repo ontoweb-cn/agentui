@@ -320,6 +320,10 @@ const routeConfigOptions = [
                 path: Routes.AdminHarnessBackends,
                 Component: () => import('@/ee/pages/harness-backends'),
               },
+              {
+                path: Routes.AdminPlatformCatalog,
+                Component: () => import('@/pages/admin/platform-catalog'),
+              },
               // wizard-sso-followup(A7):统一认证运行时配置 → ee overlay(T2.5)。
               {
                 path: Routes.AdminSsoSettings,

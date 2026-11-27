@@ -22,6 +22,7 @@ import { projectRoutes } from './routes/projects';
 import { tenantBindingRoutes } from './routes/tenant-bindings';
 import { hieduRoutes } from './routes/hiedu';
 import { aihubRoutes } from './routes/aihub';
+import { platformRoutes } from './routes/platform';
 import { aihubGate } from './middleware/aihub-gate';
 import { authSessionMiddleware } from './middleware/auth-session';
 import { requireValidImtSession } from './middleware/imt-session-guard';
@@ -160,6 +161,12 @@ app.use('/api/bff/aihub/*', aihubGate);
 app.use('/aihub/*', authSessionMiddleware);
 app.use('/api/bff/aihub/*', authSessionMiddleware);
 app.route('/', aihubRoutes);
+
+// kb-platform 1a: catalog / status 代理（与 RAG /proxy/v1 分离）。
+// 前端 /api/bff/platform/* → Vite rewrite 后 /platform/* → Go :9381。
+app.use('/platform/*', authMiddleware);
+app.use('/api/bff/platform/*', authMiddleware);
+app.route('/', platformRoutes);
 
 // Auth-protected routes
 app.use('/api/*', authMiddleware);
