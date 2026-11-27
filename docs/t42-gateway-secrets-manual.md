@@ -135,10 +135,9 @@ GET /docs/openapi-web-search-secrets.json
 
 ## 6. 当前不包含
 
-- BFF PATCH 自动提取 key 并调用 PUT;
-- `GET session` 返回 `web_search_key_configured` / 前端 M3「已配置/重新输入」UI;
 - 历史 M2 回填(CLI 已提供:[t42-gateway-secrets-backfill.md](./t42-gateway-secrets-backfill.md);生产未执行);
-- 检索侧 M4 resolve(store 已提供 `resolve` 方法,但未暴露 HTTP);
+- M4 主密钥轮换(设计见 [t42-secret-master-key-rotation-design.md](./t42-secret-master-key-rotation-design.md);代码在 Gateway Rust,本仓库没有);
+- 真实 provider 端到端;
 - 生产部署(L-09 无 kubectl)。
 
-以上属于后续 `t42-m1-wire` / M2–M4。
+BFF enterprise `updateSession` 在 PATCH 前去掉空白 provider key,非空 key 仍放在 `prompt_config` 里。入库和剥离由 Gateway §3.4 在同一次 PATCH 中完成,BFF 不再另发 PUT。设置页「已配置 — 留空保持」见 [t42-m3-configured-ui-manual.md](./t42-m3-configured-ui-manual.md)。

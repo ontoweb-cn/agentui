@@ -4,19 +4,12 @@ import { ResponseType } from '@/interfaces/database/base';
 import { IReferenceObject } from '@/interfaces/database/chat';
 import { BeginQuery } from '@agentui/canvas-plugin/editor/interface';
 import { getAuthorization } from '@/utils/authorization-util';
+import { adaptCanvasLiveSsePayload } from '@/utils/go-canvas-sse-adapter';
 import { EventSourceParserStream } from 'eventsource-parser/stream';
 import { useCallback, useRef, useState } from 'react';
+import { MessageEventType } from './message-event-type';
 
-export enum MessageEventType {
-  WorkflowStarted = 'workflow_started',
-  NodeStarted = 'node_started',
-  NodeFinished = 'node_finished',
-  Message = 'message',
-  MessageEnd = 'message_end',
-  WorkflowFinished = 'workflow_finished',
-  UserInputs = 'user_inputs',
-  NodeLogs = 'node_logs',
-}
+export { MessageEventType };
 
 export interface IAnswerEvent<T> {
   event: MessageEventType;
@@ -173,6 +166,7 @@ export const useSendMessageBySSE = (url: string) => {
           .pipeThrough(new EventSourceParserStream())
           .getReader();
         let lastEventData: ResponseType | undefined;
+        let workflowFinishedSeen = false;
 
         try {
           // eslint-disable-next-line no-constant-condition
@@ -205,17 +199,37 @@ export const useSendMessageBySSE = (url: string) => {
                 break;
               }
               const val = JSON.parse(payload);
+              const adapted = adaptCanvasLiveSsePayload(val, {
+                workflowFinishedSeen,
+              });
 
+              if (adapted.streamError) {
+                message.error(adapted.streamError);
+              }
               if (typeof val?.code === 'number' && val.code !== 0) {
                 message.error(getSseErrorMessage(val));
               }
-              lastEventData = val as ResponseType;
+              const pushed = adapted.events;
+              lastEventData = (pushed.at(-1) ?? val) as ResponseType;
 
-              setAnswerList((list) => {
-                const nextList = [...list];
-                nextList.push(val);
-                return nextList;
-              });
+              if (
+                pushed.some(
+                  (ev) =>
+                    !!ev &&
+                    typeof ev === 'object' &&
+                    (ev as { event?: string }).event ===
+                      MessageEventType.WorkflowFinished,
+                )
+              ) {
+                workflowFinishedSeen = true;
+              }
+
+              if (pushed.length > 0) {
+                setAnswerList((list) => [
+                  ...list,
+                  ...(pushed as IEventList),
+                ]);
+              }
             } catch (e) {
               console.warn(e);
             }

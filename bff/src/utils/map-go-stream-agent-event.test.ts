@@ -38,11 +38,14 @@ describe('mapGoStreamAgentEventToChunks (phase-b prep)', () => {
     ]);
   });
 
-  it('error / done', () => {
+  it('error / done / cancelled', () => {
     expect(mapGoStreamAgentEventToChunks('error', { error: 'boom' })).toEqual([
       { type: 'error', message: 'boom' },
     ]);
     expect(mapGoStreamAgentEventToChunks('done', {})).toEqual([
+      { type: 'done' },
+    ]);
+    expect(mapGoStreamAgentEventToChunks('cancelled', { message: 'stopped' })).toEqual([
       { type: 'done' },
     ]);
   });

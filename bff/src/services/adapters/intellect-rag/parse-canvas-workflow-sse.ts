@@ -24,6 +24,7 @@
  */
 
 import type { StreamChunk, StreamDelta, StreamReasoning } from '../../../types/stream';
+import { mapGoStreamAgentEventToChunks } from '../../../utils/map-go-stream-agent-event';
 
 /** Canvas Workflow SSE payload(从 intellect-rag canvas.py 实证) */
 interface CanvasWorkflowSSEPayload {
@@ -140,13 +141,21 @@ function mapEventToChunks(payload: CanvasWorkflowSSEPayload): StreamChunk[] {
 
   switch (event) {
     case 'message': {
-      const content = data.content ?? '';
+      const content =
+        typeof data.content === 'string'
+          ? data.content
+          : typeof data.answer === 'string'
+            ? data.answer
+            : '';
       const isThinking = data.start_to_think === true || data.end_to_think === true;
       if (isThinking) {
         const reasoning: StreamReasoning = { type: 'reasoning', content };
         return [reasoning];
       }
-      const delta: StreamDelta = { type: 'delta', content };
+      const delta: StreamDelta & { metadata?: unknown } = { type: 'delta', content };
+      if (data.reference !== undefined) {
+        delta.metadata = { reference: data.reference };
+      }
       return [delta];
     }
 
@@ -169,8 +178,14 @@ function mapEventToChunks(payload: CanvasWorkflowSSEPayload): StreamChunk[] {
     case 'workflow_started':
     case 'node_started':
     case 'node_finished':
-      // 内部状态,不产出 StreamChunk
+      // 内部状态,不产出 StreamChunk。画布时间线走前端原样 SSE,不经本解析器。
       return [];
+
+    case 'waiting_for_user':
+    case 'error':
+    case 'done':
+    case 'cancelled':
+      return mapGoStreamAgentEventToChunks(event, data);
 
     default:
       // 未知事件类型,跳过(向前兼容,P3+ 新事件不破坏 P1 解析器)
