@@ -23,6 +23,17 @@ envsubst '${INTELLECT_RAG_HOST} ${PYTHON_API_PORT} ${PYTHON_ADMIN_PORT} ${BFF_PO
   < /etc/nginx/http.d/default.conf.template \
   > /etc/nginx/http.d/default.conf
 
+# D10 路径级灰度分流(spec w1b §5.2):生成 nginx go-split.conf。
+# 空列表 → 生成空文件(默认态,流量全走 Python);非法/禁用前缀 → 生成器
+# 以非 0 退出,set -e 使容器启动失败(fail fast,不进入半切换状态)。
+export RAG_GO_UPSTREAM="${RAG_GO_UPSTREAM:-}"
+export RAG_GO_PREFIXES="${RAG_GO_PREFIXES:-}"
+if [ -x /usr/local/bin/gen-go-split.sh ]; then
+  /usr/local/bin/gen-go-split.sh > /etc/nginx/http.d/go-split.conf
+else
+  : > /etc/nginx/http.d/go-split.conf
+fi
+
 # Start BFF in background
 cd /app/bff && node dist/index.mjs &
 

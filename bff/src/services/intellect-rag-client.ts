@@ -1,5 +1,5 @@
 import { fetchWithRagToken } from './rag-fetch';
-import { getRagBaseUrl } from '../utils/rag-base-url';
+import { resolveRagBaseUrl } from '../utils/rag-base-url';
 
 // ---------------------------------------------------------------------------
 // Transparent reverse proxy (Multi-Harness P0-前置, Constitution Principle I)
@@ -76,8 +76,11 @@ export interface ProxyRequest {
  * @returns 上游 fetch Response(不调用 .json()/.text(),保留 body ReadableStream)
  */
 export async function proxy(path: string, req: ProxyRequest): Promise<Response> {
-  const origin = (req.ragBaseUrl || getRagBaseUrl()).replace(/\/$/, '');
-  const url = `${origin}/api/v1/${path}${req.query}`;
+  // D10 路径级灰度分流(spec w1b §5.3):按上游路径前缀解析 origin,
+  // RAG_GO_PREFIXES 为空时等价于原行为(租户级 ragBaseUrl → INTELLECT_RAG_URL)。
+  const upstreamPath = `/api/v1/${path}`;
+  const origin = resolveRagBaseUrl(upstreamPath, req.ragBaseUrl);
+  const url = `${origin}${upstreamPath}${req.query}`;
 
   // 复制请求头,删除 host 与客户端可能注入的 X-Intellect-* / Authorization 头。
   // Authorization 由 fetchWithRagToken 统一注入(动态 token 优先,降级 env var),

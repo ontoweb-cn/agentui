@@ -42,6 +42,11 @@ RUN cd /app/bff && npm ci --omit=dev --no-audit --no-fund
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
+# D10 路径级灰度分流生成器(spec w1b §5.2):entrypoint 启动时写
+# /etc/nginx/http.d/go-split.conf(空 RAG_GO_PREFIXES → 空文件)。
+COPY docker/gen-go-split.sh /usr/local/bin/gen-go-split.sh
+RUN chmod +x /usr/local/bin/gen-go-split.sh
+
 # 运行时插件 bundle(可选,#2b 方案 B):手工 bundle 随上下文分发;
 # canvas Tier B 插件(frontend-builder 阶段产出)在下方叠加 COPY,
 # entrypoint 启动时幂等安装。二者皆空即纯宿主形态。

@@ -27,6 +27,7 @@ import type { CanvasAgent, CreateCanvasBody, SaveCanvasBody } from '../../../typ
 import { fetchWithRagToken } from '../../rag-fetch';
 import { parseCanvasWorkflowSSE } from './parse-canvas-workflow-sse';
 import { redactSessionWebSearchSecrets } from '../../../utils/web-search-capability';
+import { resolveRagBaseUrl } from '../../../utils/rag-base-url';
 
 /**
  * Intellect RAG Adapter 实现。
@@ -182,7 +183,8 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
     _ctx: BackendContext,
     req: SendMessageRequest,
   ): Promise<StreamIterable> {
-    const url = `${this.baseUrl}/api/v1/agents/chat/completions`;
+    const path = '/api/v1/agents/chat/completions';
+    const url = `${this.originFor(path)}${path}`;
     const body = {
       agent_id: req.agentId,
       session_id: req.sessionId,
@@ -225,6 +227,9 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
       // 见 intellect-kb-app/api/apps/restful_apis/system_api.py:230)。
       // 注意:根 /health 在 RAG 源码中不存在,勿改回。
       // 匿名端点无需注入 token,直接用 fetch(避免向公开端点发送 adminToken)。
+      // D10 不在此处分流:健康探测针对整个 backend 是否可用,按路径前缀切到
+      // Go 会在灰度期产生"backend 健康但 Python 已挂"的误导,保持直连
+      // backend.endpoint,直到 W2 引入按上游的独立探针。
       const response = await fetch(`${this.baseUrl}/api/v1/system/healthz`, {
         method: 'GET',
         headers: { Accept: 'application/json' },
@@ -353,7 +358,8 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
     if (ctx?.intellectProjectId) headers['X-Intellect-Project'] = ctx.intellectProjectId;
     if (ctx?.intellectTenantId) headers['X-Intellect-Tenant'] = ctx.intellectTenantId;
 
-    const url = `${this.baseUrl}/api/v1/datasets/${encodeURIComponent(datasetId)}/documents`;
+    const path = `/api/v1/datasets/${encodeURIComponent(datasetId)}/documents`;
+    const url = `${this.originFor(path)}${path}`;
     const response = await fetchWithRagToken(url, {
       method: 'POST',
       headers,
@@ -396,7 +402,7 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
     body?: unknown,
     ctx?: BackendContext,
   ): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
+    const url = `${this.originFor(path)}${path}`;
     const response = await fetchWithRagToken(url, {
       method,
       headers: this.buildHeaders(ctx),
@@ -434,7 +440,7 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
     req: { headers: Headers; body?: ReadableStream<Uint8Array> | null; query: string },
     ctx?: BackendContext,
   ): Promise<Response> {
-    const url = `${this.baseUrl}${path}${req.query}`;
+    const url = `${this.originFor(path)}${path}${req.query}`;
 
     // 复制请求头,删除 host 与客户端可能注入的 X-Intellect-* / Authorization 头。
     // Authorization 由 fetchWithRagToken 统一注入(动态 token 优先,降级到 adminToken)。
@@ -482,6 +488,15 @@ export class IntellectRagAdapter implements IHarnessAdapter, ICanvasAdapter, IKn
   // -----------------------------------------------------------------------
   // Private helpers
   // -----------------------------------------------------------------------
+
+  /**
+   * D10 路径级灰度分流(spec w1b §5.3):按上游路径前缀解析 origin。
+   * RAG_GO_PREFIXES 为空 → 原样返回 backend.endpoint(行为零变化);
+   * 命中前缀 → RAG_GO_UPSTREAM;非法/禁用配置 → 整体回退 backend.endpoint。
+   */
+  private originFor(path: string): string {
+    return resolveRagBaseUrl(path, this.baseUrl);
+  }
 
   /**
    * 构造请求头(Content-Type + X-Intellect-* 身份头)。
