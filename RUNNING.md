@@ -143,6 +143,17 @@ PYTHON_ADMIN_PORT=9381
 
 > 所有代理变量参见 [.env.example](.env.example)。
 
+### kb-platform catalog 代理（1b-ζ）
+
+BFF `/platform/*` → `KB_PLATFORM_URL`（默认 `http://127.0.0.1:9381`）。
+
+| 变量 | 说明 |
+|------|------|
+| `KB_PLATFORM_URL` | Go kb-platform origin |
+| `KB_PLATFORM_ADMIN_TOKEN` | Catalog 机器 Bearer；仅白名单 GET 在缺客户端 `Authorization` 时注入 |
+| `KB_PLATFORM_INJECT_REQUIRE_ADMIN_AUTH` | 默认开启：注入前需 `kb_admin_session` 且上游 `GET /api/v1/admin/auth` 为 200。设为 `false` 恢复 1a「任意 BFF 登录即注入」（紧急回滚，危险） |
+| `KB_PLATFORM_ADMIN_COOKIE_NAME` | 默认 `kb_admin_session`（与 Go 1b-α 一致） |
+
 ---
 
 ## 八、常用脚本
