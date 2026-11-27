@@ -208,6 +208,9 @@ export function createAdminUserRoutes(deps: AdminUserRouteDeps = {}): Hono {
 
     let body: BodyInit | undefined;
     if (method !== 'GET' && method !== 'HEAD') {
+      // GET bodies are not forwarded: the fetch spec (and undici) reject a request
+      // whose method is GET/HEAD but carries a body, so `GET /variables` with
+      // {"var_name": ...} stays available on the admin port only, never here.
       const read = await readBodyLimited(c.req.raw);
       if (read.kind === 'too-large') return payloadTooLarge();
       if (read.kind === 'body') body = read.body;
