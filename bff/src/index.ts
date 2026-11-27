@@ -5,6 +5,7 @@ import { logger } from 'hono/logger';
 import { authMiddleware } from './middleware/auth';
 import { backendContextMiddleware } from './middleware/backend-context';
 import { errorHandler } from './middleware/error';
+import { adminUserRoutes } from './routes/admin-users';
 import { adminRoutes } from './routes/admin';
 import { authRoutes } from './routes/auth';
 import { bffAgentRoutes } from './routes/bff-agents';
@@ -168,6 +169,9 @@ app.route('/', aihubRoutes);
 app.use('/platform/*', authMiddleware);
 app.use('/api/bff/platform/*', authMiddleware);
 app.route('/', platformRoutes);
+
+// Admin users 使用独立 admin session，由 Go/Flask 上游鉴权；不能叠加 BFF 用户 authMiddleware。
+app.route('/', adminUserRoutes);
 
 // Auth-protected routes
 app.use('/api/*', authMiddleware);

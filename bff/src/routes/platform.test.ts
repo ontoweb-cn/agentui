@@ -85,7 +85,7 @@ describe('kbPlatformAdminAuthOK', () => {
   });
 
   it('returns false without proof', async () => {
-    const upstreamFetch = vi.fn();
+    const upstreamFetch = vi.fn<typeof fetch>();
     await expect(
       kbPlatformAdminAuthOK({ upstreamFetch }),
     ).resolves.toBe(false);
@@ -94,7 +94,7 @@ describe('kbPlatformAdminAuthOK', () => {
 
   it('probes /api/v1/admin/auth with cookie', async () => {
     process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
-    const upstreamFetch = vi.fn(
+    const upstreamFetch = vi.fn<typeof fetch>(
       async () => new Response('{}', { status: 200 }),
     );
     await expect(
@@ -114,7 +114,7 @@ describe('kbPlatformAdminAuthOK', () => {
 
   it('probes with Bearer authorization', async () => {
     process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
-    const upstreamFetch = vi.fn(
+    const upstreamFetch = vi.fn<typeof fetch>(
       async () => new Response('{}', { status: 200 }),
     );
     await expect(
@@ -130,7 +130,7 @@ describe('kbPlatformAdminAuthOK', () => {
   });
 
   it('returns false on non-200', async () => {
-    const upstreamFetch = vi.fn(
+    const upstreamFetch = vi.fn<typeof fetch>(
       async () => new Response('{}', { status: 401 }),
     );
     await expect(
@@ -142,7 +142,7 @@ describe('kbPlatformAdminAuthOK', () => {
   });
 
   it('returns false on 403 forbidden', async () => {
-    const upstreamFetch = vi.fn(
+    const upstreamFetch = vi.fn<typeof fetch>(
       async () => new Response('{}', { status: 403 }),
     );
     await expect(
@@ -154,7 +154,7 @@ describe('kbPlatformAdminAuthOK', () => {
   });
 
   it('returns false when probe throws', async () => {
-    const upstreamFetch = vi.fn(async () => {
+    const upstreamFetch = vi.fn<typeof fetch>(async () => {
       throw new Error('ECONNREFUSED');
     });
     await expect(
@@ -167,7 +167,7 @@ describe('kbPlatformAdminAuthOK', () => {
 
   it('caches successful auth for TTL and skips second probe', async () => {
     process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
-    const upstreamFetch = vi.fn(
+    const upstreamFetch = vi.fn<typeof fetch>(
       async () => new Response('{}', { status: 200 }),
     );
     const now = vi.fn(() => 1_000_000);
@@ -201,7 +201,7 @@ describe('createPlatformRoutes', () => {
   it('GET overview 代理到 KB_PLATFORM_URL 并透传 v2 envelope', async () => {
     process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
     const envelope = { code: 0, message: 'ok', data: { by_kind: {} } };
-    const upstreamFetch = vi.fn(async (url: string | URL | Request) => {
+    const upstreamFetch = vi.fn<typeof fetch>(async (url: string | URL | Request) => {
       expect(String(url)).toBe(
         'http://kb-platform.test:9381/api/v1/platform/catalog/overview',
       );
@@ -230,7 +230,7 @@ describe('createPlatformRoutes', () => {
   });
 
   it('上游不可达时返回 502 v2 envelope', async () => {
-    const upstreamFetch = vi.fn(async () => {
+    const upstreamFetch = vi.fn<typeof fetch>(async () => {
       throw new Error('connect ECONNREFUSED');
     });
     const app = new Hono();
@@ -255,7 +255,7 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
   it('does not inject without admin session when gate is on (default)', async () => {
     process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
     process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
-    const upstreamFetch = vi.fn(
+    const upstreamFetch = vi.fn<typeof fetch>(
       async () =>
         new Response(JSON.stringify({ code: 0 }), { status: 200 }),
     );
@@ -269,7 +269,7 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
   it('injects after /admin/auth 200 with kb_admin_session cookie', async () => {
     process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
     process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
-    const upstreamFetch = vi.fn(async (url: string | URL | Request) => {
+    const upstreamFetch = vi.fn<typeof fetch>(async (url: string | URL | Request) => {
       const u = String(url);
       if (u.endsWith('/api/v1/admin/auth')) {
         return new Response(JSON.stringify({ code: 0 }), { status: 200 });
@@ -294,7 +294,7 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
   it('does not inject when /admin/auth fails', async () => {
     process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
     process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
-    const upstreamFetch = vi.fn(async (url: string | URL | Request) => {
+    const upstreamFetch = vi.fn<typeof fetch>(async (url: string | URL | Request) => {
       if (String(url).endsWith('/api/v1/admin/auth')) {
         return new Response('{}', { status: 401 });
       }
@@ -315,7 +315,7 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
   it('does not inject when /admin/auth returns 403', async () => {
     process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
     process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
-    const upstreamFetch = vi.fn(async (url: string | URL | Request) => {
+    const upstreamFetch = vi.fn<typeof fetch>(async (url: string | URL | Request) => {
       if (String(url).endsWith('/api/v1/admin/auth')) {
         return new Response('{}', { status: 403 });
       }
@@ -337,7 +337,7 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
     process.env.KB_PLATFORM_URL = 'http://kb-platform.test:9381';
     process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
     process.env.KB_PLATFORM_INJECT_REQUIRE_ADMIN_AUTH = 'false';
-    const upstreamFetch = vi.fn(
+    const upstreamFetch = vi.fn<typeof fetch>(
       async () =>
         new Response(JSON.stringify({ code: 0 }), { status: 200 }),
     );
@@ -352,7 +352,7 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
 
   it('does not overwrite client Authorization', async () => {
     process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
-    const upstreamFetch = vi.fn(
+    const upstreamFetch = vi.fn<typeof fetch>(
       async () => new Response('{}', { status: 200 }),
     );
     const app = new Hono();
@@ -370,7 +370,7 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
   it('does not inject on POST instances', async () => {
     process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
     process.env.KB_PLATFORM_INJECT_REQUIRE_ADMIN_AUTH = 'false';
-    const upstreamFetch = vi.fn(
+    const upstreamFetch = vi.fn<typeof fetch>(
       async () => new Response('{}', { status: 200 }),
     );
     const app = new Hono();
@@ -386,7 +386,7 @@ describe('KB_PLATFORM_ADMIN_TOKEN injection', () => {
   it('does not inject on GET /status', async () => {
     process.env.KB_PLATFORM_ADMIN_TOKEN = 'bff-admin';
     process.env.KB_PLATFORM_INJECT_REQUIRE_ADMIN_AUTH = 'false';
-    const upstreamFetch = vi.fn(
+    const upstreamFetch = vi.fn<typeof fetch>(
       async () => new Response('{}', { status: 200 }),
     );
     const app = new Hono();

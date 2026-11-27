@@ -61,6 +61,12 @@ spec:
               value: "9381"
             - name: INTELLECT_RAG_URL
               value: "http://intellect-rag:9380"
+            - name: KB_PLATFORM_ADMIN
+              value: "go"
+            - name: KB_PLATFORM_URL
+              value: "http://intellect-rag:9381"
+            - name: INTELLECT_ADMIN_URL
+              value: "http://intellect-rag:9381"
 
             # ---- cognitive-wargame 后端 ----
             - name: WARGAME_HOST

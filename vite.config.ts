@@ -132,6 +132,12 @@ export default defineConfig(({ mode }) => {
       ws: true,
       rewrite: (path: string) => path.replace(/^\/api\/bff/, ''),
     },
+    // 用户管理经 BFF 按 KB_PLATFORM_ADMIN 切换 Go/Flask；其他 admin 路径仍直连 Flask。
+    '/api/v1/admin/users': {
+      target: `http://${bffHost}:${bffPort}`,
+      changeOrigin: true,
+      ws: true,
+    },
     '/api/v1/admin': {
       target: `http://${apiHost}:${pythonAdminPort}`,
       changeOrigin: true,
